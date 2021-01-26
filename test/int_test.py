@@ -1,0 +1,1347 @@
+#!/usr/bin/env python
+
+import copy
+import datetime
+import json
+import optparse
+import os
+import random
+import requests
+import shutil
+import socket
+import subprocess
+import sys
+import threading
+import time
+
+from collections import deque
+
+
+
+class TickTockConfig(object):
+
+    def __init__(self, options):
+        self._options = options
+        self._dict = {}
+
+        sec_from_start = int(round(time.time())) - int(options.start/1000)
+
+        # setup default config
+        self._dict["append.log.dir"] = self._options.root
+        self._dict["append.log.enabled"] = "true"
+        self._dict["append.log.rotation.sec"] = 30
+
+        self._dict["http.listener.count"] = 1
+        self._dict["http.max.connections.per.listener"] = 1024
+        self._dict["http.max.request.size.kb"] = 1024
+        self._dict["http.responders.per.listener"] = 1
+        self._dict["http.request.format"] = self._options.form
+        self._dict["http.server.port"] = self._options.port
+        self._dict["tcp.server.port"] = self._options.dataport
+        self._dict["udp.server.port"] = self._options.dataport
+
+        self._dict["log.level"] = "TRACE"
+        self._dict["log.file"] = os.path.join(self._options.root,"tt.log")
+
+        self._dict["query.executor.parallel"] = "false"
+
+        self._dict["stats.frequency.sec"] = 30
+
+        self._dict["sanity.check.frequency.sec"] = 3600
+
+        self._dict["tsdb.archive.hour"] = (sec_from_start / 3600) + 2
+        self._dict["tsdb.compressor.version"] = 1
+        self._dict["tsdb.data.dir"] = self._options.root
+        self._dict["tsdb.page.count"] = 128
+        self._dict["tsdb.partition.sec"] = 120
+        self._dict["tsdb.read_only.min"] = (sec_from_start / 60) + 10
+        self._dict["tsdb.rotation.frequency.sec"] = 30
+        self._dict["tsdb.timestamp.resolution"] = "millisecond"
+
+    def add_entry(self, key, value):
+        self._dict[key] = value
+
+    def __call__(self):
+        filename = os.path.join(self._options.root,"tt.conf")
+        sys.stdout.write("generating ticktock config: %s\n" % filename)
+        with open(filename, "w") as f:
+            for k,v in self._dict.iteritems():
+                f.write("%s = %s\n" % (k, v))
+
+
+class DataPoint(object):
+
+    def __init__(self, metric, timestamp, value, tags=None):
+        self._metric = metric
+        self._timestamp = timestamp
+        self._value = value
+        self._tags = tags
+
+    def get_timestamp(self):
+        return self._timestamp
+
+    def get_value(self):
+        return self._value
+
+    def get_tags(self):
+        return self._tags
+
+    def set_timestamp(self, tstamp):
+        self._timestamp = tstamp
+
+    def set_value(self, value):
+        self._value = value
+
+    def to_json(self):
+        j = {"metric":self._metric,"timestamp":self._timestamp,"value":self._value}
+        if self._tags:
+            j["tags"] = self._tags
+        else:
+            j["tags"] = {}
+        return j
+
+    def to_plain(self):
+        p = "{} {} {:.12f}".format(self._metric, self._timestamp, self._value)
+        if self._tags:
+            for k,v in self._tags.items():
+                p += " " + k + "=" + v
+        return p
+
+    def to_tuple(self):
+        return (self._timestamp, self._value)
+
+
+class DataPoints(object):
+
+    def __init__(self, prefix, start, interval_ms=5000, metric_count=2, metric_cardinality=2, tag_cardinality=2, out_of_order=False):
+
+        self._dps = []
+        self._start = start
+
+        tstamp = self._start
+
+        # OpenTSDB requirements:
+        #   A data point must have at least one tag and every time series
+        #   for a metric should have the same number of tags.
+        # generate random dps
+        for i in range(metric_count):
+            if out_of_order:
+                tstamp = tstamp + random.randint(-interval_ms, interval_ms)
+            else:
+                tstamp = tstamp + random.randint(1, interval_ms)
+            for m in range(1, metric_cardinality+1):
+                tags = {}
+                for t in range(1, m+1):
+                    if interval_ms < 200:   # in this case we need perfect data to avoid interpolation
+                        tags["tag"+str(t)] = "val"+str(t)
+                    else:
+                        tags["tag"+str(t)] = "val"+str(random.randint(1,tag_cardinality))
+                dp = DataPoint(prefix+"_metric_"+str(m), tstamp, random.uniform(0,100), tags)
+                self._dps.append(dp)
+                tstamp = tstamp + random.randint(0, 1000)
+
+        self._end = tstamp + 1;
+
+    def get_dps(self):
+        return self._dps
+
+    def update_values(self):
+        for dp in self._dps:
+            dp.set_value(dp.get_value() + random.randint(1,10))
+
+    def to_json(self):
+        arr = []
+        for dp in self._dps:
+            arr.append(dp.to_json())
+        return {"metrics": arr}
+
+    def to_plain(self):
+        p = ""
+        for dp in self._dps:
+            p += "put " + dp.to_plain() + "\n"
+        return p + "\n"
+
+
+class Query(object):
+
+    def __init__(self, metric, start, end=None, tags=None, aggregator=None, downsampler=None, rate_options=None):
+        self._metric = metric
+        self._start = start
+        self._end = end
+        self._tags = tags
+        self._aggregator = aggregator
+        self._downsampler = downsampler
+        self._rate_options = rate_options
+
+        if not self._end:
+            self._end = int(round(time.time() * 1000))
+
+        # aggregator is required by OpenTSDB
+        if not aggregator:
+            self._aggregator = "none"
+
+    def get_tag_value(self, key):
+        if not self._tags:
+            return None
+        for k,v in self._tags.items():
+            if k == key:
+                return v
+        return None
+
+    def to_json(self):
+        arr = []
+        q = {}
+        q["metric"] = self._metric
+        if self._tags:
+            q["tags"] = self._tags
+        if self._aggregator and self._aggregator != "raw":
+            q["aggregator"] = self._aggregator
+        if self._downsampler:
+            q["downsample"] = self._downsampler
+        if self._rate_options:
+            q["rate"] = 'true'
+            q["rateOptions"] = self._rate_options
+        arr.append(q)
+        query = {}
+        query["start"] = self._start
+        query["end"] = self._end
+        query["msResolution"] = "true"  # using True will cause opentsdb to choke
+        query["globalAnnotations"] = "true"
+        query["queries"] = arr
+        return query
+
+    def to_params(self):
+        params = {}
+        params["start"] = self._start
+        params["end"] = self._end
+        params["msResolution"] = "true"
+        m = str(self._aggregator)
+        if self._downsampler:
+            m = m + ":" + str(self._downsampler)
+        m = m + ":" + self._metric
+        if self._tags:
+            m = m + str(json.dumps(self._tags)).replace(" ", "").replace(":","=")
+        params["m"] = m
+        return params
+
+
+class Test(object):
+
+    def __init__(self, options, prefix, tcp_socket=None):
+        self._options = options
+        self._prefix = prefix
+        self._passed = 0
+        self._failed = 0
+        self._opentsdb_time = 0.0
+        self._ticktock_time = 0.0
+        self._udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self._tcp_socket = tcp_socket
+
+    def start_tt(self):
+        while True:
+            self._tt = subprocess.Popen([self._options.tt, "-c", os.path.join(self._options.root,"tt.conf"), "-r"])
+            time.sleep(4)
+            if not self.tt_stopped():
+                break
+        print "tt started"
+
+    def stop_tt(self):
+        if self._tcp_socket:
+            self._tcp_socket.close()
+            self._tcp_socket = None
+        time.sleep(1)
+        response = requests.post("http://"+self._options.ip+":"+str(self._options.port)+"/api/admin?cmd=stop")
+        response.raise_for_status()
+
+    def tt_stopped(self):
+        self._tt.poll()
+        return self._tt.returncode is not None
+
+    def wait_for_tt(self, timeout):
+        elapse = 0
+        while not self.tt_stopped() and elapse <= timeout:
+            time.sleep(1)
+            elapse = elapse + 1
+
+    def connect_to_tcp(self):
+        if not self._tcp_socket:
+            # establish tcp connection
+            self._tcp_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            address = (str(self._options.ip), int(self._options.dataport))
+            print "connecting to {}:{}".format(self._options.ip, self._options.dataport)
+            self._tcp_socket.connect(address)
+
+    def metric_name(self, idx, prefix=None):
+        if not prefix:
+            prefix = self._prefix
+        return prefix + "_metric_" + str(idx)
+
+    def tag(self, k, v):
+        return {"tag"+str(k): "val"+str(v)}
+
+    def send_data_to_opentsdb(self, dps):
+        payload = dps.to_json()
+        if self._options.verbose:
+            print "send_data(): " + json.dumps(payload)
+        # send to opentsdb
+        start = time.time()
+        response = requests.post("http://"+self._options.ip+":4242/api/put?details", json=payload["metrics"], timeout=self._options.timeout)
+        self._opentsdb_time += time.time() - start
+        response.raise_for_status()
+
+    def send_data_to_ticktock(self, dps):
+        if self._options.form == "json":
+            payload = dps.to_json()
+            # send to ticktock
+            start = time.time()
+            response = requests.post("http://"+self._options.ip+":"+str(self._options.port)+"/api/put?details", json=payload, timeout=self._options.timeout)
+            self._ticktock_time += time.time() - start
+            response.raise_for_status()
+        else:
+            payload = dps.to_plain()
+            # send to ticktock
+            start = time.time()
+            response = requests.post("http://"+self._options.ip+":"+str(self._options.port)+"/api/put?details", data=payload, timeout=self._options.timeout)
+            self._ticktock_time += time.time() - start
+            response.raise_for_status()
+
+    def send_data_to_ticktock_udp(self, dps):
+        # send to ticktock
+        start = time.time()
+        for dp in dps.get_dps():
+            #data = dp.to_plain().encode('ascii')
+            self._udp_socket.sendto(dp.to_plain(), (self._options.ip, self._options.dataport))
+        self._ticktock_time += time.time() - start
+
+    def send_data_to_ticktock_tcp(self, dps):
+        # send to ticktock
+        start = time.time()
+        if not self._tcp_socket:
+            self.connect_to_tcp()
+        self._tcp_socket.sendall(dps.to_plain())
+        self._ticktock_time += time.time() - start
+
+    def send_data(self, dps):
+        self.send_data_to_opentsdb(dps)
+        self.send_data_to_ticktock(dps)
+        # opentsdb needs time to get ready before query
+        time.sleep(2)
+
+    def send_data_plain(self, dps):
+        self.send_data_to_opentsdb(dps)
+
+        # send to ticktock in plain format
+        payload = dps.to_plain()
+        start = time.time()
+        response = requests.post("http://"+self._options.ip+":"+str(self._options.port)+"/api/put?details", data=payload, timeout=self._options.timeout)
+        self._ticktock_time += time.time() - start
+        response.raise_for_status()
+
+        # opentsdb needs time to get ready before query
+        time.sleep(2)
+
+    def send_data_udp(self, dps):
+        if self._options.verbose:
+            payload = dps.to_json()
+            print "send_data_udp(): " + json.dumps(payload)
+        self.send_data_to_opentsdb(dps)
+        self.send_data_to_ticktock_udp(dps)
+
+        # opentsdb needs time to get ready before query
+        time.sleep(2)
+
+    def send_data_tcp(self, dps):
+        if self._options.verbose:
+            print "send_data_tcp(): " + dps.to_plain()
+        self.send_data_to_opentsdb(dps)
+        self.send_data_to_ticktock_tcp(dps)
+
+        # opentsdb needs time to get ready before query
+        time.sleep(2)
+
+    def query_ticktock(self, query):
+        response = None
+
+        if self._options.method == "post":
+            payload = query.to_json()
+            start = time.time()
+            response = requests.post("http://"+self._options.ip+":"+str(self._options.port)+"/api/query", json=payload, timeout=self._options.timeout)
+            self._ticktock_time += time.time() - start
+        elif self._options.method == "get":
+            params = query.to_params()
+            if self._options.verbose:
+                print "params = " + str(params)
+            start = time.time()
+            response = requests.get("http://"+self._options.ip+":"+str(self._options.port)+"/api/query", params=params, timeout=self._options.timeout)
+            self._ticktock_time += time.time() - start
+        else:
+            raise Exception("unknown http method: " + str(self._options.method))
+
+        if not response:
+            raise Exception("failed to query tt")
+        if self._options.verbose:
+            print "ticktock-response: " + response.text
+        response.raise_for_status()
+        return response.json()
+
+    def query_opentsdb(self, query):
+        payload = query.to_json()
+        start = time.time()
+        response = requests.post("http://"+self._options.ip+":4242/api/query", json=payload, timeout=self._options.timeout)
+        self._opentsdb_time += time.time() - start
+        #if self._options.verbose:
+        #    print "opentsdb-response: " + response.text #str(response.status_code)
+        try:
+            response.raise_for_status()
+            if self._options.verbose:
+                print "opentsdb-response: " + response.text
+        except requests.exceptions.HTTPError:
+            if self._options.verbose:
+                print "opentsdb-response: []"
+            return []
+        return response.json()
+
+    def query_and_verify(self, query):
+        if self._options.verbose:
+            print "query: " + str(query.to_json())
+        expected = self.query_opentsdb(query)
+        actual = self.query_ticktock(query)
+        if self.verify_json(expected, actual):
+            self._passed = self._passed + 1
+        else:
+            self._failed = self._failed + 1
+            print "[FAIL] query: " + str(query.to_json())
+
+    def verify_json(self, expected, actual):
+        if isinstance(expected, list):
+            if not isinstance(actual, list):
+                if self._options.verbose:
+                    print "actual not list: " + str(actual)
+                return False
+            if len(expected) != len(actual):
+                if self._options.verbose:
+                    print "list len not same: %s vs %s" % (str(expected), str(actual))
+                return False
+            if expected and actual:
+                for i in range(len(expected)):
+                    match = False
+                    for j in range(len(expected)):
+                        if self.verify_json(expected[i], actual[j]):
+                            match = True
+                            break
+                        elif self._options.verbose:
+                            print "expected != actual: %s vs %s" % (str(expected[i]), str(actual[j]))
+                    if not match:
+                        if self._options.verbose:
+                            print "actual does not have: %s" % str(expected[i])
+                        return False
+                for i in range(len(expected)):
+                    match = False
+                    for j in range(len(expected)):
+                        if self.verify_json(expected[j], actual[i]):
+                            match = True
+                            break
+                    if not match:
+                        if self._options.verbose:
+                            print "expected does not have: %s" % str(actual[i])
+                        return False
+            return True
+        elif isinstance(expected, dict):
+            if not isinstance(actual, dict):
+                if self._options.verbose:
+                    print "actual not dict: " + str(actual)
+                return False
+            if len(expected) != len(actual):
+                if self._options.verbose:
+                    print "dict len not same: %s vs %s" % (str(expected), str(actual))
+                return False
+            if expected and actual:
+                for k,v in expected.items():
+                    if not actual.has_key(str(k)):
+                        if self._options.verbose:
+                            print "actual does not have: %s" % str(k)
+                        return False
+                    if not self.verify_json(v, actual[str(k)]):
+                        return False
+                for k,v in actual.items():
+                    if not expected.has_key(str(k)):
+                        if self._options.verbose:
+                            print "expected does not have: %s" % str(k)
+                        return False
+                    if not self.verify_json(v, expected[str(k)]):
+                        return False
+            return True
+        elif isinstance(expected, float):
+            if not isinstance(actual, float):
+                print "actual not float: " + str(actual)
+                return False
+            diff = abs(expected - actual)
+            if diff > 0.0000000001:
+                if diff < 0.001:
+                    print "expected not same as actual (float): {:.16f} vs {:.16f}; diff = {:.16f}".format(expected, actual, diff)
+                return False
+        elif isinstance(expected, int):
+            if not isinstance(actual, int):
+                if self._options.verbose:
+                    print "actual not int: " + str(actual)
+                return False
+            if expected != actual:
+                if self._options.verbose:
+                    print "expected not same as actual (int): %s vs %s" % (str(expected), str(actual))
+                return False
+        elif isinstance(expected, str) or isinstance(expected, unicode):
+            if not (isinstance(actual, str) or isinstance(actual, unicode)):
+                if self._options.verbose:
+                    print "actual not same str: %s" % str(actual)
+                return False
+            if expected != actual:
+                if self._options.verbose:
+                    print "expected not same as actual (str): %s vs %s" % (str(expected), str(actual))
+                return False
+        else:
+            print("[FAIL] expected: %s, actual: %s" % (str(expected), str(actual)))
+            return False
+
+        return True
+
+    def cleanup(self):
+        sys.stdout.write("cleanup...\n")
+        os.system("pkill -f %s" % self._options.tt)
+        if os.path.exists(self._options.root):
+            shutil.rmtree(self._options.root)
+        os.mkdir(self._options.root)
+
+
+class Multi_Thread_Tests(Test):
+
+    def __init__(self, options, prefix="mt"):
+        super(Multi_Thread_Tests, self).__init__(options, prefix)
+
+    def __call__(self):
+
+        config = TickTockConfig(self._options)
+        config.add_entry("query.executor.parallel", "true");
+        config.add_entry("http.listener.count", 2);
+        config.add_entry("http.responders.per.listener", 3);
+        config()    # generate config
+
+        self.start_tt()
+
+        thread_count = 5
+        threads = []
+
+        # create threads
+        for tid in range(thread_count):
+            threads.append(threading.Thread(target=self.thread_target, args=(tid,)))
+
+        # start threads
+        for tid in range(thread_count):
+            threads[tid].start()
+
+        # wait for all threads to finish
+        for tid in range(thread_count):
+            threads[tid].join()
+
+        self.stop_tt()
+        self.wait_for_tt(self._options.timeout)
+
+    def thread_target(self, tid):
+
+        metric_cardinality = 4
+        tag_cardinality = 4
+        prefix = "mt" + str(tid)
+
+        dps = DataPoints(prefix, self._options.start, interval_ms=128, metric_count=256, metric_cardinality=metric_cardinality, tag_cardinality=tag_cardinality)
+        self.send_data(dps)
+
+        for m in range(metric_cardinality):
+            for down in ["avg", "count", "dev", "first", "last", "max", "min", "p50", "p75", "p90", "p95", "p99", "p999", "sum"]:
+                for agg in ["none", "avg", "count", "dev", "max", "min", "p50", "p75", "p90", "p95", "p99", "p999", "sum"]:
+                    tags = {"tag"+str(m): "*"}
+                    query = Query(metric=self.metric_name(m,prefix), start=self._options.start, end=dps._end, aggregator=agg, downsampler="10s-"+down, tags=tags)
+                    self.query_and_verify(query)
+
+        for m in range(metric_cardinality):
+            for down in ["avg", "count", "dev", "first", "last", "max", "min", "p50", "p75", "p90", "p95", "p99", "p999", "sum"]:
+                for agg in ["none", "avg", "count", "dev", "max", "min", "p50", "p75", "p90", "p95", "p99", "p999", "sum"]:
+                    tags = {"tag"+str(m): "val1"}
+                    query = Query(metric=self.metric_name(m,prefix), start=self._options.start+88888, end=dps._end+88888, aggregator=agg, downsampler="10s-"+down+"-zero")
+                    self.query_and_verify(query)
+
+        for m in range(metric_cardinality):
+            for down in ["avg", "count", "dev", "first", "last", "max", "min", "p50", "p75", "p90", "p95", "p99", "p999", "sum"]:
+                for agg in ["none", "avg", "count", "dev", "max", "min", "p50", "p75", "p90", "p95", "p99", "p999", "sum"]:
+                    tags = {"tag"+str(m): "val*"}
+                    query = Query(metric=self.metric_name(m,prefix), start=self._options.start-88888, end=dps._end+88888, aggregator=agg, downsampler="10s-"+down+"-zero")
+                    self.query_and_verify(query)
+
+
+class Out_Of_Order_Write_Tests(Test):
+
+    def __init__(self, options, prefix="o"):
+        super(Out_Of_Order_Write_Tests, self).__init__(options, prefix)
+
+    def __call__(self):
+
+        sec_from_start = int(round(time.time())) - int(self._options.start/1000)
+
+        # these settings will make sure tsdb are loaded in archive mode
+        config = TickTockConfig(self._options)
+        config.add_entry("tsdb.archive.hour", int(sec_from_start/3600)-1);
+        config.add_entry("tsdb.read_only.min", int(sec_from_start/60)-120);
+        config()    # generate config
+
+        self.start_tt()
+
+        dps1 = DataPoints(self._prefix, self._options.start, metric_count=128, metric_cardinality=4, tag_cardinality=4)
+        self.send_data(dps1)
+
+        start = self._options.start - 60000
+        dps2 = DataPoints(self._prefix, start, metric_count=128, metric_cardinality=4, tag_cardinality=4, out_of_order=True)
+        self.send_data(dps2)
+
+        start = start - 1;
+
+        query1 = Query(metric=self.metric_name(1), start=start)
+        self.query_and_verify(query1)
+
+        query2 = Query(metric=self.metric_name(2), start=start)
+        self.query_and_verify(query2)
+
+        query3 = Query(metric=self.metric_name(3), start=start)
+        self.query_and_verify(query3)
+
+        query4 = Query(metric=self.metric_name(4), start=start)
+        self.query_and_verify(query4)
+
+        self.stop_tt()
+        self.wait_for_tt(self._options.timeout)
+
+
+class Stop_Restart_Tests(Test):
+
+    def __init__(self, options, prefix="sr"):
+        super(Stop_Restart_Tests, self).__init__(options, prefix)
+
+    def __call__(self):
+
+        config = TickTockConfig(self._options)
+        config.add_entry("tsdb.compressor.version", 1);
+        config()    # generate config
+
+        self.start_tt()
+
+        dps = DataPoints(self._prefix, self._options.start, interval_ms=128, metric_count=128, metric_cardinality=4, tag_cardinality=4, out_of_order=True)
+        self.send_data(dps)
+
+        tags1 = {"tag1":"val1"}
+        tags2 = {"tag1":"val1", "tag2":"val2"}
+        tags3 = {"tag2":"val1|val2"}
+
+        iterations = 5
+
+        for i in range(1, iterations+1):
+            query1 = Query(metric=self.metric_name(2), start=self._options.start, end=dps._end, tags=tags1)
+            self.query_and_verify(query1)
+
+            query2 = Query(metric=self.metric_name(3), start=self._options.start, end=dps._end, tags=tags2)
+            self.query_and_verify(query2)
+
+            query3 = Query(metric=self.metric_name(4), start=self._options.start, end=dps._end, tags=tags3)
+            self.query_and_verify(query3)
+
+            self.stop_tt()
+            self.wait_for_tt(self._options.timeout)
+
+            if i < iterations:
+                time.sleep(2)
+                # restart with a different compressor version
+                config = TickTockConfig(self._options)
+                config.add_entry("tsdb.compressor.version", 2);
+                config()    # generate config
+                self.start_tt()
+                # ticktock needs time to restore from disk
+                time.sleep(4)
+
+
+class Backfill_Tests(Test):
+
+    def __init__(self, options, prefix="bf"):
+        super(Backfill_Tests, self).__init__(options, prefix)
+
+    def __call__(self):
+
+        config = TickTockConfig(self._options)
+        config.add_entry("log.level", "TRACE")
+        config.add_entry("log.file", "{}/tt.log".format(self._options.root))
+        config.add_entry("http.request.format", "plain")
+        config.add_entry("append.log.enabled", "true")
+        config()    # generate config
+
+        self.start_tt()
+
+        dps = DataPoints(self._prefix, self._options.start, interval_ms=128, metric_count=256, metric_cardinality=4, tag_cardinality=4, out_of_order=True)
+        self.send_data_plain(dps)
+
+        tags1 = {"tag1":"val1"}
+        tags2 = {"tag1":"val1", "tag2":"val2"}
+        tags3 = {"tag2":"val1|val2"}
+
+        for i in range(1, 3):
+            query1 = Query(metric=self.metric_name(2), start=self._options.start, end=dps._end, tags=tags1)
+            self.query_and_verify(query1)
+
+            query2 = Query(metric=self.metric_name(3), start=self._options.start, end=dps._end, tags=tags2)
+            self.query_and_verify(query2)
+
+            query3 = Query(metric=self.metric_name(4), start=self._options.start, end=dps._end, tags=tags3)
+            self.query_and_verify(query3)
+
+            self.stop_tt()
+            self.wait_for_tt(self._options.timeout)
+
+            if i == 1:
+                time.sleep(2)
+                # save append logs somewhere else
+                bak = "/tmp/tt.bak"
+                if os.path.exists(bak):
+                    shutil.rmtree(bak)
+                os.mkdir(bak)
+                os.system("cp " + self._options.root + "/append.*.log.zip " + bak)
+
+                # do a clean restart
+                self.cleanup()
+                config = TickTockConfig(self._options)
+                config.add_entry("log.file", "{}/tt.log".format(self._options.root));
+                config.add_entry("log.level", "TRACE");
+                config()    # generate config
+                self.start_tt()
+                time.sleep(1)
+
+                # perform backfill
+                os.system("bin/backfill -a " + bak);
+
+
+class Basic_Query_Tests(Test):
+
+    def __init__(self, options, prefix="bq", tcp_socket=None):
+        super(Basic_Query_Tests, self).__init__(options, prefix, tcp_socket)
+
+    def __call__(self, metric_count=2, metric_cardinality=2, tag_cardinality=2, run_tt=True, via_udp=False, via_tcp=False):
+
+        if run_tt:
+            # generate config
+            config = TickTockConfig(self._options)
+            #config.add_entry("tsdb.read_only.sec", "20");
+            config()    # generate config
+
+            # start tt
+            self.start_tt()
+
+        # insert some dps
+        dps = DataPoints(self._prefix, self._options.start, metric_count=metric_count, metric_cardinality=metric_cardinality, tag_cardinality=tag_cardinality)
+
+        if via_udp:
+            self.send_data_udp(dps)
+        elif via_tcp:
+            self.send_data_tcp(dps)
+        else:
+            self.send_data(dps)
+
+        # this metric does not exist
+        print "Try non-existing metric..."
+        query = Query(metric=self.metric_name(0), start=self._options.start, end=dps._end)
+        self.query_and_verify(query)
+
+        # retrieve raw dps (no tags, no downsampling)
+        print "Retrieving raw dps, no tags..."
+        for m in range(1, metric_cardinality+1):
+            query = Query(metric=self.metric_name(m), start=self._options.start, end=dps._end)
+            self.query_and_verify(query)
+
+        # retrieve raw dps with 1 tag (no aggregation, no downsampling)
+        print "Retrieving raw dps, with tags..."
+        for m in range(1, metric_cardinality+1):
+            for tk in range(tag_cardinality):
+                for tv in range(tag_cardinality):
+                    tags = self.tag(tk, tv)
+                    query = Query(metric=self.metric_name(m), start=self._options.start, end=dps._end, tags=tags)
+                    self.query_and_verify(query)
+
+        # retrieve raw dps with 1 tag (no aggregation, no downsampling)
+        print "Retrieving raw dps, with tags..."
+        for m in range(1, metric_cardinality+1):
+            for tk in range(tag_cardinality):
+                tags = {"tag"+str(tk): "*"}
+                query = Query(metric=self.metric_name(m), start=self._options.start, end=dps._end, tags=tags)
+                self.query_and_verify(query)
+
+        # retrieve raw dps with 1 tag (no aggregation, no downsampling)
+        if tag_cardinality > 2:
+            print "Retrieving raw dps, with tags..."
+            for m in range(1, metric_cardinality+1):
+                for tk in range(2, tag_cardinality):
+                    tags = {"tag1":"val1", "tag"+str(tk): "val*"}
+                    query = Query(metric=self.metric_name(m), start=self._options.start, end=dps._end, tags=tags)
+                    self.query_and_verify(query)
+
+        if run_tt:
+            # stop tt
+            self.stop_tt()
+
+            # make sure tt stopped
+            self.wait_for_tt(self._options.timeout)
+
+
+# Do not leave any missing points when generating test data for this test.
+# We are doing downsamples without fill, and in such cases OpenTSDB will
+# do linear interpolation, which we do not do, so our results will not be
+# the same as that of OpenTSDB, and tests will fail.
+class Advanced_Query_No_Fill_Tests(Test):
+
+    def __init__(self, options, prefix="aq", tcp_socket=None):
+        super(Advanced_Query_No_Fill_Tests, self).__init__(options, prefix, tcp_socket)
+
+    def __call__(self, metric_count=2, metric_cardinality=2, tag_cardinality=2, run_tt=True, via_tcp=True):
+
+        if run_tt:
+            # generate config
+            config = TickTockConfig(self._options)
+            #config.add_entry("tsdb.read_only.sec", "20");
+            config()    # generate config
+
+            # start tt
+            self.start_tt()
+
+        # insert some dps
+        dps = DataPoints(self._prefix, self._options.start, interval_ms=100, metric_count=metric_count, metric_cardinality=metric_cardinality, tag_cardinality=tag_cardinality)
+
+        if via_tcp:
+            self.send_data_tcp(dps)
+        else:
+            self.send_data(dps)
+
+        print "Dowsamples without fill..."
+        for m in range(metric_cardinality):
+            for down in ["avg", "count", "dev", "first", "last", "max", "min", "p50", "p75", "p90", "p95", "p99", "p999", "sum"]:
+                query = Query(metric=self.metric_name(m), start=self._options.start, end=dps._end, downsampler="10000ms-"+down)
+                self.query_and_verify(query)
+
+        print "Dowsamples with zero fill..."
+        for m in range(metric_cardinality):
+            for down in ["avg", "count", "dev", "first", "last", "max", "min", "p50", "p75", "p90", "p95", "p99", "p999", "sum"]:
+                query = Query(metric=self.metric_name(m), start=self._options.start-99999, end=dps._end+99999, downsampler="10000ms-"+down+"-zero")
+                self.query_and_verify(query)
+
+        print "Aggregates without downsample..."
+        for m in range(metric_cardinality):
+            tags = {"tag"+str(m): "*"}
+            for agg in ["none", "avg", "count", "dev", "max", "min", "p50", "p75", "p90", "p95", "p99", "p999", "sum"]:
+                query = Query(metric=self.metric_name(m), start=self._options.start, end=dps._end, aggregator=agg, tags=tags)
+                self.query_and_verify(query)
+
+        print "Aggregates, downsamples without fill..."
+        for m in range(metric_cardinality):
+            for down in ["avg", "count", "dev", "first", "last", "max", "min", "p50", "p75", "p90", "p95", "p99", "p999", "sum"]:
+                for agg in ["none", "avg", "count", "dev", "max", "min", "p50", "p75", "p90", "p95", "p99", "p999", "sum"]:
+                    tags = {"tag"+str(m): "*"}
+                    query = Query(metric=self.metric_name(m), start=self._options.start, end=dps._end, aggregator=agg, downsampler="10s-"+down, tags=tags)
+                    self.query_and_verify(query)
+
+        print "Aggregates, downsamples with zero fill..."
+        for m in range(metric_cardinality):
+            for down in ["avg", "count", "dev", "first", "last", "max", "min", "p50", "p75", "p90", "p95", "p99", "p999", "sum"]:
+                for agg in ["none", "avg", "count", "dev", "max", "min", "p50", "p75", "p90", "p95", "p99", "p999", "sum"]:
+                    query = Query(metric=self.metric_name(m), start=self._options.start+99999, end=dps._end+99999, aggregator=agg, downsampler="10s-"+down+"-zero")
+                    self.query_and_verify(query)
+
+        if run_tt:
+            # stop tt
+            self.stop_tt()
+
+            # make sure tt stopped
+            self.wait_for_tt(self._options.timeout)
+
+
+# Downsamplers will always do zero-fill in this test, so we can generate
+# test data with lots of missing points. OpenTSDB's linear interpolation
+# will not kick in since due to the zero-fill performed by the downsampler.
+class Advanced_Query_With_Fill_Tests(Test):
+
+    def __init__(self, options, prefix="aq", tcp_socket=None):
+        super(Advanced_Query_With_Fill_Tests, self).__init__(options, prefix, tcp_socket)
+
+    def __call__(self, metric_count=2, metric_cardinality=2, tag_cardinality=2, run_tt=True, via_tcp=True):
+
+        if run_tt:
+            # generate config
+            config = TickTockConfig(self._options)
+            #config.add_entry("tsdb.read_only.sec", "20");
+            config()    # generate config
+
+            # start tt
+            self.start_tt()
+
+        # insert some dps
+        dps = DataPoints(self._prefix, self._options.start, interval_ms=50000, metric_count=metric_count, metric_cardinality=metric_cardinality, tag_cardinality=tag_cardinality)
+
+        if via_tcp:
+            self.send_data_tcp(dps)
+        else:
+            self.send_data(dps)
+
+        print "Dowsamples with zero fill..."
+        for m in range(metric_cardinality):
+            for down in ["avg", "count", "dev", "first", "last", "max", "min", "p50", "p75", "p90", "p95", "p99", "p999", "sum"]:
+                query = Query(metric=self.metric_name(m), start=self._options.start-99999, end=dps._end+99999, downsampler="10000ms-"+down+"-zero")
+                self.query_and_verify(query)
+
+        print "Aggregates, downsamples with zero fill..."
+        for m in range(metric_cardinality):
+            for down in ["avg", "count", "dev", "first", "last", "max", "min", "p50", "p75", "p90", "p95", "p99", "p999", "sum"]:
+                for agg in ["none", "avg", "count", "dev", "max", "min", "p50", "p75", "p90", "p95", "p99", "p999", "sum"]:
+                    query = Query(metric=self.metric_name(m), start=self._options.start+99999, end=dps._end+99999, aggregator=agg, downsampler="10s-"+down+"-zero")
+                    self.query_and_verify(query)
+
+        if run_tt:
+            # stop tt
+            self.stop_tt()
+
+            # make sure tt stopped
+            self.wait_for_tt(self._options.timeout)
+
+
+class Query_Tests(Test):
+
+    def __init__(self, options, metric_count=2, metric_cardinality=2, tag_cardinality=2):
+
+        super(Query_Tests, self).__init__(options, "q")
+
+        self._metric_count = metric_count
+        self._metric_cardinality = metric_cardinality
+        self._tag_cardinality = tag_cardinality
+
+    def __call__(self):
+
+        conf = {}
+        conf["query.executor.parallel"] = "false"
+        self._options.method = "get"
+        self.test_once("q1", conf)
+
+        self.cleanup()
+
+        # default TIME_WAIT is 60 seconds; make sure we wait it out
+        #time.sleep(2)
+
+        conf["query.executor.parallel"] = "true"
+        conf["http.listener.count"] = 2
+        conf["http.responders.per.listener"] = 2
+        self._options.method = "post"
+        self.test_once("q2", conf)
+
+    def test_once(self, prefix, conf):
+
+        # generate config
+        config = TickTockConfig(self._options)
+        for k,v in conf.items():
+            config.add_entry(k, v);
+        config()    # generate config
+
+        self.start_tt()
+        self.connect_to_tcp()
+
+        for metric_cnt in range(2, self._metric_count+1):
+            for metric_card in range(2, self._metric_cardinality+1):
+                for tag_card in range(2, self._tag_cardinality+1):
+
+                    prefix1 = prefix + "_bq_%d_%d_%d" % (metric_cnt, metric_card, tag_card)
+                    print "Running Basic_Query_Tests(%s)..." % prefix1
+                    test = Basic_Query_Tests(self._options, prefix=prefix1)
+                    test(metric_count=metric_cnt, metric_cardinality=metric_card, tag_cardinality=tag_card, run_tt=False, via_udp=False)
+                    if test._failed > 0:
+                        print "Basic_Query_Tests(metric_count=%d, metric_cardinality=%d, tag_cardinality=%d) failed" % (metric_cnt, metric_card, tag_card)
+                    self._passed = self._passed + test._passed
+                    self._failed = self._failed + test._failed
+
+                    prefix2 = prefix + "_bqu_%d_%d_%d" % (metric_cnt, metric_card, tag_card)
+                    print "Running Basic_Query_Tests(%s) with UDP..." % prefix2
+                    test = Basic_Query_Tests(self._options, prefix=prefix2, tcp_socket=self._tcp_socket)
+                    test(metric_count=metric_cnt, metric_cardinality=metric_card, tag_cardinality=tag_card, run_tt=False, via_udp=True)
+                    if test._failed > 0:
+                        print "Basic_Query_Tests(metric_count=%d, metric_cardinality=%d, tag_cardinality=%d) failed" % (metric_cnt, metric_card, tag_card)
+                    self._passed = self._passed + test._passed
+                    self._failed = self._failed + test._failed
+
+                    prefix3 = prefix + "_aqnf_%d_%d_%d" % (metric_cnt, metric_card, tag_card)
+                    print "Running Advanced_Query_No_Fill_Tests(%s)..." % prefix3
+                    test = Advanced_Query_No_Fill_Tests(self._options, prefix=prefix3, tcp_socket=self._tcp_socket)
+                    test(metric_count=metric_cnt, metric_cardinality=metric_card, tag_cardinality=tag_card, run_tt=False)
+                    if test._failed > 0:
+                        print "Advanced_Query_No_Fill_Tests(metric_count=%d, metric_cardinality=%d, tag_cardinality=%d) failed" % (metric_cnt, metric_card, tag_card)
+                    self._passed = self._passed + test._passed
+                    self._failed = self._failed + test._failed
+
+                    prefix4 = prefix + "_aqwf_%d_%d_%d" % (metric_cnt, metric_card, tag_card)
+                    print "Running Advanced_Query_With_Fill_Tests(%s)..." % prefix4
+                    test = Advanced_Query_With_Fill_Tests(self._options, prefix=prefix4, tcp_socket=self._tcp_socket)
+                    test(metric_count=metric_cnt, metric_cardinality=metric_card, tag_cardinality=tag_card, run_tt=False)
+                    if test._failed > 0:
+                        print "Advanced_Query_With_Fill_Tests(metric_count=%d, metric_cardinality=%d, tag_cardinality=%d) failed" % (metric_cnt, metric_card, tag_card)
+                    self._passed = self._passed + test._passed
+                    self._failed = self._failed + test._failed
+
+        # stop tt
+        self.stop_tt()
+
+        # make sure tt stopped
+        self.wait_for_tt(self._options.timeout)
+
+
+class Rate_Tests(Test):
+
+    def __init__(self, options, prefix="r"):
+        super(Rate_Tests, self).__init__(options, prefix)
+
+    def __call__(self):
+
+        # generate config
+        config = TickTockConfig(self._options)
+        config()
+
+        self.start_tt()
+
+        metric_cardinality = 4
+
+        dps = DataPoints(self._prefix, self._options.start, interval_ms=50000, metric_count=256, metric_cardinality=metric_cardinality, tag_cardinality=3)
+        self.send_data(dps)
+
+        rate_options = {"counter":'false'}
+        for m in range(metric_cardinality):
+            for down in ["avg", "count", "dev", "first", "last", "max", "min", "p50", "p75", "p90", "p95", "p99", "p999", "sum"]:
+                query = Query(metric=self.metric_name(m), start=self._options.start, end=dps._end, rate_options=rate_options, downsampler="10s-"+down+"-zero")
+                self.query_and_verify(query)
+
+        # NOTE: we behave differently than OpenTSDB when aggregator is involved
+        rate_options = {"counter":'false',"dropResets":'true'}
+        for m in range(metric_cardinality):
+            tags = {"tag"+str(m): "*"}
+            query = Query(metric=self.metric_name(m), start=self._options.start, end=dps._end, rate_options=rate_options, aggregator="none", tags=tags)
+            self.query_and_verify(query)
+
+        rate_options = {"counter":'true',"dropResets":'true'}
+        for m in range(metric_cardinality):
+            tags = {"tag"+str(m): "*"}
+            query = Query(metric=self.metric_name(m), start=self._options.start, end=dps._end, rate_options=rate_options, tags=tags)
+            self.query_and_verify(query)
+
+        rate_options = {"counter":'true',"dropResets":'true',"counterMax":200}
+        for m in range(metric_cardinality):
+            tags = {"tag"+str(m): "*"}
+            query = Query(metric=self.metric_name(m), start=self._options.start, end=dps._end, rate_options=rate_options, tags=tags)
+            self.query_and_verify(query)
+
+        # NOTE: we behave differently than OpenTSDB when aggregator is involved
+        rate_options = {"counter":'true',"dropResets":'true',"counterMax":200,"resetValue":100}
+        for m in range(metric_cardinality):
+            tags = {"tag"+str(m): "*"}
+            for down in ["avg", "count", "dev", "first", "last", "max", "min", "p50", "p75", "p90", "p95", "p99", "p999", "sum"]:
+                query = Query(metric=self.metric_name(m), start=self._options.start, end=dps._end, rate_options=rate_options, aggregator="none", downsampler="10s-"+down+"-zero", tags=tags)
+                self.query_and_verify(query)
+
+        # stop tt
+        self.stop_tt()
+        # make sure tt stopped
+        self.wait_for_tt(self._options.timeout)
+
+
+class Duplicate_Tests(Test):
+
+    def __init__(self, options, prefix="dup"):
+        super(Duplicate_Tests, self).__init__(options, prefix)
+
+    def __call__(self):
+
+        # generate config
+        config = TickTockConfig(self._options)
+        config()
+
+        self.start_tt()
+        print "Running Duplicate_Tests..."
+
+        metric_cardinality = 4
+
+        dps = DataPoints(self._prefix, self._options.start, interval_ms=50000, metric_count=256, metric_cardinality=metric_cardinality, tag_cardinality=3)
+
+        self.send_data(dps)
+        time.sleep(1)
+        dps.update_values();    # change values to see which one will win
+        self.send_data(dps)     # send again to create duplicates
+        time.sleep(1)
+        dps.update_values();    # change values to see which one will win
+        self.send_data(dps)     # send again to create duplicates
+        time.sleep(1)
+        dps.update_values();    # change values to see which one will win
+        self.send_data(dps)     # send again to create duplicates
+        time.sleep(1)
+
+        for m in range(metric_cardinality):
+            query = Query(metric=self.metric_name(m), start=self._options.start, end=dps._end, aggregator="none", tags={})
+            self.query_and_verify(query)
+
+        # stop tt
+        self.stop_tt()
+        # make sure tt stopped
+        self.wait_for_tt(self._options.timeout)
+
+
+class Memory_Leak_Tests(Test):
+
+    def __init__(self, options, prefix="ml"):
+        super(Memory_Leak_Tests, self).__init__(options, prefix)
+
+    def __call__(self):
+
+        # generate config
+        #config = TickTockConfig(self._options)
+        #config.add_entry("query.executor.parallel", "true");
+        #config.add_entry("http.listener.count", 2);
+        #config.add_entry("http.responders.per.listener", 3);
+        ##config.add_entry("tsdb.rotation.frequency.sec", 9999999);
+        ##config.add_entry("sanity.check.frequency.sec", 9999999);
+        #config.add_entry("stats.frequency.sec", 9999999);
+        #config.add_entry("tsdb.self_meter.enabled", "false");
+        #config.add_entry("log.level", "INFO");
+        #config()    # generate config
+
+        # start tt
+        #self.start_tt()
+
+        metric_cardinality = 4
+
+        # insert some dps
+        dps = DataPoints(self._prefix, self._options.start, interval_ms=50000, metric_count=64, metric_cardinality=metric_cardinality, tag_cardinality=4)
+        self.send_data_to_ticktock(dps)
+
+        for i in range(999999):
+            for m in range(metric_cardinality):
+                for down in ["avg", "count", "dev", "first", "last", "max", "min", "p50", "p75", "p90", "p95", "p99", "p999", "sum"]:
+                    tags = {"tag"+str(m): "*"}
+                    query = Query(metric=self.metric_name(m), start=self._options.start-99999, end=dps._end+99999, downsampler="10000ms-"+down+"-zero", tags=tags)
+                    self.query_ticktock(query)
+
+            for m in range(metric_cardinality):
+                for down in ["avg", "count", "dev", "first", "last", "max", "min", "p50", "p75", "p90", "p95", "p99", "p999", "sum"]:
+                    for agg in ["none", "avg", "count", "dev", "max", "min", "p50", "p75", "p90", "p95", "p99", "p999", "sum"]:
+                        query = Query(metric=self.metric_name(m), start=self._options.start+99999, end=dps._end+99999, aggregator=agg, downsampler="10s-"+down+"-zero")
+                        self.query_ticktock(query)
+            sys.stderr.write("Round " + str(i) + " done\n")
+
+        # stop tt
+        #self.stop_tt()
+        # make sure tt stopped
+        #self.wait_for_tt(self._options.timeout)
+
+
+class Long_Running_Tests(Test):
+
+    def __init__(self, options, prefix="lr"):
+        super(Long_Running_Tests, self).__init__(options, prefix)
+
+    def __call__(self):
+
+        config = TickTockConfig(self._options)
+        config.add_entry("append.log.enabled", "true");
+        config.add_entry("append.log.rotation.sec", 300);
+        config.add_entry("http.responders.per.listener", 2);
+        config()
+
+        self.start_tt()
+
+        dps = DataPoints(self._prefix, self._options.start, interval_ms=128, metric_count=64, metric_cardinality=4, tag_cardinality=4)
+
+        freq_ms = 5000
+
+        for i in range(1000):
+
+            self.send_data_to_ticktock(dps)
+
+            # update dps
+            for dp in dps.get_dps():
+                dp.set_timestamp(dp.get_timestamp() + freq_ms)
+                dp.set_value(random.uniform(0,100))
+
+            time.sleep(freq_ms / 1000)
+
+        self._passed = self._passed + 1
+
+        # stop tt
+        self.stop_tt()
+        # make sure tt stopped
+        self.wait_for_tt(self._options.timeout)
+
+
+class TestRunner(object):
+
+    def __init__(self, options):
+
+        self._options = options
+
+    def __call__(self, tests):
+
+        passed = 0
+        failed = 0
+
+        # hard-coded the seed for repeatability
+        random.seed(1234567890)
+
+        failures = []
+
+        for test in tests:
+            sys.stdout.write("==== %s ====\n" % test.__class__.__name__)
+
+            self.cleanup()
+
+            try:
+                test()
+            except:
+                test._failed = test._failed + 1
+                sys.stderr.write("Unexpected error: %s\n" % sys.exc_info()[0])
+
+            passed = passed + test._passed
+            failed = failed + test._failed
+
+            if test._failed > 0:
+                failures.append(test.__class__.__name__)
+
+            time.sleep(4)
+
+        sys.stdout.write("PASSED: %d;  FAILED: %d;  TOTAL: %d\n" % (passed, failed, failed+passed))
+
+        if failures:
+            print "FAILUED TESTS:"
+            print failures
+
+    def cleanup(self):
+        sys.stdout.write("cleanup...\n")
+        os.system("pkill -f %s" % self._options.tt)
+        if os.path.exists(self._options.root):
+            shutil.rmtree(self._options.root)
+        os.mkdir(self._options.root)
+
+
+def main(argv):
+
+    try:
+        options, args = get_options(argv)
+    except:
+        sys.stderr.write("Unexpected error: %s\n" % sys.exc_info()[0])
+        return 1
+
+    tests = deque()
+
+    # collect ALL the tests to run here
+
+    if options.leak:
+        tests.append(Memory_Leak_Tests(options))
+    else:
+        tests.append(Multi_Thread_Tests(options))
+        tests.append(Backfill_Tests(options))
+        tests.append(Stop_Restart_Tests(options))
+        tests.append(Out_Of_Order_Write_Tests(options))
+        tests.append(Rate_Tests(options))
+        tests.append(Duplicate_Tests(options))
+        tests.append(Query_Tests(options, metric_count=16, metric_cardinality=4, tag_cardinality=4))
+        #tests.append(Long_Running_Tests(options))
+
+    start = datetime.datetime.now()
+
+    # run the above tests
+    runner = TestRunner(options)
+    runner(tests)
+
+    end = datetime.datetime.now()
+    print("Elapsed time: " + time.strftime("%H:%M:%S", time.gmtime((end - start).total_seconds())))
+
+    opentsdb_time = 0.0
+    ticktock_time = 0.0
+
+    for test in tests:
+        opentsdb_time += test._opentsdb_time
+        ticktock_time += test._ticktock_time
+
+    print("OpenTSDB time: " + time.strftime("%H:%M:%S", time.gmtime(opentsdb_time)) + "; TickTock time: " + time.strftime("%H:%M:%S", time.gmtime(ticktock_time)))
+
+    sys.exit(0)
+
+
+def get_options(argv):
+
+    try:
+        defaults = get_defaults()
+    except:
+        sys.stderr.write("Unexpected error: %s\n" % sys.exc_info()[0])
+        raise
+
+    # get arguments
+    parser = optparse.OptionParser(description='Tests for the TickTock server.')
+
+    parser.add_option('-d', '--dataport', dest='dataport',
+                      default=defaults['dataport'],
+                      help='The port number to be used by TickTock to receive data.')
+    parser.add_option('-f', '--format', dest='form',
+                      default=defaults['form'],
+                      help='TickTock receiving data format (plain or json).')
+    parser.add_option('-i', '--ip', dest='ip',
+                      default=defaults['ip'],
+                      help='IP of the host on which OpenTSDB and TickTock runs.')
+    parser.add_option('-l', '--leak', dest='leak', action='store_true',
+                      default=defaults['leak'],
+                      help='Run memory leak test.')
+    parser.add_option('-m', '--method', dest='method',
+                      default=defaults['method'],
+                      help='HTTP method to use when querying TickTock.')
+    parser.add_option('-o', '--timeout', dest='timeout',
+                      default=defaults['timeout'],
+                      help='Timeout in seconds when sending requests to TickTock.')
+    parser.add_option('-p', '--port', dest='port',
+                      default=defaults['port'],
+                      help='The port number to be used by TickTock during test.')
+    parser.add_option('-r', '--root', dest='root',
+                      default=defaults['root'],
+                      help='The root directory to be used by TickTock during test.')
+    parser.add_option('-s', '--start', dest='start',
+                      default=defaults['start'],
+                      help='The start timestamp to be used by TickTock during test.')
+    parser.add_option('-t', '--ticktock', dest='tt',
+                      default=defaults['tt'],
+                      help='The TickTock binary to be tested.')
+    parser.add_option('-v', '--verbose', dest='verbose', action='store_true',
+                      default=defaults['verbose'],
+                      help='Print more debug info.')
+
+    (options, args) = parser.parse_args(args=argv[1:])
+
+    return options, args
+
+
+def get_defaults():
+
+    defaults = {
+        'form': 'plain',
+        'ip': '127.0.0.1',
+        'leak': False,
+        'method': 'post',
+        'port': 6182,
+        'dataport': 6181,
+        'root': '/tmp/tt',
+        'start': 1569859200000,
+        'timeout': 10,
+        'tt': 'bin/tt',
+        'verbose': False
+    }
+
+    return defaults
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv))
