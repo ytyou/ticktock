@@ -1,5 +1,5 @@
 # TickTock
-An OpenTSDB like Time Series Database. It is not 100% compatible with OpenTSDB.
+An OpenTSDB-like Time Series Database. It is not 100% compatible with OpenTSDB.
 However, you can use TCollector to send data to it; you can use Grafana to query it
 (select OpenTSDB as the data source).
 
