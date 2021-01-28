@@ -736,6 +736,15 @@ HttpResponse::init(uint16_t code, HttpContentType type, size_t length, const cha
 #endif
 }
 
+char *
+HttpResponse::get_body() const
+{
+    ASSERT(response != nullptr);
+    char *body = std::strstr(response, "\r\n\r\n");
+    if (body != nullptr) body += 4;
+    return body;
+}
+
 HttpResponse::~HttpResponse()
 {
     if (buffer != nullptr)

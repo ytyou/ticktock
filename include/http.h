@@ -80,6 +80,7 @@ public:
     void init(uint16_t code, HttpContentType type = HttpContentType::JSON);
     void init(uint16_t code, HttpContentType type, size_t length);
     void init(uint16_t code, HttpContentType type, size_t length, const char *body);
+    char *get_body() const;
 
     const char *c_str(char *buff, size_t size) const;
 

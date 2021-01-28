@@ -448,7 +448,10 @@ TcpServer::process_data(int fd, char *data, int len)
         Tsdb::http_api_put_handler_plain(request, response);
 
         if (response.content_length > 0)
-            send_response(fd, response.response, response.content_length);
+        {
+            char *body = response.get_body();
+            if (body != nullptr) send_response(fd, body, std::strlen(body));
+        }
     }
     catch (const std::exception& ex)
     {
