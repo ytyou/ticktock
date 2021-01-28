@@ -34,6 +34,7 @@ namespace tt_test
 {
 
 
+#define TEST_ROOT   "/tmp/tt_u/"
 #define CONFIRM(X)  confirm((X), __FILE__, __LINE__)
 
 
@@ -217,6 +218,18 @@ public:
 
         std::vprintf(fmt, args);
         va_end(args);
+    }
+
+    static char * str_join(const char *s1, const char *s2, const char *s3 = nullptr)
+    {
+        size_t len = std::strlen(s1) + std::strlen(s2);
+        if (s3 != nullptr) len += std::strlen(s3);
+        char *buff = (char*) malloc(len + 1);
+        if (s3 == nullptr)
+            sprintf(buff, "%s%s", s1, s2);
+        else
+            sprintf(buff, "%s%s%s", s1, s2, s3);
+        return buff;
     }
 
 protected:

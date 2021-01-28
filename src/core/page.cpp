@@ -148,14 +148,11 @@ PageInfo::init_for_disk(PageManager *pm, PageCount id, PageSize size, bool is_oo
     m_header = pm->get_page_info_on_disk(m_id);
     const TimeRange& range = pm->get_time_range();
     m_time_range.init(range.get_to(), range.get_from());    // empty range
-    m_header->init(m_time_range);
+    m_header->init(range);
     m_header->set_out_of_order(is_ooo);
     m_header->m_page_index = m_id;
     m_header->m_offset = 0;
     m_header->m_size = size;
-    //m_page_index = m_id;
-    //m_offset = 0;
-    //m_size = size;
     m_page_mgr = pm;
     //set_page();
     m_compressor = nullptr;

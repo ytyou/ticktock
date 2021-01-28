@@ -1132,7 +1132,6 @@ Tsdb::http_api_put_handler_json(HttpRequest& request, HttpResponse& response)
 bool
 Tsdb::http_api_put_handler_plain(HttpRequest& request, HttpResponse& response)
 {
-//    static MemoryManager *mm = MemoryManager::inst();
     Logger::trace("Entered http_api_put_handler_plain()...");
 
     Tsdb* tsdb = nullptr;
@@ -1149,6 +1148,7 @@ Tsdb::http_api_put_handler_plain(HttpRequest& request, HttpResponse& response)
         return Stats::http_get_api_stats_handler(request, response);
     }
 
+    response.content_length = 0;
     AppendLog::inst()->append(request.content, request.length);
 
     // safety measure
@@ -1165,6 +1165,8 @@ Tsdb::http_api_put_handler_plain(HttpRequest& request, HttpResponse& response)
         if (std::isspace(*curr)) break;
         if (std::strncmp(curr, "put ", 4) != 0)
         {
+            if (std::strncmp(curr, "version\n", 8) == 0)
+                Stats::http_get_api_version_handler(request, response);
             curr = strchr(curr, '\n');
             if (curr == nullptr) break;
             curr++;
@@ -1206,7 +1208,6 @@ Tsdb::http_api_put_handler_plain(HttpRequest& request, HttpResponse& response)
 
     if (guard != nullptr) delete guard;
     response.status_code = (success ? 200 : 400);
-    response.content_length = 0;
 
     return success;
 }

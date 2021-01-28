@@ -144,7 +144,7 @@ struct page_info_on_disk
     uint32_t m_tstamp_from;     // 32-bit
     uint32_t m_tstamp_to;       // 32-bit
 
-    void init(TimeRange& range)
+    void init(const TimeRange& range)
     {
         m_offset = m_size = m_cursor = 0;
         m_start = m_flags = 0;

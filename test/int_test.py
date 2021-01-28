@@ -506,7 +506,7 @@ class Test(object):
 
     def cleanup(self):
         sys.stdout.write("cleanup...\n")
-        os.system("pkill -f %s" % self._options.tt)
+        #os.system("pkill -f %s" % self._options.tt)
         if os.path.exists(self._options.root):
             shutil.rmtree(self._options.root)
         os.mkdir(self._options.root)
@@ -703,7 +703,7 @@ class Backfill_Tests(Test):
             if i == 1:
                 time.sleep(2)
                 # save append logs somewhere else
-                bak = "/tmp/tt.bak"
+                bak = "/tmp/tt_i.bak"
                 if os.path.exists(bak):
                     shutil.rmtree(bak)
                 os.mkdir(bak)
@@ -719,7 +719,7 @@ class Backfill_Tests(Test):
                 time.sleep(1)
 
                 # perform backfill
-                os.system("bin/backfill -a " + bak);
+                os.system("bin/backfill -a {} -h {} -p {}".format(bak, self._options.ip, self._options.port));
 
 
 class Basic_Query_Tests(Test):
@@ -1199,7 +1199,7 @@ class TestRunner(object):
         for test in tests:
             sys.stdout.write("==== %s ====\n" % test.__class__.__name__)
 
-            self.cleanup()
+            test.cleanup()
 
             try:
                 test()
@@ -1220,13 +1220,6 @@ class TestRunner(object):
         if failures:
             print "FAILUED TESTS:"
             print failures
-
-    def cleanup(self):
-        sys.stdout.write("cleanup...\n")
-        os.system("pkill -f %s" % self._options.tt)
-        if os.path.exists(self._options.root):
-            shutil.rmtree(self._options.root)
-        os.mkdir(self._options.root)
 
 
 def main(argv):
@@ -1331,9 +1324,9 @@ def get_defaults():
         'ip': '127.0.0.1',
         'leak': False,
         'method': 'post',
-        'port': 6182,
-        'dataport': 6181,
-        'root': '/tmp/tt',
+        'port': 7182,
+        'dataport': 7181,
+        'root': '/tmp/tt_i',
         'start': 1569859200000,
         'timeout': 10,
         'tt': 'bin/tt',

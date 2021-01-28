@@ -51,11 +51,11 @@ main(int argc, char *argv[])
     printf("rand() seed used: %ld\n", seed);
 
     // update g_config_file to point to our test config
-    tt::g_config_file = "/tmp/tt/test.conf";
-    system("mkdir -p /tmp/tt/data");
+    tt::g_config_file = TestCase::str_join(TEST_ROOT, "test.conf");
+    system(TestCase::str_join("mkdir -p ", TEST_ROOT, "data"));
 
     // generate our own config file
-    TestCase::create_config(CFG_LOG_FILE, "/tmp/tt/test.log");
+    TestCase::create_config(CFG_LOG_FILE, TestCase::str_join(TEST_ROOT, "test.log"));
     Config::init();
 
     TestStats stats;

@@ -50,9 +50,9 @@ CompactTests::update_config(Timestamp archive_ms, int compressor)
     std::string archive = std::to_string(archive_ms) + "ms";
 
     configs.emplace_back(CFG_APPEND_LOG_ENABLED, "false");
-    configs.emplace_back(CFG_LOG_FILE, "/tmp/tt/test.log");
+    configs.emplace_back(CFG_LOG_FILE, str_join(TEST_ROOT, "test.log"));
     configs.emplace_back(CFG_LOG_LEVEL, "TRACE");
-    configs.emplace_back(CFG_TSDB_DATA_DIR, "/tmp/tt/data");
+    configs.emplace_back(CFG_TSDB_DATA_DIR, str_join(TEST_ROOT, "data"));
     configs.emplace_back(CFG_TSDB_ARCHIVE_THRESHOLD, archive.c_str());
     configs.emplace_back(CFG_TSDB_READ_ONLY_THRESHOLD, archive.c_str());
     configs.emplace_back(CFG_TSDB_TIMESTAMP_RESOLUTION, "millisecond");
