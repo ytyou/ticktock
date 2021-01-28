@@ -346,6 +346,8 @@ TimeSeries::query_with_ooo(TimeRange& range, Downsampler *downsampler, DataPoint
 
     for (PageInfo *page_info : m_pages)
     {
+        ASSERT(! page_info->is_empty());
+
         if (range.has_intersection(page_info->get_time_range()))
         {
             containers[count].init(page_info);
@@ -356,6 +358,8 @@ TimeSeries::query_with_ooo(TimeRange& range, Downsampler *downsampler, DataPoint
 
     for (PageInfo *page_info : m_ooo_pages)
     {
+        ASSERT(! page_info->is_empty());
+
         if (range.has_intersection(page_info->get_time_range()))
         {
             containers[count].init(page_info);
@@ -473,13 +477,7 @@ TimeSeries::add_data_point_with_dedup(DataPointPair &dp, DataPointPair &prev, Pa
     if (! success)
     {
         if (info != nullptr) info->persist();
-        ASSERT(! m_ooo_pages.empty());
-        info = m_ooo_pages.front();
-        m_ooo_pages.erase(m_ooo_pages.begin());
-        info->set_ooo(false);
-        info->setup_compressor(m_tsdb->get_time_range(), m_tsdb->get_compressor_version());
-        ASSERT(info->is_empty());
-        m_pages.push_back(info);
+        info = get_free_page_on_disk(false);
 
         if (prev.first != 0L)
         {
@@ -497,7 +495,6 @@ TimeSeries::add_data_point_with_dedup(DataPointPair &dp, DataPointPair &prev, Pa
 bool
 TimeSeries::compact()
 {
-    bool progress = false;  // did we actually compact anything?
     DataPointVector dps;
 
     for (PageInfo *info: m_ooo_pages)
@@ -506,7 +503,7 @@ TimeSeries::compact()
         info->get_all_data_points(dps);
     }
 
-    Logger::debug("ts compact: found %d ooo dps", dps.size());
+    Logger::debug("[COMPACTION] ts compact: found %d ooo dps", dps.size());
 
     if (! dps.empty())
     {
@@ -529,24 +526,25 @@ TimeSeries::compact()
 
         if (info != nullptr) info->persist();
 
-        // free up any remaining pages in m_ooo_pages[]
+        // empty all pages in m_ooo_pages[]
         for (PageInfo *info: m_ooo_pages)
         {
             info->setup_compressor(m_tsdb->get_time_range(), m_tsdb->get_compressor_version());
             ASSERT(info->is_empty());
             info->persist();
-            MemoryManager::free_recyclable(info);
         }
-        m_ooo_pages.clear();
     }
 
-    return progress;
+    return (! dps.empty());
 }
 
 void
 TimeSeries::get_all_pages(std::vector<PageInfo*>& pages)
 {
-    ASSERT(m_ooo_pages.empty());
+    for (PageInfo *info: m_ooo_pages)
+    {
+        pages.push_back(info);
+    }
 
     for (PageInfo *info: m_pages)
     {

@@ -58,4 +58,5 @@ Dependency Licenses
 -------------------
 * git@github.com:AlexeyAB/object_threadsafe.git - Apache License 2.0
 * thread-safe queue by Joe Best-Rotheray - MIT License
+* robin_map by Thibaut Goetghebuer-Planchon <tessil@gmx.com> - MIT License
 * zlib - See zlib.net

@@ -40,16 +40,16 @@ JsonTests::run()
     char *json2 = strdup("{\"start\":1571364787563,\"queries\":[{\"metric\":\"2.2.nginx.number_requests_writing\",\"aggregator\":\"avg\",\"rate\":true,\"rateOptions\":{\"counter\":false,\"dropResets\":true},\"downsample\":\"1m-avg\",\"tags\":{\"host\":\"*\"}}],\"msResolution\":false,\"globalAnnotations\":true}");
     JsonMap map2;
     JsonParser::parse_map(json2, map2);
-    confirm(map2.find("globalAnnotations") != map2.end());
-    confirm(map2.find("globalAnnotations")->second->to_bool());
-    confirm(map2.find("msResolution") != map2.end());
-    confirm(! map2.find("msResolution")->second->to_bool());
-    confirm(map2.find("queries") != map2.end());
+    CONFIRM(map2.find("globalAnnotations") != map2.end());
+    CONFIRM(map2.find("globalAnnotations")->second->to_bool());
+    CONFIRM(map2.find("msResolution") != map2.end());
+    CONFIRM(! map2.find("msResolution")->second->to_bool());
+    CONFIRM(map2.find("queries") != map2.end());
     JsonArray& arr = map2.find("queries")->second->to_array();
-    confirm(arr.size() == 1);
+    CONFIRM(arr.size() == 1);
     JsonMap& m = arr[0]->to_map();
-    confirm(m.find("rate") != m.end());
-    confirm(m.find("rate")->second->to_bool());
+    CONFIRM(m.find("rate") != m.end());
+    CONFIRM(m.find("rate")->second->to_bool());
     JsonParser::free_map(map2);
 
     m_stats.add_passed(1);

@@ -80,15 +80,15 @@ QueryTests::basic_query_tests()
         tsdb->add(dp);
     }
 
-    confirm(Tsdb::get_dp_count() == dps_cnt);
+    CONFIRM(Tsdb::get_dp_count() == dps_cnt);
     log("dp count = %d", Tsdb::get_dp_count());
 
     // retrieve all dps and make sure they are correct;
     DataPointVector results;
     query_raw(metric, 0, results);
-    confirm(results.size() == dps_cnt);
+    CONFIRM(results.size() == dps_cnt);
 
-    for (auto& dp: dps) confirm(contains(results, dp));
+    for (auto& dp: dps) CONFIRM(contains(results, dp));
 
     clean_shutdown();
     m_stats.add_passed(1);
@@ -117,23 +117,23 @@ QueryTests::duplicate_dp_tests()
         tsdb->add(dp);
     }
 
-    confirm(Tsdb::get_dp_count() == dps_cnt);
+    CONFIRM(Tsdb::get_dp_count() == dps_cnt);
     log("dp count = %d", Tsdb::get_dp_count());
 
     // retrieve all dps and make sure they are correct;
     DataPointVector results;
     query_raw(metric, 0, results);
-    confirm(results.size() == dps_cnt);
+    CONFIRM(results.size() == dps_cnt);
 
     log("no duplicate cases...");
-    for (auto& dp: dps) confirm(contains(results, dp));
+    for (auto& dp: dps) CONFIRM(contains(results, dp));
 
     // create duplicate data points a few times
     for (int i = 0; i < 10; i++)
     {
         for (auto& dp: dps)
             dp.second += tt::random(1.0, 10.0);
-        for (auto& dp: dps) confirm(! contains(results, dp));
+        for (auto& dp: dps) CONFIRM(! contains(results, dp));
 
         for (DataPointPair& dpp: dps)
         {
@@ -145,10 +145,10 @@ QueryTests::duplicate_dp_tests()
 
         results.clear();
         query_raw(metric, 0, results);
-        confirm(results.size() == dps_cnt);
+        CONFIRM(results.size() == dps_cnt);
 
         log("duplicate cases, iteration %d...", i);
-        for (auto& dp: dps) confirm(contains(results, dp));
+        for (auto& dp: dps) CONFIRM(contains(results, dp));
     }
 
     clean_shutdown();

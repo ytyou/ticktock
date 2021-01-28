@@ -531,36 +531,6 @@ PageManager::open_mmap(PageCount page_count)
     Logger::info("page index = %d", *m_page_index);
 }
 
-// THIS IS FOR TESTING ONLY
-void
-PageManager::open_in_mem_buff(PageCount page_count)
-{
-    Logger::info("File size: %" PRIu64, m_total_size);
-
-    m_pages = malloc(m_total_size);
-    ASSERT(m_pages != nullptr);
-
-    struct tsdb_header *header = reinterpret_cast<struct tsdb_header*>(m_pages);
-
-    m_major_version = header->m_major_version;
-    m_minor_version = header->m_minor_version;
-    m_compressor_version = header->get_compressor_version();
-    m_compacted = header->is_compacted();
-
-    m_page_count = &(header->m_page_count);
-    m_page_index = &(header->m_page_index);
-    m_actual_pg_cnt = &(header->m_actual_pg_cnt);
-
-    m_page_info = reinterpret_cast<struct page_info_on_disk*>(static_cast<char*>(m_pages)+(sizeof(struct tsdb_header)));
-
-    *m_page_count = page_count;
-    *m_page_index = calc_first_page_info_index(page_count);
-    *m_actual_pg_cnt = page_count;
-
-    Logger::info("page count = %d", *m_page_count);
-    Logger::info("page index = %d", *m_page_index);
-}
-
 void
 PageManager::close_mmap()
 {
@@ -696,6 +666,7 @@ PageManager::compact(std::vector<PageInfo*>& all_pages)
 {
     std::vector<PageInfo*> my_pages;        // all pages belong to this PageManager
     std::vector<PageInfo*> partial_pages;   // partial pages belong to this PageManager
+    std::vector<int> empty_pages;           // m_id (global id) of empty pages
 
     // extract pages belong to this PageManager
     for (auto it = all_pages.begin(); it != all_pages.end(); )
@@ -703,7 +674,9 @@ PageManager::compact(std::vector<PageInfo*>& all_pages)
         if ((*it)->m_page_mgr == this)
         {
             my_pages.push_back(*it);
-            if (! (*it)->is_full() && ! (*it)->is_empty())
+            if ((*it)->is_empty())
+                empty_pages.push_back((*it)->m_id);
+            else if (! (*it)->is_full())
                 partial_pages.push_back(*it);
             it = all_pages.erase(it);
         }
@@ -711,12 +684,11 @@ PageManager::compact(std::vector<PageInfo*>& all_pages)
             it++;
     }
 
-    // sort by m_id ascending
     std::sort(my_pages.begin(), my_pages.end(), page_info_id_less());
     std::sort(partial_pages.begin(), partial_pages.end(), page_info_id_less());
+    std::sort(empty_pages.begin(), empty_pages.end(), std::greater<int>());
 
-    std::vector<int> empty_pages;   // m_id (global id) of empty pages
-
+    // merge partial pages
     while (partial_pages.size() > 1)
     {
         int16_t sizes[partial_pages.size()];
@@ -731,9 +703,11 @@ PageManager::compact(std::vector<PageInfo*>& all_pages)
 
         max_subset_4k(sizes, partial_pages.size(), subset);
 
+#ifdef _DEBUG
         ASSERT(! subset.empty());
         for (int i = 1; i < subset.size(); i++)
             ASSERT(subset[i-1] < subset[i]);
+#endif
 
         // pick the page, among empty pages and those chosen by max_subset_4k(),
         // with smallest m_id, to move to
@@ -746,8 +720,8 @@ PageManager::compact(std::vector<PageInfo*>& all_pages)
         if (! empty_pages.empty() &&
             (empty_pages.back() < partial_pages[subset[0]]->get_page_index()))
         {
-            dst->copy_to(empty_pages[0]);
-            empty_pages.erase(empty_pages.begin());
+            dst->copy_to(empty_pages.back());
+            empty_pages.pop_back();
         }
 
         for (int i = idx; i < subset.size(); i++)
@@ -757,12 +731,6 @@ PageManager::compact(std::vector<PageInfo*>& all_pages)
             src->merge_after(dst);
             ASSERT(src->m_header->m_page_index == dst->m_header->m_page_index);
             dst = src;
-
-            // 'src' is now empty, remember it in empty_pages[]
-            //PageInfo *pi = (PageInfo*)MemoryManager::alloc_recyclable(RT_PAGE_INFO);
-            //pi->init_for_disk(this, src->get_page_index()-get_start_index(), g_page_size, false);
-            //pi->setup_compressor(m_time_range, 0);
-            //ASSERT(pi->m_id == pi->m_header->m_page_index);
 
             // insert 'src' into empty_pages, in descending order
             empty_pages.insert(std::lower_bound(empty_pages.begin(), empty_pages.end(), src->m_id, std::greater<int>()), src->m_id);
@@ -791,7 +759,6 @@ PageManager::compact(std::vector<PageInfo*>& all_pages)
             my_pages.insert(my_pages.begin(), my);
         }
 
-        //MemoryManager::free_recyclable(empty);
         empty_pages.pop_back();
     }
 
@@ -800,6 +767,7 @@ PageManager::compact(std::vector<PageInfo*>& all_pages)
 
     for (auto pi: my_pages)
     {
+        if (pi->is_empty()) continue;
         if (max_page < pi->get_internal_page_index())
             max_page = pi->get_internal_page_index();
     }
@@ -814,6 +782,7 @@ PageManager::compact(std::vector<PageInfo*>& all_pages)
 
     m_compacted = true;
     persist_compacted_flag(m_compacted);
+    flush(true);
 
     return m_compacted;
 }

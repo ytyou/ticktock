@@ -91,8 +91,6 @@ CompactTests::two_partial_with_ooo()
         tsdb->add(dp);
     }
 
-    //confirm(Tsdb::get_dp_count() == dps_cnt);
-
     for (DataPointPair& dpp: ooo_dps)
     {
         Tsdb *tsdb = Tsdb::inst(dpp.first);
@@ -102,34 +100,30 @@ CompactTests::two_partial_with_ooo()
         tsdb->add(dp);
     }
 
-    //log("dp count = %d", Tsdb::get_dp_count());
-    //confirm(Tsdb::get_dp_count() == (dps_cnt + ooo_cnt));
-
     // 2. retrieve all 20 dps and make sure they are correct;
     DataPointVector results;
     query_raw(metric, 0, results);
-    confirm(results.size() == (dps_cnt + ooo_cnt));
+    CONFIRM(results.size() == (dps_cnt + ooo_cnt));
 
-    for (auto& dp: dps) confirm(contains(results, dp));
-    for (auto& dp: ooo_dps) confirm(contains(results, dp));
+    for (auto& dp: dps) CONFIRM(contains(results, dp));
+    for (auto& dp: ooo_dps) CONFIRM(contains(results, dp));
 
     // 3. make sure they occupy 2 pages;
     log("page count = %d", Tsdb::get_page_count(false));
     log("ooo page count = %d", Tsdb::get_page_count(true));
-    confirm(Tsdb::get_page_count(false) == 1);
-    confirm(Tsdb::get_page_count(true) == 1);
-    confirm(! Tsdb::inst(start)->is_read_only());
+    CONFIRM(Tsdb::get_page_count(false) == 1);
+    CONFIRM(Tsdb::get_page_count(true) == 1);
+    CONFIRM(! Tsdb::inst(start)->is_read_only());
 
     // 4. reload and check no data loss
     Tsdb::shutdown();
     update_config(3600000); // make sure pages are loaded in archive mode
     Config::init();
     Tsdb::init();
-    confirm(Tsdb::inst(start)->is_archived());
+    CONFIRM(Tsdb::inst(start)->is_archived());
     results.clear();
     query_raw(metric, 0, results);
-    confirm(results.size() == (dps_cnt + ooo_cnt));
-    //confirm(Tsdb::get_dp_count() == (dps_cnt + ooo_cnt));
+    CONFIRM(results.size() == (dps_cnt + ooo_cnt));
 
     // 5. perform compaction;
     log("perform compaction...");
@@ -137,11 +131,11 @@ CompactTests::two_partial_with_ooo()
     update_config(3600000); // make sure pages are loaded in archive mode
     Config::init();
     Tsdb::init();
-    confirm(Tsdb::inst(start)->is_archived());
+    CONFIRM(Tsdb::inst(start)->is_archived());
     TaskData data;
     data.integer = 1;
     Tsdb::compact(data);
-    confirm(Tsdb::inst(start)->is_compacted());
+    CONFIRM(Tsdb::inst(start)->is_compacted());
     Tsdb::shutdown();
     log("compaction done");
 
@@ -150,19 +144,17 @@ CompactTests::two_partial_with_ooo()
     update_config(now);
     Config::init();
     Tsdb::init();
-    confirm(! Tsdb::inst(start)->is_archived());
-    confirm(Tsdb::inst(start)->is_compacted());
-    //log("dp count = %d", Tsdb::get_dp_count());
-    confirm(Tsdb::get_data_page_count() == 1);
+    CONFIRM(! Tsdb::inst(start)->is_archived());
+    CONFIRM(Tsdb::inst(start)->is_compacted());
+    CONFIRM(Tsdb::get_data_page_count() == 1);
     log("numer of pages after compaction: %d", Tsdb::get_data_page_count());
 
     // 7. make sure all 20 dps are still there and correct;
     results.clear();
     query_raw(metric, 0, results);
-    confirm(results.size() == (dps_cnt + ooo_cnt));
-    for (auto& dp: dps) confirm(contains(results, dp));
-    for (auto& dp: ooo_dps) confirm(contains(results, dp));
-    //confirm(Tsdb::get_dp_count() == (dps_cnt + ooo_cnt));
+    CONFIRM(results.size() == (dps_cnt + ooo_cnt));
+    for (auto& dp: dps) CONFIRM(contains(results, dp));
+    for (auto& dp: ooo_dps) CONFIRM(contains(results, dp));
 
     clean_shutdown();
     m_stats.add_passed(1);
@@ -195,8 +187,7 @@ CompactTests::one_full_two_partial_with_ooo()
         tsdb->add(dp);
     }
 
-    confirm(! Tsdb::inst(start)->is_archived());
-    //confirm(Tsdb::get_dp_count() == dps_cnt);
+    CONFIRM(! Tsdb::inst(start)->is_archived());
 
     for (DataPointPair& dpp: ooo_dps)
     {
@@ -207,35 +198,31 @@ CompactTests::one_full_two_partial_with_ooo()
         tsdb->add(dp);
     }
 
-    //log("dp count = %d", Tsdb::get_dp_count());
-    //confirm(Tsdb::get_dp_count() == (dps_cnt + ooo_cnt));
-
     // 2. retrieve all 20 dps and make sure they are correct;
     DataPointVector results;
     query_raw(metric, 0, results);
-    confirm(results.size() == (dps_cnt + ooo_cnt));
+    CONFIRM(results.size() == (dps_cnt + ooo_cnt));
     log("query returned %d data points", results.size());
 
-    for (auto& dp: dps) confirm(contains(results, dp));
-    for (auto& dp: ooo_dps) confirm(contains(results, dp));
+    for (auto& dp: dps) CONFIRM(contains(results, dp));
+    for (auto& dp: ooo_dps) CONFIRM(contains(results, dp));
 
     // 3. make sure they occupy 3 pages;
     log("page count = %d", Tsdb::get_page_count(false));
     log("ooo page count = %d", Tsdb::get_page_count(true));
-    confirm(Tsdb::get_page_count(false) == 2);
-    confirm(Tsdb::get_page_count(true) == 1);
-    confirm(! Tsdb::inst(start)->is_read_only());
+    CONFIRM(Tsdb::get_page_count(false) == 2);
+    CONFIRM(Tsdb::get_page_count(true) == 1);
+    CONFIRM(! Tsdb::inst(start)->is_read_only());
 
     // 4. reload and check no data loss
     Tsdb::shutdown();
     update_config(3600000); // make sure pages are loaded in archive mode
     Config::init();
     Tsdb::init();
-    confirm(Tsdb::inst(start)->is_archived());
+    CONFIRM(Tsdb::inst(start)->is_archived());
     results.clear();
     query_raw(metric, 0, results);
-    confirm(results.size() == (dps_cnt + ooo_cnt));
-    //confirm(Tsdb::get_dp_count() == (dps_cnt + ooo_cnt));
+    CONFIRM(results.size() == (dps_cnt + ooo_cnt));
 
     // 5. perform compaction;
     log("perform compaction...");
@@ -243,11 +230,11 @@ CompactTests::one_full_two_partial_with_ooo()
     update_config(3600000); // make sure pages are loaded in archive mode
     Config::init();
     Tsdb::init();
-    confirm(Tsdb::inst(start)->is_archived());
+    CONFIRM(Tsdb::inst(start)->is_archived());
     TaskData data;
     data.integer = 1;
     Tsdb::compact(data);
-    confirm(Tsdb::inst(start)->is_compacted());
+    CONFIRM(Tsdb::inst(start)->is_compacted());
     Tsdb::shutdown();
     log("compaction done");
 
@@ -256,19 +243,17 @@ CompactTests::one_full_two_partial_with_ooo()
     update_config(now);
     Config::init();
     Tsdb::init();
-    confirm(! Tsdb::inst(start)->is_archived());
-    confirm(Tsdb::inst(start)->is_compacted());
-    //log("dp count = %d", Tsdb::get_dp_count());
-    confirm(Tsdb::get_data_page_count() == 2);
+    CONFIRM(! Tsdb::inst(start)->is_archived());
+    CONFIRM(Tsdb::inst(start)->is_compacted());
+    CONFIRM(Tsdb::get_data_page_count() == 2);
     log("numer of pages after compaction: %d", Tsdb::get_data_page_count());
 
     // 7. make sure all 20 dps are still there and correct;
     results.clear();
     query_raw(metric, 0, results);
-    confirm(results.size() == (dps_cnt + ooo_cnt));
-    for (auto& dp: dps) confirm(contains(results, dp));
-    for (auto& dp: ooo_dps) confirm(contains(results, dp));
-    //confirm(Tsdb::get_dp_count() == (dps_cnt + ooo_cnt));
+    CONFIRM(results.size() == (dps_cnt + ooo_cnt));
+    for (auto& dp: dps) CONFIRM(contains(results, dp));
+    for (auto& dp: ooo_dps) CONFIRM(contains(results, dp));
 
     clean_shutdown();
     m_stats.add_passed(1);
@@ -298,64 +283,53 @@ CompactTests::three_partial_with_ooo()
         Tsdb *tsdb = Tsdb::inst(dpp.first);
         DataPoint dp(dpp.first, dpp.second);
         dp.set_metric(metric);
-        //dp.add_tag(METRIC_TAG_NAME, metric);
         dp.add_tag("tag", "1");
         tsdb->add(dp);
     }
-
-    //confirm(Tsdb::get_dp_count() == dps_cnt);
 
     for (DataPointPair& dpp: dps2)
     {
         Tsdb *tsdb = Tsdb::inst(dpp.first);
         DataPoint dp(dpp.first, dpp.second);
         dp.set_metric(metric);
-        //dp.add_tag(METRIC_TAG_NAME, metric);
         dp.add_tag("tag", "2");
         tsdb->add(dp);
     }
-
-    //confirm(Tsdb::get_dp_count() == (2*dps_cnt));
 
     for (DataPointPair& dpp: ooo_dps)
     {
         Tsdb *tsdb = Tsdb::inst(dpp.first);
         DataPoint dp(dpp.first, dpp.second);
         dp.set_metric(metric);
-        //dp.add_tag(METRIC_TAG_NAME, metric);
         dp.add_tag("tag", "1");
         tsdb->add(dp);
     }
 
-    //log("dp count = %d", Tsdb::get_dp_count());
-    //confirm(Tsdb::get_dp_count() == (2*dps_cnt + ooo_cnt));
-
     // 2. retrieve all 30 dps and make sure they are correct;
     DataPointVector results;
     query_raw(metric, 0, results);
-    confirm(results.size() == (2*dps_cnt + ooo_cnt));
+    CONFIRM(results.size() == (2*dps_cnt + ooo_cnt));
 
-    for (auto& dp: dps1) confirm(contains(results, dp));
-    for (auto& dp: dps2) confirm(contains(results, dp));
-    for (auto& dp: ooo_dps) confirm(contains(results, dp));
+    for (auto& dp: dps1) CONFIRM(contains(results, dp));
+    for (auto& dp: dps2) CONFIRM(contains(results, dp));
+    for (auto& dp: ooo_dps) CONFIRM(contains(results, dp));
 
     // 3. make sure they occupy 3 pages;
     log("page count = %d", Tsdb::get_page_count(false));
     log("ooo page count = %d", Tsdb::get_page_count(true));
-    confirm(Tsdb::get_page_count(false) == 2);
-    confirm(Tsdb::get_page_count(true) == 1);
-    confirm(! Tsdb::inst(start)->is_read_only());
+    CONFIRM(Tsdb::get_page_count(false) == 2);
+    CONFIRM(Tsdb::get_page_count(true) == 1);
+    CONFIRM(! Tsdb::inst(start)->is_read_only());
 
     // 4. reload and check no data loss
     Tsdb::shutdown();
     update_config(3600000); // make sure pages are loaded in archive mode
     Config::init();
     Tsdb::init();
-    confirm(Tsdb::inst(start)->is_archived());
+    CONFIRM(Tsdb::inst(start)->is_archived());
     results.clear();
     query_raw(metric, 0, results);
-    confirm(results.size() == (2*dps_cnt + ooo_cnt));
-    //confirm(Tsdb::get_dp_count() == (2*dps_cnt + ooo_cnt));
+    CONFIRM(results.size() == (2*dps_cnt + ooo_cnt));
 
     // 5. perform compaction;
     log("perform compaction...");
@@ -363,11 +337,11 @@ CompactTests::three_partial_with_ooo()
     update_config(3600000); // make sure pages are loaded in archive mode
     Config::init();
     Tsdb::init();
-    confirm(Tsdb::inst(start)->is_archived());
+    CONFIRM(Tsdb::inst(start)->is_archived());
     TaskData data;
     data.integer = 1;
     Tsdb::compact(data);
-    confirm(Tsdb::inst(start)->is_compacted());
+    CONFIRM(Tsdb::inst(start)->is_compacted());
     Tsdb::shutdown();
     log("compaction done");
 
@@ -376,20 +350,18 @@ CompactTests::three_partial_with_ooo()
     update_config(now);
     Config::init();
     Tsdb::init();
-    confirm(! Tsdb::inst(start)->is_archived());
-    confirm(Tsdb::inst(start)->is_compacted());
-    //log("dp count = %d", Tsdb::get_dp_count());
-    confirm(Tsdb::get_data_page_count() == 1);
+    CONFIRM(! Tsdb::inst(start)->is_archived());
+    CONFIRM(Tsdb::inst(start)->is_compacted());
+    CONFIRM(Tsdb::get_data_page_count() == 1);
     log("numer of pages after compaction: %d", Tsdb::get_data_page_count());
 
     // 7. make sure all 30 dps are still there and correct;
     results.clear();
     query_raw(metric, 0, results);
-    confirm(results.size() == (2*dps_cnt + ooo_cnt));
-    for (auto& dp: dps1) confirm(contains(results, dp));
-    for (auto& dp: dps2) confirm(contains(results, dp));
-    for (auto& dp: ooo_dps) confirm(contains(results, dp));
-    //confirm(Tsdb::get_dp_count() == (2*dps_cnt + ooo_cnt));
+    CONFIRM(results.size() == (2*dps_cnt + ooo_cnt));
+    for (auto& dp: dps1) CONFIRM(contains(results, dp));
+    for (auto& dp: dps2) CONFIRM(contains(results, dp));
+    for (auto& dp: ooo_dps) CONFIRM(contains(results, dp));
 
     clean_shutdown();
     m_stats.add_passed(1);
@@ -424,8 +396,6 @@ CompactTests::need_to_fill_empty_page()
         tsdb->add(dp);
     }
 
-    //confirm(Tsdb::get_dp_count() == dps_cnt1);
-
     for (DataPointPair& dpp: dps2)
     {
         Tsdb *tsdb = Tsdb::inst(dpp.first);
@@ -435,8 +405,6 @@ CompactTests::need_to_fill_empty_page()
         dp.add_tag("tag", "2");
         tsdb->add(dp);
     }
-
-    //confirm(Tsdb::get_dp_count() == (dps_cnt1 + dps_cnt2));
 
     for (DataPointPair& dpp: dps3)
     {
@@ -448,34 +416,30 @@ CompactTests::need_to_fill_empty_page()
         tsdb->add(dp);
     }
 
-    //log("dp count = %d", Tsdb::get_dp_count());
-    //confirm(Tsdb::get_dp_count() == (dps_cnt1 + dps_cnt2 + dps_cnt3));
-
     // 2. retrieve all dps and make sure they are correct;
     DataPointVector results;
     query_raw(metric, 0, results);
-    confirm(results.size() == (dps_cnt1 + dps_cnt2 + dps_cnt3));
+    CONFIRM(results.size() == (dps_cnt1 + dps_cnt2 + dps_cnt3));
 
-    for (auto& dp: dps1) confirm(contains(results, dp));
-    for (auto& dp: dps2) confirm(contains(results, dp));
-    for (auto& dp: dps3) confirm(contains(results, dp));
+    for (auto& dp: dps1) CONFIRM(contains(results, dp));
+    for (auto& dp: dps2) CONFIRM(contains(results, dp));
+    for (auto& dp: dps3) CONFIRM(contains(results, dp));
 
     // 3. make sure they occupy 4 pages;
     log("page count = %d", Tsdb::get_page_count(false));
     log("ooo page count = %d", Tsdb::get_page_count(true));
-    confirm(Tsdb::get_page_count(false) == 4);
-    confirm(! Tsdb::inst(start)->is_read_only());
+    CONFIRM(Tsdb::get_page_count(false) == 4);
+    CONFIRM(! Tsdb::inst(start)->is_read_only());
 
     // 4. reload and check no data loss
     Tsdb::shutdown();
     update_config(3600000); // make sure pages are loaded in archive mode
     Config::init();
     Tsdb::init();
-    confirm(Tsdb::inst(start)->is_archived());
+    CONFIRM(Tsdb::inst(start)->is_archived());
     results.clear();
     query_raw(metric, 0, results);
-    confirm(results.size() == (dps_cnt1 + dps_cnt2 + dps_cnt3));
-    //confirm(Tsdb::get_dp_count() == (dps_cnt1 + dps_cnt2 + dps_cnt3));
+    CONFIRM(results.size() == (dps_cnt1 + dps_cnt2 + dps_cnt3));
 
     // 5. perform compaction;
     log("perform compaction...");
@@ -483,11 +447,11 @@ CompactTests::need_to_fill_empty_page()
     update_config(3600000); // make sure pages are loaded in archive mode
     Config::init();
     Tsdb::init();
-    confirm(Tsdb::inst(start)->is_archived());
+    CONFIRM(Tsdb::inst(start)->is_archived());
     TaskData data;
     data.integer = 1;
     Tsdb::compact(data);
-    confirm(Tsdb::inst(start)->is_compacted());
+    CONFIRM(Tsdb::inst(start)->is_compacted());
     Tsdb::shutdown();
     log("compaction done");
 
@@ -496,20 +460,18 @@ CompactTests::need_to_fill_empty_page()
     update_config(now);
     Config::init();
     Tsdb::init();
-    confirm(! Tsdb::inst(start)->is_archived());
-    confirm(Tsdb::inst(start)->is_compacted());
-    //log("dp count = %d", Tsdb::get_dp_count());
-    confirm(Tsdb::get_data_page_count() == 2);
+    CONFIRM(! Tsdb::inst(start)->is_archived());
+    CONFIRM(Tsdb::inst(start)->is_compacted());
+    CONFIRM(Tsdb::get_data_page_count() == 2);
     log("numer of pages after compaction: %d", Tsdb::get_data_page_count());
 
     // 7. make sure all dps are still there and correct;
     results.clear();
     query_raw(metric, 0, results);
-    confirm(results.size() == (dps_cnt1 + dps_cnt2 + dps_cnt3));
-    for (auto& dp: dps1) confirm(contains(results, dp));
-    for (auto& dp: dps2) confirm(contains(results, dp));
-    for (auto& dp: dps3) confirm(contains(results, dp));
-    //confirm(Tsdb::get_dp_count() == (dps_cnt1 + dps_cnt2 + dps_cnt3));
+    CONFIRM(results.size() == (dps_cnt1 + dps_cnt2 + dps_cnt3));
+    for (auto& dp: dps1) CONFIRM(contains(results, dp));
+    for (auto& dp: dps2) CONFIRM(contains(results, dp));
+    for (auto& dp: dps3) CONFIRM(contains(results, dp));
 
     clean_shutdown();
     m_stats.add_passed(1);
@@ -551,35 +513,31 @@ CompactTests::need_to_fill_empty_page2(int compressor)
         dps_cnt += dps_cnts[i];
     }
 
-    //confirm(Tsdb::get_dp_count() == dps_cnt);
-    //log("dp count = %d", Tsdb::get_dp_count());
-
     // 2. retrieve all dps and make sure they are correct;
     DataPointVector results;
     query_raw(metric, 0, results);
-    confirm(results.size() == dps_cnt);
+    CONFIRM(results.size() == dps_cnt);
 
     for (int i = 0; i < 6; i++)
     {
-        for (auto& dp: dps[i]) confirm(contains(results, dp));
+        for (auto& dp: dps[i]) CONFIRM(contains(results, dp));
     }
 
     // 3. make sure they occupy 7 pages;
     log("page count = %d", Tsdb::get_page_count(false));
     log("ooo page count = %d", Tsdb::get_page_count(true));
-    confirm(Tsdb::get_page_count(false) == ((compressor==0)?9:7));
-    confirm(! Tsdb::inst(start)->is_read_only());
+    CONFIRM(Tsdb::get_page_count(false) == ((compressor==0)?9:7));
+    CONFIRM(! Tsdb::inst(start)->is_read_only());
 
     // 4. reload and check no data loss
     Tsdb::shutdown();
     update_config(3600000, compressor); // make sure pages are loaded in archive mode
     Config::init();
     Tsdb::init();
-    confirm(Tsdb::inst(start)->is_archived());
+    CONFIRM(Tsdb::inst(start)->is_archived());
     results.clear();
     query_raw(metric, 0, results);
-    confirm(results.size() == dps_cnt);
-    //confirm(Tsdb::get_dp_count() == dps_cnt);
+    CONFIRM(results.size() == dps_cnt);
 
     // 5. perform compaction;
     log("perform compaction...");
@@ -587,19 +545,19 @@ CompactTests::need_to_fill_empty_page2(int compressor)
     update_config(3600000, compressor); // make sure pages are loaded in archive mode
     Config::init();
     Tsdb::init();
-    confirm(Tsdb::inst(start)->is_archived());
+    CONFIRM(Tsdb::inst(start)->is_archived());
     TaskData data;
     data.integer = 1;
     Tsdb::compact(data);
-    confirm(Tsdb::inst(start)->is_compacted());
+    CONFIRM(Tsdb::inst(start)->is_compacted());
     log("compaction done");
     results.clear();        // query after compaction, before shutting down
     query_raw(metric, 0, results);
     log("results.size() = %d", results.size());
-    confirm(results.size() == dps_cnt);
+    CONFIRM(results.size() == dps_cnt);
     for (int i = 0; i < 6; i++)
     {
-        for (auto& dp: dps[i]) confirm(contains(results, dp));
+        for (auto& dp: dps[i]) CONFIRM(contains(results, dp));
     }
     Tsdb::shutdown();
 
@@ -608,22 +566,20 @@ CompactTests::need_to_fill_empty_page2(int compressor)
     update_config(now, compressor);
     Config::init();
     Tsdb::init();
-    confirm(! Tsdb::inst(start)->is_archived());
-    confirm(Tsdb::inst(start)->is_compacted());
-    //log("dp count = %d", Tsdb::get_dp_count());
-    confirm(Tsdb::get_data_page_count() == ((compressor==0)?4:2));
+    CONFIRM(! Tsdb::inst(start)->is_archived());
+    CONFIRM(Tsdb::inst(start)->is_compacted());
+    CONFIRM(Tsdb::get_data_page_count() == ((compressor==0)?4:2));
     log("numer of pages after compaction: %d", Tsdb::get_data_page_count());
 
     // 7. make sure all dps are still there and correct;
     results.clear();
     query_raw(metric, 0, results);
     log("results.size() = %d", results.size());
-    confirm(results.size() == dps_cnt);
+    CONFIRM(results.size() == dps_cnt);
     for (int i = 0; i < 6; i++)
     {
-        for (auto& dp: dps[i]) confirm(contains(results, dp));
+        for (auto& dp: dps[i]) CONFIRM(contains(results, dp));
     }
-    //confirm(Tsdb::get_dp_count() == dps_cnt);
 
     clean_shutdown();
     m_stats.add_passed(1);
@@ -652,22 +608,16 @@ CompactTests::remove_duplicates()
         Tsdb *tsdb = Tsdb::inst(dpp.first);
         DataPoint dp(dpp.first, dpp.second);
         dp.set_metric(metric);
-        //dp.add_tag(METRIC_TAG_NAME, metric);
         tsdb->add(dp);
     }
-
-    //confirm(Tsdb::get_dp_count() == dps_cnt);
 
     for (DataPointPair& dpp: ooo_dps)
     {
         Tsdb *tsdb = Tsdb::inst(dpp.first);
         DataPoint dp(dpp.first, dpp.second);
         dp.set_metric(metric);
-        //dp.add_tag(METRIC_TAG_NAME, metric);
         tsdb->add(dp);
     }
-
-    //confirm(Tsdb::get_dp_count() == (dps_cnt + ooo_cnt));
 
     // insert them again as duplicates
     for (DataPointPair& dpp: ooo_dps)
@@ -679,38 +629,33 @@ CompactTests::remove_duplicates()
         tsdb->add(dp);
     }
 
-    //confirm(Tsdb::get_dp_count() == (dps_cnt + 2*ooo_cnt));
-    //log("dp count = %d", Tsdb::get_dp_count());
-
     // 2. retrieve all dps and make sure they are correct;
     DataPointVector results;
     query_raw(metric, 0, results);
     // query will remove duplicates
-    confirm(results.size() == (dps_cnt + ooo_cnt));
+    CONFIRM(results.size() == (dps_cnt + ooo_cnt));
     log("results.size() = %d", results.size());
 
-    for (auto& dp: dps) confirm(contains(results, dp));
-    for (auto& dp: ooo_dps) confirm(contains(results, dp));
+    for (auto& dp: dps) CONFIRM(contains(results, dp));
+    for (auto& dp: ooo_dps) CONFIRM(contains(results, dp));
 
     // 3. make sure they occupy 2 pages;
     log("page count = %d", Tsdb::get_page_count(false));
     log("ooo page count = %d", Tsdb::get_page_count(true));
-    confirm(Tsdb::get_page_count(false) == 1);
-    confirm(Tsdb::get_page_count(true) == 1);
-    confirm(! Tsdb::inst(start)->is_read_only());
+    CONFIRM(Tsdb::get_page_count(false) == 1);
+    CONFIRM(Tsdb::get_page_count(true) == 1);
+    CONFIRM(! Tsdb::inst(start)->is_read_only());
 
     // 4. reload and check no data loss
     Tsdb::shutdown();
     update_config(3600000); // make sure pages are loaded in archive mode
     Config::init();
     Tsdb::init();
-    confirm(Tsdb::inst(start)->is_archived());
+    CONFIRM(Tsdb::inst(start)->is_archived());
     results.clear();
     query_raw(metric, 0, results);
     // query will remove duplicates
-    confirm(results.size() == (dps_cnt + ooo_cnt));
-    //confirm(Tsdb::get_dp_count() == (dps_cnt + 2*ooo_cnt));
-    //log("dp count = %d", Tsdb::get_dp_count());
+    CONFIRM(results.size() == (dps_cnt + ooo_cnt));
     log("results.size() = %d", results.size());
 
     // 5. perform compaction;
@@ -719,11 +664,11 @@ CompactTests::remove_duplicates()
     update_config(3600000); // make sure pages are loaded in archive mode
     Config::init();
     Tsdb::init();
-    confirm(Tsdb::inst(start)->is_archived());
+    CONFIRM(Tsdb::inst(start)->is_archived());
     TaskData data;
     data.integer = 1;
     Tsdb::compact(data);
-    confirm(Tsdb::inst(start)->is_compacted());
+    CONFIRM(Tsdb::inst(start)->is_compacted());
     Tsdb::shutdown();
     log("compaction done");
 
@@ -732,20 +677,17 @@ CompactTests::remove_duplicates()
     update_config(now);
     Config::init();
     Tsdb::init();
-    confirm(! Tsdb::inst(start)->is_archived());
-    confirm(Tsdb::inst(start)->is_compacted());
-    //log("dp count = %d", Tsdb::get_dp_count());
-    confirm(Tsdb::get_data_page_count() == 1);
+    CONFIRM(! Tsdb::inst(start)->is_archived());
+    CONFIRM(Tsdb::inst(start)->is_compacted());
+    CONFIRM(Tsdb::get_data_page_count() == 1);
     log("numer of pages after compaction: %d", Tsdb::get_data_page_count());
 
     // 7. make sure all dps are still there and correct, with duplicates removed
     results.clear();
     query_raw(metric, 0, results);
-    confirm(results.size() == (dps_cnt + ooo_cnt));
-    for (auto& dp: dps) confirm(contains(results, dp));
-    for (auto& dp: ooo_dps) confirm(contains(results, dp));
-    //confirm(Tsdb::get_dp_count() == (dps_cnt + ooo_cnt));
-    //log("dp count = %d", Tsdb::get_dp_count());
+    CONFIRM(results.size() == (dps_cnt + ooo_cnt));
+    for (auto& dp: dps) CONFIRM(contains(results, dp));
+    for (auto& dp: ooo_dps) CONFIRM(contains(results, dp));
     log("results.size() = %d", results.size());
 
     clean_shutdown();

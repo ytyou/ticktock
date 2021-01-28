@@ -56,51 +56,51 @@ MaxSubsetTests::test1()
     i = 0;
     set[i++] = 2049; set[i++] = 2048;
     max_subset_4k(set, i, subset);
-    confirm(subset.size() == 1);
-    confirm(subset[0] == 0);
+    CONFIRM(subset.size() == 1);
+    CONFIRM(subset[0] == 0);
 
     i = 0;
     set[i++] = 2048; set[i++] = 2049;
     max_subset_4k(set, i, subset);
-    confirm(subset.size() == 1);
-    confirm(subset[0] == 1);
+    CONFIRM(subset.size() == 1);
+    CONFIRM(subset[0] == 1);
 
     i = 0;
     set[i++] = 1; set[i++] = 2048; set[i++] = 2048;
     max_subset_4k(set, i, subset);
-    confirm(subset.size() == 2);
-    confirm(subset[0] == 1);
-    confirm(subset[1] == 2);
+    CONFIRM(subset.size() == 2);
+    CONFIRM(subset[0] == 1);
+    CONFIRM(subset[1] == 2);
 
     i = 0;
     set[i++] = 1; set[i++] = 2048; set[i++] = 2; set[i++] = 2048;
     max_subset_4k(set, i, subset);
-    confirm(subset.size() == 2);
-    confirm(subset[0] == 1);
-    confirm(subset[1] == 3);
+    CONFIRM(subset.size() == 2);
+    CONFIRM(subset[0] == 1);
+    CONFIRM(subset[1] == 3);
 
     i = 0;
     set[i++] = 10; set[i++] = 20; set[i++] = 450; set[i++] = 4095;
     max_subset_4k(set, i, subset);
-    confirm(subset.size() == 1);
-    confirm(subset[0] == 3);
+    CONFIRM(subset.size() == 1);
+    CONFIRM(subset[0] == 3);
 
     i = 0;
     set[i++] = 1024; set[i++] = 20; set[i++] = 1024; set[i++] = 4095; set[i++] = 2048;
     max_subset_4k(set, i, subset);
-    confirm(subset.size() == 3);
-    confirm(subset[0] == 0);
-    confirm(subset[1] == 2);
-    confirm(subset[2] == 4);
+    CONFIRM(subset.size() == 3);
+    CONFIRM(subset[0] == 0);
+    CONFIRM(subset[1] == 2);
+    CONFIRM(subset[2] == 4);
 
     i = 0;
     set[i++] = 12; set[i++] = 1000; set[i++] = 4; set[i++] = 3000;
     max_subset_4k(set, i, subset);
-    confirm(subset.size() == 4);
-    confirm(subset[0] == 0);
-    confirm(subset[1] == 1);
-    confirm(subset[2] == 2);
-    confirm(subset[3] == 3);
+    CONFIRM(subset.size() == 4);
+    CONFIRM(subset[0] == 0);
+    CONFIRM(subset[1] == 1);
+    CONFIRM(subset[2] == 2);
+    CONFIRM(subset[3] == 3);
 
     m_stats.add_passed(1);
 }

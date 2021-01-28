@@ -79,7 +79,7 @@ BitSetTests::test1()
     try
     {
         bits.retrieve(cursor, reinterpret_cast<uint8_t*>(&not_exist), 1, 0);
-        confirm(false);
+        CONFIRM(false);
     }
     catch (const std::out_of_range& ex)
     {
@@ -95,13 +95,13 @@ BitSetTests::test1()
     printf("m7 = %d, n7 = %d\n", m7, n7);
     **/
 
-    confirm(m1 == n1);
-    confirm(m2 == n2);
-    confirm(m3 == n3);
-    confirm(m4 == n4);
-    confirm(m5 == n5);
-    confirm(m6 == n6);
-    confirm(m7 == n7);
+    CONFIRM(m1 == n1);
+    CONFIRM(m2 == n2);
+    CONFIRM(m3 == n3);
+    CONFIRM(m4 == n4);
+    CONFIRM(m5 == n5);
+    CONFIRM(m6 == n6);
+    CONFIRM(m7 == n7);
 
     m_stats.add_passed(1);
 }
@@ -123,7 +123,6 @@ BitSetTests::test2()
     uint8_t m8 = 0x00;
 
     uint64_t m7_be = htobe64(m7);
-    //print_uint64_t_in_hex(m7_be);
 
     bits.append(reinterpret_cast<uint8_t*>(&m1), 8*sizeof(m1), 0);
     bits.append(reinterpret_cast<uint8_t*>(&m2), 8*sizeof(m2), 0);
@@ -155,7 +154,7 @@ BitSetTests::test2()
     try
     {
         bits.retrieve(cursor, reinterpret_cast<uint8_t*>(&not_exist), 1, 0);
-        confirm(false);
+        CONFIRM(false);
     }
     catch (const std::out_of_range& ex)
     {
@@ -163,25 +162,14 @@ BitSetTests::test2()
 
     n7 = htobe64(n7_be);
 
-    /**
-    printf("m1 = %d, n1 = %d\n", m1, n1);
-    printf("m2 = %f, n2 = %f\n", m2, n2);
-    printf("m3 = 0x%02hhx, n3 = 0x%02hhx\n", m3, n3);
-    printf("m4 = 0x%02hhx, n4 = 0x%02hhx\n", m4, n4);
-    printf("m5 = 0x%02hhx, n5 = 0x%02hhx\n", m5, n5);
-    printf("m6 = 0x%02hhx, n6 = 0x%02hhx\n", m6, n6);
-    printf("m7 = 0x%lx, n7 = 0x%lx, n7_be = 0x%016lx\n", m7, n7, n7_be);
-    printf("m8 = 0x%02hhx, n8 = 0x%02hhx\n", m8, n8);
-    **/
-
-    confirm(m1 == n1);
-    confirm(m2 == n2);
-    confirm(m3 == n3);
-    confirm(m4 == n4);
-    confirm(m5 == n5);
-    confirm(m6 == n6);
-    confirm(m7 == n7);
-    confirm(m8 == n8);
+    CONFIRM(m1 == n1);
+    CONFIRM(m2 == n2);
+    CONFIRM(m3 == n3);
+    CONFIRM(m4 == n4);
+    CONFIRM(m5 == n5);
+    CONFIRM(m6 == n6);
+    CONFIRM(m7 == n7);
+    CONFIRM(m8 == n8);
 
     m_stats.add_passed(1);
 }

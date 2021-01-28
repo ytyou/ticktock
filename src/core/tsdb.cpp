@@ -1445,7 +1445,12 @@ Tsdb::add_ts(std::string& metric, std::string& key, uint32_t page_index)
     }
 
     ASSERT(page_index > 0);
-    mapping->add_ts(this, metric, key, get_the_page_on_disk(page_index));
+    PageInfo *info = get_the_page_on_disk(page_index);
+
+    if (info->is_empty())
+        MemoryManager::free_recyclable(info);
+    else
+        mapping->add_ts(this, metric, key, info);
 }
 
 
@@ -1758,6 +1763,7 @@ Tsdb::compact(TaskData& data)
             if ((*it)->m_mode & (TSDB_MODE_COMPACTED | TSDB_MODE_READ_WRITE))
                 continue;
 
+            ASSERT(! (*it)->m_meta_file.is_open());
             (*it)->load_from_disk_no_lock();    // load from disk to see if it's already compacted
 
             if ((*it)->m_mode & TSDB_MODE_COMPACTED)
@@ -1783,6 +1789,7 @@ Tsdb::compact(TaskData& data)
         {
             // compact each and every TimeSeries (compress out-of-order pages)
             std::vector<PageInfo*> all_pages;
+            WriteLock load_guard(tsdb->m_load_lock);
             std::lock_guard<std::mutex> guard(tsdb->m_lock);
 
             for (const auto& t: tsdb->m_map)
@@ -1799,6 +1806,8 @@ Tsdb::compact(TaskData& data)
                 }
             }
 
+            tsdb->set_check_point();
+
             // Compact each and every data file (or page manager);
             // Merge partial pages to save space. Data files could be truncated.
             for (PageManager *pm: tsdb->m_page_mgrs)
@@ -1809,8 +1818,8 @@ Tsdb::compact(TaskData& data)
             ASSERT(all_pages.empty());
 
             // re-write meta file
-            tsdb->m_meta_file.reset();  // truncate to zero length
-            tsdb->append_meta_all();
+            //tsdb->m_meta_file.reset();  // truncate to zero length
+            //tsdb->append_meta_all();
 
             tsdb->unload();
             tsdb->m_mode |= TSDB_MODE_COMPACTED;

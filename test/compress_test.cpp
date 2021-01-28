@@ -96,21 +96,21 @@ CompressTests::compress_uncompress(Compressor *compressor, Timestamp ts)
     generate_data_points(dps, dp_cnt, ts);
 
     for (int i = 0; i < dp_cnt; i++)
-        confirm(compressor->compress(dps[i].first, dps[i].second));
+        CONFIRM(compressor->compress(dps[i].first, dps[i].second));
 
     log("compressor.size() = %d", compressor->size());
     std::vector<std::pair<Timestamp,double>> uncompressed;
     compressor->uncompress(uncompressed);
 
     log("uncompressed.size() = %d", uncompressed.size());
-    confirm(dp_cnt == uncompressed.size());
+    CONFIRM(dp_cnt == uncompressed.size());
 
     for (int i = 0; i < dp_cnt; i++)
     {
         //log("t: exp=%" PRIu64 ", act=%" PRIu64 "; v: exp=%f, act=%f",
             //dps[i].first, uncompressed[i].first, dps[i].second, uncompressed[i].second);
-        confirm(dps[i].first == uncompressed[i].first);
-        confirm(dps[i].second == uncompressed[i].second);
+        CONFIRM(dps[i].first == uncompressed[i].first);
+        CONFIRM(dps[i].second == uncompressed[i].second);
     }
 
     log("compression ratio = %f", (16.0*dp_cnt)/compressor->size());
@@ -130,16 +130,15 @@ CompressTests::save_restore(Compressor *compressor, Timestamp ts)
 
     for (DataPointPair& dp: dps)
     {
-        confirm(compressor->compress(dp.first, dp.second));
+        CONFIRM(compressor->compress(dp.first, dp.second));
     }
 
-    confirm(compressor->get_dp_count() == dp_cnt);
+    CONFIRM(compressor->get_dp_count() == dp_cnt);
 
     CompressorPosition position;
 
     compressor->save(position);
     compressor->save(buff2);
-    //confirm(position.m_start_tstamp == ts);
 
     std::vector<std::pair<Timestamp,double>> uncompressed;
     compressor->init(ts, buff3, sizeof(buff3));
@@ -148,15 +147,15 @@ CompressTests::save_restore(Compressor *compressor, Timestamp ts)
     std::vector<std::pair<Timestamp,double>> uncompressed2;
     compressor->uncompress(uncompressed2);
 
-    confirm(uncompressed.size() == dp_cnt);
-    confirm(uncompressed2.size() == dp_cnt);
+    CONFIRM(uncompressed.size() == dp_cnt);
+    CONFIRM(uncompressed2.size() == dp_cnt);
 
     for (int j = 0; j < dp_cnt; j++)
     {
-        confirm(dps[j].first == uncompressed[j].first);
-        confirm(dps[j].second == uncompressed[j].second);
-        confirm(dps[j].first == uncompressed2[j].first);
-        confirm(dps[j].second == uncompressed2[j].second);
+        CONFIRM(dps[j].first == uncompressed[j].first);
+        CONFIRM(dps[j].second == uncompressed[j].second);
+        CONFIRM(dps[j].first == uncompressed2[j].first);
+        CONFIRM(dps[j].second == uncompressed2[j].second);
     }
 
     m_stats.add_passed(1);
@@ -175,14 +174,13 @@ CompressTests::save_restore2(Compressor *compressor, Timestamp ts)
 
     for (int i = 0; i < 1000; i++)
     {
-        confirm(compressor->compress(dps[i].first, dps[i].second));
+        CONFIRM(compressor->compress(dps[i].first, dps[i].second));
     }
 
-    confirm(compressor->get_dp_count() == 1000);
+    CONFIRM(compressor->get_dp_count() == 1000);
 
     compressor->save(position);
     compressor->save(buff2);
-    //confirm(position.m_start_tstamp == ts);
 
     uncompressed.clear();
     compressor->init(ts, buff3, sizeof(buff3));
@@ -191,27 +189,26 @@ CompressTests::save_restore2(Compressor *compressor, Timestamp ts)
     uncompressed2.clear();
     compressor->uncompress(uncompressed2);
 
-    confirm(uncompressed.size() == 1000);
-    confirm(uncompressed2.size() == 1000);
+    CONFIRM(uncompressed.size() == 1000);
+    CONFIRM(uncompressed2.size() == 1000);
 
     for (int j = 0; j < 1000; j++)
     {
-        confirm(dps[j].first == uncompressed[j].first);
-        confirm(dps[j].second == uncompressed[j].second);
-        confirm(dps[j].first == uncompressed2[j].first);
-        confirm(dps[j].second == uncompressed2[j].second);
+        CONFIRM(dps[j].first == uncompressed[j].first);
+        CONFIRM(dps[j].second == uncompressed[j].second);
+        CONFIRM(dps[j].first == uncompressed2[j].first);
+        CONFIRM(dps[j].second == uncompressed2[j].second);
     }
 
     for (int i = 1000; i < 2000; i++)
     {
-        confirm(compressor->compress(dps[i].first, dps[i].second));
+        CONFIRM(compressor->compress(dps[i].first, dps[i].second));
     }
 
-    confirm(compressor->get_dp_count() == 2000);
+    CONFIRM(compressor->get_dp_count() == 2000);
 
     compressor->save(position);
     compressor->save(buff2);
-    //confirm(position.m_start_tstamp == ts);
 
     uncompressed.clear();
     compressor->init(ts, buff3, sizeof(buff3));
@@ -220,27 +217,26 @@ CompressTests::save_restore2(Compressor *compressor, Timestamp ts)
     uncompressed2.clear();
     compressor->uncompress(uncompressed2);
 
-    confirm(uncompressed.size() == 2000);
-    confirm(uncompressed2.size() == 2000);
+    CONFIRM(uncompressed.size() == 2000);
+    CONFIRM(uncompressed2.size() == 2000);
 
     for (int j = 0; j < 2000; j++)
     {
-        confirm(dps[j].first == uncompressed[j].first);
-        confirm(dps[j].second == uncompressed[j].second);
-        confirm(dps[j].first == uncompressed2[j].first);
-        confirm(dps[j].second == uncompressed2[j].second);
+        CONFIRM(dps[j].first == uncompressed[j].first);
+        CONFIRM(dps[j].second == uncompressed[j].second);
+        CONFIRM(dps[j].first == uncompressed2[j].first);
+        CONFIRM(dps[j].second == uncompressed2[j].second);
     }
 
     for (int i = 2000; i < dps.size(); i++)
     {
-        confirm(compressor->compress(dps[i].first, dps[i].second));
+        CONFIRM(compressor->compress(dps[i].first, dps[i].second));
     }
 
-    confirm(compressor->get_dp_count() == dps.size());
+    CONFIRM(compressor->get_dp_count() == dps.size());
 
     compressor->save(position);
     compressor->save(buff2);
-    //confirm(position.m_start_tstamp == ts);
 
     uncompressed.clear();
     compressor->init(ts, buff3, sizeof(buff3));
@@ -249,15 +245,15 @@ CompressTests::save_restore2(Compressor *compressor, Timestamp ts)
     uncompressed2.clear();
     compressor->uncompress(uncompressed2);
 
-    confirm(uncompressed.size() == dps.size());
-    confirm(uncompressed2.size() == dps.size());
+    CONFIRM(uncompressed.size() == dps.size());
+    CONFIRM(uncompressed2.size() == dps.size());
 
     for (int j = 0; j < dps.size(); j++)
     {
-        confirm(dps[j].first == uncompressed[j].first);
-        confirm(dps[j].second == uncompressed[j].second);
-        confirm(dps[j].first == uncompressed2[j].first);
-        confirm(dps[j].second == uncompressed2[j].second);
+        CONFIRM(dps[j].first == uncompressed[j].first);
+        CONFIRM(dps[j].second == uncompressed[j].second);
+        CONFIRM(dps[j].first == uncompressed2[j].first);
+        CONFIRM(dps[j].second == uncompressed2[j].second);
     }
 
     m_stats.add_passed(1);
@@ -286,17 +282,17 @@ CompressTests::stress_test(Compressor *compressor, Timestamp ts)
             n++;
         }
 
-        confirm(compressor->get_dp_count() == n);
+        CONFIRM(compressor->get_dp_count() == n);
 
         DataPointVector uncompressed;
         compressor->uncompress(uncompressed);
 
-        confirm(uncompressed.size() == n);
+        CONFIRM(uncompressed.size() == n);
 
         for (int j = 0; j < n; j++)
         {
-            confirm(dps[j].first == uncompressed[j].first);
-            confirm(dps[j].second == uncompressed[j].second);
+            CONFIRM(dps[j].first == uncompressed[j].first);
+            CONFIRM(dps[j].second == uncompressed[j].second);
         }
     }
 

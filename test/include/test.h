@@ -34,6 +34,9 @@ namespace tt_test
 {
 
 
+#define CONFIRM(X)  confirm((X), __FILE__, __LINE__)
+
+
 class TestStats
 {
 public:
@@ -79,12 +82,12 @@ class TestCase
 public:
     virtual void run() = 0;
 
-    void confirm(bool exp)
+    void confirm(bool exp, const char *file, int line)
     {
         if (! exp)
         {
             m_stats.add_failed(1);
-            log("confirm() FAILED");
+            log("confirm() FAILED at line %d, file %s", line, file);
         }
     }
 
@@ -128,7 +131,7 @@ public:
         request.init();
         request.content = content;
         log("query request: %s", request.content);
-        confirm(tt::QueryExecutor::http_post_api_query_handler(request, response));
+        CONFIRM(tt::QueryExecutor::http_post_api_query_handler(request, response));
         char *body = std::strstr(response.response, "[");
         log("query response status: %d, size: %d", (int)response.status_code, response.response_size);
         parse_data_points(body, results);

@@ -49,8 +49,8 @@ MiscTests::memmgr_tests()
         for (int t = 0; t < (int)RecyclableType::RT_COUNT; t++)
         {
             Recyclable *r = MemoryManager::alloc_recyclable((RecyclableType)t);
-            confirm(r != nullptr);
-            confirm(r->recyclable_type() == t);
+            CONFIRM(r != nullptr);
+            CONFIRM(r->recyclable_type() == t);
             MemoryManager::free_recyclable(r);
         }
     }
@@ -70,31 +70,31 @@ MiscTests::off_hour_tests()
     end = std::to_string((cur_hour + 1) % 24);
     Config::set_value(CFG_TSDB_OFF_HOUR_BEGIN, begin);
     Config::set_value(CFG_TSDB_OFF_HOUR_END, end);
-    confirm(is_off_hour());
+    CONFIRM(is_off_hour());
 
     begin = std::to_string((cur_hour + 2) % 24);
     end = std::to_string((cur_hour + 3) % 24);
     Config::set_value(CFG_TSDB_OFF_HOUR_BEGIN, begin);
     Config::set_value(CFG_TSDB_OFF_HOUR_END, end);
-    confirm(! is_off_hour());
+    CONFIRM(! is_off_hour());
 
     begin = std::to_string((cur_hour + 2) % 24);
     end = std::to_string((cur_hour + 22) % 24);
     Config::set_value(CFG_TSDB_OFF_HOUR_BEGIN, begin);
     Config::set_value(CFG_TSDB_OFF_HOUR_END, end);
-    confirm(! is_off_hour());
+    CONFIRM(! is_off_hour());
 
     begin = std::to_string((cur_hour - 22) % 24);
     end = std::to_string((cur_hour - 1) % 24);
     Config::set_value(CFG_TSDB_OFF_HOUR_BEGIN, begin);
     Config::set_value(CFG_TSDB_OFF_HOUR_END, end);
-    confirm(! is_off_hour());
+    CONFIRM(! is_off_hour());
 
     begin = std::to_string((cur_hour - 20) % 24);
     end = std::to_string((cur_hour + 1) % 24);
     Config::set_value(CFG_TSDB_OFF_HOUR_BEGIN, begin);
     Config::set_value(CFG_TSDB_OFF_HOUR_END, end);
-    confirm(is_off_hour());
+    CONFIRM(is_off_hour());
 
     m_stats.add_passed(1);
 }
@@ -116,8 +116,8 @@ MiscTests::random_tests()
 
         int n = random(from, to);
 
-        confirm(from <= n);
-        confirm(n <= to);
+        CONFIRM(from <= n);
+        CONFIRM(n <= to);
     }
 
     m_stats.add_passed(1);
@@ -132,8 +132,8 @@ MiscTests::strbuf_tests()
     {
         std::string s = std::to_string(i);
         char *c = strbuf.strdup(s.c_str());
-        confirm(c != nullptr);
-        confirm(i == std::atoi(c));
+        CONFIRM(c != nullptr);
+        CONFIRM(i == std::atoi(c));
     }
 
     m_stats.add_passed(1);
@@ -146,8 +146,8 @@ MiscTests::url_decode_tests()
     const char *expected1 = "start=1562483040&end=1562483385&m=avg:1m-avg:mysql.innodb_row_lock_time{host=*}";
     char actual1[128];
 
-    confirm(url_unescape(url1, actual1, sizeof(actual1)));
-    confirm(strcmp(expected1, actual1) == 0);
+    CONFIRM(url_unescape(url1, actual1, sizeof(actual1)));
+    CONFIRM(strcmp(expected1, actual1) == 0);
 
     m_stats.add_passed(1);
 }
