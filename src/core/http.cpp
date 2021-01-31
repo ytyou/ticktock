@@ -112,7 +112,9 @@ TcpConnection *
 HttpServer::create_conn() const
 {
     HttpConnection *conn = (HttpConnection*)MemoryManager::alloc_recyclable(RecyclableType::RT_HTTP_CONNECTION);
+    conn->forward = false;
     conn->request.init();
+    conn->request.forward = false;
     return (TcpConnection*)conn;
 }
 

@@ -18,6 +18,7 @@
  */
 
 #include <errno.h>
+#include <signal.h>
 #include <thread>
 #include <netinet/ip.h>
 #include <arpa/inet.h>
@@ -176,7 +177,26 @@ void
 PartitionServer::do_work()
 {
     unsigned int k = 0;
+    sigset_t oldset, newset;
+    int retval;
     g_thread_id = "part_forwarder";
+
+    // block SIGPIPE, permanently
+    retval = sigemptyset(&newset);
+    if (retval != 0)
+        Logger::warn("sigemptyset() failed, errno = %d", errno);
+    else
+    {
+        retval = sigaddset(&newset, SIGPIPE);
+        if (retval != 0)
+            Logger::warn("sigaddset() failed, errno = %d", errno);
+        else
+        {
+            retval = pthread_sigmask(SIG_BLOCK, &newset, &oldset);
+            if (retval != 0)
+                Logger::warn("pthread_sigmask() failed, errno = %d", errno);
+        }
+    }
 
     while (! m_stop_requested)
     {
