@@ -9,10 +9,10 @@ RM = /usr/bin/rm -f
 PROD_FLAGS = -O3
 #LEAK_FLAGS = -D_LEAK_DETECTION
 #PROF_FLAGS = -pg -D_GLIBCXX_DEBUG
-LIBS = /usr/lib64/libz.a
+LIBS = /usr/lib64/libz.so
 
-CFLAGS = -I include -std=c++11 -static $(DEBUG_FLAGS) $(PROF_FLAGS) $(LEAK_FLAGS) $(PROD_FLAGS)
-LFLAGS = -pthread -static $(PROF_FLAGS) $(DEBUG_FLAGS)
+CFLAGS = -I include -std=c++11 $(DEBUG_FLAGS) $(PROF_FLAGS) $(LEAK_FLAGS) $(PROD_FLAGS)
+LFLAGS = -lpthread $(PROF_FLAGS) $(DEBUG_FLAGS)
 
 INCS = $(wildcard include/*.h)
 TINCS = $(wildcard test/include/*.h)

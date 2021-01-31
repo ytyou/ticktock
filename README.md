@@ -14,16 +14,17 @@ Build
 -----
 Install the following:
 * zlib 1.2.11 static library (libz.a)
-* glibc static libraries
+* glibc libraries
 
 On CentOS,
 ```
 $ yum install zlib-devel
-$ yum install glibc-static libstdc++-static
+$ yum group install "Development Tools"
 ```
 On Ubuntu,
 ```
-$ apt install zlib
+$ apt install zlib1g-dev
+$ apt install build-essential
 ```
 To build TickTock on CentOS, run
 ```

@@ -711,9 +711,8 @@ Tsdb::add_batch(DataPointSet& dps)
 
 // TODO: inline this?
 bool
-Tsdb::add_data_point(DataPoint& dp)
+Tsdb::add_data_point(DataPoint *dp)
 {
-    ASSERT(m_time_range.in_range(dp.get_timestamp()));
     ASSERT(m_partition_mgr != nullptr);
     return m_partition_mgr->add_data_point(dp);
 }
@@ -1213,11 +1212,16 @@ Tsdb::http_api_put_handler_plain(HttpRequest& request, HttpResponse& response)
 
         if ((tsdb == nullptr) || !(tsdb->in_range(dp.get_timestamp())))
         {
-            if ((tsdb != nullptr) && ((curr - request.content) > request.length))
+            if (tsdb != nullptr)
             {
-                // most likely the last line was cut off half way
-                success = false;
-                break;
+                if ((curr - request.content) > request.length)
+                {
+                    // most likely the last line was cut off half way
+                    success = false;
+                    break;
+                }
+                if (forward)
+                    success = tsdb->add_data_point(nullptr) && success; // flush
             }
             if (guard != nullptr) delete guard;
             tsdb = Tsdb::inst(dp.get_timestamp());
@@ -1237,11 +1241,12 @@ Tsdb::http_api_put_handler_plain(HttpRequest& request, HttpResponse& response)
         ASSERT(tsdb != nullptr);
 
         if (forward)
-            success = tsdb->add_data_point(dp) && success;
+            success = tsdb->add_data_point(&dp) && success;
         else
             success = tsdb->add(dp) && success;
     }
 
+    if (forward && (tsdb != nullptr)) tsdb->add_data_point(nullptr); // flush
     if (guard != nullptr) delete guard;
     response.status_code = (success ? 200 : 400);
 

@@ -19,6 +19,7 @@
 
 #pragma once
 
+#include <deque>
 #include <mutex>
 #include "dp.h"
 #include "config.h"
@@ -31,6 +32,49 @@ namespace tt
 
 class Tsdb;
 class PartitionManager;
+
+
+// Not to be used by multiple threads!
+class PartitionBuffer
+{
+public:
+    PartitionBuffer();
+    ~PartitionBuffer();
+
+    bool append(DataPoint *dp);
+
+    inline char *data()
+    {
+        return m_buff;
+    }
+
+    inline int size() const
+    {
+        return m_size;
+    }
+
+    inline bool is_empty() const
+    {
+        return (m_size == 0);
+    }
+
+    inline bool is_full() const
+    {
+        return ((m_size+m_max_line) > m_buff_size);
+    }
+
+    inline void clear()
+    {
+        m_size = 0;
+    }
+
+private:
+    char *m_buff;
+    int m_size;
+
+    static int m_max_line;
+    static int m_buff_size;
+};
 
 
 /* When a new data point arrives, we will serialize it into a circular buffer.
@@ -47,7 +91,8 @@ public:
     PartitionServer(int id, std::string address, int tcp_port, int http_port);
     ~PartitionServer();
 
-    bool forward(DataPoint& dp);
+    // if dp == nullptr, we perform flush()
+    bool forward(DataPoint *dp);
 
     inline bool is_self() const { return m_self; }
 
@@ -63,23 +108,19 @@ private:
     bool send(const char *buff, int len);
     void close();
 
-    bool dump(char *buff, int len);    // FOR DEBUGGING ONLY
-
     int m_id;
+    int m_fd;
     int m_tcp_port;
     int m_http_port;
     std::string m_address;
 
     bool m_self;
     bool m_stop_requested;
-    bool m_running_late;
 
-    int m_fd;
-    char *m_buff;
-    int m_size, m_size1;
-    std::atomic<int> m_head, m_tail;
+    std::mutex m_lock;  // to protect m_buffers
+    std::deque<PartitionBuffer*> m_buffers; // empty buffers are at the front
+    int m_buff_count;
 
-    std::mutex m_lock;
     std::thread m_worker;
 };
 
@@ -89,7 +130,7 @@ class Partition
 public:
     Partition(Tsdb *tsdb, PartitionManager *mgr);
 
-    bool add_data_point(DataPoint& dp);
+    bool add_data_point(DataPoint *dp);
 
 private:
     int m_id;
@@ -114,7 +155,7 @@ public:
     PartitionManager(Tsdb *tsdb);
     ~PartitionManager();
 
-    bool add_data_point(DataPoint& dp);
+    bool add_data_point(DataPoint *dp);
 
     inline PartitionServer *get_server(unsigned int id)
     {

@@ -37,20 +37,55 @@ namespace tt
 {
 
 
+int PartitionBuffer::m_max_line = 0;
+int PartitionBuffer::m_buff_size = 0;
+
+
+PartitionBuffer::PartitionBuffer() :
+    m_size(0)
+{
+    m_buff = MemoryManager::alloc_network_buffer();
+
+    if (m_max_line == 0)
+        m_max_line = Config::get_int(CFG_TSDB_MAX_DP_LINE, CFG_TSDB_MAX_DP_LINE_DEF);
+    if (m_buff_size == 0)
+        m_buff_size = MemoryManager::get_network_buffer_size();
+
+}
+
+PartitionBuffer::~PartitionBuffer()
+{
+    if (m_buff != nullptr)
+    {
+        MemoryManager::free_network_buffer(m_buff);
+        m_buff = nullptr;
+    }
+}
+
+bool
+PartitionBuffer::append(DataPoint *dp)
+{
+    ASSERT(dp != nullptr);
+
+    int n = snprintf(&m_buff[m_size], m_buff_size-m_size, "put %s %lu %.10f %s\n",
+        dp->get_metric(), dp->get_timestamp(), dp->get_value(), dp->get_raw_tags());
+
+    if (n >= (m_buff_size-m_size)) return false;
+    m_size += n;
+    return true;
+}
+
+
 PartitionServer::PartitionServer(int id, std::string address, int tcp_port, int http_port) :
     m_id(id),
     m_address(address),
     m_tcp_port(tcp_port),
     m_http_port(http_port),
+    m_buff_count(0),
     m_fd(-1),
-    m_head(0),
-    m_tail(0),
     m_stop_requested(false)
 {
     m_self = is_my_ip(address);
-    m_buff = MemoryManager::alloc_network_buffer();
-    m_size = MemoryManager::get_network_buffer_size();
-    m_size1 = m_size - Config::get_int(CFG_TSDB_MAX_DP_LINE, CFG_TSDB_MAX_DP_LINE_DEF);
 
     // TODO: allow more than one thread?
     m_worker = std::thread(&PartitionServer::do_work, this);
@@ -59,55 +94,53 @@ PartitionServer::PartitionServer(int id, std::string address, int tcp_port, int 
 PartitionServer::~PartitionServer()
 {
     m_stop_requested = true;
-
     if (m_worker.joinable()) m_worker.join();
-
-    if (m_buff != nullptr)
-    {
-        MemoryManager::free_network_buffer(m_buff);
-        m_buff = nullptr;
-    }
-
     close();
 }
 
 bool
-PartitionServer::forward(DataPoint& dp)
+PartitionServer::forward(DataPoint *dp)
 {
-    std::lock_guard<std::mutex> guard(m_lock);
+    thread_local static PartitionBuffer *buffer = nullptr;
 
-    int head = m_head;
-    int tail = m_tail;
-
-    if (head <= tail)
+    if (dp != nullptr)
     {
-        int n = snprintf(&m_buff[tail], m_size-tail, "put %s %lu %.10f %s\n",
-            dp.get_metric(), dp.get_timestamp(), dp.get_value(), dp.get_raw_tags());
-        ASSERT(n < (m_size-tail));
-        tail += n;
-
-        if (tail >= m_size1)
+        // try to append
+        if (buffer == nullptr)
         {
-            if (tail == m_size1)
-                tail = 0;
-            else
+            std::lock_guard<std::mutex> guard(m_lock);
+
+            for (auto it = m_buffers.begin(); it != m_buffers.end(); it++)
             {
-                int len = tail - m_size1;
-                if ((len+1) >= head) return false;  // full
-                memcpy(m_buff, &m_buff[m_size1], len);
-                tail = len;
+                if (! (*it)->is_full())
+                {
+                    buffer = (*it);
+                    m_buffers.erase(it);
+                    break;
+                }
             }
+
+            if ((buffer == nullptr) && (m_buff_count < 8))  // TODO: config
+            {
+                buffer = new PartitionBuffer(); // TODO: make it Recyclable
+                m_buff_count++;
+            }
+            else
+                return false;
         }
+
+        ASSERT(buffer != nullptr);
+        return buffer->append(dp);
     }
-    else
+    else if (buffer != nullptr)
     {
-        int n = snprintf(&m_buff[tail], head-tail-1, "put %s %lu %.10f %s\n",
-            dp.get_metric(), dp.get_timestamp(), dp.get_value(), dp.get_raw_tags());
-        if (n >= (head-tail-1)) return false; // full
-        tail += n;
+        // submit for transmission
+        Logger::trace("submitting %d bytes to transmit", buffer->size());
+        std::lock_guard<std::mutex> guard(m_lock);
+        m_buffers.push_back(buffer);
+        buffer = nullptr;
     }
 
-    m_tail = tail;
     return true;
 }
 
@@ -162,17 +195,6 @@ PartitionServer::send(const char *buff, int len)
     return true;
 }
 
-bool
-PartitionServer::dump(char *buff, int len)
-{
-    if (len <= 0) return true;
-    char last = buff[len];
-    buff[len] = 0;
-    Logger::info("%s", buff);
-    buff[len] = last;
-    return true;
-}
-
 void
 PartitionServer::do_work()
 {
@@ -200,11 +222,27 @@ PartitionServer::do_work()
 
     while (! m_stop_requested)
     {
-        int head = m_head;
-        int tail = m_tail;
+        PartitionBuffer *buffer = nullptr;
 
-        if (head == tail)   // empty?
+        {
+            std::lock_guard<std::mutex> guard(m_lock);
+
+            for (auto it = m_buffers.rbegin(); it != m_buffers.rend(); it++)
+            {
+                if (! (*it)->is_empty())
+                {
+                    buffer = (*it);
+                    m_buffers.erase((++it).base());
+                    break;
+                }
+            }
+        }
+
+        if (buffer == nullptr)
+        {
+            // See if there are unsent backlogs. If so, try send them here.
             spin_yield(k++);
+        }
         else
         {
             try
@@ -216,9 +254,11 @@ PartitionServer::do_work()
 
                     if (m_fd == -1)
                     {
+                        // If there are previous backlogs, append the buffer to them.
+                        // Otherwise, if the buffer is almost full, open a backlog
+                        // and dump content of the buffer to it.
                         Logger::warn("Can't connect to remote server!");
                         spin_yield(k++);
-                        continue;
                     }
                     else
                     {
@@ -227,33 +267,36 @@ PartitionServer::do_work()
                         {
                             close();
                             Logger::error("failed to send don't forward\n");
+
+                            // If there are previous backlogs, append the buffer to them.
+                            // Otherwise, if the buffer is almost full, open a backlog
+                            // and dump content of the buffer to it.
+                        }
+                        else
+                        {
+                            // If there are open backlogs for write, close them.
                         }
                     }
                 }
 
-                if (head < tail)
+                if (m_fd != -1)
                 {
-                    // send m_buff[head..tail)
-                    if (! send(&m_buff[head], tail-head)) close();
-                    //dump(&m_buff[head], tail-head);
+                    if (! send(buffer->data(), buffer->size()))
+                        close();
+                    else
+                    {
+                        k = 0;
+                        buffer->clear();
+                    }
                 }
-                else
-                {
-                    // send m_buff[head..size) and m_buff[0..tail)
-                    ASSERT(head < m_size1);
-                    if (! send(&m_buff[head], m_size1-head)) close();
-                    if (! send(m_buff, tail)) close();
-                    //dump(&m_buff[head], m_size1-head);
-                    //dump(m_buff, tail);
-                }
-
-                k = 0;
-                m_head = tail;
             }
             catch (...)
             {
                 close();
             }
+
+            std::lock_guard<std::mutex> guard(m_lock);
+            m_buffers.push_front(buffer);
         }
     }
 }
@@ -288,11 +331,11 @@ Partition::Partition(Tsdb *tsdb, PartitionManager *mgr) :
 }
 
 bool
-Partition::add_data_point(DataPoint& dp)
+Partition::add_data_point(DataPoint *dp)
 {
-    if (m_local)
+    if ((m_local) && (dp != nullptr))
     {
-        if (! m_tsdb->add(dp))
+        if (! m_tsdb->add(*dp))
             return false;
     }
 
@@ -326,8 +369,6 @@ PartitionManager::PartitionManager(Tsdb *tsdb) :
 
         servers.copy(buff, sizeof(buff));
         JsonParser::parse_array(buff, arr);
-
-        Logger::info("servers: %s", buff);
 
         for (auto val: arr)
         {
@@ -390,7 +431,7 @@ PartitionManager::~PartitionManager()
 }
 
 bool
-PartitionManager::add_data_point(DataPoint& dp)
+PartitionManager::add_data_point(DataPoint *dp)
 {
     ASSERT(! m_partitions.empty());
 

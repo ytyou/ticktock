@@ -128,7 +128,7 @@ public:
 
     bool add(DataPoint& dp);
     bool add_batch(DataPointSet& dps);
-    bool add_data_point(DataPoint& dp);
+    bool add_data_point(DataPoint *dp);
     void query_for_ts(const char *metric, Tag *tags, std::unordered_set<TimeSeries*>& ts);
     void ensure_readable();
 
