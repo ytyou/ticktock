@@ -137,6 +137,12 @@ MetaFile::load(Tsdb *tsdb)
         std::string::size_type first = line.find_first_of(" ");
         std::string::size_type last = line.find_last_of(" ");
 
+        if ((first == std::string::npos) || (last == std::string::npos))
+        {
+            Logger::error("Bad line in %s: %s", m_name.c_str(), line.c_str());
+            continue;
+        }
+
         std::string metric = line.substr(0, first);
         std::string tags = line.substr(first+1, last-first-1);
         std::string index = line.substr(last+1);

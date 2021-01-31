@@ -11,9 +11,9 @@ PROD_FLAGS = -O3
 #LEAK_FLAGS = -D_LEAK_DETECTION
 #PROF_FLAGS = -pg -D_GLIBCXX_DEBUG
 
-CFLAGS = -I include -std=c++11 $(DEBUG_FLAGS) $(PROF_FLAGS) $(LEAK_FLAGS) $(PROD_FLAGS)
-LFLAGS = -pthread $(DEBUG_FLAGS) $(PROF_FLAGS)
-LIBS = /usr/lib/x86_64-linux-gnu/libz.so $(DEBUG_LIBS)
+CFLAGS = -I include -std=c++11 -static $(DEBUG_FLAGS) $(PROF_FLAGS) $(LEAK_FLAGS) $(PROD_FLAGS)
+LFLAGS = -pthread -static $(DEBUG_FLAGS) $(PROF_FLAGS)
+LIBS = /usr/lib/x86_64-linux-gnu/libz.a $(DEBUG_LIBS)
 
 INCS = $(wildcard include/*.h)
 TINCS = $(wildcard test/include/*.h)
@@ -68,7 +68,7 @@ tools: $(TOOLS)
 
 bin/backfill: objs/tools/backfill.o
 	@mkdir -p $(@D)
-	$(LINK) $(LFLAGS) -o $@ objs/tools/backfill.o $(LIBS)
+	$(LINK) $(LFLAGS) -o $@ $< $(LIBS)
 
 tt: clean build
 all: build test tools

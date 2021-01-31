@@ -111,7 +111,9 @@ HttpServer::init()
 TcpConnection *
 HttpServer::create_conn() const
 {
-    return (HttpConnection*)MemoryManager::alloc_recyclable(RecyclableType::RT_HTTP_CONNECTION);
+    HttpConnection *conn = (HttpConnection*)MemoryManager::alloc_recyclable(RecyclableType::RT_HTTP_CONNECTION);
+    conn->request.init();
+    return (TcpConnection*)conn;
 }
 
 Task
@@ -801,6 +803,7 @@ HttpRequest::init()
     content = nullptr;
     length = 0;
     complete = false;
+    forward = g_cluster_enabled;
 }
 
 void

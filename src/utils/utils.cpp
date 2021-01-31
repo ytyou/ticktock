@@ -31,6 +31,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/statvfs.h>
+#include <arpa/inet.h>
 #include <execinfo.h>
 #include <thread>
 #include <tuple>
@@ -161,6 +162,43 @@ is_off_hour()
     {
         return (off_hour_begin <= now->tm_hour) || (now->tm_hour <= off_hour_end);
     }
+}
+
+bool
+is_my_ip(std::string& ip)
+{
+    struct addrinfo hints, *ap;
+    struct addrinfo *result = nullptr;
+
+    std::memset(&hints, 0, sizeof(hints));
+    hints.ai_family = PF_UNSPEC;        // both IPv4 and IPv6 are ok
+    hints.ai_socktype = SOCK_STREAM;    // TCP socket
+    hints.ai_flags = AI_CANONNAME;
+
+    int retval = getaddrinfo(g_host_name.c_str(), nullptr, &hints, &result);
+    if (retval != 0) return false;
+
+    for (ap = result; ap != nullptr; ap = ap->ai_next)
+    {
+        void *ptr;
+        char addrstr[128];
+
+        switch (ap->ai_family)
+        {
+            case AF_INET:
+                ptr = &((struct sockaddr_in *)ap->ai_addr)->sin_addr;
+                break;
+
+            case AF_INET6:
+                ptr = &((struct sockaddr_in6 *)ap->ai_addr)->sin6_addr;
+                break;
+        }
+
+        inet_ntop(ap->ai_family, ptr, addrstr, sizeof(addrstr));
+        if (ip == addrstr) return true;
+    }
+
+    return false;
 }
 
 bool

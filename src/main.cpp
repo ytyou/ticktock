@@ -215,7 +215,8 @@ initialize()
     //SanityChecker::init();
 
     unsigned int n = std::thread::hardware_concurrency();
-    Logger::info("TickTock version: %d.%d.%d", TT_MAJOR_VERSION, TT_MINOR_VERSION, TT_PATCH_VERSION);
+    Logger::info("TickTock version: %d.%d.%d, on %s",
+        TT_MAJOR_VERSION, TT_MINOR_VERSION, TT_PATCH_VERSION, g_host_name.c_str());
     Logger::info("std::thread::hardware_concurrency() = %d", n);
     Logger::info("sizeof(std::pair<Timestamp,double>) = %d", sizeof(std::pair<Timestamp,double>));
     Logger::info("sizeof(struct page_info_on_disk) = %d", sizeof(struct page_info_on_disk));
@@ -237,7 +238,8 @@ shutdown()
         QueryExecutor::inst()->shutdown();
         Tsdb::shutdown();
         MemoryManager::log_stats();
-        MemoryManager::cleanup();
+        // MM are thread-local singletons, and can't be cleaned up from another thread
+        //MemoryManager::cleanup();
     }
     catch (std::exception& ex)
     {

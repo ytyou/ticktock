@@ -24,7 +24,6 @@
 #include <memory>
 #include <mutex>
 #include <thread>
-//#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 #include "dp.h"
@@ -69,6 +68,7 @@ namespace tt
 
 
 class Tsdb;
+class PartitionManager;
 
 // one per metric
 class Mapping : public Recyclable
@@ -128,6 +128,7 @@ public:
 
     bool add(DataPoint& dp);
     bool add_batch(DataPointSet& dps);
+    bool add_data_point(DataPoint& dp);
     void query_for_ts(const char *metric, Tag *tags, std::unordered_set<TimeSeries*>& ts);
     void ensure_readable();
 
@@ -253,6 +254,8 @@ private:
     uint32_t m_mode;
     std::atomic<long> m_load_time;  // epoch time in sec
     default_contention_free_shared_mutex m_load_lock;
+
+    PartitionManager *m_partition_mgr;
 };
 
 

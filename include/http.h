@@ -102,6 +102,7 @@ public:
     char *content;  // body
     int length;     // Content-Length
     bool complete;
+    bool forward;
 
     inline bool is_complete() const
     {

@@ -12,9 +12,14 @@ Other Linux platforms should also work, although we haven't tested them yet.
 
 Build
 -----
-Install zlib 1.2.11 first. On CentOS,
+Install the following:
+* zlib 1.2.11 static library (libz.a)
+* glibc static libraries
+
+On CentOS,
 ```
 $ yum install zlib-devel
+$ yum install glibc-static libstdc++-static
 ```
 On Ubuntu,
 ```

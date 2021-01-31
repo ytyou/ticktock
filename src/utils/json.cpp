@@ -85,6 +85,7 @@ JsonParser::parse_array(char *json, JsonArray& array)
         while (std::isspace(*json)) json++;
         if (*json == ']') { json++; break; }
         if (*json == ',') json++;
+        while (std::isspace(*json)) json++;
 
         JsonValue *value =
             (JsonValue*)MemoryManager::alloc_recyclable(RecyclableType::RT_JSON_VALUE);

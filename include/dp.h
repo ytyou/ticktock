@@ -71,6 +71,7 @@ public:
 
     inline const char *get_metric() { return m_metric; }
     inline char *get_raw_tags() { return m_raw_tags; }
+    inline void set_raw_tags(char *tags) { m_raw_tags = tags; }
     inline void set_metric(const char *metric) { m_metric = metric; }
 
     const char* c_str(char* buff, size_t size) const;

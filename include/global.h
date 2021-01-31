@@ -28,8 +28,8 @@ namespace tt
 
 
 #define TT_MAJOR_VERSION    0
-#define TT_MINOR_VERSION    0
-#define TT_PATCH_VERSION    1
+#define TT_MINOR_VERSION    1
+#define TT_PATCH_VERSION    0
 
 class HttpServer;
 class TcpServer;
@@ -49,6 +49,7 @@ extern UdpServer *udp_server_ptr;
 extern const long int g_page_size;
 extern bool g_opt_reuse_port;       // reuse port when bind()?
 extern bool g_tstamp_resolution_ms;
+extern bool g_cluster_enabled;
 extern std::atomic<bool> g_shutdown_requested;
 
 

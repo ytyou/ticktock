@@ -36,6 +36,7 @@
 #define CFG_APPEND_LOG_ROTATION_FREQUENCY_DEF   "1h"
 #define CFG_APPEND_LOG_RETENTION_COUNT          "append.log.retention.count"
 #define CFG_APPEND_LOG_RETENTION_COUNT_DEF      2
+#define CFG_CLUSTER_SERVERS                     "cluster.servers"
 #define CFG_CONFIG_RELOAD_ENABLED               "config.reload.enabled"
 #define CFG_CONFIG_RELOAD_ENABLED_DEF           false
 #define CFG_CONFIG_RELOAD_FREQUENCY             "config.reload.frequency"
@@ -105,6 +106,8 @@
 #define CFG_TSDB_PAGE_COUNT_DEF                 65536
 #define CFG_TSDB_FLUSH_FREQUENCY                "tsdb.flush.frequency"
 #define CFG_TSDB_FLUSH_FREQUENCY_DEF            "5min"
+#define CFG_TSDB_MAX_DP_LINE                    "tsdb.max.dp.line"
+#define CFG_TSDB_MAX_DP_LINE_DEF                256
 #define CFG_TSDB_READ_ONLY_THRESHOLD            "tsdb.read_only.threshold"
 #define CFG_TSDB_READ_ONLY_THRESHOLD_DEF        "1h"
 #define CFG_TSDB_RETENTION_THRESHOLD            "tsdb.retention.threshold"
@@ -118,8 +121,6 @@
 #define CFG_UDP_LISTENER_COUNT_DEF              2
 #define CFG_UDP_BATCH_SIZE                      "udp.batch.size"
 #define CFG_UDP_BATCH_SIZE_DEF                  256
-#define CFG_UDP_MAX_LINE                        "udp.max.line"
-#define CFG_UDP_MAX_LINE_DEF                    256
 #define CFG_UDP_SERVER_PORT                     "udp.server.port"
 #define CFG_UDP_SERVER_PORT_DEF                 6181
 

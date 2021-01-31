@@ -43,6 +43,8 @@ namespace tt
 #define PIPE_CMD_CLOSE_APPEND_LOG   "g\n"
 #define PIPE_CMD_SET_STOPPED        "s\n"
 
+#define DONT_FORWARD                "don't forward\n"
+
 class TcpServer;
 class TcpListener;
 
@@ -60,6 +62,7 @@ public:
     int fd; // socket file-descriptor
     TcpServer *server;
     TcpListener *listener;
+    bool forward;
 
     std::atomic<int> worker_id;
     std::atomic<unsigned int> state; // TCS_xxx
@@ -87,6 +90,7 @@ protected:
         state = TCS_NONE;
         buff = nullptr;
         offset = 0;
+        forward = g_cluster_enabled;
         last_contact = std::chrono::steady_clock::now();
     }
 };
@@ -261,7 +265,7 @@ protected:
 private:
     friend class TcpListener;
     static bool set_flags(int fd, int flags);
-    static bool process_data(int fd, char *data, int len);
+    static bool process_data(TcpConnection *conn, char *data, int len);
     static void send_response(int fd, char *content, int len);
 
     void instruct1(const char *instruction, int size);

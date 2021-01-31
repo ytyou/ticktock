@@ -28,6 +28,7 @@
 #include "meter.h"
 #include "timer.h"
 #include "tsdb.h"
+#include "part.h"
 #include "logger.h"
 #include "json.h"
 #include "stats.h"
@@ -216,6 +217,7 @@ Mapping::get_ts2(DataPoint& dp)
         {
             raw_tags = STRDUP(raw_tags);
             dp.parse_raw_tags();
+            dp.set_raw_tags(raw_tags);
         }
 
         char buff[1024];
@@ -402,6 +404,7 @@ Tsdb::Tsdb(TimeRange& range) :
     m_map.rehash(16);
     m_mode = mode_of();
     m_page_mgrs.push_back(new PageManager(range, 0));
+    m_partition_mgr = new PartitionManager(this);
 
     char buff[64];
     Logger::debug("tsdb %s created (mode=%d)", range.c_str(buff, sizeof(buff)), m_mode);
@@ -410,6 +413,12 @@ Tsdb::Tsdb(TimeRange& range) :
 Tsdb::~Tsdb()
 {
     unload();
+
+    if (m_partition_mgr != nullptr)
+    {
+        delete m_partition_mgr;
+        m_partition_mgr = nullptr;
+    }
 /*
     if (m_meta_file != nullptr)
     {
@@ -698,6 +707,15 @@ Tsdb::add_batch(DataPointSet& dps)
     }
 
     return success;
+}
+
+// TODO: inline this?
+bool
+Tsdb::add_data_point(DataPoint& dp)
+{
+    ASSERT(m_time_range.in_range(dp.get_timestamp()));
+    ASSERT(m_partition_mgr != nullptr);
+    return m_partition_mgr->add_data_point(dp);
 }
 
 void
@@ -1136,6 +1154,7 @@ Tsdb::http_api_put_handler_plain(HttpRequest& request, HttpResponse& response)
 
     Tsdb* tsdb = nullptr;
     char *curr = request.content;
+    bool forward = request.forward;
     bool success = true;
 
     // is the the 'version' command?
@@ -1166,10 +1185,23 @@ Tsdb::http_api_put_handler_plain(HttpRequest& request, HttpResponse& response)
         if (std::strncmp(curr, "put ", 4) != 0)
         {
             if (std::strncmp(curr, "version\n", 8) == 0)
+            {
+                curr += 8;
                 Stats::http_get_api_version_handler(request, response);
-            curr = strchr(curr, '\n');
-            if (curr == nullptr) break;
-            curr++;
+            }
+            else if (std::strncmp(curr, DONT_FORWARD, std::strlen(DONT_FORWARD)) == 0)
+            {
+                int len = std::strlen(DONT_FORWARD);
+                curr += len;
+                forward = false;
+                response.init(200, HttpContentType::PLAIN, len, DONT_FORWARD);
+            }
+            else
+            {
+                curr = strchr(curr, '\n');
+                if (curr == nullptr) break;
+                curr++;
+            }
             if ((curr - request.content) > request.length) break;
             continue;
         }
@@ -1203,7 +1235,11 @@ Tsdb::http_api_put_handler_plain(HttpRequest& request, HttpResponse& response)
         }
 
         ASSERT(tsdb != nullptr);
-        success = tsdb->add(dp) && success;
+
+        if (forward)
+            success = tsdb->add_data_point(dp) && success;
+        else
+            success = tsdb->add(dp) && success;
     }
 
     if (guard != nullptr) delete guard;
@@ -1666,6 +1702,7 @@ Tsdb::rotate(TaskData& data)
         {
             Logger::debug("[rotate] Active tsdb: %s, mode = %d, tsdb->mode = %d",
                 tsdb->c_str(buff, sizeof(buff)), mode, tsdb->m_mode);
+            // TODO: do this only if there were writes since last check point
             tsdb->set_check_point();
         }
     }

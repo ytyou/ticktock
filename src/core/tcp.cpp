@@ -365,7 +365,7 @@ TcpServer::recv_tcp_data(TaskData& data)
 
         if (buffs[curr][len-1] == '\n')
         {
-            process_data(fd, buffs[curr], len);
+            process_data(conn, buffs[curr], len);
             len = 0;
         }
         else if (len >= buff_size)
@@ -396,7 +396,7 @@ TcpServer::recv_tcp_data(TaskData& data)
                 int l = last - first + 1;
                 len -= l;
                 memcpy((void*)buffs[next], last+1, len);
-                process_data(fd, buffs[curr], l);
+                process_data(conn, buffs[curr], l);
                 curr = next;
             }
         }
@@ -432,7 +432,7 @@ TcpServer::recv_tcp_data(TaskData& data)
 }
 
 bool
-TcpServer::process_data(int fd, char *data, int len)
+TcpServer::process_data(TcpConnection *conn, char *data, int len)
 {
     try
     {
@@ -444,13 +444,21 @@ TcpServer::process_data(int fd, char *data, int len)
         request.init();
         request.content = data;
         request.length = len;
+        request.forward = conn->forward;
 
         Tsdb::http_api_put_handler_plain(request, response);
 
         if (response.content_length > 0)
         {
             char *body = response.get_body();
-            if (body != nullptr) send_response(fd, body, std::strlen(body));
+
+            if (body != nullptr)
+            {
+                if (std::strncmp(body, DONT_FORWARD, std::strlen(DONT_FORWARD)) == 0)
+                    conn->forward = false;
+                else
+                    send_response(conn->fd, body, std::strlen(body));
+            }
         }
     }
     catch (const std::exception& ex)

@@ -44,6 +44,7 @@ Config::init()
     reload(data);
 
     g_tstamp_resolution_ms = ts_resolution_ms();
+    g_cluster_enabled = Config::exists(CFG_CLUSTER_SERVERS);
 
     // schedule task to reload() periodically
     if (Config::get_bool(CFG_CONFIG_RELOAD_ENABLED, CFG_CONFIG_RELOAD_ENABLED_DEF))
