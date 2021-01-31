@@ -692,7 +692,7 @@ HttpResponse::init(uint16_t code, HttpContentType type, size_t length)
     ASSERT(std::strlen(reason) <= MAX_REASON_SIZE);
     ASSERT(std::strlen(HTTP_CONTENT_TYPES[type]) <= MAX_CONTENT_TYPE_SIZE);
 
-    response_size = snprintf(response, size,
+    response_size = std::snprintf(response, (uint32_t)size,
         "HTTP/1.1 %3d %s%sContent-Type: %s%sContent-Length: %d%s%s",
         (int)status_code, reason, CRLF,
         HTTP_CONTENT_TYPES[type], CRLF,
