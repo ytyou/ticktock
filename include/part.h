@@ -53,6 +53,16 @@ public:
         return m_size;
     }
 
+    inline int get_buffer_size() const
+    {
+        return m_buff_size;
+    }
+
+    inline void set_size(int size)
+    {
+        m_size = size;
+    }
+
     inline bool is_empty() const
     {
         return (m_size == 0);
@@ -74,6 +84,41 @@ private:
 
     static int m_max_line;
     static int m_buff_size;
+};
+
+
+class BackLog
+{
+public:
+    BackLog(int server_id);
+    ~BackLog();
+
+    static bool exists(int server_id);
+
+    inline bool is_open_for_read() const { return m_open_for_read; }
+    inline bool is_open_for_append() const { return m_open_for_append; }
+
+    bool read(PartitionBuffer *buffer);     // return false if end-of-file
+    bool append(PartitionBuffer *buffer);
+
+    bool open_for_read();
+    bool open_for_append();
+    void close();
+    void remove();
+
+private:
+    bool open(std::string& name, const char *mode);
+    static void get_buff_files(int server_id, std::vector<std::string>& files);
+
+    int m_server_id;
+    FILE *m_file;
+    int m_size;     // in bytes
+    std::string m_file_name;
+
+    bool m_open_for_read;
+    bool m_open_for_append;
+
+    static int rotation_size;
 };
 
 
@@ -107,6 +152,7 @@ private:
     void connect();
     bool send(const char *buff, int len);
     void close();
+    PartitionBuffer *get_buffer(bool empty);
 
     int m_id;
     int m_fd;
@@ -121,6 +167,7 @@ private:
     std::deque<PartitionBuffer*> m_buffers; // empty buffers are at the front
     int m_buff_count;
 
+    BackLog *m_backlog;
     std::thread m_worker;
 };
 

@@ -24,6 +24,7 @@
 #include <arpa/inet.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <glob.h>
 #include "logger.h"
 #include "memmgr.h"
 #include "part.h"
@@ -37,6 +38,7 @@ namespace tt
 {
 
 
+int BackLog::rotation_size = 0;
 int PartitionBuffer::m_max_line = 0;
 int PartitionBuffer::m_buff_size = 0;
 
@@ -76,12 +78,145 @@ PartitionBuffer::append(DataPoint *dp)
 }
 
 
+BackLog::BackLog(int server_id) :
+    m_server_id(server_id),
+    m_file(nullptr),
+    m_size(0),
+    m_open_for_read(false),
+    m_open_for_append(false)
+{
+    if (rotation_size == 0)
+        rotation_size = Config::get_bytes(CFG_CLUSTER_BACKLOG_ROTATION_SIZE, CFG_CLUSTER_BACKLOG_ROTATION_SIZE_DEF);
+}
+
+BackLog::~BackLog()
+{
+    close();
+}
+
+bool
+BackLog::exists(int server_id)
+{
+    std::vector<std::string> files;
+    get_buff_files(server_id, files);
+    return ! files.empty();
+}
+
+void
+BackLog::get_buff_files(int server_id, std::vector<std::string>& files)
+{
+    std::string append_dir = Config::get_str(CFG_APPEND_LOG_DIR);
+    std::string log_pattern = append_dir + "/backlog." + std::to_string(server_id)+ ".*.log";
+    glob_t glob_result;
+    glob(log_pattern.c_str(), GLOB_TILDE, nullptr, &glob_result);
+    for (unsigned int i = 0; i < glob_result.gl_pathc; i++)
+        files.push_back(std::string(glob_result.gl_pathv[i]));
+    globfree(&glob_result);
+    if (files.size() > 1)
+        std::sort(files.begin(), files.end());
+}
+
+bool
+BackLog::open(std::string& name, const char *mode)
+{
+    ASSERT(m_file == nullptr);
+    ASSERT(mode != nullptr);
+
+    Logger::debug("BackLog: %s is open for %s", name.c_str(), mode);
+
+    m_file_name = name;
+    m_file = fopen(name.c_str(), mode);
+    return (m_file != nullptr);
+}
+
+bool
+BackLog::open_for_read()
+{
+    std::vector<std::string> files;
+    get_buff_files(m_server_id, files);
+    if (files.empty()) return false;
+    m_open_for_read = open(files.front(), "r");
+    return m_open_for_read;
+}
+
+bool
+BackLog::open_for_append()
+{
+    // Do we need partition id in the file name?
+    Timestamp now = ts_now_sec();
+    std::string append_dir = Config::get_str(CFG_APPEND_LOG_DIR);
+    std::string name = append_dir + "/backlog." + std::to_string(m_server_id)+ "." + std::to_string(now) + ".log";
+    m_open_for_append = open(name, "a");
+    m_size = 0;
+    return m_open_for_append;
+}
+
+void
+BackLog::close()
+{
+    if (m_file != nullptr)
+    {
+        fclose(m_file);
+        m_file = nullptr;
+        m_open_for_read = false;
+        m_open_for_append = false;
+    }
+}
+
+void
+BackLog::remove()
+{
+    ASSERT(! m_open_for_read);
+    ASSERT(! m_open_for_append);
+
+    if (! m_file_name.empty())
+    {
+        std::remove(m_file_name.c_str());
+        Logger::debug("removing %s", m_file_name.c_str());
+    }
+}
+
+bool
+BackLog::read(PartitionBuffer *buffer)
+{
+    ASSERT(buffer != nullptr);
+    ASSERT(buffer->is_empty());
+    ASSERT(m_open_for_read);
+
+    int n = fread(buffer->data(), 1, buffer->get_buffer_size()-1, m_file);
+    buffer->set_size(n);
+    Logger::trace("backlog read %d bytes", n);
+    return true;
+}
+
+bool
+BackLog::append(PartitionBuffer *buffer)
+{
+    ASSERT(buffer != nullptr);
+    ASSERT(! buffer->is_empty());
+    ASSERT(buffer->data()[buffer->size()] == 0);
+    ASSERT(m_open_for_append);
+
+    if (m_size >= rotation_size)
+    {
+        close();
+        if (! open_for_append())
+            return false;
+    }
+
+    int n = fprintf(m_file, "%s", buffer->data());
+    m_size += n;
+    return (n == buffer->size());
+}
+
+
 PartitionServer::PartitionServer(int id, std::string address, int tcp_port, int http_port) :
     m_id(id),
     m_address(address),
     m_tcp_port(tcp_port),
     m_http_port(http_port),
     m_buff_count(0),
+    m_backlog(nullptr),
     m_fd(-1),
     m_stop_requested(false)
 {
@@ -170,6 +305,11 @@ PartitionServer::connect()
         ::close(m_fd);
         m_fd = -1;
     }
+
+    if (m_fd != -1)
+        Logger::info("connected to %s:%d, fd=%d", m_address.c_str(), m_tcp_port, m_fd);
+    else
+        Logger::debug("failed to connect to %s:%d", m_address.c_str(), m_tcp_port);
 }
 
 bool
@@ -179,20 +319,55 @@ PartitionServer::send(const char *buff, int len)
 
     int sent_total = 0;
 
-    while (sent_total < len)
+    try
     {
-        int sent = ::send(m_fd, buff+sent_total, len-sent_total, 0);
-
-        if (sent == -1)
+        while (sent_total < len)
         {
-            Logger::warn("send() failed, errno = %d", errno);
-            return false;
-        }
+            int sent = ::send(m_fd, buff+sent_total, len-sent_total, 0);
 
-        sent_total += sent;
+            if (sent == -1)
+            {
+                Logger::warn("send() failed, errno = %d", errno);
+                close();
+                return false;
+            }
+
+            sent_total += sent;
+        }
+    }
+    catch (...)
+    {
+        close();
+        Logger::warn("send() failed with an exception");
+        return false;
     }
 
-    return true;
+    return (sent_total > 0);
+}
+
+PartitionBuffer *
+PartitionServer::get_buffer(bool empty)
+{
+    PartitionBuffer *buffer = nullptr;
+    std::lock_guard<std::mutex> guard(m_lock);
+
+    for (auto it = m_buffers.rbegin(); it != m_buffers.rend(); it++)
+    {
+        if (((*it)->is_empty() && empty) || (!(*it)->is_empty() && !empty))
+        {
+            buffer = (*it);
+            m_buffers.erase((++it).base());
+            break;
+        }
+    }
+
+    if ((buffer == nullptr) && empty && (m_buff_count < 8))
+    {
+        buffer = new PartitionBuffer(); // TODO: make it Recyclable
+        m_buff_count++;
+    }
+
+    return buffer;
 }
 
 void
@@ -220,79 +395,100 @@ PartitionServer::do_work()
         }
     }
 
+    if (BackLog::exists(m_id))
+        m_backlog = new BackLog(m_id);
+
     while (! m_stop_requested)
     {
-        PartitionBuffer *buffer = nullptr;
-
-        {
-            std::lock_guard<std::mutex> guard(m_lock);
-
-            for (auto it = m_buffers.rbegin(); it != m_buffers.rend(); it++)
-            {
-                if (! (*it)->is_empty())
-                {
-                    buffer = (*it);
-                    m_buffers.erase((++it).base());
-                    break;
-                }
-            }
-        }
+        PartitionBuffer *buffer = get_buffer(false);    // get non-empty buffer
 
         if (buffer == nullptr)
         {
-            // See if there are unsent backlogs. If so, try send them here.
-            spin_yield(k++);
+            // See if there are any backlogs. If so, try send them here.
+            if ((m_backlog != nullptr) && (m_fd != -1))
+            {
+                ASSERT(! m_backlog->is_open_for_append());
+
+                if (! m_backlog->is_open_for_read())
+                    m_backlog->open_for_read();
+
+                if (m_backlog->is_open_for_read())
+                {
+                    buffer = get_buffer(true);
+                    ASSERT(buffer != nullptr);
+
+                    if (m_backlog->read(buffer) && (! buffer->is_empty()))
+                    {
+                        if (send(buffer->data(), buffer->size()))
+                            buffer->clear();
+                        else
+                            m_backlog->close();
+                    }
+                    else
+                    {
+                        ASSERT(buffer->is_empty());
+                        m_backlog->close();
+                        m_backlog->remove();
+                    }
+
+                    std::lock_guard<std::mutex> guard(m_lock);
+                    m_buffers.push_front(buffer);
+                    buffer = nullptr;
+                }
+                else
+                {
+                    delete m_backlog;
+                    m_backlog = nullptr;
+                    spin_yield(k++);
+                }
+            }
+            else
+                spin_yield(k++);
         }
         else
         {
-            try
+            if (m_fd == -1)
             {
-                if (m_fd == -1)
-                {
-                    // try to (re-)connect
-                    connect();
-
-                    if (m_fd == -1)
-                    {
-                        // If there are previous backlogs, append the buffer to them.
-                        // Otherwise, if the buffer is almost full, open a backlog
-                        // and dump content of the buffer to it.
-                        Logger::warn("Can't connect to remote server!");
-                        spin_yield(k++);
-                    }
-                    else
-                    {
-                        // send DONT_FORWARD message to remote
-                        if (! send(DONT_FORWARD, std::strlen(DONT_FORWARD)))
-                        {
-                            close();
-                            Logger::error("failed to send don't forward\n");
-
-                            // If there are previous backlogs, append the buffer to them.
-                            // Otherwise, if the buffer is almost full, open a backlog
-                            // and dump content of the buffer to it.
-                        }
-                        else
-                        {
-                            // If there are open backlogs for write, close them.
-                        }
-                    }
-                }
+                // try to (re-)connect
+                connect();
 
                 if (m_fd != -1)
                 {
-                    if (! send(buffer->data(), buffer->size()))
-                        close();
-                    else
+                    // send DONT_FORWARD message to remote
+                    if (send(DONT_FORWARD, std::strlen(DONT_FORWARD)))
                     {
-                        k = 0;
-                        buffer->clear();
+                        // If there are open backlogs for write, close them.
+                        Logger::debug("Replication connection established\n");
+
+                        if ((m_backlog != nullptr) && m_backlog->is_open_for_append())
+                            m_backlog->close();
                     }
                 }
+                else
+                {
+                    Logger::warn("Can't connect to remote server!");
+                }
             }
-            catch (...)
+
+            if (m_fd != -1)
             {
-                close();
+                if (send(buffer->data(), buffer->size()))
+                {
+                    k = 0;
+                    buffer->clear();
+                }
+            }
+            else
+            {
+                // try to save it to backlog
+                if (m_backlog == nullptr)
+                {
+                    m_backlog = new BackLog(m_id);
+                    m_backlog->open_for_append();
+                }
+
+                if (m_backlog->append(buffer))
+                    buffer->clear();
             }
 
             std::lock_guard<std::mutex> guard(m_lock);

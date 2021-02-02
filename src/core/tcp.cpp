@@ -446,6 +446,8 @@ TcpServer::process_data(TcpConnection *conn, char *data, int len)
         request.length = len;
         request.forward = conn->forward;
 
+        Logger::trace("TcpServer::process_data():\n%s", data);
+
         Tsdb::http_api_put_handler_plain(request, response);
 
         if (response.content_length > 0)

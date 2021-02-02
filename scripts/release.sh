@@ -30,6 +30,7 @@ mkdir -p $TT_ROOT/conf
 
 cp -r admin $TT_ROOT
 cp -r bin $TT_ROOT
+rm ${TT_ROOT}/bin/all_tests
 cp conf/tt.conf ${TT_ROOT}/conf/
 cp LICENSE README.md $TT_ROOT
 
