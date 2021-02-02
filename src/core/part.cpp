@@ -42,6 +42,8 @@ int BackLog::rotation_size = 0;
 int PartitionBuffer::m_max_line = 0;
 int PartitionBuffer::m_buff_size = 0;
 
+static thread_local PartitionBuffer *partition_server_forward_buffer = nullptr;
+
 
 PartitionBuffer::PartitionBuffer() :
     m_size(0)
@@ -230,18 +232,17 @@ PartitionServer::~PartitionServer()
 {
     m_stop_requested = true;
     if (m_worker.joinable()) m_worker.join();
+    if (m_backlog != nullptr) delete m_backlog;
     close();
 }
 
 bool
 PartitionServer::forward(DataPoint *dp)
 {
-    thread_local static PartitionBuffer *buffer = nullptr;
-
     if (dp != nullptr)
     {
         // try to append
-        if (buffer == nullptr)
+        if (partition_server_forward_buffer == nullptr)
         {
             std::lock_guard<std::mutex> guard(m_lock);
 
@@ -249,31 +250,31 @@ PartitionServer::forward(DataPoint *dp)
             {
                 if (! (*it)->is_full())
                 {
-                    buffer = (*it);
+                    partition_server_forward_buffer = (*it);
                     m_buffers.erase(it);
                     break;
                 }
             }
 
-            if ((buffer == nullptr) && (m_buff_count < 8))  // TODO: config
+            if ((partition_server_forward_buffer == nullptr) && (m_buff_count < 16))  // TODO: config
             {
-                buffer = new PartitionBuffer(); // TODO: make it Recyclable
+                partition_server_forward_buffer = new PartitionBuffer(); // TODO: make it Recyclable
                 m_buff_count++;
             }
             else
                 return false;
         }
 
-        ASSERT(buffer != nullptr);
-        return buffer->append(dp);
+        ASSERT(partition_server_forward_buffer != nullptr);
+        return partition_server_forward_buffer->append(dp);
     }
-    else if (buffer != nullptr)
+    else if (partition_server_forward_buffer != nullptr)
     {
         // submit for transmission
-        Logger::trace("submitting %d bytes to transmit", buffer->size());
+        Logger::trace("submitting %d bytes to transmit", partition_server_forward_buffer->size());
         std::lock_guard<std::mutex> guard(m_lock);
-        m_buffers.push_back(buffer);
-        buffer = nullptr;
+        m_buffers.push_back(partition_server_forward_buffer);
+        partition_server_forward_buffer = nullptr;
     }
 
     return true;
@@ -540,7 +541,11 @@ Partition::add_data_point(DataPoint *dp)
     for (auto server: m_servers)
     {
         if (! server->forward(dp))
+        {
             success = false;
+            char buff[64];
+            Logger::debug("failed to forward to server %s", server->c_str(buff, sizeof(buff)));
+        }
     }
 
     if (! success)
