@@ -49,11 +49,8 @@ Meter::Meter(const char *metric, const MeterType type) :
 
 Meter::~Meter()
 {
-    static bool enabled =
-        Config::get_bool(CFG_TSDB_SELF_METER_ENABLED, CFG_TSDB_SELF_METER_ENABLED_DEF);
-
     // We do NOT own memory pointed to by m_metric, so don't try to free it!
-    if (! enabled) return;
+    if (! g_self_meter_enabled) return;
 
     // Use current time as timestamp to minimize number of out-order data points.
     using namespace std::chrono;

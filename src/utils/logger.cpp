@@ -31,7 +31,9 @@ namespace tt
 {
 
 
+Logger *Logger::m_instance = nullptr;
 LogLevel Logger::m_level = LogLevel::UNKNOWN;
+
 
 Logger::Logger() :
     m_stream(nullptr),
@@ -64,6 +66,12 @@ Logger::Logger() :
 Logger::~Logger()
 {
     close();
+}
+
+void
+Logger::init()
+{
+    m_instance = new Logger;
 }
 
 void
@@ -171,17 +179,13 @@ Logger::rename()
 void
 Logger::trace(const char *format, ...)
 {
-    static std::shared_ptr<Logger> logger = Logger::inst();
-
     if ((format == nullptr) || (get_level() > LogLevel::TRACE))
-    {
         return;
-    }
 
     va_list args;
     va_start(args, format);
 
-    logger->print(LogLevel::TRACE, format, args);
+    m_instance->print(LogLevel::TRACE, format, args);
 
     va_end(args);
 }
@@ -190,17 +194,13 @@ Logger::trace(const char *format, ...)
 void
 Logger::debug(const char *format, ...)
 {
-    static std::shared_ptr<Logger> logger = Logger::inst();
-
     if ((format == nullptr) || (get_level() > LogLevel::DEBUG))
-    {
         return;
-    }
 
     va_list args;
     va_start(args, format);
 
-    logger->print(LogLevel::DEBUG, format, args);
+    m_instance->print(LogLevel::DEBUG, format, args);
 
     va_end(args);
 }
@@ -209,17 +209,13 @@ Logger::debug(const char *format, ...)
 void
 Logger::info(const char *format, ...)
 {
-    static std::shared_ptr<Logger> logger = Logger::inst();
-
     if ((format == nullptr) || (get_level() > LogLevel::INFO))
-    {
         return;
-    }
 
     va_list args;
     va_start(args, format);
 
-    logger->print(LogLevel::INFO, format, args);
+    m_instance->print(LogLevel::INFO, format, args);
 
     va_end(args);
 }
@@ -228,17 +224,13 @@ Logger::info(const char *format, ...)
 void
 Logger::warn(const char *format, ...)
 {
-    static std::shared_ptr<Logger> logger = Logger::inst();
-
     if ((format == nullptr) || (get_level() > LogLevel::WARN))
-    {
         return;
-    }
 
     va_list args;
     va_start(args, format);
 
-    logger->print(LogLevel::WARN, format, args);
+    m_instance->print(LogLevel::WARN, format, args);
 
     va_end(args);
 }
@@ -247,17 +239,13 @@ Logger::warn(const char *format, ...)
 void
 Logger::error(const char *format, ...)
 {
-    static std::shared_ptr<Logger> logger = Logger::inst();
-
     if ((format == nullptr) || (get_level() > LogLevel::ERROR))
-    {
         return;
-    }
 
     va_list args;
     va_start(args, format);
 
-    logger->print(LogLevel::ERROR, format, args);
+    m_instance->print(LogLevel::ERROR, format, args);
 
     va_end(args);
 }
@@ -266,17 +254,13 @@ Logger::error(const char *format, ...)
 void
 Logger::fatal(const char *format, ...)
 {
-    static std::shared_ptr<Logger> logger = Logger::inst();
-
     if ((format == nullptr) || (get_level() > LogLevel::FATAL))
-    {
         return;
-    }
 
     va_list args;
     va_start(args, format);
 
-    logger->print(LogLevel::FATAL, format, args);
+    m_instance->print(LogLevel::FATAL, format, args);
 
     va_end(args);
 }

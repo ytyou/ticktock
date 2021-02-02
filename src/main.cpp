@@ -153,7 +153,7 @@ daemonize(const char *cwd)
 
     if (retval < 0)
     {
-        Logger::warn("chdir failed: errno = %d\n", errno);
+        fprintf(stderr, "chdir failed: errno = %d\n", errno);
     }
 
     // close all open file descriptors
@@ -167,7 +167,7 @@ daemonize(const char *cwd)
     fd = open(g_pid_file.c_str(), O_RDWR|O_CREAT, 0640);
     if (fd < 0)
     {
-        Logger::fatal("Failed to write pid file %s: errno = %d\n", g_pid_file.c_str(), errno);
+        fprintf(stderr, "Failed to write pid file %s: errno = %d\n", g_pid_file.c_str(), errno);
         exit(EXIT_FAILURE);
     }
     if (lockf(fd, F_TLOCK, 0) < 0) exit(EXIT_FAILURE);
@@ -207,11 +207,13 @@ initialize()
     }
 
     Config::init();
+    Logger::init();
     MemoryManager::init();
     Tsdb::init();
     Timer::inst()->start();
     AppendLog::init();
     Stats::init();
+    QueryExecutor::init();
     //SanityChecker::init();
 
     unsigned int n = std::thread::hardware_concurrency();

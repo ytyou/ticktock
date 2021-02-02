@@ -35,6 +35,8 @@ namespace tt
 
 
 bool AppendLog::m_enabled = false;
+static thread_local AppendLog *instance = nullptr;
+
 
 AppendLog::AppendLog() :
     m_file(nullptr),
@@ -74,8 +76,7 @@ AppendLog::init()
 AppendLog *
 AppendLog::inst()
 {
-    thread_local static AppendLog *instance = new AppendLog;
-    return instance;
+    return (instance == nullptr) ? (instance = new AppendLog) : instance;
 }
 
 bool

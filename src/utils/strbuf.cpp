@@ -44,7 +44,7 @@ StringBuffer::~StringBuffer()
 char *
 StringBuffer::strdup(const char *str)
 {
-    static size_t buff_size = MemoryManager::get_network_buffer_size() - 2;
+    size_t buff_size = MemoryManager::get_network_buffer_size() - 2;
 
     ASSERT(str != nullptr);
     ASSERT(std::strlen(str) < buff_size);

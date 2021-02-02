@@ -28,17 +28,20 @@ namespace tt
 {
 
 
+Timer *Timer::m_instance = nullptr;
+
+
 Timer::Timer() :
     m_granularity_sec(Config::get_time(CFG_TIMER_GRANULARITY, TimeUnit::SEC, CFG_TIMER_GRANULARITY_DEF)),
     m_scheduler("timer", Config::get_int(CFG_TIMER_THREAD_COUNT,CFG_TIMER_THREAD_COUNT_DEF), Config::get_int(CFG_TIMER_QUEUE_SIZE,CFG_TIMER_QUEUE_SIZE_DEF))
 {
 }
 
+// The very first call of this method is not thread-safe!
 Timer *
 Timer::inst()
 {
-    static Timer *instance = new Timer;
-    return instance;
+    return (m_instance == nullptr) ? (m_instance = new Timer) : m_instance;
 }
 
 void

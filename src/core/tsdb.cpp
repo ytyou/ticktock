@@ -42,6 +42,8 @@ namespace tt
 
 default_contention_free_shared_mutex Tsdb::m_tsdb_lock;
 std::vector<Tsdb*> Tsdb::m_tsdbs;
+static long tsdb_rotation_freq = 0;
+static thread_local tsl::robin_map<const char*, Mapping*, hash_func, eq_func> thread_local_cache;
 
 
 Mapping::Mapping() :
@@ -145,8 +147,6 @@ Mapping::set_check_point()
 TimeSeries *
 Mapping::get_ts(TagOwner& to)
 {
-    static MemoryManager *mm = MemoryManager::inst();
-
     char buff[1024];
     to.get_ordered_tags(buff, sizeof(buff));
 
@@ -187,7 +187,7 @@ Mapping::get_ts(TagOwner& to)
 
         if (ts == nullptr)
         {
-            ts = (TimeSeries*)mm->alloc_recyclable(RecyclableType::RT_TIME_SERIES);
+            ts = (TimeSeries*)MemoryManager::inst()->alloc_recyclable(RecyclableType::RT_TIME_SERIES);
             ts->init(m_metric, buff, to.get_cloned_tags(), m_tsdb, false);
             m_map[ts->get_key()] = ts;
         }
@@ -199,7 +199,6 @@ Mapping::get_ts(TagOwner& to)
 TimeSeries *
 Mapping::get_ts2(DataPoint& dp)
 {
-    static MemoryManager *mm = MemoryManager::inst();
     TimeSeries *ts = nullptr;
     char *raw_tags = dp.get_raw_tags();
 
@@ -242,7 +241,7 @@ Mapping::get_ts2(DataPoint& dp)
 
         if (ts == nullptr)
         {
-            ts = (TimeSeries*)mm->alloc_recyclable(RecyclableType::RT_TIME_SERIES);
+            ts = (TimeSeries*)MemoryManager::inst()->alloc_recyclable(RecyclableType::RT_TIME_SERIES);
             ts->init(m_metric, buff, dp.get_cloned_tags(), m_tsdb, false);
             m_map[ts->get_key()] = ts;
         }
@@ -319,8 +318,6 @@ Mapping::query_for_ts(Tag *tags, std::unordered_set<TimeSeries*>& tsv)
 void
 Mapping::add_ts(Tsdb *tsdb, std::string& metric, std::string& keys, PageInfo *page_info)
 {
-    static MemoryManager *mm = MemoryManager::inst();
-
     TimeSeries *ts;
     auto result = m_map.find(keys.c_str());
 
@@ -336,14 +333,14 @@ Mapping::add_ts(Tsdb *tsdb, std::string& metric, std::string& keys, PageInfo *pa
             std::tuple<std::string,std::string> kv;
             tokenize(token, kv, '=');
 
-            Tag *tag = (Tag*)mm->alloc_recyclable(RecyclableType::RT_KEY_VALUE_PAIR);
+            Tag *tag = (Tag*)MemoryManager::inst()->alloc_recyclable(RecyclableType::RT_KEY_VALUE_PAIR);
             tag->m_key = STRDUP(std::get<0>(kv).c_str());
             tag->m_value = STRDUP(std::get<1>(kv).c_str());
             tag->next() = tags;
             tags = tag;
         }
 
-        ts = (TimeSeries*)mm->alloc_recyclable(RecyclableType::RT_TIME_SERIES);
+        ts = (TimeSeries*)MemoryManager::inst()->alloc_recyclable(RecyclableType::RT_TIME_SERIES);
         ts->init(metric.c_str(), keys.c_str(), tags, tsdb, tsdb->is_read_only());
         m_map[ts->get_key()] = ts;
 
@@ -540,10 +537,8 @@ Tsdb::open_meta()
 void
 Tsdb::get_range(Timestamp tstamp, TimeRange& range)
 {
-    static long period_sec =
-        validate_resolution(Config::get_time(CFG_TSDB_ROTATION_FREQUENCY, TimeUnit::SEC, CFG_TSDB_ROTATION_FREQUENCY_DEF));
-    Timestamp start = (tstamp / period_sec) * period_sec;
-    range.init(start, start + period_sec);
+    Timestamp start = (tstamp / tsdb_rotation_freq) * tsdb_rotation_freq;
+    range.init(start, start + tsdb_rotation_freq);
 }
 
 Mapping *
@@ -552,7 +547,7 @@ Tsdb::get_or_add_mapping(TagOwner& dp)
     // cache per thread; may need a way (config) to disable it?
     //thread_local static std::map<const char*,Mapping*,cstr_less> cache;
     //thread_local static std::unordered_map<const char*,Mapping*,hash_func,eq_func> cache;
-    thread_local static tsl::robin_map<const char*, Mapping*, hash_func, eq_func> cache;
+    //thread_local static tsl::robin_map<const char*, Mapping*, hash_func, eq_func> cache;
 
     const char *metric = dp.get_tag_value(METRIC_TAG_NAME);
 
@@ -562,8 +557,8 @@ Tsdb::get_or_add_mapping(TagOwner& dp)
         return nullptr;
     }
 
-    auto result = cache.find(metric);
-    if (result != cache.end())
+    auto result = thread_local_cache.find(metric);
+    if (result != thread_local_cache.end())
     {
         Mapping *m = result->second;
 
@@ -600,7 +595,7 @@ Tsdb::get_or_add_mapping(TagOwner& dp)
         }
     }
 
-    cache[mapping->m_metric] = mapping;
+    thread_local_cache[mapping->m_metric] = mapping;
 
     return mapping;
 }
@@ -611,13 +606,13 @@ Tsdb::get_or_add_mapping2(DataPoint& dp)
     // cache per thread; may need a way (config) to disable it?
     //thread_local static std::map<const char*,Mapping*,cstr_less> cache;
     //thread_local static std::unordered_map<const char*,Mapping*,hash_func,eq_func> cache;
-    thread_local static tsl::robin_map<const char*, Mapping*, hash_func, eq_func> cache;
+    //thread_local static tsl::robin_map<const char*, Mapping*, hash_func, eq_func> cache;
 
     const char *metric = dp.get_metric();
     ASSERT(metric != nullptr);
 
-    auto result = cache.find(metric);
-    if (result != cache.end())
+    auto result = thread_local_cache.find(metric);
+    if (result != thread_local_cache.end())
     {
         Mapping *m = result->second;
 
@@ -654,7 +649,7 @@ Tsdb::get_or_add_mapping2(DataPoint& dp)
         }
     }
 
-    cache[mapping->m_metric] = mapping;
+    thread_local_cache[mapping->m_metric] = mapping;
 
     return mapping;
 }
@@ -1051,8 +1046,6 @@ Tsdb::insts(const TimeRange& range, std::vector<Tsdb*>& tsdbs)
 bool
 Tsdb::http_api_put_handler(HttpRequest& request, HttpResponse& response)
 {
-//    static MemoryManager *mm = MemoryManager::inst();
-
     Tsdb* tsdb = nullptr;
     char *curr = request.content;
     bool success = true;
@@ -1256,7 +1249,7 @@ Tsdb::http_api_put_handler_plain(HttpRequest& request, HttpResponse& response)
 bool
 Tsdb::http_get_api_suggest_handler(HttpRequest& request, HttpResponse& response)
 {
-    static size_t buff_size = MemoryManager::get_network_buffer_size() - 6;
+    size_t buff_size = MemoryManager::get_network_buffer_size() - 6;
     char* buff = MemoryManager::alloc_network_buffer();
 
     JsonMap params;
@@ -1391,6 +1384,9 @@ Tsdb::init()
     std::string data_dir = Config::get_str(CFG_TSDB_DATA_DIR);
     DIR *dir;
     struct dirent *dir_ent;
+
+    tsdb_rotation_freq =
+        validate_resolution(Config::get_time(CFG_TSDB_ROTATION_FREQUENCY, TimeUnit::SEC, CFG_TSDB_ROTATION_FREQUENCY_DEF));
 
     // check if we have enough disk space
     PageCount page_count =

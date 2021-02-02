@@ -313,7 +313,7 @@ TcpServer::start(int port)
 bool
 TcpServer::recv_tcp_data(TaskData& data)
 {
-    static size_t buff_size = MemoryManager::get_network_buffer_size() - 2;
+    size_t buff_size = MemoryManager::get_network_buffer_size() - 2;
     TcpConnection *conn = static_cast<TcpConnection*>(data.pointer);
 
     Logger::trace("recv_tcp_data: conn=%p, fd=%d", conn, conn->fd);

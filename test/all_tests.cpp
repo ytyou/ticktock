@@ -57,6 +57,8 @@ main(int argc, char *argv[])
     // generate our own config file
     TestCase::create_config(CFG_LOG_FILE, TestCase::str_join(TEST_ROOT, "test.log"));
     Config::init();
+    Tsdb::init();
+    QueryExecutor::init();
 
     TestStats stats;
     int test_cnt = sizeof(tests) / sizeof(tests[0]);

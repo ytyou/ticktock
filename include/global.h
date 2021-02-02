@@ -50,6 +50,7 @@ extern const long int g_page_size;
 extern bool g_opt_reuse_port;       // reuse port when bind()?
 extern bool g_tstamp_resolution_ms;
 extern bool g_cluster_enabled;
+extern bool g_self_meter_enabled;
 extern std::atomic<bool> g_shutdown_requested;
 
 

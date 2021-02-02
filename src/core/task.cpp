@@ -69,15 +69,27 @@ Task::operator=(const Task& task)
 }
 
 
-TaskScheduler::TaskScheduler() : TaskScheduler(EMPTY_STRING, 0, 0)
+TaskScheduler::TaskScheduler() :
+    m_id(EMPTY_STRING),
+    m_thread_count(0),
+    m_next_worker(0),
+    m_threads(nullptr),
+    m_workers(nullptr)
 {
 }
 
-TaskScheduler::TaskScheduler(std::string id, size_t thread_count, size_t queue_size) :
-    m_id(id),
-    m_thread_count(thread_count),
-    m_next_worker(0)
+TaskScheduler::TaskScheduler(std::string id, size_t thread_count, size_t queue_size)
 {
+    init(id, thread_count, queue_size);
+}
+
+void
+TaskScheduler::init(std::string id, size_t thread_count, size_t queue_size)
+{
+    m_id = id;
+    m_thread_count = thread_count;
+    m_next_worker = 0;
+
     // create threads
     m_threads = new std::thread[m_thread_count];
     m_workers = static_cast<Worker**>(malloc(sizeof(Worker*) * m_thread_count));

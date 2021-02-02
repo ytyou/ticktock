@@ -46,11 +46,8 @@ enum class LogLevel
 class Logger
 {
 public:
-    static std::shared_ptr<Logger> inst()
-    {
-        static std::shared_ptr<Logger> instance {new Logger};
-        return instance;
-    }
+    static void init();     // must be called before any other methods
+    inline static Logger* inst() { return m_instance; }
 
     // std::endl will be appended, if it's not already there
     static void trace(const char *format, ...);
@@ -100,6 +97,8 @@ private:
     std::mutex m_lock;
     std::FILE *m_stream;
     int m_fd;
+
+    static Logger *m_instance;
 };
 
 

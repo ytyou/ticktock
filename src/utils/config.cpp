@@ -45,13 +45,15 @@ Config::init()
 
     g_tstamp_resolution_ms = ts_resolution_ms();
     g_cluster_enabled = Config::exists(CFG_CLUSTER_SERVERS);
+    g_self_meter_enabled = Config::get_bool(CFG_TSDB_SELF_METER_ENABLED, CFG_TSDB_SELF_METER_ENABLED_DEF);
 
     // schedule task to reload() periodically
     if (Config::get_bool(CFG_CONFIG_RELOAD_ENABLED, CFG_CONFIG_RELOAD_ENABLED_DEF))
     {
         Task task;
         task.doit = &Config::reload;
-        int freq_sec = Config::get_time(CFG_CONFIG_RELOAD_FREQUENCY, TimeUnit::SEC, CFG_CONFIG_RELOAD_FREQUENCY_DEF);
+        int freq_sec =
+            Config::get_time(CFG_CONFIG_RELOAD_FREQUENCY, TimeUnit::SEC, CFG_CONFIG_RELOAD_FREQUENCY_DEF);
         Timer::inst()->add_task(task, freq_sec, "config_reload");
     }
 }

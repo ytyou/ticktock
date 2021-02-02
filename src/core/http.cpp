@@ -70,6 +70,8 @@ static const char *HTTP_CONTENT_TYPES[] =
     "text/plain"
 };
 
+int HttpServer::m_max_resend = 0;
+
 
 std::map<const char*,HttpRequestHandler,cstr_less> HttpServer::m_get_handlers;
 std::map<const char*,HttpRequestHandler,cstr_less> HttpServer::m_put_handlers;
@@ -86,6 +88,8 @@ HttpServer::HttpServer() :
 void
 HttpServer::init()
 {
+    m_max_resend = Config::get_int(CFG_HTTP_MAX_RETRIES, CFG_HTTP_MAX_RETRIES_DEF);
+
     add_get_handler(HTTP_API_AGGREGATORS, &Aggregator::http_get_api_aggregators_handler);
     add_get_handler(HTTP_API_CONFIG_FILTERS, &QueryExecutor::http_get_api_config_filters_handler);
     add_get_handler(HTTP_API_QUERY, &QueryExecutor::http_get_api_query_handler);
@@ -133,7 +137,7 @@ HttpServer::get_recv_data_task(TcpConnection *conn) const
 bool
 HttpServer::recv_http_data(TaskData& data)
 {
-    static size_t buff_size = MemoryManager::get_network_buffer_size() - 6;
+    size_t buff_size = MemoryManager::get_network_buffer_size() - 6;
     HttpConnection *conn = static_cast<HttpConnection*>(data.pointer);
 
     Logger::trace("recv_http_data: conn=%p, fd=%d", conn, conn->fd);
@@ -262,7 +266,7 @@ HttpServer::recv_http_data(TaskData& data)
 bool
 HttpServer::recv_http_data_cont(HttpConnection *conn)
 {
-    static size_t buff_size = MemoryManager::get_network_buffer_size() - 6;
+    size_t buff_size = MemoryManager::get_network_buffer_size() - 6;
     int fd = conn->fd;
     char* buff = conn->buff;
     int len = conn->offset;
@@ -434,9 +438,6 @@ HttpServer::get_post_handler(const char *path)
 bool
 HttpServer::send_response(int fd, HttpResponse& response)
 {
-    static int max_resend =
-        Config::get_int(CFG_HTTP_MAX_RETRIES, CFG_HTTP_MAX_RETRIES_DEF);
-
 #ifdef _DEBUG
     Logger::debug("sending %d bytes...", response.response_size);
 #endif
@@ -447,10 +448,9 @@ HttpServer::send_response(int fd, HttpResponse& response)
     size_t count = 0;
     //size_t max_chunk = 1000000;
 
-    ASSERT(0 < max_resend);
+    ASSERT(0 < m_max_resend);
 
-    //for (int i = 0; i < max_resend; i++)    // best we can do, don't want to loop forever
-    while (no_progress_cnt < max_resend)
+    while (no_progress_cnt < m_max_resend)
     {
         char *buff = response.response + sent;
         target = response.response_size - sent;
@@ -707,7 +707,7 @@ HttpResponse::init(uint16_t code, HttpContentType type, size_t length)
 void
 HttpResponse::init(uint16_t code, HttpContentType type, size_t length, const char *body)
 {
-    static size_t buff_size = MemoryManager::get_network_buffer_size() - 1;
+    size_t buff_size = MemoryManager::get_network_buffer_size() - 1;
 
     ASSERT(buff_size > length);
 

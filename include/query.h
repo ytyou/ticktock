@@ -240,10 +240,11 @@ private:
 class QueryExecutor : public Stoppable
 {
 public:
-    static std::shared_ptr<QueryExecutor> inst()
+    static void init();
+
+    inline static QueryExecutor *inst()
     {
-        static std::shared_ptr<QueryExecutor> instance {new QueryExecutor};
-        return instance;
+        return m_instance;
     }
 
     void submit_query(QueryTask *task);
@@ -263,6 +264,8 @@ private:
 
     std::mutex m_lock;
     TaskScheduler m_executors;
+
+    static QueryExecutor *m_instance;
 };
 
 

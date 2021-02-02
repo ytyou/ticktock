@@ -68,6 +68,8 @@ private:
     TaskScheduler m_scheduler;
     std::vector<TimedTask> m_tasks;
     std::thread m_thread;
+
+    static Timer *m_instance;
 };
 
 

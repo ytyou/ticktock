@@ -40,6 +40,9 @@ namespace tt
 {
 
 
+QueryExecutor *QueryExecutor::m_instance = nullptr;
+
+
 Query::Query(JsonMap& map, TimeRange& range, StringBuffer& strbuf, bool ms) :
     m_time_range(range),
     m_metric(nullptr),
@@ -644,7 +647,7 @@ void
 Query::execute_in_parallel(std::vector<QueryResults*>& results, StringBuffer& strbuf)
 {
     std::vector<QueryTask*> qtv;
-    std::shared_ptr<QueryExecutor> executor = QueryExecutor::inst();
+    QueryExecutor *executor = QueryExecutor::inst();
 
     get_query_tasks(qtv);
 
@@ -801,6 +804,12 @@ QueryExecutor::QueryExecutor() :
                 Config::get_int(CFG_QUERY_EXECUTOR_THREAD_COUNT,CFG_QUERY_EXECUTOR_THREAD_COUNT_DEF),
                 Config::get_int(CFG_QUERY_EXECUTOR_QUEUE_SIZE,CFG_QUERY_EXECUTOR_QUEUE_SIZE_DEF))
 {
+}
+
+void
+QueryExecutor::init()
+{
+    m_instance = new QueryExecutor;
 }
 
 bool

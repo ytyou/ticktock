@@ -19,6 +19,7 @@
 
 #include <string>
 #include <unistd.h>
+#include "config.h"
 #include "global.h"
 
 
@@ -38,6 +39,7 @@ UdpServer *udp_server_ptr = nullptr;
 bool g_opt_reuse_port = false;      // reuse port when bind()? controlled by cmd line option -r
 bool g_tstamp_resolution_ms = true;
 bool g_cluster_enabled = false;
+bool g_self_meter_enabled = CFG_TSDB_SELF_METER_ENABLED_DEF;
 std::atomic<bool> g_shutdown_requested{false};
 
 std::string g_config_file("tt.conf");
