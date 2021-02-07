@@ -159,9 +159,7 @@ Stats::inject_metrics(TaskData& data)
 #endif
     }
 
-
     MemoryManager::log_stats();
-
     return false;
 }
 

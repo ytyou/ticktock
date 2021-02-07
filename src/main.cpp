@@ -283,8 +283,11 @@ main(int argc, char *argv[])
 
     // start an UdpServer
     UdpServer udp_server;
-    udp_server.start(Config::get_int(CFG_UDP_SERVER_PORT, CFG_UDP_SERVER_PORT_DEF));
-    udp_server_ptr = &udp_server;
+    if (Config::get_bool(CFG_UDP_SERVER_ENABLED, CFG_UDP_SERVER_ENABLED_DEF))
+    {
+        udp_server.start(Config::get_int(CFG_UDP_SERVER_PORT, CFG_UDP_SERVER_PORT_DEF));
+        udp_server_ptr = &udp_server;
+    }
 
     std::signal(SIGINT, intr_handler);
     std::signal(SIGTERM, intr_handler);

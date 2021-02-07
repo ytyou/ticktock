@@ -441,6 +441,7 @@ TimeSeries::query_without_ooo(TimeRange& range, Downsampler *downsampler, DataPo
     for (int i = 0; i < container.size(); i++)
     {
         DataPointPair& dp = container.get_data_point(i);
+        ASSERT(page_info->get_time_range().in_range(dp.first));
 
         // TODO: these logic does not belong here.
         if (range.in_range(dp.first))

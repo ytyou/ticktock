@@ -665,7 +665,7 @@ Tsdb::add(DataPoint& dp)
     if (mapping != nullptr)
     {
         success = mapping->add(dp);
-        m_load_time = ts_now_sec();
+        //m_load_time = ts_now_sec();
     }
     else
     {
@@ -694,7 +694,7 @@ Tsdb::add_batch(DataPointSet& dps)
     if (mapping != nullptr)
     {
         success = mapping->add_batch(dps);
-        m_load_time = ts_now_sec();
+        //m_load_time = ts_now_sec();
     }
     else
     {
@@ -743,15 +743,26 @@ Tsdb::query_for_ts(const char *metric, Tag *tags, std::unordered_set<TimeSeries*
 void
 Tsdb::ensure_readable()
 {
-    if ((m_mode & TSDB_MODE_READ) == 0)
+    bool readable = true;
+
     {
-        m_mode |= TSDB_MODE_READ;
-        load_from_disk_no_lock();
+        ReadLock guard(m_load_lock);
+
+        if ((m_mode & TSDB_MODE_READ) == 0)
+            readable = false;
+        else
+            m_load_time = ts_now_sec();
     }
-    else
+
+    if (! readable)
     {
-        // to prevent unloading
-        m_load_time = ts_now_sec();
+        WriteLock guard(m_load_lock);
+
+        if ((m_mode & TSDB_MODE_READ) == 0)
+        {
+            m_mode |= TSDB_MODE_READ;
+            load_from_disk_no_lock();
+        }
     }
 }
 
@@ -1387,6 +1398,7 @@ Tsdb::init()
 
     tsdb_rotation_freq =
         validate_resolution(Config::get_time(CFG_TSDB_ROTATION_FREQUENCY, TimeUnit::SEC, CFG_TSDB_ROTATION_FREQUENCY_DEF));
+    if (tsdb_rotation_freq < 1) tsdb_rotation_freq = 1;
 
     // check if we have enough disk space
     PageCount page_count =
@@ -1443,12 +1455,14 @@ Tsdb::init()
     Task task;
     task.doit = &Tsdb::rotate;
     int freq_sec = Config::get_time(CFG_TSDB_FLUSH_FREQUENCY, TimeUnit::SEC, CFG_TSDB_FLUSH_FREQUENCY_DEF);
+    if (freq_sec < 1) freq_sec = 1;
     Timer::inst()->add_task(task, freq_sec, "tsdb_flush");
     Logger::info("Will try to rotate tsdb every %d secs.", freq_sec);
 
     task.doit = &Tsdb::compact;
     task.data.integer = 0;  // indicates this is from scheduled task (vs. interactive cmd)
     freq_sec = Config::get_time(CFG_TSDB_COMPACT_FREQUENCY, TimeUnit::SEC, CFG_TSDB_COMPACT_FREQUENCY_DEF);
+    if (freq_sec < 1) freq_sec = 1;
     Timer::inst()->add_task(task, freq_sec, "tsdb_compact");
     Logger::info("Will try to compact tsdb every %d secs.", freq_sec);
 }
@@ -1456,7 +1470,7 @@ Tsdb::init()
 std::string
 Tsdb::get_file_name(TimeRange& range, std::string ext)
 {
-    char buff[4096];
+    char buff[PATH_MAX];
     snprintf(buff, sizeof(buff), "%s/%" PRIu64 ".%" PRIu64 ".%s",
         Config::get_str(CFG_TSDB_DATA_DIR).c_str(), range.get_from_sec(), range.get_to_sec(), ext.c_str());
     return std::string(buff);
@@ -1653,7 +1667,6 @@ Tsdb::rotate(TaskData& data)
     Meter meter(METRIC_TICKTOCK_TSDB_ROTATE_MS);
     Timestamp now = ts_now();
     std::vector<Tsdb*> tsdbs;
-    int flush_freq = Config::get_time(CFG_TSDB_FLUSH_FREQUENCY, TimeUnit::SEC, CFG_TSDB_FLUSH_FREQUENCY_DEF);
 
     TimeRange range(0, now);
     Tsdb::insts(range, tsdbs);
@@ -1681,7 +1694,7 @@ Tsdb::rotate(TaskData& data)
             long now_sec = to_sec(now);
 
             // archive it
-            if ((now_sec - load_time) > flush_freq)
+            if ((now_sec - load_time) > 7200)   // TODO: config?
             {
                 Logger::info("[rotate] Archiving tsdb (lt=%ld, now=%ld): %s", load_time, now_sec, tsdb->c_str(buff, sizeof(buff)));
                 tsdb->flush(true);
@@ -1742,9 +1755,9 @@ Tsdb::purge_oldest(int threshold)
         if (! m_tsdbs.empty())
         {
             tsdb = m_tsdbs.front();
-
             Timestamp now = ts_now_sec();
-            if ((now - tsdb->m_load_time) > 120)    // TODO: get this fron config
+
+            if ((now - tsdb->m_load_time) > 7200)   // TODO: config?
             {
                 m_tsdbs.erase(m_tsdbs.begin());
             }

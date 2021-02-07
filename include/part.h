@@ -58,9 +58,11 @@ public:
         return m_buff_size;
     }
 
-    inline void set_size(int size)
+    inline void set_size(size_t size)
     {
+        ASSERT(size < m_buff_size);
         m_size = size;
+        m_buff[m_size] = 0;
     }
 
     inline bool is_empty() const

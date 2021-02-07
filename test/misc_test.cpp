@@ -44,6 +44,8 @@ MiscTests::run()
 void
 MiscTests::memmgr_tests()
 {
+    MemoryManager::init();
+
     for (int i = 0; i < 4096; i++)
     {
         for (int t = 0; t < (int)RecyclableType::RT_COUNT; t++)

@@ -67,6 +67,7 @@ public:
     inline void add_time(Timestamp tstamp)
     {
         if (tstamp < m_from) m_from = tstamp;
+        tstamp++;
         if (m_to < tstamp) m_to = tstamp;
     }
 

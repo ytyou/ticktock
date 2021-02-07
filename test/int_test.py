@@ -39,6 +39,7 @@ class TickTockConfig(object):
         self._dict["http.server.port"] = self._options.port
         self._dict["tcp.server.port"] = self._options.dataport
         self._dict["udp.server.port"] = self._options.dataport
+        self._dict["udp.server.enabled"] = "true"
 
         self._dict["log.level"] = "TRACE"
         self._dict["log.file"] = os.path.join(self._options.root,"tt.log")

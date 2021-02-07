@@ -123,6 +123,8 @@
 #define CFG_UDP_LISTENER_COUNT_DEF              2
 #define CFG_UDP_BATCH_SIZE                      "udp.batch.size"
 #define CFG_UDP_BATCH_SIZE_DEF                  256
+#define CFG_UDP_SERVER_ENABLED                  "udp.server.enabled"
+#define CFG_UDP_SERVER_ENABLED_DEF              false
 #define CFG_UDP_SERVER_PORT                     "udp.server.port"
 #define CFG_UDP_SERVER_PORT_DEF                 6181
 

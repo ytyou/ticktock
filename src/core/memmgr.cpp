@@ -119,46 +119,49 @@ MemoryManager::init()
 void
 MemoryManager::log_stats()
 {
+    if (Logger::get_level() > LogLevel::DEBUG)
+        return;
+
 #ifdef _DEBUG
-    Logger::info("mm::aggregator_avg = %d", m_maps[RecyclableType::RT_AGGREGATOR_AVG].size());
-    Logger::info("mm::aggregator_count = %d", m_maps[RecyclableType::RT_AGGREGATOR_COUNT].size());
-    Logger::info("mm::aggregator_dev = %d", m_maps[RecyclableType::RT_AGGREGATOR_DEV].size());
-    Logger::info("mm::aggregator_max = %d", m_maps[RecyclableType::RT_AGGREGATOR_MAX].size());
-    Logger::info("mm::aggregator_min = %d", m_maps[RecyclableType::RT_AGGREGATOR_MIN].size());
-    Logger::info("mm::aggregator_none = %d", m_maps[RecyclableType::RT_AGGREGATOR_NONE].size());
-    Logger::info("mm::aggregator_pt = %d", m_maps[RecyclableType::RT_AGGREGATOR_PT].size());
-    Logger::info("mm::aggregator_sum = %d", m_maps[RecyclableType::RT_AGGREGATOR_SUM].size());
-    Logger::info("mm::compressor_v0 = %d", m_maps[RecyclableType::RT_COMPRESSOR_V0].size());
-    Logger::info("mm::compressor_v1 = %d", m_maps[RecyclableType::RT_COMPRESSOR_V1].size());
-    Logger::info("mm::compressor_v2 = %d", m_maps[RecyclableType::RT_COMPRESSOR_V2].size());
-    Logger::info("mm::data_point = %d", m_maps[RecyclableType::RT_DATA_POINT].size());
-    Logger::info("mm::downsampler_avg = %d", m_maps[RecyclableType::RT_DOWNSAMPLER_AVG].size());
-    Logger::info("mm::downsampler_count = %d", m_maps[RecyclableType::RT_DOWNSAMPLER_COUNT].size());
-    Logger::info("mm::downsampler_dev = %d", m_maps[RecyclableType::RT_DOWNSAMPLER_DEV].size());
-    Logger::info("mm::downsampler_first = %d", m_maps[RecyclableType::RT_DOWNSAMPLER_FIRST].size());
-    Logger::info("mm::downsampler_last = %d", m_maps[RecyclableType::RT_DOWNSAMPLER_LAST].size());
-    Logger::info("mm::downsampler_max = %d", m_maps[RecyclableType::RT_DOWNSAMPLER_MAX].size());
-    Logger::info("mm::downsampler_min = %d", m_maps[RecyclableType::RT_DOWNSAMPLER_MIN].size());
-    Logger::info("mm::downsampler_pt = %d", m_maps[RecyclableType::RT_DOWNSAMPLER_PT].size());
-    Logger::info("mm::downsampler_sum = %d", m_maps[RecyclableType::RT_DOWNSAMPLER_SUM].size());
-    Logger::info("mm::http_connection = %d", m_maps[RecyclableType::RT_HTTP_CONNECTION].size());
-    Logger::info("mm::json_value = %d", m_maps[RecyclableType::RT_JSON_VALUE].size());
-    Logger::info("mm::key_value_pair = %d", m_maps[RecyclableType::RT_KEY_VALUE_PAIR].size());
-    Logger::info("mm::mapping = %d", m_maps[RecyclableType::RT_MAPPING].size());
-    Logger::info("mm::page_info = %d", m_maps[RecyclableType::RT_PAGE_INFO].size());
-    Logger::info("mm::query_results = %d", m_maps[RecyclableType::RT_QUERY_RESULTS].size());
-    Logger::info("mm::query_task = %d", m_maps[RecyclableType::RT_QUERY_TASK].size());
-    Logger::info("mm::rate_calculator = %d", m_maps[RecyclableType::RT_RATE_CALCULATOR].size());
-    Logger::info("mm::tcp_connection = %d", m_maps[RecyclableType::RT_TCP_CONNECTION].size());
-    Logger::info("mm::time_series = %d", m_maps[RecyclableType::RT_TIME_SERIES].size());
+    Logger::debug("mm::aggregator_avg = %d", m_maps[RecyclableType::RT_AGGREGATOR_AVG].size());
+    Logger::debug("mm::aggregator_count = %d", m_maps[RecyclableType::RT_AGGREGATOR_COUNT].size());
+    Logger::debug("mm::aggregator_dev = %d", m_maps[RecyclableType::RT_AGGREGATOR_DEV].size());
+    Logger::debug("mm::aggregator_max = %d", m_maps[RecyclableType::RT_AGGREGATOR_MAX].size());
+    Logger::debug("mm::aggregator_min = %d", m_maps[RecyclableType::RT_AGGREGATOR_MIN].size());
+    Logger::debug("mm::aggregator_none = %d", m_maps[RecyclableType::RT_AGGREGATOR_NONE].size());
+    Logger::debug("mm::aggregator_pt = %d", m_maps[RecyclableType::RT_AGGREGATOR_PT].size());
+    Logger::debug("mm::aggregator_sum = %d", m_maps[RecyclableType::RT_AGGREGATOR_SUM].size());
+    Logger::debug("mm::compressor_v0 = %d", m_maps[RecyclableType::RT_COMPRESSOR_V0].size());
+    Logger::debug("mm::compressor_v1 = %d", m_maps[RecyclableType::RT_COMPRESSOR_V1].size());
+    Logger::debug("mm::compressor_v2 = %d", m_maps[RecyclableType::RT_COMPRESSOR_V2].size());
+    Logger::debug("mm::data_point = %d", m_maps[RecyclableType::RT_DATA_POINT].size());
+    Logger::debug("mm::downsampler_avg = %d", m_maps[RecyclableType::RT_DOWNSAMPLER_AVG].size());
+    Logger::debug("mm::downsampler_count = %d", m_maps[RecyclableType::RT_DOWNSAMPLER_COUNT].size());
+    Logger::debug("mm::downsampler_dev = %d", m_maps[RecyclableType::RT_DOWNSAMPLER_DEV].size());
+    Logger::debug("mm::downsampler_first = %d", m_maps[RecyclableType::RT_DOWNSAMPLER_FIRST].size());
+    Logger::debug("mm::downsampler_last = %d", m_maps[RecyclableType::RT_DOWNSAMPLER_LAST].size());
+    Logger::debug("mm::downsampler_max = %d", m_maps[RecyclableType::RT_DOWNSAMPLER_MAX].size());
+    Logger::debug("mm::downsampler_min = %d", m_maps[RecyclableType::RT_DOWNSAMPLER_MIN].size());
+    Logger::debug("mm::downsampler_pt = %d", m_maps[RecyclableType::RT_DOWNSAMPLER_PT].size());
+    Logger::debug("mm::downsampler_sum = %d", m_maps[RecyclableType::RT_DOWNSAMPLER_SUM].size());
+    Logger::debug("mm::http_connection = %d", m_maps[RecyclableType::RT_HTTP_CONNECTION].size());
+    Logger::debug("mm::json_value = %d", m_maps[RecyclableType::RT_JSON_VALUE].size());
+    Logger::debug("mm::key_value_pair = %d", m_maps[RecyclableType::RT_KEY_VALUE_PAIR].size());
+    Logger::debug("mm::mapping = %d", m_maps[RecyclableType::RT_MAPPING].size());
+    Logger::debug("mm::page_info = %d", m_maps[RecyclableType::RT_PAGE_INFO].size());
+    Logger::debug("mm::query_results = %d", m_maps[RecyclableType::RT_QUERY_RESULTS].size());
+    Logger::debug("mm::query_task = %d", m_maps[RecyclableType::RT_QUERY_TASK].size());
+    Logger::debug("mm::rate_calculator = %d", m_maps[RecyclableType::RT_RATE_CALCULATOR].size());
+    Logger::debug("mm::tcp_connection = %d", m_maps[RecyclableType::RT_TCP_CONNECTION].size());
+    Logger::debug("mm::time_series = %d", m_maps[RecyclableType::RT_TIME_SERIES].size());
 
     int count = 0;
     for (void *next = m_page_free_list; next != nullptr; count++)
     {
         next = *(static_cast<void**>(next));
     }
-    Logger::info("mm::page = %d", count);
-    Logger::info("mm::--------");
+    Logger::debug("mm::page = %d", count);
+    Logger::debug("mm::--------");
 #endif
 }
 

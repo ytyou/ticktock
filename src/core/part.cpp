@@ -76,6 +76,7 @@ PartitionBuffer::append(DataPoint *dp)
 
     if (n >= (m_buff_size-m_size)) return false;
     m_size += n;
+    ASSERT(m_buff[m_size] == 0);
     return true;
 }
 

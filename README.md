@@ -13,13 +13,13 @@ Other Linux platforms should also work, although we haven't tested them yet.
 Build
 -----
 Install the following:
-* zlib 1.2.11 static library (libz.a)
+* zlib 1.2.11
 * glibc libraries
 
 On CentOS,
 ```
 $ yum install zlib-devel
-$ yum group install "Development Tools"
+$ yum groupinstall "Development Tools"
 ```
 On Ubuntu,
 ```
