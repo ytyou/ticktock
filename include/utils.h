@@ -158,4 +158,32 @@ void merge(std::vector<std::vector<Data>>& ins, std::vector<Data>& outs)
 }
 
 
+template<class Elem>
+class DynamicArray2D
+{
+public:
+    DynamicArray2D(size_t rows, size_t cols) :
+        m_rows(rows),
+        m_cols(cols)
+    {
+        m_array = new Elem[m_rows * m_cols];
+    }
+
+    ~DynamicArray2D()
+    {
+        delete[] m_array;
+    }
+
+    Elem& elem(size_t i, size_t j)
+    {
+        ASSERT((i < m_rows) && (j < m_cols));
+        return m_array[i * m_cols + j];
+    }
+
+private:
+    size_t m_rows, m_cols;
+    Elem *m_array;
+};
+
+
 }

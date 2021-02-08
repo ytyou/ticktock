@@ -33,6 +33,7 @@ public:
     void run();
 
 private:
+    void dynamic_array_tests();
     void memmgr_tests();
     void off_hour_tests();
     void random_tests();

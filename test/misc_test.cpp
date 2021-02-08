@@ -32,6 +32,7 @@ MiscTests::run()
 {
     log("Running %s...", m_name);
 
+    dynamic_array_tests();
     memmgr_tests();
     off_hour_tests();
     random_tests();
@@ -39,6 +40,32 @@ MiscTests::run()
     url_decode_tests();
 
     log("Finished %s", m_name);
+}
+
+void
+MiscTests::dynamic_array_tests()
+{
+    size_t rows = 3;
+    size_t cols = 4097;
+    int arr[rows][cols];
+    DynamicArray2D<int> dyn_arr(rows, cols);
+
+    for (int i = 0; i < rows; i++)
+    {
+        for (int j = 0; j < cols; j++)
+        {
+            arr[i][j] = tt::random(0, 100);
+            dyn_arr.elem(i, j) = arr[i][j];
+        }
+    }
+
+    for (int i = 0; i < rows; i++)
+    {
+        for (int j = 0; j < cols; j++)
+            CONFIRM(arr[i][j] == dyn_arr.elem(i,j));
+    }
+
+    m_stats.add_passed(1);
 }
 
 void

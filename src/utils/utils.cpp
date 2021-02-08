@@ -719,14 +719,14 @@ max_subset_4k(int16_t set[], size_t size, std::vector<int>& subset)
     const int16_t target = 4096;
     const size_t size1 = size + 1;
     const size_t target1 = target + 1;
-    std::pair<int16_t,int16_t> matrix[size1][target1];
+    DynamicArray2D<std::pair<int16_t,int16_t> > matrix(size1, target1);
 
     // initialize
     subset.clear();
     for (size_t t = 0; t <= target; t++)
     {
-        matrix[size][t].first = t;
-        matrix[size][t].second = 0;
+        matrix.elem(size,t).first = t;
+        matrix.elem(size,t).second = 0;
     }
 
     // calculate answer
@@ -738,11 +738,11 @@ max_subset_4k(int16_t set[], size_t size, std::vector<int>& subset)
 
             if ((t + set[s]) <= target)
             {
-                include = matrix[s+1][t+set[s]].first;
+                include = matrix.elem(s+1,t+set[s]).first;
             }
 
-            int exclude = matrix[s+1][t].first;
-            std::pair<int16_t,int16_t>& st = matrix[s][t];
+            int exclude = matrix.elem(s+1,t).first;
+            std::pair<int16_t,int16_t>& st = matrix.elem(s,t);
 
             if (include >= exclude)
             {
@@ -762,14 +762,15 @@ max_subset_4k(int16_t set[], size_t size, std::vector<int>& subset)
 
     for (int s = 0; s < size1; s++)
     {
-        if (matrix[s][sum].second != 0)
+        if (matrix.elem(s,sum).second != 0)
         {
             subset.push_back(s);
             sum += set[s];
         }
     }
 
-    return matrix[0][0].first;
+    sum = matrix.elem(0,0).first;
+    return sum;
 }
 
 

@@ -42,6 +42,7 @@ MaxSubsetTests::run()
     log("Running %s...", m_name);
 
     test1();
+    test2();
 
     log("Finished %s", m_name);
 }
@@ -101,6 +102,28 @@ MaxSubsetTests::test1()
     CONFIRM(subset[1] == 1);
     CONFIRM(subset[2] == 2);
     CONFIRM(subset[3] == 3);
+
+    m_stats.add_passed(1);
+}
+
+void
+MaxSubsetTests::test2()
+{
+    std::vector<int> subset;
+    const int size = 400000;
+    auto set = new int16_t [size];
+
+    // just make sure it will run without overflow anything
+    for (int i = 0; i < size; i++)
+        set[i] = tt::random(1, 4095);
+    try
+    {
+        max_subset_4k(set, size, subset);
+    }
+    catch (std::exception& e)
+    {
+        std::cout << e.what() << std::endl;
+    }
 
     m_stats.add_passed(1);
 }
