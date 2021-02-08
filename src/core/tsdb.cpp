@@ -1465,6 +1465,8 @@ Tsdb::init()
     if (freq_sec < 1) freq_sec = 1;
     Timer::inst()->add_task(task, freq_sec, "tsdb_compact");
     Logger::info("Will try to compact tsdb every %d secs.", freq_sec);
+
+    PartitionManager::init();
 }
 
 std::string

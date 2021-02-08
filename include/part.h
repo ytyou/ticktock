@@ -204,6 +204,8 @@ public:
     PartitionManager(Tsdb *tsdb);
     ~PartitionManager();
 
+    static void init();
+
     bool add_data_point(DataPoint *dp);
 
     inline PartitionServer *get_server(unsigned int id)
@@ -213,7 +215,7 @@ public:
     }
 
 private:
-    std::vector<PartitionServer*> m_servers;
+    static std::vector<PartitionServer*> m_servers;
     std::vector<Partition*> m_partitions;
     Tsdb *m_tsdb;
 };

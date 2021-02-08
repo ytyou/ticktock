@@ -41,6 +41,7 @@ namespace tt
 int BackLog::rotation_size = 0;
 int PartitionBuffer::m_max_line = 0;
 int PartitionBuffer::m_buff_size = 0;
+std::vector<PartitionServer*> PartitionManager::m_servers;
 
 static thread_local PartitionBuffer *partition_server_forward_buffer = nullptr;
 
@@ -565,6 +566,22 @@ PartitionManager::PartitionManager(Tsdb *tsdb) :
 
     if (Config::exists(CFG_CLUSTER_SERVERS))
     {
+        // For now, create exactly one partition
+        m_partitions.push_back(new Partition(tsdb, this));
+    }
+}
+
+PartitionManager::~PartitionManager()
+{
+    for (auto p: m_partitions) delete p;
+    m_partitions.clear();
+}
+
+void
+PartitionManager::init()
+{
+    if (Config::exists(CFG_CLUSTER_SERVERS))
+    {
         std::string servers = Config::get_str(CFG_CLUSTER_SERVERS);
         char buff[servers.size()+2];
         JsonArray arr;
@@ -616,20 +633,9 @@ PartitionManager::PartitionManager(Tsdb *tsdb) :
         }
 
         JsonParser::free_array(arr);
-
-        // For now, create exactly one partition
-        m_partitions.push_back(new Partition(tsdb, this));
     }
     else
         Logger::debug("Cluster is not defined.");
-}
-
-PartitionManager::~PartitionManager()
-{
-    for (auto s: m_servers) delete s;
-    m_servers.clear();
-    for (auto p: m_partitions) delete p;
-    m_partitions.clear();
 }
 
 bool

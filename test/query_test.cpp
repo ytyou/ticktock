@@ -31,8 +31,13 @@ QueryTests::run()
 {
     log("Running %s...", m_name);
 
-    basic_query_tests();
-    duplicate_dp_tests();
+    std::thread t1(&QueryTests::basic_query_tests, this);
+    t1.join();
+
+    std::thread t2(&QueryTests::duplicate_dp_tests, this);
+    t2.join();
+    //basic_query_tests();
+    //duplicate_dp_tests();
 
     log("Finished %s", m_name);
 }
