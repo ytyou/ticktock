@@ -53,7 +53,7 @@ Query::Query(JsonMap& map, TimeRange& range, StringBuffer& strbuf, bool ms) :
     m_ms(ms),
     TagOwner(false)
 {
-    auto search = map.find("metric");
+    auto search = map.find(METRIC_TAG_NAME);
     ASSERT(search != map.end());
     m_metric = search->second->to_string();
 

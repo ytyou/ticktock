@@ -31,6 +31,7 @@
 #include "ts.h"
 #include "http.h"
 #include "page.h"
+#include "part.h"
 #include "range.h"
 #include "recycle.h"
 #include "rw.h"
@@ -68,7 +69,6 @@ namespace tt
 
 
 class Tsdb;
-class PartitionManager;
 
 // one per metric
 class Mapping : public Recyclable
@@ -128,7 +128,14 @@ public:
 
     bool add(DataPoint& dp);
     bool add_batch(DataPointSet& dps);
-    bool add_data_point(DataPoint *dp);
+
+    bool add_data_point(DataPoint& dp);
+    inline bool submit_data_points()
+    {
+        ASSERT(m_partition_mgr != nullptr);
+        return m_partition_mgr->submit_data_points();
+    }
+
     void query_for_ts(const char *metric, Tag *tags, std::unordered_set<TimeSeries*>& ts);
     void ensure_readable();
 

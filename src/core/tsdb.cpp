@@ -706,7 +706,7 @@ Tsdb::add_batch(DataPointSet& dps)
 
 // TODO: inline this?
 bool
-Tsdb::add_data_point(DataPoint *dp)
+Tsdb::add_data_point(DataPoint& dp)
 {
     ASSERT(m_partition_mgr != nullptr);
     return m_partition_mgr->add_data_point(dp);
@@ -1225,7 +1225,7 @@ Tsdb::http_api_put_handler_plain(HttpRequest& request, HttpResponse& response)
                     break;
                 }
                 if (forward)
-                    success = tsdb->add_data_point(nullptr) && success; // flush
+                    success = tsdb->submit_data_points() && success; // flush
             }
             if (guard != nullptr) delete guard;
             tsdb = Tsdb::inst(dp.get_timestamp());
@@ -1245,12 +1245,13 @@ Tsdb::http_api_put_handler_plain(HttpRequest& request, HttpResponse& response)
         ASSERT(tsdb != nullptr);
 
         if (forward)
-            success = tsdb->add_data_point(&dp) && success;
+            success = tsdb->add_data_point(dp) && success;
         else
             success = tsdb->add(dp) && success;
     }
 
-    if (forward && (tsdb != nullptr)) tsdb->add_data_point(nullptr); // flush
+    if (forward && (tsdb != nullptr))
+        success = tsdb->submit_data_points() && success; // flush
     if (guard != nullptr) delete guard;
     response.status_code = (success ? 200 : 400);
 
@@ -1396,6 +1397,8 @@ Tsdb::init()
     DIR *dir;
     struct dirent *dir_ent;
 
+    PartitionManager::init();
+
     tsdb_rotation_freq =
         validate_resolution(Config::get_time(CFG_TSDB_ROTATION_FREQUENCY, TimeUnit::SEC, CFG_TSDB_ROTATION_FREQUENCY_DEF));
     if (tsdb_rotation_freq < 1) tsdb_rotation_freq = 1;
@@ -1465,8 +1468,6 @@ Tsdb::init()
     if (freq_sec < 1) freq_sec = 1;
     Timer::inst()->add_task(task, freq_sec, "tsdb_compact");
     Logger::info("Will try to compact tsdb every %d secs.", freq_sec);
-
-    PartitionManager::init();
 }
 
 std::string

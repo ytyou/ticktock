@@ -41,7 +41,7 @@ public:
     PartitionBuffer();
     ~PartitionBuffer();
 
-    bool append(DataPoint *dp);
+    bool append(DataPoint& dp);
 
     inline char *data()
     {
@@ -139,7 +139,11 @@ public:
     ~PartitionServer();
 
     // if dp == nullptr, we perform flush()
-    bool forward(DataPoint *dp);
+    bool forward(DataPoint& dp);
+
+    PartitionBuffer *get_thread_local_buffer();
+    void set_thread_local_buffer(PartitionBuffer *buffer);
+    void submit_buffer(PartitionBuffer *buffer);
 
     inline bool is_self() const { return m_self; }
 
@@ -179,7 +183,7 @@ class Partition
 public:
     Partition(Tsdb *tsdb, PartitionManager *mgr);
 
-    bool add_data_point(DataPoint *dp);
+    bool add_data_point(DataPoint& dp);
 
 private:
     int m_id;
@@ -206,7 +210,8 @@ public:
 
     static void init();
 
-    bool add_data_point(DataPoint *dp);
+    bool add_data_point(DataPoint& dp);
+    bool submit_data_points();
 
     inline PartitionServer *get_server(unsigned int id)
     {

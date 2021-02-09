@@ -43,7 +43,8 @@ int PartitionBuffer::m_max_line = 0;
 int PartitionBuffer::m_buff_size = 0;
 std::vector<PartitionServer*> PartitionManager::m_servers;
 
-static thread_local PartitionBuffer *partition_server_forward_buffer = nullptr;
+// indexed by PartitionServer::m_id
+static thread_local std::vector<PartitionBuffer*> partition_server_forward_buffers;
 
 
 PartitionBuffer::PartitionBuffer() :
@@ -68,12 +69,10 @@ PartitionBuffer::~PartitionBuffer()
 }
 
 bool
-PartitionBuffer::append(DataPoint *dp)
+PartitionBuffer::append(DataPoint& dp)
 {
-    ASSERT(dp != nullptr);
-
     int n = snprintf(&m_buff[m_size], m_buff_size-m_size, "put %s %lu %.10f %s\n",
-        dp->get_metric(), dp->get_timestamp(), dp->get_value(), dp->get_raw_tags());
+        dp.get_metric(), dp.get_timestamp(), dp.get_value(), dp.get_raw_tags());
 
     if (n >= (m_buff_size-m_size)) return false;
     m_size += n;
@@ -238,13 +237,31 @@ PartitionServer::~PartitionServer()
     close();
 }
 
-bool
-PartitionServer::forward(DataPoint *dp)
+PartitionBuffer *
+PartitionServer::get_thread_local_buffer()
 {
-    if (dp != nullptr)
+    PartitionBuffer *buffer = nullptr;
+    if (m_id < partition_server_forward_buffers.size())
+        buffer = partition_server_forward_buffers[m_id];
+    return buffer;
+}
+
+void
+PartitionServer::set_thread_local_buffer(PartitionBuffer *buffer)
+{
+    while (partition_server_forward_buffers.size() <= m_id)
+        partition_server_forward_buffers.push_back(nullptr);
+    partition_server_forward_buffers[m_id] = buffer;
+}
+
+bool
+PartitionServer::forward(DataPoint& dp)
+{
+    PartitionBuffer *buffer = get_thread_local_buffer();
+
+    // try to append
+    if (buffer == nullptr)
     {
-        // try to append
-        if (partition_server_forward_buffer == nullptr)
         {
             std::lock_guard<std::mutex> guard(m_lock);
 
@@ -252,32 +269,28 @@ PartitionServer::forward(DataPoint *dp)
             {
                 if (! (*it)->is_full())
                 {
-                    partition_server_forward_buffer = (*it);
+                    buffer = (*it);
                     m_buffers.erase(it);
                     break;
                 }
             }
 
-            if ((partition_server_forward_buffer == nullptr) && (m_buff_count < 16))  // TODO: config
+            if ((buffer == nullptr) && (m_buff_count < 16))  // TODO: config
             {
-                partition_server_forward_buffer = new PartitionBuffer(); // TODO: make it Recyclable
+                buffer = new PartitionBuffer(); // TODO: make it Recyclable
                 m_buff_count++;
             }
-            else
+            else if (buffer == nullptr)
+            {
                 return false;
+            }
         }
 
-        ASSERT(partition_server_forward_buffer != nullptr);
-        return partition_server_forward_buffer->append(dp);
+        set_thread_local_buffer(buffer);
     }
-    else if (partition_server_forward_buffer != nullptr)
-    {
-        // submit for transmission
-        Logger::trace("submitting %d bytes to transmit", partition_server_forward_buffer->size());
-        std::lock_guard<std::mutex> guard(m_lock);
-        m_buffers.push_back(partition_server_forward_buffer);
-        partition_server_forward_buffer = nullptr;
-    }
+
+    ASSERT(buffer != nullptr);
+    return buffer->append(dp);
 
     return true;
 }
@@ -374,12 +387,20 @@ PartitionServer::get_buffer(bool empty)
 }
 
 void
+PartitionServer::submit_buffer(PartitionBuffer *buffer)
+{
+    ASSERT(buffer != nullptr);
+    std::lock_guard<std::mutex> guard(m_lock);
+    m_buffers.push_back(buffer);
+}
+
+void
 PartitionServer::do_work()
 {
     unsigned int k = 0;
     sigset_t oldset, newset;
     int retval;
-    g_thread_id = "part_forwarder";
+    g_thread_id = "part_server_" + std::to_string(m_id);
 
     // block SIGPIPE, permanently
     retval = sigemptyset(&newset);
@@ -530,11 +551,11 @@ Partition::Partition(Tsdb *tsdb, PartitionManager *mgr) :
 }
 
 bool
-Partition::add_data_point(DataPoint *dp)
+Partition::add_data_point(DataPoint& dp)
 {
-    if ((m_local) && (dp != nullptr))
+    if (m_local)
     {
-        if (! m_tsdb->add(*dp))
+        if (! m_tsdb->add(dp))
             return false;
     }
 
@@ -639,7 +660,7 @@ PartitionManager::init()
 }
 
 bool
-PartitionManager::add_data_point(DataPoint *dp)
+PartitionManager::add_data_point(DataPoint& dp)
 {
     ASSERT(! m_partitions.empty());
 
@@ -648,6 +669,21 @@ PartitionManager::add_data_point(DataPoint *dp)
         return m_partitions.back()->add_data_point(dp);
 
     return false;   // not implemented
+}
+
+bool
+PartitionManager::submit_data_points()
+{
+    for (int i = 0; i < partition_server_forward_buffers.size(); i++)
+    {
+        PartitionBuffer *buffer = partition_server_forward_buffers[i];
+        if (buffer == nullptr) continue;
+
+        ASSERT(i < m_servers.size());
+        Logger::trace("submitting %d bytes to transmit", buffer->size());
+        m_servers[i]->submit_buffer(buffer);
+        partition_server_forward_buffers[i] = nullptr;
+    }
 }
 
 
