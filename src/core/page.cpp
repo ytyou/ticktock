@@ -370,8 +370,31 @@ PageManager::PageManager(TimeRange& range, PageCount suffix) :
         Config::get_int(CFG_TSDB_PAGE_COUNT, CFG_TSDB_PAGE_COUNT_DEF);
     m_total_size = (TsdbSize)page_count * (TsdbSize)g_page_size;
 
-    open_mmap(page_count);
+    bool is_new = open_mmap(page_count);
     ASSERT(m_page_count != nullptr);
+
+    if (is_new)
+    {
+        init_headers(); // zero-out headers
+    }
+    else
+    {
+        PageCount id = *m_page_index;   // global id
+        PageCount first = calc_first_page_info_index(*m_page_count) + get_start_index();
+
+        for (id--; id >= first; id--)
+        {
+            struct page_info_on_disk *info = get_page_info_on_disk(id);
+            if (info->m_page_index != 0) break;
+        }
+
+        if ((++id) != *m_page_index)
+        {
+            Logger::warn("Last %d pages are not initialized, will be discarded",
+                (*m_page_index)-id);
+            *m_page_index = id;
+        }
+    }
 }
 
 /*
@@ -395,6 +418,17 @@ PageManager::~PageManager()
 }
 
 void
+PageManager::init_headers()
+{
+    ASSERT(m_page_count != nullptr);
+    ASSERT(m_page_info != nullptr);
+
+    size_t size = (*m_page_count) * sizeof(struct page_info_on_disk);
+    std::memset((void*)m_page_info, 0, size);
+    msync((void*)m_page_info, size, MS_SYNC);
+}
+
+void
 PageManager::reopen()
 {
     if (m_pages == nullptr)
@@ -411,10 +445,11 @@ PageManager::calc_first_page_info_index(PageCount page_count)
     return std::ceil((page_count * sizeof(struct page_info_on_disk) + (sizeof(struct tsdb_header))) / (double)g_page_size);
 }
 
-void
+bool
 PageManager::open_mmap(PageCount page_count)
 {
     struct stat sb;
+    bool is_new = ! file_exists(m_file_name);
 
     Logger::info("Trying to open file %s...", m_file_name.c_str());
     m_fd = open(m_file_name.c_str(), O_CREAT|O_RDWR, S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH);
@@ -422,13 +457,13 @@ PageManager::open_mmap(PageCount page_count)
     if (m_fd == -1)
     {
         Logger::error("Failed to open file %s, errno = %d", m_file_name.c_str(), errno);
-        return;
+        return false;
     }
 
     if (fstat(m_fd, &sb) == -1)
     {
         Logger::error("Failed to fstat file %s, errno = %d", m_file_name.c_str(), errno);
-        return;
+        return false;
     }
 
     if ((0 != sb.st_size) && (m_total_size != sb.st_size))
@@ -443,7 +478,7 @@ PageManager::open_mmap(PageCount page_count)
     if (rc != 0)
     {
         Logger::error("Failed to resize file %s, errno = %d", m_file_name.c_str(), errno);
-        return;
+        return false;
     }
 
     m_pages = mmap64(nullptr,
@@ -457,7 +492,7 @@ PageManager::open_mmap(PageCount page_count)
     {
         Logger::error("Failed to mmap file %s, errno = %d", m_file_name.c_str(), errno);
         m_pages == nullptr;
-        return;
+        return false;
     }
 
     rc = madvise(m_pages, m_total_size, MADV_RANDOM);
@@ -526,6 +561,7 @@ PageManager::open_mmap(PageCount page_count)
 
     Logger::info("page count = %d", *m_page_count);
     Logger::info("page index = %d", *m_page_index);
+    return is_new;
 }
 
 void
@@ -771,8 +807,7 @@ PageManager::compact(std::vector<PageInfo*>& all_pages)
 
     long old_total_size = m_total_size;
 
-    *m_page_index = max_page + 1;
-    *m_actual_pg_cnt = max_page + 1;
+    *m_page_index = *m_actual_pg_cnt = max_page + 1;
     m_total_size = *m_actual_pg_cnt * g_page_size;
 
     resize(old_total_size);

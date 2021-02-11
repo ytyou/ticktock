@@ -452,7 +452,8 @@ Tsdb::create(TimeRange& range)
         Logger::trace("tsdb %s mode is: %d", tsdb->c_str(buff, sizeof(buff)), tsdb->m_mode);
     }
 
-    WriteLock guard(m_tsdb_lock);
+    // Caller already acquired the lock
+    //WriteLock guard(m_tsdb_lock);
     m_tsdbs.push_back(tsdb);
     std::sort(m_tsdbs.begin(), m_tsdbs.end(), tsdb_less());
 
@@ -1801,6 +1802,8 @@ Tsdb::compact(TaskData& data)
 {
     Tsdb *tsdb = nullptr;
     Meter meter(METRIC_TICKTOCK_TSDB_COMPACT_MS);
+
+    Logger::info("[COMPACTION] Finding tsdbs to compact...");
 
     // called from scheduled task? if so, enforce off-hour rule;
     if ((data.integer == 0) && ! is_off_hour()) return false;

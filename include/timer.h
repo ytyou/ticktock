@@ -61,6 +61,8 @@ public:
     void add_task(Task& task, int freq_sec, const char *name);
 
 private:
+    friend class Stats;
+
     Timer();
     void run();
 

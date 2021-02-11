@@ -143,6 +143,7 @@ Stats::inject_metrics(TaskData& data)
         // proc stat metrics (rss, vsize, proc.num_thread) have been collected above.
         write_proc_stat(now, tsdb);
 
+#ifdef _DEBUG
         // memory manager stats
         {
             int total = MemoryManager::get_recyclable_total();
@@ -152,6 +153,7 @@ Stats::inject_metrics(TaskData& data)
             dp.add_tag(HOST_TAG_NAME, g_host_name.c_str());
             tsdb->add(dp);
         }
+#endif
 
 #ifdef _LEAK_DETECTION
         // memory leak detection stats
@@ -371,12 +373,12 @@ Stats::http_get_api_stats_handler(HttpRequest& request, HttpResponse& response)
     if (tsdb == nullptr) return false;
 
     snprintf(buff, sizeof(buff),
-        "ticktock.connection.count %ld %d %s=%s\nticktock.time_series.count %ld %d %s=%s\nticktock.page.used.percent %ld %f %s=%s\nticktock.data_point.count %ld %d %s=%s\nticktock.ooo_page.count %ld %d %s=%s\n",
+        "ticktock.connection.count %ld %d %s=%s\nticktock.time_series.count %ld %d %s=%s\nticktock.page.used.percent %ld %f %s=%s\nticktock.ooo_page.count %ld %d %s=%s\nticktock.timer.pending_task.count %ld %d %s=%s\n",
         now, TcpListener::get_active_conn_count(), HOST_TAG_NAME, g_host_name.c_str(),
         now, Tsdb::get_ts_count(), HOST_TAG_NAME, g_host_name.c_str(),
         now, tsdb->get_page_percent_used(), HOST_TAG_NAME, g_host_name.c_str(),
-        now, Tsdb::get_dp_count(), HOST_TAG_NAME, g_host_name.c_str(),
-        now, Tsdb::get_page_count(true), HOST_TAG_NAME, g_host_name.c_str());
+        now, Tsdb::get_page_count(true), HOST_TAG_NAME, g_host_name.c_str(),
+        now, Timer::inst()->m_scheduler.get_pending_task_count(), HOST_TAG_NAME, g_host_name.c_str());
 
     buff[sizeof(buff)-1] = 0;
 

@@ -369,9 +369,10 @@ public:
     inline uint8_t *get_first_page() const { return static_cast<uint8_t*>(m_pages); }
 
 private:
-    void open_mmap(PageCount page_count);
+    bool open_mmap(PageCount page_count);
     void persist_compacted_flag(bool compacted);
     bool resize(long old_size);     // resize (shrink) the data file
+    void init_headers();    // zero-out headers
     static PageCount calc_first_page_info_index(PageCount page_count);
 
     std::mutex m_lock;
