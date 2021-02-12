@@ -49,7 +49,10 @@ Running TickTock Server
 ```
 $ tt -c <config> [-d]
 ```
-Use '-d' option to run the server as Linux daemon.
+Use '-d' option to run the server as Linux daemon. To run it in a Docker container,
+```
+$ docker run -d -v ticktock:/var/lib/ticktock --network=host --name ticktock ytyou/ticktock:latest
+```
 
 Collect Metrics
 ---------------
