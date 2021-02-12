@@ -100,6 +100,8 @@ Config::reload(TaskData& data)
     {
         fprintf(stderr, "failed to read config file %s: %s", g_config_file.c_str(), ex.what());
     }
+
+    return false;
 }
 
 void

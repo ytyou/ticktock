@@ -448,6 +448,8 @@ tokenize(char* str, char delim, std::vector<char*>& tokens)
     {
         tokens.push_back(str);
     }
+
+    return true;
 }
 
 void

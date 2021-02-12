@@ -684,6 +684,8 @@ PartitionManager::submit_data_points()
         m_servers[i]->submit_buffer(buffer);
         partition_server_forward_buffers[i] = nullptr;
     }
+
+    return true;
 }
 
 

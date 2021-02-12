@@ -153,7 +153,7 @@ public:
 
     inline size_t get_pending_task_count() const
     {
-        m_responders.get_pending_task_count();
+        return m_responders.get_pending_task_count();
     }
 
     inline int get_total_task_count(size_t counts[], int size) const

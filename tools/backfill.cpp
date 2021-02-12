@@ -176,7 +176,7 @@ http_setup()
     return 0;
 }
 
-int
+void
 http_cleanup()
 {
     if (g_socket_fd >= 0)
