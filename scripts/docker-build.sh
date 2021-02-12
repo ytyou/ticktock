@@ -3,19 +3,40 @@
 MAKE="/usr/bin/make -f Makefile.ubuntu"
 STAGE="alpha"
 TARGET_BRANCH="main"
+_TEST=0
 
-# make sure we are in main branch
-GIT_BRANCH=`git rev-parse --abbrev-ref HEAD`
+# process command line arguments
+while [[ $# -gt 0 ]]
+do
+    key=$1
 
-if [ "$GIT_BRANCH" != "$TARGET_BRANCH" ]; then
-    echo "[ERROR] Not in $TARGET_BRANCH branch: $GIT_BRANCH"
-    exit 1
-fi
+    case $key in
+        --test)
+        _TEST=1
+        ;;
+    esac
+    shift
+done
 
-# make sure there are no local changes
-if [[ `git status --porcelain` ]]; then
-    echo "[ERROR] Repo not clean"
-    exit 1
+if [ $_TEST -eq 0 ]; then
+
+    # make sure we are in main branch
+    GIT_BRANCH=`git rev-parse --abbrev-ref HEAD`
+
+    if [ "$GIT_BRANCH" != "$TARGET_BRANCH" ]; then
+        echo "[ERROR] Not in $TARGET_BRANCH branch: $GIT_BRANCH"
+        exit 1
+    fi
+
+    # make sure there are no local changes
+    if [[ `git status --porcelain` ]]; then
+        echo "[ERROR] Repo not clean"
+        exit 1
+    fi
+
+    BUILD_OPT="--no-cache=true"
+else
+    BUILD_OPT="--no-cache=false"
 fi
 
 # make sure we are at the root of repo
@@ -60,6 +81,7 @@ cp bin/tt docker/$TT_VERSION/opt/ticktock/bin/ticktock
 cp bin/backfill docker/$TT_VERSION/opt/ticktock/bin/backfill
 cp conf/tt.docker.conf docker/$TT_VERSION/opt/ticktock/conf/ticktock.conf
 cp admin/* docker/$TT_VERSION/opt/ticktock/scripts/
+cp docker/run.sh docker/$TT_VERSION/opt/ticktock/scripts/
 cp docker/limits.conf docker/$TT_VERSION/
 
 # build
@@ -68,7 +90,7 @@ docker build -f ../Dockerfile --tag ytyou/ticktock:${TT_VERSION}-${STAGE} --tag 
     --build-arg BUILD_DATE=$(date -u +'%Y-%m-%dT%H:%M:%SZ') \
     --build-arg GIT_COMMIT=$(git log -1 --pretty=format:%h) \
     --build-arg VERSION=0.1.3-alpha --add-host=ticktock:127.0.0.1 \
-    --rm --no-cache=true .
+    --rm $BUILD_OPT .
 popd
 
 exit 0

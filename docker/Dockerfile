@@ -7,6 +7,13 @@
 # To inspect the image by running it:
 #   docker run --rm -it --entrypoint=/bin/bash ytyou/ticktock:latest
 #
+# To update the image, first run it:
+#   docker run -it --entrypoint=/bin/bash ytyou/ticktock:latest
+# While inside the container, update anything you want. For example,
+# you can update the /opt/ticktock/conf/ticktock.conf file. After you
+# are done updating, exit the container and run:
+#   docker commit <container-id> <new_image_name>
+#
 # To start ticktock container for the first time:
 #   docker run -d -v ticktock:/var/lib/ticktock --network=host --name ticktock ytyou/ticktock:latest
 #
