@@ -2,7 +2,7 @@
 
 MAKE="/usr/bin/make -f Makefile.ubuntu"
 STAGE="alpha"
-TARGET_BRANCH="part"
+TARGET_BRANCH="main"
 
 # make sure we are in main branch
 GIT_BRANCH=`git rev-parse --abbrev-ref HEAD`
@@ -13,10 +13,10 @@ if [ "$GIT_BRANCH" != "$TARGET_BRANCH" ]; then
 fi
 
 # make sure there are no local changes
-#if [[ `git status --porcelain` ]]; then
-#    echo "[ERROR] Repo not clean"
-#    exit 1
-#fi
+if [[ `git status --porcelain` ]]; then
+    echo "[ERROR] Repo not clean"
+    exit 1
+fi
 
 # make sure we are at the root of repo
 if ! test -f "Makefile.ubuntu"; then
@@ -68,7 +68,7 @@ docker build -f ../Dockerfile --tag ytyou/ticktock:${TT_VERSION}-${STAGE} --tag 
     --build-arg BUILD_DATE=$(date -u +'%Y-%m-%dT%H:%M:%SZ') \
     --build-arg GIT_COMMIT=$(git log -1 --pretty=format:%h) \
     --build-arg VERSION=0.1.3-alpha --add-host=ticktock:127.0.0.1 \
-    --rm . #--no-cache=true
+    --rm --no-cache=true .
 popd
 
 exit 0
