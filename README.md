@@ -15,6 +15,7 @@ Supported Platforms
 -------------------
 * CentOS 7
 * Ubuntu 18 and up
+* Docker Container
 
 Other Linux platforms should also work, although we haven't tested them yet.
 
