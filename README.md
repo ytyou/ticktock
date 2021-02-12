@@ -9,7 +9,7 @@ Highlights
 * Replication - Write to any server in the cluster, get replicated to any other servers.
 * Scalability - Work in progress. Once finished, we can partition the database by metrics.
 * Compatibility with OpenTSDB - Compatible enough so that you can use TCollector to send data to it; use Grafana to query it.
-* Docker Ready - Docker Hub repo: ytyou/ticktock.
+* Docker Ready - To run it: docker run -d -v ticktock:/var/lib/ticktock --network=host --name ticktock ytyou/ticktock:latest
 
 Supported Platforms
 -------------------
