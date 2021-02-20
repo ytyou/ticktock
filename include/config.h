@@ -37,6 +37,7 @@
 #define CFG_APPEND_LOG_RETENTION_COUNT          "append.log.retention.count"
 #define CFG_APPEND_LOG_RETENTION_COUNT_DEF      2
 #define CFG_CLUSTER_SERVERS                     "cluster.servers"
+#define CFG_CLUSTER_PARTITIONS                  "cluster.partitions"
 #define CFG_CLUSTER_BACKLOG_ROTATION_SIZE       "cluster.backlog.rotation.size"
 #define CFG_CLUSTER_BACKLOG_ROTATION_SIZE_DEF   "10mb"
 #define CFG_CONFIG_RELOAD_ENABLED               "config.reload.enabled"

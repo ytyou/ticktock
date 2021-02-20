@@ -167,6 +167,8 @@ is_off_hour()
 bool
 is_my_ip(std::string& ip)
 {
+    if (ip == "127.0.0.1") return true;
+
     struct addrinfo hints, *ap;
     struct addrinfo *result = nullptr;
 
@@ -442,6 +444,27 @@ tokenize(char* str, char delim, std::vector<char*>& tokens)
         *separator = 0;
         tokens.push_back(str);
         str = separator + 1;
+    }
+
+    if (*str != 0)
+    {
+        tokens.push_back(str);
+    }
+
+    return true;
+}
+
+bool
+tokenize(char* str, char *delim, std::vector<char*>& tokens)
+{
+    char *separator;
+    int len = std::strlen(delim);
+
+    while ((separator = std::strstr(str, delim)) != nullptr)
+    {
+        *separator = 0;
+        tokens.push_back(str);
+        str = separator + len;
     }
 
     if (*str != 0)

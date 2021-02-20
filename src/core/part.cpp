@@ -38,7 +38,7 @@ namespace tt
 {
 
 
-int BackLog::rotation_size = 0;
+int BackLog::m_rotation_size = 0;
 int PartitionBuffer::m_max_line = 0;
 int PartitionBuffer::m_buff_size = 0;
 std::vector<PartitionServer*> PartitionManager::m_servers;
@@ -88,13 +88,18 @@ BackLog::BackLog(int server_id) :
     m_open_for_read(false),
     m_open_for_append(false)
 {
-    if (rotation_size == 0)
-        rotation_size = Config::get_bytes(CFG_CLUSTER_BACKLOG_ROTATION_SIZE, CFG_CLUSTER_BACKLOG_ROTATION_SIZE_DEF);
 }
 
 BackLog::~BackLog()
 {
     close();
+}
+
+void
+BackLog::init()
+{
+    m_rotation_size =
+        Config::get_bytes(CFG_CLUSTER_BACKLOG_ROTATION_SIZE, CFG_CLUSTER_BACKLOG_ROTATION_SIZE_DEF);
 }
 
 bool
@@ -200,7 +205,7 @@ BackLog::append(PartitionBuffer *buffer)
     ASSERT(buffer->data()[buffer->size()] == 0);
     ASSERT(m_open_for_append);
 
-    if (m_size >= rotation_size)
+    if (m_size >= m_rotation_size)
     {
         close();
         if (! open_for_append())
@@ -223,7 +228,7 @@ PartitionServer::PartitionServer(int id, std::string address, int tcp_port, int 
     m_fd(-1),
     m_stop_requested(false)
 {
-    m_self = is_my_ip(address);
+    m_self = is_my_ip(address) && (m_tcp_port == Config::get_int(CFG_TCP_SERVER_PORT, CFG_TCP_SERVER_PORT_DEF));
 
     // TODO: allow more than one thread?
     m_worker = std::thread(&PartitionServer::do_work, this);
@@ -317,9 +322,23 @@ PartitionServer::connect()
 
     if (retval == -1)
     {
-        Logger::warn("connect() failed, errno = %d\n", errno);
+        Logger::warn("connect(%s:%d) failed, errno = %d\n", m_address.c_str(), m_tcp_port, errno);
         ::close(m_fd);
         m_fd = -1;
+    }
+    else
+    {
+        // send DONT_FORWARD message to remote
+        if (! send(DONT_FORWARD, std::strlen(DONT_FORWARD)))
+        {
+            Logger::warn("failed to send DONT_FORWARD to (%s:%d)\n", m_address.c_str(), m_tcp_port);
+            ::close(m_fd);
+            m_fd = -1;
+        }
+        else
+        {
+            Logger::info("connected to %s:%d, DONT_FORWARD sent", m_address.c_str(), m_tcp_port);
+        }
     }
 
     if (m_fd != -1)
@@ -398,12 +417,11 @@ void
 PartitionServer::do_work()
 {
     unsigned int k = 0;
-    sigset_t oldset, newset;
-    int retval;
     g_thread_id = "part_server_" + std::to_string(m_id);
 
     // block SIGPIPE, permanently
-    retval = sigemptyset(&newset);
+    sigset_t oldset, newset;
+    int retval = sigemptyset(&newset);
     if (retval != 0)
         Logger::warn("sigemptyset() failed, errno = %d", errno);
     else
@@ -431,7 +449,8 @@ PartitionServer::do_work()
             // See if there are any backlogs. If so, try send them here.
             if ((m_backlog != nullptr) && (m_fd != -1))
             {
-                ASSERT(! m_backlog->is_open_for_append());
+                if (m_backlog->is_open_for_append())
+                    m_backlog->close();
 
                 if (! m_backlog->is_open_for_read())
                     m_backlog->open_for_read();
@@ -446,7 +465,10 @@ PartitionServer::do_work()
                         if (send(buffer->data(), buffer->size()))
                             buffer->clear();
                         else
+                        {
                             m_backlog->close();
+                            spin_yield(k++);
+                        }
                     }
                     else
                     {
@@ -467,7 +489,10 @@ PartitionServer::do_work()
                 }
             }
             else
-                spin_yield(k++);
+            {
+                std::this_thread::sleep_for(std::chrono::seconds(1));
+                if (m_backlog != nullptr) connect();
+            }
         }
         else
         {
@@ -478,15 +503,8 @@ PartitionServer::do_work()
 
                 if (m_fd != -1)
                 {
-                    // send DONT_FORWARD message to remote
-                    if (send(DONT_FORWARD, std::strlen(DONT_FORWARD)))
-                    {
-                        // If there are open backlogs for write, close them.
-                        Logger::debug("Replication connection established\n");
-
-                        if ((m_backlog != nullptr) && m_backlog->is_open_for_append())
-                            m_backlog->close();
-                    }
+                    if ((m_backlog != nullptr) && m_backlog->is_open_for_append())
+                        m_backlog->close();
                 }
                 else
                 {
@@ -532,17 +550,21 @@ PartitionServer::close()
 }
 
 
-Partition::Partition(Tsdb *tsdb, PartitionManager *mgr) :
+Partition::Partition(Tsdb *tsdb, PartitionManager *mgr, const char *from, const char *to, std::set<int>& servers) :
     m_id(0),        // TODO: from config
     m_tsdb(tsdb),
     m_mgr(mgr),
+    m_from(from),
+    m_to(to),
     m_local(false)
 {
     PartitionServer *svr;
 
-    // TODO: get list of servers for this partition from config
-    for (int i = 0; (svr = m_mgr->get_server(i)) != nullptr; i++)
+    for (auto s: servers)
     {
+        svr = m_mgr->get_server(s);
+        if (svr == nullptr) continue;
+
         if (svr->is_self())
             m_local = true;
         else
@@ -551,18 +573,23 @@ Partition::Partition(Tsdb *tsdb, PartitionManager *mgr) :
 }
 
 bool
+Partition::match(const char *metric) const
+{
+    if (m_from.empty() || m_to.empty())
+        return true;
+    else
+        return (m_from <= metric) && (metric < m_to);
+}
+
+bool
 Partition::add_data_point(DataPoint& dp)
 {
-    if (m_local)
-    {
-        if (! m_tsdb->add(dp))
-            return false;
-    }
-
     bool success = true;
 
     for (auto server: m_servers)
     {
+        if (server->is_self()) continue;
+
         if (! server->forward(dp))
         {
             success = false;
@@ -580,15 +607,60 @@ Partition::add_data_point(DataPoint& dp)
 }
 
 
-PartitionManager::PartitionManager(Tsdb *tsdb) :
+PartitionManager::PartitionManager(Tsdb *tsdb, bool existing) :
     m_tsdb(tsdb)
 {
     ASSERT(tsdb != nullptr);
 
-    if (Config::exists(CFG_CLUSTER_SERVERS))
+    std::string partition_defs;
+
+    if (existing)
+        partition_defs = tsdb->get_partition_defs();
+    else
+        partition_defs = Config::get_str(CFG_CLUSTER_PARTITIONS);
+
+    if (! partition_defs.empty())
     {
-        // For now, create exactly one partition
-        m_partitions.push_back(new Partition(tsdb, this));
+        char buff[partition_defs.size()+2];
+        JsonArray arr;
+
+        partition_defs.copy(buff, sizeof(buff));
+        JsonParser::parse_array(buff, arr);
+
+        for (auto val: arr)
+        {
+            JsonMap& map = val->to_map();
+            char *from = nullptr, *to = nullptr;
+            std::set<int> servers;
+
+            // from
+            auto search = map.find("from");
+            if (search != map.end())
+                from = search->second->to_string();
+
+            // to
+            search = map.find("to");
+            if (search != map.end())
+                to = search->second->to_string();
+
+            // servers
+            search = map.find("servers");
+            if (search != map.end())
+            {
+                JsonArray& svrs = search->second->to_array();
+
+                for (auto s: svrs)
+                    servers.insert((int)s->to_double());
+            }
+
+            if (! servers.empty())
+            {
+                Partition *partition =
+                    new Partition(tsdb, this, NONE_NULL_STR(from), NONE_NULL_STR(to), servers);
+                m_partitions.push_back(partition);
+            }
+        }
+
     }
 }
 
@@ -601,6 +673,8 @@ PartitionManager::~PartitionManager()
 void
 PartitionManager::init()
 {
+    BackLog::init();
+
     if (Config::exists(CFG_CLUSTER_SERVERS))
     {
         std::string servers = Config::get_str(CFG_CLUSTER_SERVERS);
@@ -686,6 +760,29 @@ PartitionManager::submit_data_points()
     }
 
     return true;
+}
+
+Partition *
+PartitionManager::get_partition(const char *metric) const
+{
+    if (m_partitions.empty()) return nullptr;
+
+    Partition *catch_all = nullptr;
+
+    for (auto partition: m_partitions)
+    {
+        if (partition->is_catch_all())
+        {
+            ASSERT(catch_all == nullptr);
+            catch_all = partition;
+            continue;
+        }
+
+        if (partition->match(metric))
+            return partition;
+    }
+
+    return catch_all;
 }
 
 

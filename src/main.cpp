@@ -210,11 +210,11 @@ initialize()
     Logger::init();
     MemoryManager::init();
     Tsdb::init();
-    Timer::inst()->start();
     AppendLog::init();
     Stats::init();
     QueryExecutor::init();
     //SanityChecker::init();
+    Timer::inst()->start();
 
     unsigned int n = std::thread::hardware_concurrency();
     Logger::info("TickTock version: %d.%d.%d, on %s",

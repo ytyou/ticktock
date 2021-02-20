@@ -70,7 +70,6 @@ Meter::~Meter()
         dp->init(ts, (double)ms);
     }
 
-    dp->add_tag(METRIC_TAG_NAME, m_metric);
     dp->set_metric(m_metric);
     Stats::add_data_point(dp);
 }

@@ -48,7 +48,8 @@ static thread_local tsl::robin_map<const char*, Mapping*, hash_func, eq_func> th
 
 Mapping::Mapping() :
     m_metric(nullptr),
-    m_tsdb(nullptr)
+    m_tsdb(nullptr),
+    m_partition(nullptr)
 {
 }
 
@@ -62,6 +63,7 @@ Mapping::init(const char *name, Tsdb *tsdb)
 
     m_metric = STRDUP(name);
     m_tsdb = tsdb;
+    m_partition = tsdb->get_partition(name);
 
     m_map.clear();
     m_map.rehash(16);
@@ -273,6 +275,28 @@ Mapping::add(DataPoint& dp)
 }
 
 bool
+Mapping::add_data_point(DataPoint& dp, bool forward)
+{
+    bool success = true;
+
+    if (m_partition == nullptr)
+    {
+        success = add(dp);
+    }
+    else
+    {
+        if (m_partition->is_local())
+            success = add(dp);
+
+        if (forward)
+            success = m_partition->add_data_point(dp) && success;
+    }
+
+    return success;
+}
+
+// TODO: deprecate add_batch()
+bool
 Mapping::add_batch(DataPointSet& dps)
 {
     TimeSeries *ts = get_ts(dps);
@@ -391,17 +415,18 @@ Mapping::get_page_count(bool ooo)
 }
 
 
-Tsdb::Tsdb(TimeRange& range) :
+Tsdb::Tsdb(TimeRange& range, bool existing) :
     m_time_range(range),
     m_meta_file(Tsdb::get_file_name(range, "meta")),
-    m_load_time(ts_now_sec())
+    m_load_time(ts_now_sec()),
+    m_partition_mgr(nullptr)
 {
     ASSERT(g_tstamp_resolution_ms ? is_ms(range.get_from()) : is_sec(range.get_from()));
 
     m_map.rehash(16);
     m_mode = mode_of();
     m_page_mgrs.push_back(new PageManager(range, 0));
-    m_partition_mgr = new PartitionManager(this);
+    m_partition_mgr = new PartitionManager(this, existing);
 
     char buff[64];
     Logger::debug("tsdb %s created (mode=%d)", range.c_str(buff, sizeof(buff)), m_mode);
@@ -437,9 +462,9 @@ Tsdb::~Tsdb()
 }
 
 Tsdb *
-Tsdb::create(TimeRange& range)
+Tsdb::create(TimeRange& range, bool existing)
 {
-    Tsdb *tsdb = new Tsdb(range);
+    Tsdb *tsdb = new Tsdb(range, existing);
 
     if (tsdb->m_mode & TSDB_MODE_READ)
     {
@@ -450,6 +475,21 @@ Tsdb::create(TimeRange& range)
         // TODO: load read-only
         char buff[1024];
         Logger::trace("tsdb %s mode is: %d", tsdb->c_str(buff, sizeof(buff)), tsdb->m_mode);
+    }
+
+    if (! existing)
+    {
+        const std::string& defs = Config::get_str(CFG_CLUSTER_PARTITIONS);
+
+        if (! defs.empty())
+        {
+            // save partition config
+            std::string part_file = Tsdb::get_file_name(tsdb->m_time_range, "part");
+            ASSERT(! file_exists(part_file));
+            std::FILE *f = std::fopen(part_file.c_str(), "w");
+            std::fprintf(f, "%s\n", defs.c_str());
+            std::fclose(f);
+        }
     }
 
     // Caller already acquired the lock
@@ -507,6 +547,21 @@ Tsdb::mode_of() const
     }
 
     return mode;
+}
+
+std::string
+Tsdb::get_partition_defs() const
+{
+    std::string part_file = Tsdb::get_file_name(m_time_range, "part");
+    if (! file_exists(part_file)) return EMPTY_STD_STRING;
+
+    std::FILE *f = std::fopen(part_file.c_str(), "r");
+    char buff[1024];
+    std::string defs;
+    if (std::fgets(buff, sizeof(buff), f) != nullptr)
+        defs.assign(buff);
+    std::fclose(f);
+    return defs;
 }
 
 /*
@@ -705,12 +760,20 @@ Tsdb::add_batch(DataPointSet& dps)
     return success;
 }
 
-// TODO: inline this?
 bool
-Tsdb::add_data_point(DataPoint& dp)
+Tsdb::add_data_point(DataPoint& dp, bool forward)
 {
-    ASSERT(m_partition_mgr != nullptr);
-    return m_partition_mgr->add_data_point(dp);
+    ASSERT(m_time_range.in_range(dp.get_timestamp()));
+
+    Mapping *mapping = get_or_add_mapping2(dp);
+    bool success;
+
+    if (mapping != nullptr)
+        success = mapping->add_data_point(dp, forward);
+    else
+        success = false;
+
+    return success;
 }
 
 void
@@ -721,11 +784,14 @@ Tsdb::query_for_ts(const char *metric, Tag *tags, std::unordered_set<TimeSeries*
     {
         std::lock_guard<std::mutex> guard(m_lock);
 
+        ASSERT((m_mode & TSDB_MODE_READ) != 0);
+/*
         if ((m_mode & TSDB_MODE_READ) == 0)
         {
             m_mode |= TSDB_MODE_READ;
             load_from_disk_no_lock();
         }
+*/
 
         auto result = m_map.find(metric);
         if (result != m_map.end())
@@ -932,7 +998,7 @@ Tsdb::inst(Timestamp tstamp)
         {
             TimeRange range;
             Tsdb::get_range(tstamp, range);
-            tsdb = Tsdb::create(range);
+            tsdb = Tsdb::create(range, false);  // create new
         }
     }
 
@@ -1245,10 +1311,11 @@ Tsdb::http_api_put_handler_plain(HttpRequest& request, HttpResponse& response)
 
         ASSERT(tsdb != nullptr);
 
-        if (forward)
-            success = tsdb->add_data_point(dp) && success;
-        else
-            success = tsdb->add(dp) && success;
+        //if (forward)
+            //success = tsdb->add_data_point(dp) && success;
+        //else
+            //success = tsdb->add(dp) && success;
+        success = tsdb->add_data_point(dp, forward) && success;
     }
 
     if (forward && (tsdb != nullptr))
@@ -1445,7 +1512,7 @@ Tsdb::init()
             }
 
             TimeRange range(start, end);
-            Tsdb *tsdb = Tsdb::create(range);
+            Tsdb *tsdb = Tsdb::create(range, true); // create existing
             ASSERT(tsdb != nullptr);
             Logger::trace("loaded tsdb with %d Mappings", tsdb->m_map.size());
             //m_tsdbs.push_back(tsdb);
@@ -1472,7 +1539,7 @@ Tsdb::init()
 }
 
 std::string
-Tsdb::get_file_name(TimeRange& range, std::string ext)
+Tsdb::get_file_name(const TimeRange& range, std::string ext)
 {
     char buff[PATH_MAX];
     snprintf(buff, sizeof(buff), "%s/%" PRIu64 ".%" PRIu64 ".%s",
