@@ -124,7 +124,7 @@ class TickTock(object):
         self._sum = {}
         self._count = {}
         self._sock = None
-        self._pattern = re.compile('^([a-zA-Z_:][a-zA-Z0-9_:]*)({.+})* ([0-9\.+-]+)')
+        self._pattern = re.compile('^([a-zA-Z_:][a-zA-Z0-9_:]*)({.+})* ([0-9\.eE\+\-]+)')
 
     def connect(self):
         self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
