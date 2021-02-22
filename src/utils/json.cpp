@@ -282,7 +282,10 @@ JsonParser::to_json(std::set<std::string>& strs, char *buff, size_t size)
 
     for (const std::string& str: strs)
     {
-        n += snprintf(buff+n, size-n, "\"%s\",", str.c_str());
+        // remove any double-quote, if any
+        std::string s(str);
+        s.erase(std::remove(s.begin(), s.end(), '"'), s.end());
+        n += snprintf(buff+n, size-n, "\"%s\",", s.c_str());
     }
 
     if (n == 1) n++;

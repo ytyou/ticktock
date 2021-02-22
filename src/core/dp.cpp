@@ -164,7 +164,17 @@ bool
 DataPoint::from_plain(char* &text)
 {
     m_metric = text;
-    text = strchr(text, ' ');
+    if (*text == '"')
+    {
+        m_metric++;
+        do
+        {
+            if (*++text == ' ') *text = '_';
+        } while (*text != '"');
+        *text++ = 0;
+    }
+    else
+        text = strchr(text, ' ');
     if (text == nullptr) { m_metric = nullptr; return false; }
     *text++ = 0;
     m_timestamp = std::atol(text);
@@ -178,6 +188,7 @@ DataPoint::from_plain(char* &text)
     text = strchr(text, '\n');
     if (text == nullptr) { m_raw_tags = nullptr; return false; }
     *text++ = 0;
+    if (*(text-2) == '\r') *(text-2) = 0;
     return true;
 }
 
@@ -265,6 +276,7 @@ DataPoint::parse_raw_tags()
 
     for (key = m_raw_tags; key != nullptr; key = space)
     {
+        while (*key == ' ') key++;
         eq = strchr(key, '=');
         if (eq == nullptr) return;
         *eq = 0;
