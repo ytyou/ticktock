@@ -170,7 +170,7 @@ DataPoint::from_plain(char* &text)
         do
         {
             if (*++text == ' ') *text = '_';
-        } while (*text != '"');
+        } while ((*text != '"') && (*text != '\n'));
         *text++ = 0;
     }
     else
