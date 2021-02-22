@@ -41,7 +41,7 @@ namespace tt
 int BackLog::m_rotation_size = 0;
 int PartitionBuffer::m_max_line = 0;
 int PartitionBuffer::m_buff_size = 0;
-std::vector<PartitionServer*> PartitionManager::m_servers;
+std::map<int,PartitionServer*> PartitionManager::m_servers;
 
 // indexed by PartitionServer::m_id
 static thread_local std::vector<PartitionBuffer*> partition_server_forward_buffers;
@@ -724,7 +724,7 @@ PartitionManager::init()
                 http_port = (int)search->second->to_double();
             }
 
-            m_servers.push_back(new PartitionServer(id, address, tcp_port, http_port));
+            m_servers.emplace(id, new PartitionServer(id, address, tcp_port, http_port));
         }
 
         JsonParser::free_array(arr);
@@ -753,7 +753,7 @@ PartitionManager::submit_data_points()
         PartitionBuffer *buffer = partition_server_forward_buffers[i];
         if (buffer == nullptr) continue;
 
-        ASSERT(i < m_servers.size());
+        ASSERT(m_servers.find(i) != m_servers.end());
         Logger::trace("submitting %d bytes to transmit", buffer->size());
         m_servers[i]->submit_buffer(buffer);
         partition_server_forward_buffers[i] = nullptr;

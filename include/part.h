@@ -223,12 +223,12 @@ public:
 
     inline PartitionServer *get_server(unsigned int id)
     {
-        if (id >= m_servers.size()) return nullptr;
-        return m_servers[id];
+        auto search = m_servers.find(id);
+        return (search == m_servers.end()) ? nullptr : search->second;
     }
 
 private:
-    static std::vector<PartitionServer*> m_servers;
+    static std::map<int,PartitionServer*> m_servers;
     std::vector<Partition*> m_partitions;
     Tsdb *m_tsdb;
 };
