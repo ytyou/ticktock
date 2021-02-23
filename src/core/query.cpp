@@ -57,27 +57,6 @@ Query::Query(JsonMap& map, TimeRange& range, StringBuffer& strbuf, bool ms) :
     ASSERT(search != map.end());
     m_metric = search->second->to_string();
 
-    /** DO THIS IN ALERTD AND METRIC-PROXY!
-    if (! starts_with(m_metric, "1.1."))
-    {
-        char buff[1024];
-        std::strcpy(buff, "1.1.");
-        std::strcat(buff, m_metric);
-        m_metric = strdup(buff);    // TODO: memory leak!!!
-        Logger::debug("metric=%s", m_metric);
-    }
-    **/
-
-    /*
-    search = map.find("ms");
-    if (search != map.end())
-    {
-        m_ms = search->second->to_bool();
-    }
-
-    ASSERT(m_ms);
-    */
-
     search = map.find("aggregator");
     if (search != map.end())
     {
@@ -196,30 +175,10 @@ Query::Query(JsonMap& map, StringBuffer& strbuf) :
 
     search = map.find("m");
     ASSERT(search != map.end());
-    //char buff[256];
-
-    //std::string params(search->second->to_string());
-    //std::strncpy(buff, static_cast<char*>(search->second), sizeof(buff));
-    //char *m = &buff[0];
-    //char *n = m;
-    //char *key = nullptr, *value = nullptr;
-
-    //Logger::debug("before-decoding: %s", params.c_str());
 
     char buff[1024];
     bool decode_ok = url_unescape(search->second->to_string(), buff, sizeof(buff));
     ASSERT(decode_ok);
-
-/*
-    replace_all(params, std::string("+"), std::string(""));
-    replace_all(params, std::string("%2A"), std::string("*"));
-    replace_all(params, std::string("%2C"), std::string(","));
-    replace_all(params, std::string("%3A"), std::string(":"));
-    replace_all(params, std::string("%22"), std::string("\""));
-    replace_all(params, std::string("%7B"), std::string("{"));
-    replace_all(params, std::string("%7D"), std::string("}"));
-    replace_all(params, std::string("%3D"), std::string("="));
-*/
 
     Logger::debug("after-decoding: %s", buff);
 
@@ -345,17 +304,6 @@ Query::Query(JsonMap& map, StringBuffer& strbuf) :
 
         JsonParser::free_map(m);
     }
-
-    /** DO THIS IN ALERTD AND METRIC-PROXY!
-    if (! starts_with(m_metric, "1.1."))
-    {
-        char buff[1024];
-        std::strcpy(buff, "1.1.");
-        std::strcat(buff, m_metric);
-        m_metric = strbuf.strdup(buff);
-        Logger::debug("metric2=%s", m_metric);
-    }
-    **/
 
     Logger::debug("query: %s", c_str(buff, sizeof(buff)));
 }

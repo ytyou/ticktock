@@ -26,6 +26,7 @@
 #include <regex>
 #include <functional>
 #include <cstring>
+#include "global.h"
 #include "type.h"
 
 
@@ -38,6 +39,8 @@ namespace tt
 #else
 #define ASSERT(_X)
 #endif
+
+#define NONE_NULL_STR(_X)       (((_X) == nullptr) ? EMPTY_STRING : (_X))
 
 #define MAX_SEC_SINCE_EPOCH     (100000000000L)
 
@@ -72,6 +75,7 @@ extern bool tokenize(const std::string& str, std::tuple<std::string,std::string>
 extern bool tokenize(const std::string& str, std::vector<std::string>& tokens, char delim);
 extern bool tokenize(char* str, char* &key, char* &value, char delim);
 extern bool tokenize(char* str, char delim, std::vector<char*>& tokens);
+extern bool tokenize(char* str, char *delim, std::vector<char*>& tokens);
 extern std::string trim(const std::string& str);
 extern std::string ltrim(const std::string& str);
 extern std::string rtrim(const std::string& str);

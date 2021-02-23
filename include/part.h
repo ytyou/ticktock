@@ -95,6 +95,7 @@ public:
     BackLog(int server_id);
     ~BackLog();
 
+    static void init();
     static bool exists(int server_id);
 
     inline bool is_open_for_read() const { return m_open_for_read; }
@@ -120,7 +121,7 @@ private:
     bool m_open_for_read;
     bool m_open_for_append;
 
-    static int rotation_size;
+    static int m_rotation_size;
 };
 
 
@@ -181,13 +182,18 @@ private:
 class Partition
 {
 public:
-    Partition(Tsdb *tsdb, PartitionManager *mgr);
+    Partition(Tsdb *tsdb, PartitionManager *mgr, const char *from, const char *to, std::set<int>& servers);
 
     bool add_data_point(DataPoint& dp);
+    inline bool is_local() const { return m_local; }
+    inline bool is_catch_all() const { return m_from.empty(); }
+    bool match(const char *metric) const;
 
 private:
     int m_id;
     bool m_local;
+    std::string m_from;
+    std::string m_to;
     std::vector<PartitionServer*> m_servers;
     Tsdb *m_tsdb;
     PartitionManager *m_mgr;
@@ -205,7 +211,7 @@ private:
 class PartitionManager
 {
 public:
-    PartitionManager(Tsdb *tsdb);
+    PartitionManager(Tsdb *tsdb, bool existing);
     ~PartitionManager();
 
     static void init();
@@ -213,14 +219,16 @@ public:
     bool add_data_point(DataPoint& dp);
     bool submit_data_points();
 
+    Partition *get_partition(const char *metric) const;
+
     inline PartitionServer *get_server(unsigned int id)
     {
-        if (id >= m_servers.size()) return nullptr;
-        return m_servers[id];
+        auto search = m_servers.find(id);
+        return (search == m_servers.end()) ? nullptr : search->second;
     }
 
 private:
-    static std::vector<PartitionServer*> m_servers;
+    static std::map<int,PartitionServer*> m_servers;
     std::vector<Partition*> m_partitions;
     Tsdb *m_tsdb;
 };

@@ -89,6 +89,7 @@ private:
 
     char *m_metric;
     bool add(DataPoint& dp);
+    bool add_data_point(DataPoint& dp, bool forward);
     bool add_batch(DataPointSet& dps);
     TimeSeries *get_ts(TagOwner& to);
     TimeSeries *get_ts2(DataPoint& dp);
@@ -106,6 +107,7 @@ private:
     //std::map<const char*,TimeSeries*,cstr_less> m_map;
 
     Tsdb *m_tsdb;
+    Partition *m_partition;
 };
 
 
@@ -121,7 +123,7 @@ public:
     static Tsdb* inst(Timestamp tstamp);
     static void insts(const TimeRange& range, std::vector<Tsdb*>& tsdbs);
     static void shutdown();
-    static std::string get_file_name(TimeRange& range, std::string ext);
+    static std::string get_file_name(const TimeRange& range, std::string ext);
     static Tsdb* search(Timestamp tstamp);
     static void purge_oldest(int threshold);
     static bool compact(TaskData& data);
@@ -129,11 +131,16 @@ public:
     bool add(DataPoint& dp);
     bool add_batch(DataPointSet& dps);
 
-    bool add_data_point(DataPoint& dp);
+    bool add_data_point(DataPoint& dp, bool forward);
     inline bool submit_data_points()
     {
         ASSERT(m_partition_mgr != nullptr);
         return m_partition_mgr->submit_data_points();
+    }
+
+    inline Partition *get_partition(const char *metric) const
+    {
+        return (m_partition_mgr == nullptr) ? nullptr : m_partition_mgr->get_partition(metric);
     }
 
     void query_for_ts(const char *metric, Tag *tags, std::unordered_set<TimeSeries*>& ts);
@@ -149,6 +156,8 @@ public:
 
     void append_meta_all();     // write all meta info to an empty file
     void add_ts(std::string& metric, std::string& key, uint32_t page_index);
+
+    std::string get_partition_defs() const;
 
     PageInfo *get_free_page_on_disk(bool out_of_order);
     // Caller should acquire m_pm_lock before calling this method
@@ -217,7 +226,7 @@ private:
     friend class SanityChecker;
 
     //Tsdb(Timestamp start, Timestamp end);
-    Tsdb(TimeRange& range);
+    Tsdb(TimeRange& range, bool existing);
     virtual ~Tsdb();
     //void open_meta();
     void load_from_disk();
@@ -232,7 +241,7 @@ private:
 
     static void get_range(Timestamp tstamp, TimeRange& range);
 
-    static Tsdb *create(TimeRange& range);  // caller needs to acquire m_tsdb_lock!
+    static Tsdb *create(TimeRange& range, bool existing);   // caller needs to acquire m_tsdb_lock!
 
     //static std::mutex m_tsdb_lock;
     static default_contention_free_shared_mutex m_tsdb_lock;

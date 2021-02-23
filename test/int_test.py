@@ -62,8 +62,8 @@ class TickTockConfig(object):
     def add_entry(self, key, value):
         self._dict[key] = value
 
-    def __call__(self):
-        filename = os.path.join(self._options.root,"tt.conf")
+    def __call__(self, conf_file="tt.conf"):
+        filename = os.path.join(self._options.root,conf_file)
         sys.stdout.write("generating ticktock config: %s\n" % filename)
         with open(filename, "w") as f:
             for k,v in self._dict.iteritems():
@@ -238,20 +238,22 @@ class Test(object):
         self._udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self._tcp_socket = tcp_socket
 
-    def start_tt(self):
+    def start_tt(self, conf_file="tt.conf"):
         while True:
-            self._tt = subprocess.Popen([self._options.tt, "-c", os.path.join(self._options.root,"tt.conf"), "-r"])
+            self._tt = subprocess.Popen([self._options.tt, "-c", os.path.join(self._options.root,conf_file), "-r"])
             time.sleep(4)
             if not self.tt_stopped():
                 break
         print "tt started"
 
-    def stop_tt(self):
+    def stop_tt(self, port=0):
+        if port == 0:
+            port = self._options.port
         if self._tcp_socket:
             self._tcp_socket.close()
             self._tcp_socket = None
         time.sleep(1)
-        response = requests.post("http://"+self._options.ip+":"+str(self._options.port)+"/api/admin?cmd=stop")
+        response = requests.post("http://"+self._options.ip+":"+str(port)+"/api/admin?cmd=stop")
         response.raise_for_status()
 
     def tt_stopped(self):
@@ -286,7 +288,7 @@ class Test(object):
             print "send_data(): " + json.dumps(payload)
         # send to opentsdb
         start = time.time()
-        response = requests.post("http://"+self._options.ip+":4242/api/put?details", json=payload["metrics"], timeout=self._options.timeout)
+        response = requests.post("http://"+self._options.ip+":"+str(self._options.opentsdbport)+"/api/put?details", json=payload["metrics"], timeout=self._options.timeout)
         self._opentsdb_time += time.time() - start
         response.raise_for_status()
 
@@ -388,7 +390,7 @@ class Test(object):
     def query_opentsdb(self, query):
         payload = query.to_json()
         start = time.time()
-        response = requests.post("http://"+self._options.ip+":4242/api/query", json=payload, timeout=self._options.timeout)
+        response = requests.post("http://"+self._options.ip+":"+str(self._options.opentsdbport)+"/api/query", json=payload, timeout=self._options.timeout)
         self._opentsdb_time += time.time() - start
         #if self._options.verbose:
         #    print "opentsdb-response: " + response.text #str(response.status_code)
@@ -511,6 +513,10 @@ class Test(object):
         if os.path.exists(self._options.root):
             shutil.rmtree(self._options.root)
         os.mkdir(self._options.root)
+        os.mkdir(os.path.join(self._options.root,"data0"))
+        os.mkdir(os.path.join(self._options.root,"data1"))
+        os.mkdir(os.path.join(self._options.root,"append0"))
+        os.mkdir(os.path.join(self._options.root,"append1"))
 
 
 class Multi_Thread_Tests(Test):
@@ -1095,6 +1101,346 @@ class Duplicate_Tests(Test):
         self.wait_for_tt(self._options.timeout)
 
 
+class Replication_Test(Test):
+
+    def __init__(self, options, idx, prefix="rep"):
+        super(Replication_Test, self).__init__(options, prefix)
+        self._idx = idx
+        self._conf_file = "tt" + str(idx) + ".conf"
+
+    def start(self):
+
+        # generate config
+        config = TickTockConfig(self._options)
+        config.add_entry("append.log.dir", os.path.join(self._options.root,"append{}".format(self._idx)))
+        config.add_entry("tsdb.data.dir", os.path.join(self._options.root,"data{}".format(self._idx)))
+        config.add_entry("log.file", os.path.join(self._options.root,"tt{}.log".format(self._idx)))
+        config.add_entry("http.server.port", self._options.port+int(self._idx)*1000)
+        config.add_entry("tcp.server.port", self._options.dataport+int(self._idx)*1000)
+        config.add_entry("udp.server.port", self._options.dataport+int(self._idx)*1000)
+        config.add_entry("cluster.servers", '[{{"id": 0, "address": "{}", "tcp_port": {}, "http_port": {}}}, {{"id": 1, "address": "{}", "tcp_port": {}, "http_port": {}}}]'.format(self._options.ip, self._options.dataport, self._options.port, self._options.ip, self._options.dataport+1000, self._options.port+1000));
+        config.add_entry("cluster.partitions", '[{"servers": [0,1]}]');
+        config(self._conf_file)
+
+        self.start_tt(self._conf_file)
+        print "Running Replication_Test{} with config {}...".format(self._idx, self._conf_file)
+
+    def write_data(self, dps):
+        dataport = self._options.dataport   # save
+        self._options.dataport = self._options.dataport+int(self._idx)*1000
+        self.send_data_to_ticktock_tcp(dps)
+        self._options.dataport = dataport   # restore
+
+    def query_data(self, dps, metric_cardinality, tag_cardinality):
+
+        port = self._options.port                   # save
+        opentsdbport = self._options.opentsdbport   # save
+
+        if self._idx == 0:
+            self._options.opentsdbport = str(int(self._options.port) + 1000)
+        else:
+            self._options.opentsdbport = self._options.port
+            self._options.port = str(int(self._options.port) + 1000)
+
+        # this metric does not exist
+        print "Try non-existing metric..."
+        query = Query(metric=self.metric_name(0), start=self._options.start, end=dps._end)
+        self.query_and_verify(query)
+
+        # retrieve raw dps (no tags, no downsampling)
+        print "Retrieving raw dps, no tags..."
+        for m in range(1, metric_cardinality+1):
+            query = Query(metric=self.metric_name(m), start=self._options.start, end=dps._end)
+            self.query_and_verify(query)
+
+        # retrieve raw dps with 1 tag (no aggregation, no downsampling)
+        print "Retrieving raw dps, with tags..."
+        for m in range(1, metric_cardinality+1):
+            for tk in range(tag_cardinality):
+                for tv in range(tag_cardinality):
+                    tags = self.tag(tk, tv)
+                    query = Query(metric=self.metric_name(m), start=self._options.start, end=dps._end, tags=tags)
+                    self.query_and_verify(query)
+
+        # retrieve raw dps with 1 tag (no aggregation, no downsampling)
+        print "Retrieving raw dps, with tags..."
+        for m in range(1, metric_cardinality+1):
+            for tk in range(tag_cardinality):
+                tags = {"tag"+str(tk): "*"}
+                query = Query(metric=self.metric_name(m), start=self._options.start, end=dps._end, tags=tags)
+                self.query_and_verify(query)
+
+        # retrieve raw dps with 1 tag (no aggregation, no downsampling)
+        if tag_cardinality > 2:
+            print "Retrieving raw dps, with tags..."
+            for m in range(1, metric_cardinality+1):
+                for tk in range(2, tag_cardinality):
+                    tags = {"tag1":"val1", "tag"+str(tk): "val*"}
+                    query = Query(metric=self.metric_name(m), start=self._options.start, end=dps._end, tags=tags)
+                    self.query_and_verify(query)
+
+        self._options.port = port                   # restore
+        self._options.opentsdbport = opentsdbport   # restore
+
+    def stop(self):
+
+        # stop tt
+        self.stop_tt(self._options.port+int(self._idx)*1000)
+        # make sure tt stopped
+        self.wait_for_tt(self._options.timeout)
+
+
+class Replication_Tests(Test):
+
+    def __init__(self, options, prefix="rep"):
+        super(Replication_Tests, self).__init__(options, prefix)
+
+    def __call__(self):
+
+        metric_cardinality = 4
+        tag_cardinality = 2
+
+        dps = DataPoints(self._prefix, self._options.start, interval_ms=50000, metric_count=1024, metric_cardinality=metric_cardinality, tag_cardinality=tag_cardinality)
+
+        self.cleanup()
+        self.test1(dps, metric_cardinality, tag_cardinality)
+        self.cleanup()
+        self.test2(dps, metric_cardinality, tag_cardinality)
+
+    def test1(self, dps, metric_cardinality, tag_cardinality):
+
+        rep0 = Replication_Test(self._options, idx=0)
+        rep1 = Replication_Test(self._options, idx=1)
+
+        rep0.start()
+        rep1.start()
+
+        # write to rep0, query from rep1
+        rep0.write_data(dps)
+        time.sleep(2)
+        rep0.query_data(dps, metric_cardinality=metric_cardinality, tag_cardinality=tag_cardinality)
+        rep1.query_data(dps, metric_cardinality=metric_cardinality, tag_cardinality=tag_cardinality)
+
+        rep0.stop()
+        rep1.stop()
+
+        if (rep0._failed) > 0 or (rep1._failed > 0):
+            print "[FAIL] Replication.test1 failed"
+
+        self._passed = self._passed + rep0._passed
+        self._failed = self._failed + rep0._failed
+        self._passed = self._passed + rep1._passed
+        self._failed = self._failed + rep1._failed
+
+    def test2(self, dps, metric_cardinality, tag_cardinality):
+
+        rep0 = Replication_Test(self._options, idx=0)
+        rep1 = Replication_Test(self._options, idx=1)
+
+        rep0.start()
+
+        # write to rep0, query from rep1
+        rep0.write_data(dps)
+
+        # delay second replica start
+        time.sleep(8)
+        rep1.start()
+        time.sleep(4)
+
+        rep0.query_data(dps, metric_cardinality=metric_cardinality, tag_cardinality=tag_cardinality)
+        rep1.query_data(dps, metric_cardinality=metric_cardinality, tag_cardinality=tag_cardinality)
+
+        rep0.stop()
+        rep1.stop()
+
+        if (rep0._failed) > 0 or (rep1._failed > 0):
+            print "[FAIL] Replication.test2 failed"
+
+        self._passed = self._passed + rep0._passed
+        self._failed = self._failed + rep0._failed
+        self._passed = self._passed + rep1._passed
+        self._failed = self._failed + rep1._failed
+
+
+class Partition_Test(Test):
+
+    def __init__(self, options, idx, prefix="part"):
+        super(Partition_Test, self).__init__(options, prefix)
+        self._idx = idx
+        self._conf_file = "tt" + str(idx) + ".conf"
+
+    def start(self):
+
+        # generate config
+        config = TickTockConfig(self._options)
+        config.add_entry("append.log.dir", os.path.join(self._options.root,"append{}".format(self._idx)))
+        config.add_entry("tsdb.data.dir", os.path.join(self._options.root,"data{}".format(self._idx)))
+        config.add_entry("log.file", os.path.join(self._options.root,"tt{}.log".format(self._idx)))
+        config.add_entry("http.server.port", self._options.port+int(self._idx)*1000)
+        config.add_entry("tcp.server.port", self._options.dataport+int(self._idx)*1000)
+        config.add_entry("udp.server.port", self._options.dataport+int(self._idx)*1000)
+        config.add_entry("cluster.servers", '[{{"id": 0, "address": "{}", "tcp_port": {}, "http_port": {}}}, {{"id": 1, "address": "{}", "tcp_port": {}, "http_port": {}}}]'.format(self._options.ip, self._options.dataport, self._options.port, self._options.ip, self._options.dataport+1000, self._options.port+1000));
+        config.add_entry("cluster.partitions", '[{"from": "a", "to": "n", "servers": [0]}, {"from": "n", "to": "{", "servers": [1]}]');
+        config(self._conf_file)
+
+        self.start_tt(self._conf_file)
+        print "Running Partition_Test{} with config {}...".format(self._idx, self._conf_file)
+
+    def write_data(self, dps):
+        dataport = self._options.dataport   # save
+        self._options.dataport = self._options.dataport+int(self._idx)*1000
+        self.send_data_to_ticktock_tcp(dps)
+        self._options.dataport = dataport   # restore
+
+    def query_data_not_empty(self, dps, metric_cardinality, tag_cardinality):
+
+        port = self._options.port                   # save
+        opentsdbport = self._options.opentsdbport   # save
+
+        if self._idx == 0:
+            self._options.opentsdbport = str(int(self._options.port) + 1000)
+        else:
+            self._options.opentsdbport = self._options.port
+            self._options.port = str(int(self._options.port) + 1000)
+
+        # retrieve raw dps (no tags, no downsampling)
+        print "Retrieving raw dps, no tags..."
+        for m in range(1, metric_cardinality+1):
+            query = Query(metric=self.metric_name(m), start=self._options.start, end=dps._end)
+            # self.query_and_verify(query)
+            actual = self.query_ticktock(query)
+            if not isinstance(actual, list):
+                self._failed = self._failed + 1
+                return
+            if len(actual) == 0:
+                self._failed = self._failed + 1
+                return
+            for i in range(len(actual)):
+                act = actual[i]
+                if not isinstance(act, dict):
+                    self._failed = self._failed + 1
+                    return
+                if not act.has_key("dps"):
+                    self._failed = self._failed + 1
+                    return
+                d = act["dps"]
+                if len(d) == 0:
+                    self._failed = self._failed + 1
+                    return
+            self._passed = self._passed + 1
+
+        self._options.port = port                   # restore
+        self._options.opentsdbport = opentsdbport   # restore
+
+    def query_data_empty(self, dps, metric_cardinality, tag_cardinality):
+
+        port = self._options.port                   # save
+        opentsdbport = self._options.opentsdbport   # save
+
+        if self._idx == 0:
+            self._options.opentsdbport = str(int(self._options.port) + 1000)
+        else:
+            self._options.opentsdbport = self._options.port
+            self._options.port = str(int(self._options.port) + 1000)
+
+        # retrieve raw dps (no tags, no downsampling)
+        for m in range(1, metric_cardinality+1):
+            query = Query(metric=self.metric_name(m), start=self._options.start, end=dps._end)
+            actual = self.query_ticktock(query)
+            if not isinstance(actual, list):
+                self._failed = self._failed + 1
+                return
+            if len(actual) != 0:
+                self._failed = self._failed + 1
+                return
+            self._passed = self._passed + 1
+
+        self._options.port = port                   # restore
+        self._options.opentsdbport = opentsdbport   # restore
+
+    def stop(self):
+
+        # stop tt
+        self.stop_tt(self._options.port+int(self._idx)*1000)
+        # make sure tt stopped
+        self.wait_for_tt(self._options.timeout)
+
+
+class Partition_Tests(Test):
+
+    def __init__(self, options, prefix="part"):
+        super(Partition_Tests, self).__init__(options, prefix)
+
+    def __call__(self):
+
+        self.cleanup()
+        self.test1()
+        self.cleanup()
+        self.test2()
+
+    def test1(self):
+
+        metric_cardinality = 4
+        tag_cardinality = 2
+
+        dps = DataPoints("aa", self._options.start, interval_ms=50000, metric_count=1024, metric_cardinality=metric_cardinality, tag_cardinality=tag_cardinality)
+
+        rep0 = Partition_Test(self._options, idx=0, prefix="aa")
+        rep1 = Partition_Test(self._options, idx=1, prefix="aa")
+
+        rep0.start()
+        rep1.start()
+
+        # write to rep0, query from rep1
+        rep0.write_data(dps)
+        time.sleep(2)
+
+        rep0.query_data_not_empty(dps, metric_cardinality=metric_cardinality, tag_cardinality=tag_cardinality)
+        rep1.query_data_empty(dps, metric_cardinality=metric_cardinality, tag_cardinality=tag_cardinality)
+
+        rep0.stop()
+        rep1.stop()
+
+        if (rep0._failed) > 0 or (rep1._failed > 0):
+            print "[FAIL] Partition.test1 failed"
+
+        self._passed = self._passed + rep0._passed
+        self._failed = self._failed + rep0._failed
+        self._passed = self._passed + rep1._passed
+        self._failed = self._failed + rep1._failed
+
+    def test2(self):
+
+        metric_cardinality = 4
+        tag_cardinality = 2
+
+        dps = DataPoints("zz", self._options.start, interval_ms=50000, metric_count=64, metric_cardinality=metric_cardinality, tag_cardinality=tag_cardinality)
+
+        rep0 = Partition_Test(self._options, idx=0, prefix="zz")
+        rep1 = Partition_Test(self._options, idx=1, prefix="zz")
+
+        rep0.start()
+        rep1.start()
+
+        # write to rep0, query from rep1
+        rep0.write_data(dps)
+        time.sleep(4)
+
+        rep0.query_data_empty(dps=dps, metric_cardinality=metric_cardinality, tag_cardinality=tag_cardinality)
+        rep1.query_data_not_empty(dps=dps, metric_cardinality=metric_cardinality, tag_cardinality=tag_cardinality)
+
+        rep0.stop()
+        rep1.stop()
+
+        if (rep0._failed) > 0 or (rep1._failed > 0):
+            print "[FAIL] Partition.test2 failed"
+
+        self._passed = self._passed + rep0._passed
+        self._failed = self._failed + rep0._failed
+        self._passed = self._passed + rep1._passed
+        self._failed = self._failed + rep1._failed
+
+
 class Memory_Leak_Tests(Test):
 
     def __init__(self, options, prefix="ml"):
@@ -1244,6 +1590,8 @@ def main(argv):
         tests.append(Out_Of_Order_Write_Tests(options))
         tests.append(Rate_Tests(options))
         tests.append(Duplicate_Tests(options))
+        tests.append(Replication_Tests(options))
+        tests.append(Partition_Tests(options))
         tests.append(Query_Tests(options, metric_count=16, metric_cardinality=4, tag_cardinality=4))
         #tests.append(Long_Running_Tests(options))
 
@@ -1315,6 +1663,8 @@ def get_options(argv):
 
     (options, args) = parser.parse_args(args=argv[1:])
 
+    options.opentsdbport = defaults['opentsdbport']
+
     return options, args
 
 
@@ -1327,6 +1677,7 @@ def get_defaults():
         'method': 'post',
         'port': 7182,
         'dataport': 7181,
+        'opentsdbport': 4242,
         'root': '/tmp/tt_i',
         'start': 1569859200000,
         'timeout': 10,
