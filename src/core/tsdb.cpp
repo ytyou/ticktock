@@ -1015,6 +1015,8 @@ Tsdb::load_from_disk()
 void
 Tsdb::load_from_disk_no_lock()
 {
+    Meter meter(METRIC_TICKTOCK_TSDB_LOAD_TOTAL_MS);
+
     if (m_meta_file.is_open())
         return; // already loaded
 

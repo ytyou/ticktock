@@ -30,6 +30,7 @@
 #include "compress.h"
 #include "config.h"
 #include "memmgr.h"
+#include "meter.h"
 #include "page.h"
 #include "tsdb.h"
 #include "logger.h"
@@ -216,6 +217,7 @@ PageInfo::ensure_dp_available(DataPointVector *dps)
 
     ASSERT(m_id != 0);
     ASSERT(m_page_mgr->is_open());
+    Meter meter(METRIC_TICKTOCK_PAGE_RESTORE_TOTAL_MS);
 
     //struct page_info_on_disk *piod = m_page_mgr->get_page_info_on_disk(m_id);
     //ASSERT(piod != nullptr);
