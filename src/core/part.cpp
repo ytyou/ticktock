@@ -74,7 +74,12 @@ PartitionBuffer::append(DataPoint& dp)
     int n = snprintf(&m_buff[m_size], m_buff_size-m_size, "put %s %lu %.10f %s\n",
         dp.get_metric(), dp.get_timestamp(), dp.get_value(), dp.get_raw_tags());
 
-    if (n >= (m_buff_size-m_size)) return false;
+    if (n >= (m_buff_size-m_size))
+    {
+        m_buff[m_size] = 0;
+        return false;
+    }
+
     m_size += n;
     ASSERT(m_buff[m_size] == 0);
     return true;
@@ -296,8 +301,6 @@ PartitionServer::forward(DataPoint& dp)
 
     ASSERT(buffer != nullptr);
     return buffer->append(dp);
-
-    return true;
 }
 
 void
