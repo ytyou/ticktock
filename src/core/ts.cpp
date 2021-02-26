@@ -416,10 +416,7 @@ TimeSeries::query_without_ooo(TimeRange& range, Downsampler *downsampler, DataPo
         this->query_without_ooo(range, downsampler, dps, page_info);
     }
 
-    for (PageInfo *page_info : m_ooo_pages)
-    {
-        this->query_without_ooo(range, downsampler, dps, page_info);
-    }
+    ASSERT(m_ooo_pages.empty());
 
     char buff[256];
     Logger::debug("Found %d data points in ts %s", dps.size(), c_str(buff,sizeof(buff)));
