@@ -111,6 +111,17 @@ PageInfo::flush()
 }
 
 void
+PageInfo::shrink_to_fit()
+{
+    persist();
+    m_header->m_size = m_header->m_cursor;
+    ASSERT(m_header->m_size != 0);
+    if (m_header->m_start != 0) m_header->m_size++;
+    m_header->set_full(true);
+    flush();
+}
+
+void
 PageInfo::reset()
 {
     ASSERT(m_compressor != nullptr);
@@ -154,6 +165,7 @@ PageInfo::init_for_disk(PageManager *pm, PageCount id, PageSize size, bool is_oo
     m_header->m_page_index = m_id;
     m_header->m_offset = 0;
     m_header->m_size = size;
+    ASSERT(m_header->m_size != 0);
     m_page_mgr = pm;
     //set_page();
     m_compressor = nullptr;
@@ -356,7 +368,7 @@ page_info_more(const PageInfo* lhs, const PageInfo* rhs)
 }
 
 
-PageManager::PageManager(TimeRange& range, PageCount suffix) :
+PageManager::PageManager(TimeRange& range, PageCount suffix, bool temp) :
     m_major_version(TT_MAJOR_VERSION),
     m_minor_version(TT_MINOR_VERSION),
     m_compacted(false),
@@ -364,7 +376,7 @@ PageManager::PageManager(TimeRange& range, PageCount suffix) :
     m_suffix(suffix),
     m_fd(-1)
 {
-    m_file_name = Tsdb::get_file_name(range, std::to_string(m_suffix));
+    m_file_name = Tsdb::get_file_name(range, std::to_string(m_suffix), temp);
     m_compressor_version =
         Config::get_int(CFG_TSDB_COMPRESSOR_VERSION, CFG_TSDB_COMPRESSOR_VERSION_DEF);
 
@@ -398,21 +410,6 @@ PageManager::PageManager(TimeRange& range, PageCount suffix) :
         }
     }
 }
-
-/*
-PageManager::PageManager(const PageManager& copy) :
-    m_major_version(copy.m_major_version),
-    m_minor_version(copy.m_minor_version),
-    m_time_range(copy.m_time_range),
-    m_suffix(copy.m_suffix),
-    m_page_size(copy.m_page_size),
-    m_file_name(copy.m_file_name),
-    m_total_size(copy.m_total_size)
-{
-    open_mmap(m_total_size / m_page_size);
-    ASSERT(m_page_count != nullptr);
-}
-*/
 
 PageManager::~PageManager()
 {
@@ -624,6 +621,60 @@ PageManager::get_free_page_on_disk(Tsdb *tsdb, bool ooo)
         ASSERT(info->is_out_of_order() == ooo);
 
         (*m_page_index)++;
+    }
+    else
+    {
+        // TODO: need to open another mmapped file
+        MemoryManager::free_recyclable(info);
+        info = nullptr;
+        Logger::debug("Running out of pages!");
+    }
+
+    return info;
+}
+
+PageInfo *
+PageManager::get_free_page_for_compaction(Tsdb *tsdb)
+{
+    PageInfo *info =
+        (PageInfo*)MemoryManager::alloc_recyclable(RecyclableType::RT_PAGE_INFO);
+
+    if (info == nullptr)
+    {
+        // TODO: handle OOM
+        Logger::fatal("Running out of memory!");
+        return nullptr;
+    }
+
+    // get a new, unsed page from mmapped file
+    std::lock_guard<std::mutex> guard(m_lock);
+
+    if ((*m_page_index) < (*m_actual_pg_cnt))
+    {
+        PageCount i = *m_page_index;
+        info->init_for_disk(this, i, g_page_size, false);
+        (*m_page_index)++;
+
+        if (i > calc_first_page_info_index(*m_page_count))
+        {
+            // Check to see if last page is completely full.
+            // If not, use the remaining space.
+            struct page_info_on_disk *header = get_page_info_on_disk(i+get_start_index()-1);
+            PageSize offset = header->m_offset + header->m_size;
+
+            if ((g_page_size - offset) >= 12) // at least 12 bytes left
+            {
+                info->m_header->m_page_index = header->m_page_index;
+                info->m_header->m_offset = offset;
+                info->m_header->m_size = g_page_size - offset;
+            }
+            else
+            {
+                info->m_header->m_page_index = header->m_page_index + 1;
+            }
+        }
+
+        info->setup_compressor(m_time_range, m_compressor_version);
     }
     else
     {
@@ -848,8 +899,23 @@ PageManager::resize(long old_size)
 }
 
 void
+PageManager::shrink_to_fit()
+{
+    long old_total_size = m_total_size;
+    PageCount id = *m_page_index - 1;
+    struct page_info_on_disk *header = get_page_info_on_disk(id);
+    PageCount last = header->m_page_index - get_start_index() + 1;
+    *m_actual_pg_cnt = last;
+    m_total_size = last * g_page_size;
+    persist_compacted_flag(true);
+    Logger::debug("shrink from %ld to %ld", old_total_size, m_total_size);
+    resize(old_total_size);
+}
+
+void
 PageManager::persist_compacted_flag(bool compacted)
 {
+    m_compacted = compacted;
     ASSERT(m_pages != nullptr);
     struct tsdb_header *header = reinterpret_cast<struct tsdb_header*>(m_pages);
     header->set_compacted(m_compacted);

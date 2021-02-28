@@ -202,6 +202,7 @@ public:
     // prepare to be used to represent a different page
     void flush();
     void reset();
+    void shrink_to_fit();
     bool is_full() const;
     bool is_empty() const;
     inline bool is_on_disk() const { return true; }
@@ -307,11 +308,12 @@ extern bool page_info_more(const PageInfo* lhs, const PageInfo* rhs);
 class PageManager
 {
 public:
-    PageManager(TimeRange& range, PageCount suffix = 0);
+    PageManager(TimeRange& range, PageCount suffix = 0, bool temp = false);
     PageManager(const PageManager& copy) = delete;
     virtual ~PageManager();
 
     PageInfo *get_free_page_on_disk(Tsdb *tsdb, bool ooo);
+    PageInfo *get_free_page_for_compaction(Tsdb *tsdb); // used during compaction
     // 'index' is the global id
     PageInfo *get_the_page_on_disk(uint32_t index);
     // 'index' is the global id
@@ -349,6 +351,7 @@ public:
     void close_mmap();
     void reopen();
     void persist();
+    void shrink_to_fit();
 
     // try to merge partially filled pages in 'partial_pages' together;
     // note that not all pages in 'partial_pages' belong to this PageManager;

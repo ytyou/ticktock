@@ -123,10 +123,11 @@ public:
     static Tsdb* inst(Timestamp tstamp);
     static void insts(const TimeRange& range, std::vector<Tsdb*>& tsdbs);
     static void shutdown();
-    static std::string get_file_name(const TimeRange& range, std::string ext);
+    static std::string get_file_name(const TimeRange& range, std::string ext, bool temp = false);
     static Tsdb* search(Timestamp tstamp);
     static void purge_oldest(int threshold);
     static bool compact(TaskData& data);
+    static void compact2(); // last compaction step
 
     bool add(DataPoint& dp);
     bool add_batch(DataPointSet& dps);
@@ -160,6 +161,7 @@ public:
     std::string get_partition_defs() const;
 
     PageInfo *get_free_page_on_disk(bool out_of_order);
+    PageInfo *get_free_page_for_compaction();   // used during compaction
     // Caller should acquire m_pm_lock before calling this method
     PageInfo *get_the_page_on_disk(PageCount index);
     //bool is_mmapped(PageInfo *page_info) const;
@@ -255,6 +257,7 @@ private:
     // The compressor version should be the same for ALL PageManagers in a
     // single Tsdb.
     std::vector<PageManager*> m_page_mgrs;
+    std::vector<PageManager*> m_temp_page_mgrs; // used during compaction
 
     // in archive-mode, this map will be populated from meta-file on-demand
     std::mutex m_lock;

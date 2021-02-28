@@ -46,7 +46,7 @@ public:
     void init(const char *metric, const char *key, Tag *tags, Tsdb *tsdb, bool read_only);
     void flush(bool close);
     bool recycle();
-    bool compact();
+    bool compact(MetaFile& meta_file);
     void append_meta_all(MetaFile &meta);
     void set_check_point();
 
