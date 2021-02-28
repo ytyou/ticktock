@@ -784,7 +784,7 @@ void
 Compressor_v0::restore(DataPointVector& dpv, CompressorPosition& position, uint8_t *base)
 {
     ASSERT(position.m_start == 0);
-    ASSERT(position.m_offset <= m_size);
+    //ASSERT(position.m_offset <= m_size);
 
     DataPointPair *dps = m_data_points;
 

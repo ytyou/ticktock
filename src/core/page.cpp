@@ -117,6 +117,7 @@ PageInfo::shrink_to_fit()
     m_header->m_size = m_header->m_cursor;
     ASSERT(m_header->m_size != 0);
     if (m_header->m_start != 0) m_header->m_size++;
+    if (m_page_mgr->get_compressor_version() == 0) m_header->m_size *= 16;
     m_header->set_full(true);
     flush();
 }
@@ -718,7 +719,7 @@ PageManager::flush(bool sync)
 
     ASSERT(m_page_index != nullptr);
     TsdbSize size = *m_page_index * g_page_size;
-    ASSERT(size <= m_total_size);
+    if (size > m_total_size) size = m_total_size;   // could happen after compaction
     int rc = msync(m_pages, size, (sync?MS_SYNC:MS_ASYNC));
 
     if (rc == -1)
