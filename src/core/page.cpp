@@ -386,20 +386,26 @@ PageManager::PageManager(TimeRange& range, PageCount id, bool temp) :
         // In the case of abnormal shutdown, there's a chance m_page_index was
         // persisted, but the latest page_info_on_disk was not. In that case,
         // we need to discard those pages to avoid corrupted data.
-        PageCount id = *m_page_index;
-        PageCount first = calc_first_page_info_index(*m_page_count);
+        PageCount id = *m_header_index;
+        PageCount page_idx = *m_page_index;
 
-        for (id--; id >= first; id--)
+        for (id--; id >= 0; id--)
         {
             struct page_info_on_disk *info = get_page_info_on_disk(id);
-            if (info->m_page_index != 0) break;
+
+            if (info->m_page_index != 0)
+            {
+                page_idx = info->m_page_index + 1;
+                break;
+            }
         }
 
-        if ((++id) != *m_page_index)
+        if ((++id) != *m_header_index)
         {
             Logger::warn("Last %d pages are not initialized, will be discarded",
-                (*m_page_index)-id);
-            *m_page_index = id;
+                (*m_header_index)-id);
+            *m_header_index = id;
+            *m_page_index = page_idx;
         }
     }
 }

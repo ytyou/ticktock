@@ -956,7 +956,7 @@ Tsdb::get_free_page_for_compaction()
 }
 
 PageInfo *
-Tsdb::get_the_page_on_disk(PageCount id, PageCount index)
+Tsdb::get_the_page_on_disk(PageCount id, PageCount header_index)
 {
     PageManager *pm = get_page_manager(id);
 
@@ -964,7 +964,7 @@ Tsdb::get_the_page_on_disk(PageCount id, PageCount index)
         pm = create_page_manager(id);
 
     ASSERT(pm->get_id() == id);
-    PageInfo *pi = pm->get_the_page_on_disk(index);
+    PageInfo *pi = pm->get_the_page_on_disk(header_index);
 
     ASSERT(pi != nullptr);
     return pi;

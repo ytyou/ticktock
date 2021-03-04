@@ -163,7 +163,7 @@ public:
     PageInfo *get_free_page_on_disk(bool out_of_order);
     PageInfo *get_free_page_for_compaction();   // used during compaction
     // Caller should acquire m_pm_lock before calling this method
-    PageInfo *get_the_page_on_disk(PageCount id, PageCount index);
+    PageInfo *get_the_page_on_disk(PageCount id, PageCount header_index);
     //bool is_mmapped(PageInfo *page_info) const;
 
     // -1 is an invalid id, which means we should generate the next
