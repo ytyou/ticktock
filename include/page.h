@@ -51,7 +51,9 @@ class Tsdb;
  * m_page_count:    total number of (4K) pages in the file, including
  *                  headers; this can be specified in the config file;
  *                  total size of the file: m_page_count * page_size(4K);
- * m_page_index:    the next unused page (index) in the file; note that
+ * m_header_index:  index of the next unused header in the file; it starts
+ *                  at 0;
+ * m_page_index:    index of the next unused page in the file; note that
  *                  it does not start with 0, since page 0 is occupied by
  *                  the tsdb_header, followed by an array of page_info_on_disk
  *                  headers; so in an empty file this is usually much bigger
@@ -68,6 +70,7 @@ struct tsdb_header
     uint16_t m_minor_version;   // 16-bit
     uint8_t m_flags;            // 8-bit
     PageCount m_page_count;     // 32-bit
+    PageCount m_header_index;   // 32-bit
     PageCount m_page_index;     // 32-bit
     Timestamp m_start_tstamp;   // 64-bit
     Timestamp m_end_tstamp;     // 64-bit
@@ -123,9 +126,7 @@ struct tsdb_header
  * m_flags:         the least significant bit indicates whether or not the
  *                  page is full; the second least significant bit indicates
  *                  whether or not this is an out-of-order page;
- * m_page_index:    the index of the page where data can be found; this
- *                  usually is the same as page id; after compaction, this
- *                  may points to a different page;
+ * m_page_index:    the index of the page where data can be found;
  * m_tstamp_from:   first timestamp on this page, RELATIVE TO the starting
  *                  timestamp of the Tsdb range, in either seconds or
  *                  milliseconds, depending on the resolution of the Tsdb.
@@ -188,14 +189,15 @@ public:
 
     bool recycle(); // called by MemoryManager when going back to free pool
 
-    // most of initialization will be done in copy_from_xxx();
     // this one initialize PageInfo to represent a new page on disk
-    // 'id': relative index inside this file, not the global id
-    void init_for_disk(PageManager *pm, PageCount id, PageSize size, bool is_ooo);
+    void init_for_disk(PageManager *pm,
+                       struct page_info_on_disk *header,
+                       PageCount page_idx,
+                       PageSize size,
+                       bool is_ooo);
 
-    // init a page info representing a page on disk
-    // 'id': global id
-    void init_from_disk(PageManager *pm, PageCount id);
+    // init a page info representing an existing page on disk
+    void init_from_disk(PageManager *pm, struct page_info_on_disk *header);
 
     inline void set_ooo(bool ooo) { m_header->set_out_of_order(ooo); }
 
@@ -217,11 +219,13 @@ public:
     }
 
     int get_dp_count() const;
-    PageCount get_internal_page_index() const;  // return relative id
+    PageCount get_id() const;
+    PageCount get_file_id() const;
+    int get_page_order() const;
 
-    inline PageCount get_page_index() const // return global id
+    inline PageCount get_page_index() const
     {
-        return m_id;
+        return m_header->m_page_index;
     }
 
     // return true if dp is added; false if page is full;
@@ -243,30 +247,9 @@ private:
     friend class PageManager;
     friend class MemoryManager;
     friend class SanityChecker;
-    friend class page_info_id_less;
     friend class page_info_index_less;
 
     void *get_page();
-
-    //bool m_on_disk;
-    //bool m_is_ooo;      // out-of-order page?
-
-    // This id is unique among ALL mmapp'ed files in a single Tsdb!
-    // So, if page count is N, then the m_id in the first mmapp'ed
-    // file are between 0 and N-1; that of the second would be
-    // between N and 2N-1; etc. Actually 0 will never be a valid m_id
-    // because the first few pages in any mmapp'ed file will be occupied
-    // by tsdb and page info headers.
-    PageCount m_id;
-
-    // Usually this is the same as m_id. After compaction, this may
-    // points to a different page that's shared with others.
-    //PageCount m_page_index;
-
-    //PageSize m_offset;
-    //PageSize m_size;    // allocated space, in bytes
-
-    //void *m_page;
 
     TimeRange m_time_range;     // range of actual data points in this page
     PageManager *m_page_mgr;    // this is null for in-memory page
@@ -274,20 +257,8 @@ private:
 
     struct page_info_on_disk *m_header;
 
-    //int m_dp_count;
-
 };  // class PageInfo
 
-
-// sort PageInfo by m_id
-class page_info_id_less
-{
-public:
-    bool operator()(PageInfo *info1, PageInfo *info2) const
-    {
-        return info1->m_id < info2->m_id;
-    }
-};
 
 class page_info_index_less
 {
@@ -298,8 +269,6 @@ public:
     }
 };
 
-extern bool page_info_more(const PageInfo* lhs, const PageInfo* rhs);
-
 
 /* Each PageManager represent a mmapp'ed file on disk. Each Tsdb represents
  * a segment (by time) of the database, which could consist of multiple
@@ -308,31 +277,23 @@ extern bool page_info_more(const PageInfo* lhs, const PageInfo* rhs);
 class PageManager
 {
 public:
-    PageManager(TimeRange& range, PageCount suffix = 0, bool temp = false);
+    PageManager(TimeRange& range, PageCount id = 0, bool temp = false);
     PageManager(const PageManager& copy) = delete;
     virtual ~PageManager();
 
     PageInfo *get_free_page_on_disk(Tsdb *tsdb, bool ooo);
     PageInfo *get_free_page_for_compaction(Tsdb *tsdb); // used during compaction
-    // 'index' is the global id
-    PageInfo *get_the_page_on_disk(uint32_t index);
-    // 'index' is the global id
-    struct page_info_on_disk *get_page_info_on_disk(PageCount index);
+    PageInfo *get_the_page_on_disk(PageCount header_index);
+    PageCount calc_page_info_index(struct page_info_on_disk *piod) const;
 
     inline const TimeRange& get_time_range()
     {
         return m_time_range;
     }
 
-    inline PageCount get_suffix() const
+    inline PageCount get_id() const
     {
-        return m_suffix;
-    }
-
-    inline PageCount get_start_index() const
-    {
-        ASSERT(m_page_count != nullptr);
-        return m_suffix * (*m_page_count);
+        return m_id;
     }
 
     inline PageCount get_data_page_count() const    // no. data pages currently in use
@@ -347,7 +308,6 @@ public:
     }
 
     void flush(bool sync);
-    //void flush(PageInfo *page_info);
     void close_mmap();
     void reopen();
     void persist();
@@ -357,7 +317,7 @@ public:
     // note that not all pages in 'partial_pages' belong to this PageManager;
     // on exit, remove all pages that belong to this PageManager from the
     // 'partial_pages' vector;
-    bool compact(std::vector<PageInfo*>& partial_pages);
+    //bool compact(std::vector<PageInfo*>& partial_pages);
 
     inline bool is_open() const { return (m_pages != nullptr); }
     inline bool is_full() const
@@ -370,22 +330,24 @@ public:
     double get_page_percent_used() const;
 
     inline uint8_t *get_first_page() const { return static_cast<uint8_t*>(m_pages); }
+    inline PageCount get_page_count() const { return *m_page_count; }
 
 private:
     bool open_mmap(PageCount page_count);
     void persist_compacted_flag(bool compacted);
     bool resize(long old_size);     // resize (shrink) the data file
     void init_headers();    // zero-out headers
+    struct page_info_on_disk *get_page_info_on_disk(PageCount index);
     static PageCount calc_first_page_info_index(PageCount page_count);
 
     std::mutex m_lock;
-    int m_fd;   // file-descriptor of the mmapp'ed file
-    void *m_pages;
+    int m_fd;       // file-descriptor of the mmapp'ed file
+    void *m_pages;  // points to the beginning of the mmapp'ed file
 
     // If one mmapp'ed file is not big enough to hold all the dps for
-    // this Tsdb, we will create multiple of them, and m_suffix is a
+    // this Tsdb, we will create multiple of them, and m_id is a
     // zero-based index of these mmapp'ed files.
-    PageCount m_suffix;
+    PageCount m_id;
     std::string m_file_name;
 
     // these are serialized
@@ -400,6 +362,9 @@ private:
     // constant because it determines the physical layout of
     // the page.
     PageCount *m_page_count;
+
+    // the index of the next free page info header in this file
+    PageCount *m_header_index;
 
     // the index of the next free page in this file; initially
     // it will be the index of the first page (the one right

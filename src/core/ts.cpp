@@ -324,8 +324,6 @@ TimeSeries::query_with_ooo(TimeRange& range, Downsampler *downsampler, DataPoint
             else if (! lhs.first->is_out_of_order() && rhs.first->is_out_of_order())
                 return false;
 
-            //if ((lhs.first->get_page_index() == 0) && (lhs.first->get_page_index() == 0))
-                //return lhs.first->is_out_of_order();
             if (lhs.first->get_page_index() == 0)
                 return true;
             else if (rhs.first->get_page_index() == 0)
@@ -502,8 +500,6 @@ TimeSeries::compact(MetaFile& meta_file)
 
     Logger::trace("ts (%s, %s): Found %d dps to compact", m_metric, m_key, dps.size());
 
-int count = 0;
-
     for (auto& dp : dps)
     {
         ASSERT(range.in_range(dp.first));
@@ -513,7 +509,6 @@ int count = 0;
         {
             info = m_tsdb->get_free_page_for_compaction();
             meta_file.append(this, info);
-            count = 0;
         }
 
         bool ok = info->add_data_point(dp.first, dp.second);
@@ -526,12 +521,9 @@ int count = 0;
 
             info = m_tsdb->get_free_page_for_compaction();
             meta_file.append(this, info);
-            count = 0;
             ok = info->add_data_point(dp.first, dp.second);
             ASSERT(ok);
         }
-
-        count++;
     }
 
     if (info != nullptr)

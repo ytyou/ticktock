@@ -156,16 +156,25 @@ public:
     }
 
     void append_meta_all();     // write all meta info to an empty file
-    void add_ts(std::string& metric, std::string& key, uint32_t page_index);
+    void add_ts(std::string& metric, std::string& key, PageCount file_id, PageCount page_index);
 
     std::string get_partition_defs() const;
 
     PageInfo *get_free_page_on_disk(bool out_of_order);
     PageInfo *get_free_page_for_compaction();   // used during compaction
     // Caller should acquire m_pm_lock before calling this method
-    PageInfo *get_the_page_on_disk(PageCount index);
+    PageInfo *get_the_page_on_disk(PageCount id, PageCount index);
     //bool is_mmapped(PageInfo *page_info) const;
-    PageManager *new_page_mgr();
+
+    // -1 is an invalid id, which means we should generate the next
+    // valid id for the new page manager.
+    PageManager *create_page_manager(int id = -1);
+
+    inline PageManager *get_page_manager(PageCount id)
+    {
+        ASSERT(id >= 0);
+        return (id < m_page_mgrs.size()) ? m_page_mgrs[id] : nullptr;
+    }
 
     inline const TimeRange& get_time_range() const
     {

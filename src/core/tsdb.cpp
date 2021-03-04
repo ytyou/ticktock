@@ -905,20 +905,13 @@ Tsdb::shutdown()
 }
 
 PageManager *
-Tsdb::new_page_mgr()
+Tsdb::create_page_manager(int id)
 {
-    if (m_page_mgrs.empty())
-    {
-        // TODO: why this is an error?
-        char buff[128];
-        Logger::error("new_page_mgr(): m_page_mgrs empty: %s", c_str(buff,sizeof(buff)));
-    }
-
-    //ASSERT(! m_page_mgrs.empty());
-    int suffix = m_page_mgrs.empty() ? 0 : m_page_mgrs.back()->get_suffix() + 1;
-    PageManager *pm = new PageManager(m_time_range, suffix);
+    if (id < 0)
+        id = m_page_mgrs.empty() ? 0 : m_page_mgrs.back()->get_id() + 1;
+    PageManager *pm = new PageManager(m_time_range, id);
     ASSERT(pm != nullptr);
-    ASSERT(! pm->is_full());
+    ASSERT(m_page_mgrs.empty() || (m_page_mgrs.back()->get_id() < pm->get_id()));
     m_page_mgrs.push_back(pm);
     return pm;
 }
@@ -926,18 +919,21 @@ Tsdb::new_page_mgr()
 PageInfo *
 Tsdb::get_free_page_on_disk(bool out_of_order)
 {
-    std::lock_guard<std::mutex> guard(m_pm_lock);
-
     ASSERT(! m_page_mgrs.empty());
-
+    std::lock_guard<std::mutex> guard(m_pm_lock);
     PageInfo *pi = m_page_mgrs.back()->get_free_page_on_disk(this, out_of_order);
-    if (pi != nullptr) return pi;
 
-    // We need a new mmapp'ed file!
-    PageManager *pm = new_page_mgr();
-    ASSERT(m_time_range.contains(pm->get_time_range()));
-    ASSERT(pm->get_time_range().contains(m_time_range));
-    return pm->get_free_page_on_disk(this, out_of_order);
+    if (pi == nullptr)
+    {
+        // We need a new mmapp'ed file!
+        PageManager *pm = create_page_manager();
+        ASSERT(m_time_range.contains(pm->get_time_range()));
+        ASSERT(pm->get_time_range().contains(m_time_range));
+        pi = pm->get_free_page_on_disk(this, out_of_order);
+    }
+
+    ASSERT(pi != nullptr);
+    return pi;
 }
 
 PageInfo *
@@ -950,8 +946,8 @@ Tsdb::get_free_page_for_compaction()
 
     if (info == nullptr)
     {
-        int suffix = m_temp_page_mgrs.empty() ? 0 : m_temp_page_mgrs.back()->get_suffix() + 1;
-        PageManager *pm = new PageManager(m_time_range, suffix, true);
+        int id = m_temp_page_mgrs.empty() ? 0 : m_temp_page_mgrs.back()->get_id() + 1;
+        PageManager *pm = new PageManager(m_time_range, id, true);
         m_temp_page_mgrs.push_back(pm);
         info = pm->get_free_page_for_compaction(this);
     }
@@ -960,24 +956,15 @@ Tsdb::get_free_page_for_compaction()
 }
 
 PageInfo *
-Tsdb::get_the_page_on_disk(uint32_t index)
+Tsdb::get_the_page_on_disk(PageCount id, PageCount index)
 {
-    PageInfo *pi = nullptr;
-    //std::lock_guard<std::mutex> guard(m_pm_lock);
+    PageManager *pm = get_page_manager(id);
 
-    for (PageManager *pm: m_page_mgrs)
-    {
-        pi = pm->get_the_page_on_disk(index);
-        if (pi != nullptr) break;
-    }
+    if (pm == nullptr)
+        pm = create_page_manager(id);
 
-    if (pi == nullptr)
-    {
-        char buff[128];
-        Logger::error("get_the_page_on_disk(): pi == nullptr: %s", c_str(buff,sizeof(buff)));
-        PageManager *pm = new_page_mgr();
-        pi = pm->get_the_page_on_disk(index);
-    }
+    ASSERT(pm->get_id() == id);
+    PageInfo *pi = pm->get_the_page_on_disk(index);
 
     ASSERT(pi != nullptr);
     return pi;
@@ -1050,11 +1037,11 @@ Tsdb::load_from_disk_no_lock()
         }
     }
 
-    for (int suffix = m_page_mgrs.size(); ; suffix++)
+    for (PageCount id = m_page_mgrs.size(); ; id++)
     {
-        std::string file_name = get_file_name(m_time_range, std::to_string(suffix));
+        std::string file_name = get_file_name(m_time_range, std::to_string(id));
         if (! file_exists(file_name)) break;
-        PageManager *pm = new PageManager(m_time_range, suffix);
+        PageManager *pm = new PageManager(m_time_range, id);
         pm->reopen();
         ASSERT(pm->is_open());
         m_page_mgrs.push_back(pm);
@@ -1077,45 +1064,6 @@ Tsdb::load_from_disk_no_lock()
     m_meta_file.load(this);
     m_meta_file.open(); // open for append
 
-    //std::string data_dir = Config::get_str(CFG_TSDB_DATA_DIR);
-/**
-    std::string meta_file = get_file_name(m_time_range, "meta");
-    std::ifstream is(meta_file);
-
-    if (! is)
-    {
-        open_meta();
-        Logger::warn("failed to open meta data file: %s", meta_file.c_str());
-        return;
-    }
-
-    Logger::trace("loading tsdb meta data from %s", meta_file.c_str());
-
-    std::string line;
-
-    while (std::getline(is, line))
-    {
-        std::vector<std::string> tokens;
-        tokenize(line, tokens, ' ');
-
-        if (tokens.size() != 3)
-        {
-            Logger::error("bad entry in %s: %s", meta_file.c_str(), line.c_str());
-            continue;
-        }
-
-        std::string metric = tokens[0];
-        std::string tags = tokens[1];
-        std::string index = tokens[2];
-
-        Logger::trace("restoring ts for metric %s, index %s", metric.c_str(), index.c_str());
-
-        add_ts(metric, tags, std::atoi(index.c_str()));
-    }
-
-    is.close();
-    open_meta();
-*/
     m_load_time = ts_now_sec();
 }
 
@@ -1577,7 +1525,7 @@ Tsdb::get_file_name(const TimeRange& range, std::string ext, bool temp)
 }
 
 void
-Tsdb::add_ts(std::string& metric, std::string& key, uint32_t page_index)
+Tsdb::add_ts(std::string& metric, std::string& key, PageCount file_id, PageCount header_index)
 {
     Mapping *mapping;
 
@@ -1596,8 +1544,7 @@ Tsdb::add_ts(std::string& metric, std::string& key, uint32_t page_index)
         m_map[mapping->m_metric] = mapping;
     }
 
-    ASSERT(page_index > 0);
-    PageInfo *info = get_the_page_on_disk(page_index);
+    PageInfo *info = get_the_page_on_disk(file_id, header_index);
 
     if (info->is_empty())
         MemoryManager::free_recyclable(info);
