@@ -151,7 +151,8 @@ dump_data(struct tsdb_header *tsdb_header, int header_index)
     CompressorPosition position(info);
     DataPointVector dps;
     compressor->restore(dps, position, nullptr);
-    printf("dps.size() == %d, pos.offset = %d, pos.start = %d\n", dps.size(), position.m_offset, position.m_start);
+    printf("dps.size() == %d, pos.offset = %d, pos.start = %d\n",
+        (int)dps.size(), position.m_offset, position.m_start);
     for (auto& dp: dps) printf("ts = %ld, value = %.2f\n", dp.first, dp.second);
     delete compressor;
 }
@@ -224,7 +225,7 @@ process_cmdline_opts(int argc, char *argv[])
                 }
                 else
                 {
-                    fprintf(stderr, "Usage: %s [-ah] [-p <header-index>] [-d] <data_file>\n");
+                    fprintf(stderr, "Usage: %s [-ah] [-p <header-index>] [-d] <data_file>\n", argv[0]);
                 }
                 return 1;
             default:
