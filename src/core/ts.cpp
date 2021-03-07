@@ -324,8 +324,6 @@ TimeSeries::query_with_ooo(TimeRange& range, Downsampler *downsampler, DataPoint
             else if (! lhs.first->is_out_of_order() && rhs.first->is_out_of_order())
                 return false;
 
-            //if ((lhs.first->get_page_index() == 0) && (lhs.first->get_page_index() == 0))
-                //return lhs.first->is_out_of_order();
             if (lhs.first->get_page_index() == 0)
                 return true;
             else if (rhs.first->get_page_index() == 0)
@@ -416,10 +414,7 @@ TimeSeries::query_without_ooo(TimeRange& range, Downsampler *downsampler, DataPo
         this->query_without_ooo(range, downsampler, dps, page_info);
     }
 
-    for (PageInfo *page_info : m_ooo_pages)
-    {
-        this->query_without_ooo(range, downsampler, dps, page_info);
-    }
+    ASSERT(m_ooo_pages.empty());
 
     char buff[256];
     Logger::debug("Found %d data points in ts %s", dps.size(), c_str(buff,sizeof(buff)));
@@ -494,46 +489,47 @@ TimeSeries::add_data_point_with_dedup(DataPointPair &dp, DataPointPair &prev, Pa
 // Compress all out-of-order pages in m_ooo_pages[], if any.
 // Return true if we actually compacted something.
 bool
-TimeSeries::compact()
+TimeSeries::compact(MetaFile& meta_file)
 {
     DataPointVector dps;
+    PageInfo *info = nullptr;
+    TimeRange range = m_tsdb->get_time_range();
 
-    for (PageInfo *info: m_ooo_pages)
+    // get all data points
+    query_with_ooo(range, nullptr, dps);
+
+    Logger::trace("ts (%s, %s): Found %d dps to compact", m_metric, m_key, dps.size());
+
+    for (auto& dp : dps)
     {
-        info->ensure_dp_available();
-        info->get_all_data_points(dps);
+        ASSERT(range.in_range(dp.first));
+        Logger::trace("dp.first=%ld, dp.second=%f", dp.first, dp.second);
+
+        if (info == nullptr)
+        {
+            info = m_tsdb->get_free_page_for_compaction();
+            meta_file.append(this, info);
+        }
+
+        bool ok = info->add_data_point(dp.first, dp.second);
+
+        if (! ok)
+        {
+            ASSERT(info->is_full());
+            info->flush();
+            MemoryManager::free_recyclable(info);
+
+            info = m_tsdb->get_free_page_for_compaction();
+            meta_file.append(this, info);
+            ok = info->add_data_point(dp.first, dp.second);
+            ASSERT(ok);
+        }
     }
 
-    Logger::debug("[COMPACTION] ts compact: found %d ooo dps", dps.size());
-
-    if (! dps.empty())
+    if (info != nullptr)
     {
-        std::stable_sort(dps.begin(), dps.end());
-        dps.erase(std::unique(dps.begin(), dps.end()), dps.end());  // remove duplicates
-
-        PageInfo *info = nullptr;
-        DataPointPair prev_dp;
-
-        for (DataPointPair &dp : dps)
-        {
-            add_data_point_with_dedup(dp, prev_dp, info);
-        }
-
-        if (prev_dp.first != 0L)
-        {
-            DataPointPair dp;
-            add_data_point_with_dedup(dp, prev_dp, info);
-        }
-
-        if (info != nullptr) info->persist();
-
-        // empty all pages in m_ooo_pages[]
-        for (PageInfo *info: m_ooo_pages)
-        {
-            info->setup_compressor(m_tsdb->get_time_range(), m_tsdb->get_compressor_version());
-            ASSERT(info->is_empty());
-            info->persist();
-        }
+        info->shrink_to_fit();
+        MemoryManager::free_recyclable(info);
     }
 
     return (! dps.empty());

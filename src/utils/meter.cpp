@@ -32,10 +32,12 @@ namespace tt
 {
 
 
+const char *METRIC_TICKTOCK_PAGE_RESTORE_TOTAL_MS = "ticktock.page.restore.total.ms";
 const char *METRIC_TICKTOCK_QUERY_LATENCY_MS = "ticktock.query.latency.ms";
 const char *METRIC_TICKTOCK_QUERY_AGGREGATE_LATENCY_MS = "ticktock.query.aggregate.latency.ms";
 const char *METRIC_TICKTOCK_QUERY_TS_LATENCY_MS = "ticktock.query.ts.latency.ms";
 const char *METRIC_TICKTOCK_TSDB_COMPACT_MS = "ticktock.tsdb.compact.ms";
+const char *METRIC_TICKTOCK_TSDB_LOAD_TOTAL_MS = "ticktock.tsdb.load.total.ms";
 const char *METRIC_TICKTOCK_TSDB_ROTATE_MS = "ticktock.tsdb.rotate.ms";
 
 

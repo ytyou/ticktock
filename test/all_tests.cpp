@@ -37,7 +37,7 @@ static TestCase *tests[] =
     new CompactTests(),
     new CompressTests(),
     new JsonTests(),
-    new MaxSubsetTests(),
+    //new MaxSubsetTests(),
     new MiscTests(),
     new QueryTests(),
     //new TaskTests()

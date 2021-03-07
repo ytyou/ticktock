@@ -90,6 +90,7 @@ extern int max_subset_4k(int16_t set[], size_t size, std::vector<int>& subset); 
 
 extern bool file_exists(const std::string& full_path);
 extern int rm_file(const std::string& full_path);
+extern int rm_all_files(const std::string& pattern);
 extern int rotate_files(const std::string& pattern, int retain_count);
 extern uint64_t get_disk_block_size(const std::string& full_path);
 extern uint64_t get_disk_available_blocks(const std::string& full_path);

@@ -111,7 +111,8 @@ MetaFile::append(TimeSeries *ts, PageInfo *info)
 
     char buff[4096];
     std::lock_guard<std::mutex> guard(m_lock);
-    fprintf(m_file, "%s %d\n", ts->c_str(buff, sizeof(buff)), info->get_page_index());
+    fprintf(m_file, "%s %u %u\n", ts->c_str(buff, sizeof(buff)),
+        info->get_file_id(), info->get_id());
 }
 
 void
@@ -134,43 +135,24 @@ MetaFile::load(Tsdb *tsdb)
 
     while (std::getline(is, line))
     {
-        std::string::size_type first = line.find_first_of(" ");
-        std::string::size_type last = line.find_last_of(" ");
+        std::vector<std::string> tokens;
+        tokenize(line, tokens, ' ');
 
-        if ((first == std::string::npos) || (last == std::string::npos))
+        if (tokens.size() != 4)
         {
             Logger::error("Bad line in %s: %s", m_name.c_str(), line.c_str());
             continue;
         }
 
-        std::string metric = line.substr(0, first);
-        std::string tags = line.substr(first+1, last-first-1);
-        std::string index = line.substr(last+1);
+        std::string metric = tokens[0]; // metric
+        std::string tags = tokens[1];   // tags
+        std::string id = tokens[2];     // file id
+        std::string index = tokens[3];  // page index
 
-        Logger::trace("restoring ts for metric %s, tags %s, index %s",
-            metric.c_str(), tags.c_str(), index.c_str());
-        tsdb->add_ts(metric, tags, std::atoi(index.c_str()));
+        Logger::trace("restoring ts for metric %s, tags %s, id %s, index %s",
+            metric.c_str(), tags.c_str(), id.c_str(), index.c_str());
+        tsdb->add_ts(metric, tags, std::atoi(id.c_str()), std::atoi(index.c_str()));
     }
-/*
-    {
-        std::vector<std::string> tokens;
-        tokenize(line, tokens, ' ');
-
-        if (tokens.size() != 3)
-        {
-            Logger::error("bad entry in %s: %s", m_name.c_str(), line.c_str());
-            continue;
-        }
-
-        std::string metric = tokens[0];
-        std::string tags = tokens[1];
-        std::string index = tokens[2];
-
-        Logger::trace("restoring ts for metric %s, index %s%s", metric.c_str(), index.c_str());
-
-        tsdb->add_ts(metric, tags, std::atoi(index.c_str()));
-    }
-*/
 
     is.close();
 }

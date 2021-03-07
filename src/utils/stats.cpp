@@ -196,56 +196,41 @@ Stats::inject_internal_metrics(Timestamp ts, Tsdb *tsdb)
         m_dps_head = m_dps_tail = nullptr;
     }
 
-    if (Config::get_bool(CFG_STATS_DOWNSAMPLE, CFG_STATS_DOWNSAMPLE_DEF))
+    std::unordered_map<const char*,DataPoint*,hash_func,eq_func> map;
+
+    for (DataPoint *dp = dps; dp != nullptr; dp = (DataPoint*)dp->next())
     {
-        std::unordered_map<const char*,DataPoint*,hash_func,eq_func> map;
-        StringBuffer strbuf;
+        const char *metric = dp->get_metric();
 
-        for (DataPoint *dp = dps; dp != nullptr; dp = (DataPoint*)dp->next())
+        auto search = map.find(metric);
+        if (search == map.end())
         {
-            std::string metric = dp->get_tag_value(METRIC_TAG_NAME);
-
-            auto search = map.find(metric.c_str());
-            if (search == map.end())
-            {
-                char *m = strbuf.strdup(metric.c_str());
-                dp->set_metric(m);
-                map.insert({m, dp});
-                continue;
-            }
-
-            // aggregate
-            if (ends_with(metric, ".cnt") || ends_with(metric, ".count") ||
-                (metric.find(".total.") != std::string::npos))
-            {
-                // sum
-                search->second->set_value(search->second->get_value() + dp->get_value());
-            }
-            else
-            {
-                // max
-                if (dp->get_value() > search->second->get_value())
-                    search->second->set_value(dp->get_value());
-            }
+            map.insert({metric, dp});
+            continue;
         }
 
-        for (const auto& kv : map)
+        // aggregate
+        if (ends_with(metric, ".cnt") || ends_with(metric, ".count") ||
+            (std::strstr(metric, ".total.") != nullptr))
         {
-            ASSERT(kv.second->get_metric() != nullptr);
-            kv.second->set_timestamp(ts);
-            tsdb->add(*(kv.second));
+            // sum
+            search->second->set_value(search->second->get_value() + dp->get_value());
+        }
+        else
+        {
+            // max
+            if (dp->get_value() > search->second->get_value())
+                search->second->set_value(dp->get_value());
         }
     }
-    else
+
+    for (const auto& kv : map)
     {
-        for (DataPoint *dp = dps; dp != nullptr; dp = (DataPoint*)dp->next())
-        {
-            std::string metric = dp->get_tag_value(METRIC_TAG_NAME);
-            dp->set_metric(metric.c_str());
-            ASSERT(dp->get_metric() != nullptr);
-            tsdb = Tsdb::inst(dp->get_timestamp());
-            if (tsdb != nullptr) tsdb->add(*dp);
-        }
+        DataPoint *dp = kv.second;
+        ASSERT(dp->get_metric() != nullptr);
+        dp->set_timestamp(ts);
+        dp->add_tag(HOST_TAG_NAME, g_host_name.c_str());
+        tsdb->add(*(dp));
     }
 
     if (dps != nullptr) MemoryManager::free_recyclables(dps);

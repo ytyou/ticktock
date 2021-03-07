@@ -24,10 +24,12 @@ namespace tt
 {
 
 
+extern const char *METRIC_TICKTOCK_PAGE_RESTORE_TOTAL_MS;
 extern const char *METRIC_TICKTOCK_QUERY_LATENCY_MS;
 extern const char *METRIC_TICKTOCK_QUERY_AGGREGATE_LATENCY_MS;
 extern const char *METRIC_TICKTOCK_QUERY_TS_LATENCY_MS;
 extern const char *METRIC_TICKTOCK_TSDB_COMPACT_MS;
+extern const char *METRIC_TICKTOCK_TSDB_LOAD_TOTAL_MS;
 extern const char *METRIC_TICKTOCK_TSDB_ROTATE_MS;
 
 

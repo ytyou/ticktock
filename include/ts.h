@@ -46,7 +46,7 @@ public:
     void init(const char *metric, const char *key, Tag *tags, Tsdb *tsdb, bool read_only);
     void flush(bool close);
     bool recycle();
-    bool compact();
+    bool compact(MetaFile& meta_file);
     void append_meta_all(MetaFile &meta);
     void set_check_point();
 
@@ -132,7 +132,7 @@ public:
     {
         info->ensure_dp_available();
         m_out_of_order = info->is_out_of_order();
-        m_page_index = info->get_page_index();
+        m_page_index = info->get_page_order();
         m_dps.reserve(700);
         info->get_all_data_points(m_dps);
     }

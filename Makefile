@@ -30,7 +30,7 @@ OBJT = $(patsubst %.cpp,%.o,$(TMPT))
 
 TARGET = bin/tt
 TESTS = bin/all_tests
-TOOLS = bin/backfill
+TOOLS = bin/backfill bin/inspect
 
 build: $(TARGET)
 
@@ -68,6 +68,10 @@ tools: $(TOOLS)
 bin/backfill: objs/tools/backfill.o
 	@mkdir -p $(@D)
 	$(LINK) $(LFLAGS) -o $@ $< $(LIBS)
+
+bin/inspect: objs/tools/inspect.o
+	@mkdir -p $(@D)
+	$(LINK) $(LFLAGS) -o $@ $< $(OBJI) $(LIBS)
 
 tt: clean build
 all: build test tools

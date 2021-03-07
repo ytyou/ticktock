@@ -587,6 +587,24 @@ rm_file(const std::string& full_path)
 }
 
 int
+rm_all_files(const std::string& pattern)
+{
+    glob_t glob_result;
+    unsigned int cnt;
+
+    glob(pattern.c_str(), GLOB_TILDE, nullptr, &glob_result);
+
+    for (cnt = 0; cnt < glob_result.gl_pathc; cnt++)
+    {
+        std::remove(glob_result.gl_pathv[cnt]);
+    }
+
+    globfree(&glob_result);
+
+    return (int)cnt;
+}
+
+int
 rotate_files(const std::string& pattern, int retain_count)
 {
     glob_t glob_result;

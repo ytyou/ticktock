@@ -70,8 +70,6 @@
 #define CFG_QUERY_EXECUTOR_QUEUE_SIZE_DEF       1024
 #define CFG_QUERY_EXECUTOR_THREAD_COUNT         "query.executor.thread.count"
 #define CFG_QUERY_EXECUTOR_THREAD_COUNT_DEF     8
-#define CFG_STATS_DOWNSAMPLE                    "stats.downsample"
-#define CFG_STATS_DOWNSAMPLE_DEF                true
 #define CFG_STATS_FREQUENCY                     "stats.frequency"
 #define CFG_STATS_FREQUENCY_DEF                 "30s"
 #define CFG_TCP_CONNECTION_TIMEOUT              "tcp.connection.timeout"

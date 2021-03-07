@@ -333,7 +333,7 @@ Logger::prepare_header(char *buff, int size, const LogLevel level, const char *f
     struct tm timeinfo;
     localtime_r(&sec, &timeinfo);
     std::strftime(buff, size, "%Y-%m-%d %H:%M:%S", &timeinfo);
-    sprintf(buff+std::strlen(buff), ".%03d [%s] [%s] %s",
+    sprintf(buff+19, ".%03d [%s] [%s] %s",
         msec, get_level_as_string(level), g_thread_id.c_str(), format);
 }
 

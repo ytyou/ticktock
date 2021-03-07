@@ -30,6 +30,7 @@
 #include "compress.h"
 #include "config.h"
 #include "memmgr.h"
+#include "meter.h"
 #include "page.h"
 #include "tsdb.h"
 #include "logger.h"
@@ -40,15 +41,9 @@ namespace tt
 
 
 PageInfo::PageInfo() :
-    m_id(0),
-    //m_page_index(0),
-    //m_offset(0),
-    //m_size(0),
-    //m_page(nullptr),
     m_page_mgr(nullptr),
     m_compressor(nullptr),
     m_header(nullptr)
-    //m_dp_count(0)
 {
 }
 
@@ -110,12 +105,24 @@ PageInfo::flush()
 }
 
 void
+PageInfo::shrink_to_fit()
+{
+    persist();
+    m_header->m_size = m_header->m_cursor;
+    ASSERT(m_header->m_size != 0);
+    if (m_header->m_start != 0) m_header->m_size++;
+    if (m_page_mgr->get_compressor_version() == 0) m_header->m_size *= 16;
+    m_header->set_full(true);
+    flush();
+}
+
+void
 PageInfo::reset()
 {
     ASSERT(m_compressor != nullptr);
     //ASSERT(m_page_mgr == nullptr);
 
-    m_id = 0;
+    //m_id = 0;
     //m_page_index = 0;
     //m_compressor->init(range.get_from(), reinterpret_cast<uint8_t*>(m_page), m_size);
     // TODO: should call m_compressor->reset() or m_compressor->init()
@@ -136,23 +143,22 @@ PageInfo::recycle()
 
 // initialize a PageInfo that represent a page on disk;
 // this is a new page, so we will not read page_info_on_disk;
-// 'id': the relative index inside this file, not the global id
 void
-PageInfo::init_for_disk(PageManager *pm, PageCount id, PageSize size, bool is_ooo)
+PageInfo::init_for_disk(PageManager *pm, struct page_info_on_disk *header, PageCount page_idx, PageSize size, bool is_ooo)
 {
     ASSERT(pm != nullptr);
+    ASSERT(header != nullptr);
     ASSERT(size > 1);
 
-    // turn the relative 'id' into a global unique id
-    m_id = id + pm->get_start_index();
-    m_header = pm->get_page_info_on_disk(m_id);
+    m_header = header;
     const TimeRange& range = pm->get_time_range();
     m_time_range.init(range.get_to(), range.get_from());    // empty range
     m_header->init(range);
     m_header->set_out_of_order(is_ooo);
-    m_header->m_page_index = m_id;
+    m_header->m_page_index = page_idx;
     m_header->m_offset = 0;
     m_header->m_size = size;
+    ASSERT(m_header->m_size != 0);
     m_page_mgr = pm;
     //set_page();
     m_compressor = nullptr;
@@ -161,20 +167,14 @@ PageInfo::init_for_disk(PageManager *pm, PageCount id, PageSize size, bool is_oo
 // initialize a PageInfo that represent a page on disk
 // 'id': global id
 void
-PageInfo::init_from_disk(PageManager *pm, PageCount id)
+PageInfo::init_from_disk(PageManager *pm, struct page_info_on_disk *header)
 {
     ASSERT(pm != nullptr);
+    ASSERT(header != nullptr);
     ASSERT(pm->is_open());
 
-    m_header = pm->get_page_info_on_disk(id);
-    ASSERT(m_header != nullptr);
-
-    m_id = id;
-    //m_page_index = m_header->m_page_index;
-    //m_offset = m_header->m_offset;
-    //m_size = m_header->m_size;
     m_page_mgr = pm;
-    //set_page();
+    m_header = header;
     m_compressor = nullptr;
     Timestamp start = pm->get_time_range().get_from();
     m_time_range.init(m_header->m_tstamp_from + start, m_header->m_tstamp_to + start);
@@ -214,11 +214,9 @@ PageInfo::ensure_dp_available(DataPointVector *dps)
 {
     if (m_compressor != nullptr) return;
 
-    ASSERT(m_id != 0);
     ASSERT(m_page_mgr->is_open());
+    Meter meter(METRIC_TICKTOCK_PAGE_RESTORE_TOTAL_MS);
 
-    //struct page_info_on_disk *piod = m_page_mgr->get_page_info_on_disk(m_id);
-    //ASSERT(piod != nullptr);
     CompressorPosition position(m_header);
     setup_compressor(m_page_mgr->get_time_range(), m_page_mgr->get_compressor_version());
     if (dps == nullptr)
@@ -266,7 +264,7 @@ PageInfo::merge_after(PageInfo *dst)
 {
     ASSERT(dst != nullptr);
     //ASSERT(m_page_mgr == dst->m_page_mgr);
-    ASSERT(m_id > dst->m_id);
+    //ASSERT(m_id > dst->m_id);
     ASSERT(m_compressor != nullptr);
     ASSERT(dst->m_compressor != nullptr);
 
@@ -281,7 +279,7 @@ PageInfo::merge_after(PageInfo *dst)
 void
 PageInfo::copy_to(PageCount dst_id)
 {
-    ASSERT(m_id > dst_id);
+    //ASSERT(m_id > dst_id);
     ASSERT(m_compressor != nullptr);
 
     m_header->m_page_index = dst_id;
@@ -292,12 +290,32 @@ PageInfo::copy_to(PageCount dst_id)
     m_compressor->rebase(static_cast<uint8_t*>(get_page()));
 }
 
+PageCount
+PageInfo::get_id() const
+{
+    ASSERT(m_page_mgr != nullptr);
+    return m_page_mgr->calc_page_info_index(m_header);
+}
+
+PageCount
+PageInfo::get_file_id() const
+{
+    ASSERT(m_page_mgr != nullptr);
+    return m_page_mgr->get_id();
+}
+
+int
+PageInfo::get_page_order() const
+{
+    return (get_file_id() * m_page_mgr->get_page_count()) + m_header->m_page_index;
+}
+
 void *
 PageInfo::get_page()
 {
     uint8_t *first_page = m_page_mgr->get_first_page();
     ASSERT(first_page != nullptr);
-    PageCount idx = get_internal_page_index();
+    PageCount idx = m_header->m_page_index;
     return static_cast<void*>(first_page + (idx * g_page_size) + m_header->m_offset);
 }
 
@@ -331,38 +349,24 @@ PageInfo::get_dp_count() const
     return (m_compressor == nullptr) ? 0 : m_compressor->get_dp_count();
 }
 
-// retrieve the relative id
-PageCount
-PageInfo::get_internal_page_index() const
-{
-    ASSERT(m_header != nullptr);
-    return m_header->m_page_index - m_page_mgr->get_start_index();
-}
-
 const char *
 PageInfo::c_str(char *buff, size_t size) const
 {
-    std::snprintf(buff, size, "id=%d idx=%d is_ooo=%d comp=%p",
-        m_id, m_header->m_page_index, m_header->is_out_of_order(), m_compressor);
+    std::snprintf(buff, size, "idx=%d is_ooo=%d comp=%p",
+        m_header->m_page_index, m_header->is_out_of_order(), m_compressor);
     return buff;
 }
 
-bool
-page_info_more(const PageInfo* lhs, const PageInfo* rhs)
-{
-    return lhs->get_page_index() > rhs->get_page_index();
-}
 
-
-PageManager::PageManager(TimeRange& range, PageCount suffix) :
+PageManager::PageManager(TimeRange& range, PageCount id, bool temp) :
     m_major_version(TT_MAJOR_VERSION),
     m_minor_version(TT_MINOR_VERSION),
     m_compacted(false),
     m_time_range(range),
-    m_suffix(suffix),
+    m_id(id),
     m_fd(-1)
 {
-    m_file_name = Tsdb::get_file_name(range, std::to_string(m_suffix));
+    m_file_name = Tsdb::get_file_name(range, std::to_string(m_id), temp);
     m_compressor_version =
         Config::get_int(CFG_TSDB_COMPRESSOR_VERSION, CFG_TSDB_COMPRESSOR_VERSION_DEF);
 
@@ -379,38 +383,32 @@ PageManager::PageManager(TimeRange& range, PageCount suffix) :
     }
     else
     {
-        PageCount id = *m_page_index;   // global id
-        PageCount first = calc_first_page_info_index(*m_page_count) + get_start_index();
+        // In the case of abnormal shutdown, there's a chance m_page_index was
+        // persisted, but the latest page_info_on_disk was not. In that case,
+        // we need to discard those pages to avoid corrupted data.
+        PageCount id = *m_header_index;
+        PageCount page_idx = *m_page_index;
 
-        for (id--; id >= first; id--)
+        for (id--; id >= 0; id--)
         {
             struct page_info_on_disk *info = get_page_info_on_disk(id);
-            if (info->m_page_index != 0) break;
+
+            if (info->m_page_index != 0)
+            {
+                page_idx = info->m_page_index + 1;
+                break;
+            }
         }
 
-        if ((++id) != *m_page_index)
+        if ((++id) != *m_header_index)
         {
             Logger::warn("Last %d pages are not initialized, will be discarded",
-                (*m_page_index)-id);
-            *m_page_index = id;
+                (*m_header_index)-id);
+            *m_header_index = id;
+            *m_page_index = page_idx;
         }
     }
 }
-
-/*
-PageManager::PageManager(const PageManager& copy) :
-    m_major_version(copy.m_major_version),
-    m_minor_version(copy.m_minor_version),
-    m_time_range(copy.m_time_range),
-    m_suffix(copy.m_suffix),
-    m_page_size(copy.m_page_size),
-    m_file_name(copy.m_file_name),
-    m_total_size(copy.m_total_size)
-{
-    open_mmap(m_total_size / m_page_size);
-    ASSERT(m_page_count != nullptr);
-}
-*/
 
 PageManager::~PageManager()
 {
@@ -506,6 +504,7 @@ PageManager::open_mmap(PageCount page_count)
 
     m_page_count = &(header->m_page_count);
     m_page_index = &(header->m_page_index);
+    m_header_index = &(header->m_header_index);
     m_actual_pg_cnt = &(header->m_actual_pg_cnt);
 
     m_page_info = reinterpret_cast<struct page_info_on_disk*>(static_cast<char*>(m_pages)+(sizeof(struct tsdb_header)));
@@ -522,6 +521,7 @@ PageManager::open_mmap(PageCount page_count)
         header->set_millisecond(g_tstamp_resolution_ms);
         *m_page_count = page_count;
         *m_page_index = calc_first_page_info_index(page_count);
+        *m_header_index = 0;
         *m_actual_pg_cnt = page_count;
     }
     else
@@ -582,17 +582,16 @@ PageManager::close_mmap()
         // these need to be invalidated
         m_page_count = nullptr;
         m_page_index = nullptr;
+        m_header_index = nullptr;
         m_page_info = nullptr;
     }
 }
 
-// 'index' is the global id
 struct page_info_on_disk *
 PageManager::get_page_info_on_disk(PageCount index)
 {
-    index -= get_start_index(); // convert to relative id
     ASSERT(m_page_count != nullptr);
-    ASSERT((0 < index) && (index < (*m_page_count)));
+    ASSERT(index < (*m_page_count));
     return &m_page_info[index];
 }
 
@@ -612,16 +611,76 @@ PageManager::get_free_page_on_disk(Tsdb *tsdb, bool ooo)
     // get a new, unsed page from mmapped file
     std::lock_guard<std::mutex> guard(m_lock);
 
-    if ((*m_page_index) < (*m_actual_pg_cnt))
+    if (((*m_page_index) < (*m_actual_pg_cnt)) && ((*m_header_index) < (*m_page_count)))
     {
-        PageCount i = *m_page_index;
-        //struct page_info_on_disk *piod = get_page_info_on_disk(i);
-        //piod->init(start, (PageSize)0, m_page_size, (PageSize)0, (uint8_t)0, false);
-        info->init_for_disk(this, i, g_page_size, ooo);
+        PageCount id = *m_header_index;
+        PageCount page_idx = *m_page_index;
+        struct page_info_on_disk *header = get_page_info_on_disk(id);
+        info->init_for_disk(this, header, page_idx, g_page_size, ooo);
         info->setup_compressor(m_time_range, (ooo ? 0 : m_compressor_version));
         ASSERT(info->is_out_of_order() == ooo);
 
         (*m_page_index)++;
+        (*m_header_index)++;
+    }
+    else
+    {
+        // TODO: need to open another mmapped file
+        MemoryManager::free_recyclable(info);
+        info = nullptr;
+        Logger::debug("Running out of pages!");
+    }
+
+    return info;
+}
+
+PageInfo *
+PageManager::get_free_page_for_compaction(Tsdb *tsdb)
+{
+    PageInfo *info =
+        (PageInfo*)MemoryManager::alloc_recyclable(RecyclableType::RT_PAGE_INFO);
+
+    if (info == nullptr)
+    {
+        // TODO: handle OOM
+        Logger::fatal("Running out of memory!");
+        return nullptr;
+    }
+
+    // get a new, unsed page from mmapped file
+    std::lock_guard<std::mutex> guard(m_lock);
+
+    if (((*m_page_index) < (*m_actual_pg_cnt)) && ((*m_header_index) < (*m_page_count)))
+    {
+        PageCount id = *m_header_index;
+        PageCount page_idx = *m_page_index;
+
+        struct page_info_on_disk *header = get_page_info_on_disk(id);
+        info->init_for_disk(this, header, page_idx, g_page_size, false);
+
+        (*m_page_index)++;
+        (*m_header_index)++;
+
+        if (id > 0)
+        {
+            // Check to see if last page is completely full.
+            // If not, use the remaining space.
+            struct page_info_on_disk *header = get_page_info_on_disk(id - 1);
+            PageSize offset = header->m_offset + header->m_size;
+
+            if ((g_page_size - offset) >= 12) // at least 12 bytes left
+            {
+                info->m_header->m_page_index = header->m_page_index;
+                info->m_header->m_offset = offset;
+                info->m_header->m_size = g_page_size - offset;
+            }
+            else
+            {
+                info->m_header->m_page_index = header->m_page_index + 1;
+            }
+        }
+
+        info->setup_compressor(m_time_range, m_compressor_version);
     }
     else
     {
@@ -635,27 +694,34 @@ PageManager::get_free_page_on_disk(Tsdb *tsdb, bool ooo)
 }
 
 // get an occupied mmapped page
-// 'index': global id
 PageInfo *
-PageManager::get_the_page_on_disk(PageCount index)
+PageManager::get_the_page_on_disk(PageCount header_index)
 {
     ASSERT(m_pages != nullptr);
     ASSERT(m_page_count != nullptr);
 
-    PageCount start = get_start_index();
-    PageCount end = start + *m_page_count;
-
-    if ((index <= start) || (end <= index))
+    if (*m_page_count <= header_index)
     {
         return nullptr;
     }
 
-    //ASSERT(index < (*m_page_count));
     PageInfo *info =
         (PageInfo*)MemoryManager::alloc_recyclable(RecyclableType::RT_PAGE_INFO);
     ASSERT(info != nullptr);
-    info->init_from_disk(this, index);
+    struct page_info_on_disk *header = get_page_info_on_disk(header_index);
+    ASSERT(header != nullptr);
+    info->init_from_disk(this, header);
     return info;
+}
+
+PageCount
+PageManager::calc_page_info_index(struct page_info_on_disk *piod) const
+{
+    ASSERT(piod >= m_page_info);
+    PageCount idx = ((char*)piod - (char*)m_page_info) / sizeof(struct page_info_on_disk);
+    ASSERT(m_page_count != nullptr);
+    ASSERT(idx < (*m_page_count));
+    return idx;
 }
 
 void
@@ -665,7 +731,7 @@ PageManager::flush(bool sync)
 
     ASSERT(m_page_index != nullptr);
     TsdbSize size = *m_page_index * g_page_size;
-    ASSERT(size <= m_total_size);
+    if (size > m_total_size) size = m_total_size;   // could happen after compaction
     int rc = msync(m_pages, size, (sync?MS_SYNC:MS_ASYNC));
 
     if (rc == -1)
@@ -694,6 +760,7 @@ PageManager::persist()
 
 // Try to merge pages together to save space. May truncate file.
 // Return true if data file was truncated.
+#if 0
 bool
 PageManager::compact(std::vector<PageInfo*>& all_pages)
 {
@@ -801,8 +868,8 @@ PageManager::compact(std::vector<PageInfo*>& all_pages)
     for (auto pi: my_pages)
     {
         if (pi->is_empty()) continue;
-        if (max_page < pi->get_internal_page_index())
-            max_page = pi->get_internal_page_index();
+        if (max_page < pi->get_page_index())
+            max_page = pi->get_page_index();
     }
 
     long old_total_size = m_total_size;
@@ -818,6 +885,7 @@ PageManager::compact(std::vector<PageInfo*>& all_pages)
 
     return m_compacted;
 }
+#endif
 
 bool
 PageManager::resize(long old_size)
@@ -846,8 +914,23 @@ PageManager::resize(long old_size)
 }
 
 void
+PageManager::shrink_to_fit()
+{
+    long old_total_size = m_total_size;
+    PageCount id = *m_header_index - 1;
+    struct page_info_on_disk *header = get_page_info_on_disk(id);
+    PageCount last = header->m_page_index + 1;
+    *m_actual_pg_cnt = last;
+    m_total_size = last * g_page_size;
+    persist_compacted_flag(true);
+    Logger::debug("shrink from %ld to %ld", old_total_size, m_total_size);
+    resize(old_total_size);
+}
+
+void
 PageManager::persist_compacted_flag(bool compacted)
 {
+    m_compacted = compacted;
     ASSERT(m_pages != nullptr);
     struct tsdb_header *header = reinterpret_cast<struct tsdb_header*>(m_pages);
     header->set_compacted(m_compacted);
