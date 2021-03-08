@@ -106,7 +106,7 @@ close_mmap(int fd, char *base, int size)
 void
 dump_tsdb_header(struct tsdb_header *tsdb_header)
 {
-    printf("TSDB: (major=%d, minor=%d, page_cnt=%d, head_idx=%d, page_idx=%d, start=%ld, end=%ld, actual_cnt=%d, flags=%x)\n",
+    printf("TSDB: (major=%d, minor=%d, page_cnt=%d, head_idx=%d, page_idx=%d, start=%ld, end=%ld, actual_cnt=%d, flags=0x%x)\n",
         tsdb_header->m_major_version, tsdb_header->m_minor_version,
         tsdb_header->m_page_count, tsdb_header->m_header_index,
         tsdb_header->m_page_index, tsdb_header->m_start_tstamp,
@@ -147,7 +147,8 @@ dump_data(struct tsdb_header *tsdb_header, int header_index)
     struct page_info_on_disk *info = &page_infos[header_index];
     int page_idx = info->m_page_index;
     Compressor *compressor = Compressor::create(tsdb_header->get_compressor_version());
-    compressor->init(tsdb_header->m_start_tstamp, ((uint8_t*)tsdb_header)+page_idx*g_page_size, info->m_size);
+    uint8_t *base = ((uint8_t*)tsdb_header) + page_idx*g_page_size + info->m_offset;
+    compressor->init(tsdb_header->m_start_tstamp, base, info->m_size);
     CompressorPosition position(info);
     DataPointVector dps;
     compressor->restore(dps, position, nullptr);

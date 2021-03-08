@@ -1913,7 +1913,9 @@ Tsdb::compact(TaskData& data)
                 for (const auto& m: mapping->m_map)
                 {
                     TimeSeries *ts = m.second;
-                    ts->compact(meta_file);
+
+                    if (std::strcmp(ts->get_key(), m.first) == 0)
+                        ts->compact(meta_file);
                 }
             }
 
