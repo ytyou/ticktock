@@ -494,6 +494,7 @@ TimeSeries::compact(MetaFile& meta_file)
     DataPointVector dps;
     PageInfo *info = nullptr;
     TimeRange range = m_tsdb->get_time_range();
+    int id_from, id_to, file_id;
 
     // get all data points
     query_with_ooo(range, nullptr, dps);
@@ -508,7 +509,9 @@ TimeSeries::compact(MetaFile& meta_file)
         if (info == nullptr)
         {
             info = m_tsdb->get_free_page_for_compaction();
-            meta_file.append(this, info);
+            //meta_file.append(this, info);
+            file_id = info->get_file_id();
+            id_from = id_to = info->get_id();
         }
 
         bool ok = info->add_data_point(dp.first, dp.second);
@@ -520,9 +523,21 @@ TimeSeries::compact(MetaFile& meta_file)
             MemoryManager::free_recyclable(info);
 
             info = m_tsdb->get_free_page_for_compaction();
-            meta_file.append(this, info);
+            //meta_file.append(this, info);
             ok = info->add_data_point(dp.first, dp.second);
             ASSERT(ok);
+
+            if (info->get_file_id() == file_id)
+            {
+                id_to = info->get_id();
+            }
+            else
+            {
+                meta_file.append(this, file_id, id_from, id_to);
+
+                file_id = info->get_file_id();
+                id_from = id_to = info->get_id();
+            }
         }
     }
 
@@ -530,6 +545,7 @@ TimeSeries::compact(MetaFile& meta_file)
     {
         info->shrink_to_fit();
         MemoryManager::free_recyclable(info);
+        meta_file.append(this, file_id, id_from, id_to);
     }
 
     return (! dps.empty());
