@@ -313,12 +313,6 @@ public:
     void persist();
     void shrink_to_fit();
 
-    // try to merge partially filled pages in 'partial_pages' together;
-    // note that not all pages in 'partial_pages' belong to this PageManager;
-    // on exit, remove all pages that belong to this PageManager from the
-    // 'partial_pages' vector;
-    //bool compact(std::vector<PageInfo*>& partial_pages);
-
     inline bool is_open() const { return (m_pages != nullptr); }
     inline bool is_full() const
     {

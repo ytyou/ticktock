@@ -116,6 +116,22 @@ MetaFile::append(TimeSeries *ts, PageInfo *info)
 }
 
 void
+MetaFile::append(TimeSeries *ts, unsigned int file_id, unsigned int from_id, unsigned int to_id)
+{
+    ASSERT(ts != nullptr);
+    ASSERT(m_file != nullptr);
+    ASSERT(from_id <= to_id);
+
+    char buff[4096];
+    std::lock_guard<std::mutex> guard(m_lock);
+
+    if (from_id == to_id)
+        fprintf(m_file, "%s %u %u\n", ts->c_str(buff, sizeof(buff)), file_id, to_id);
+    else
+        fprintf(m_file, "%s %u %u-%u\n", ts->c_str(buff, sizeof(buff)), file_id, from_id, to_id);
+}
+
+void
 MetaFile::load(Tsdb *tsdb)
 {
     ASSERT(tsdb != nullptr);
@@ -149,9 +165,27 @@ MetaFile::load(Tsdb *tsdb)
         std::string id = tokens[2];     // file id
         std::string index = tokens[3];  // page index
 
-        Logger::trace("restoring ts for metric %s, tags %s, id %s, index %s",
-            metric.c_str(), tags.c_str(), id.c_str(), index.c_str());
-        tsdb->add_ts(metric, tags, std::atoi(id.c_str()), std::atoi(index.c_str()));
+        if (index.find('-') == std::string::npos)
+        {
+            Logger::trace("restoring ts for metric %s, tags %s, id %s, index %s",
+                metric.c_str(), tags.c_str(), id.c_str(), index.c_str());
+            tsdb->add_ts(metric, tags, std::atoi(id.c_str()), std::atoi(index.c_str()));
+        }
+        else    // from-to
+        {
+            std::tuple<std::string,std::string> ft;
+            tokenize(index, ft, '-');
+            int from = std::atoi(std::get<0>(ft).c_str());
+            int to = std::atoi(std::get<1>(ft).c_str());
+            int fid = std::atoi(id.c_str());
+
+            for (int i = from; i <= to; i++)
+            {
+                Logger::trace("restoring ts for metric %s, tags %s, id %s, index %d",
+                    metric.c_str(), tags.c_str(), id.c_str(), i);
+                tsdb->add_ts(metric, tags, fid, i);
+            }
+        }
     }
 
     is.close();

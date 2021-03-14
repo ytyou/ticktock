@@ -47,6 +47,7 @@ public:
     void reset();   // truncate the file to zero length
 
     void append(TimeSeries *ts, PageInfo *info);
+    void append(TimeSeries *ts, unsigned int file_id, unsigned int from_id, unsigned int to_id);
     void load(Tsdb *tsdb);
 
     inline bool is_open() const { return (m_file != nullptr); }
