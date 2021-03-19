@@ -1,7 +1,7 @@
 #!/bin/bash
 
 MAKE="/usr/bin/make -f Makefile.ubuntu"
-STAGE="alpha"
+STAGE="beta"
 TARGET_BRANCH="main"
 _TEST=0
 
