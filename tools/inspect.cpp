@@ -94,6 +94,8 @@ open_mmap(std::string& file_name, int& fd, int& size)
         printf("failed to mmap64, errno = %d\n", errno);
         return nullptr;
     }
+
+    return base;
 }
 
 void
