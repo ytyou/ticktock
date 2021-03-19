@@ -7,7 +7,7 @@ Highlights
 ----------
 * High Performance - High write throughput, low query latency.
 * Replication - Write to any server in the cluster, get replicated to any other servers.
-* Scalability - Work in progress. Once finished, we can partition the database by metrics.
+* Scalability - Partition the database by metric names.
 * Compatibility with OpenTSDB - Compatible enough so that you can use TCollector to send data to it; use Grafana to query it.
 * Docker Ready - To run it: docker run -d -v ticktock:/var/lib/ticktock --network=host --name ticktock ytyou/ticktock:latest
 
