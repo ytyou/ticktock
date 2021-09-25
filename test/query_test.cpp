@@ -36,8 +36,9 @@ QueryTests::run()
 
     std::thread t2(&QueryTests::duplicate_dp_tests, this);
     t2.join();
-    //basic_query_tests();
-    //duplicate_dp_tests();
+
+    std::thread t3(&QueryTests::downsample_tests, this);
+    t3.join();
 
     log("Finished %s", m_name);
 }
@@ -90,7 +91,7 @@ QueryTests::basic_query_tests()
 
     // retrieve all dps and make sure they are correct;
     DataPointVector results;
-    query_raw(metric, 0, results);
+    query_raw(metric, dps[0].first, results);
     CONFIRM(results.size() == dps_cnt);
 
     for (auto& dp: dps) CONFIRM(contains(results, dp));
@@ -127,7 +128,7 @@ QueryTests::duplicate_dp_tests()
 
     // retrieve all dps and make sure they are correct;
     DataPointVector results;
-    query_raw(metric, 0, results);
+    query_raw(metric, dps[0].first, results);
     CONFIRM(results.size() == dps_cnt);
 
     log("no duplicate cases...");
@@ -149,12 +150,65 @@ QueryTests::duplicate_dp_tests()
         }
 
         results.clear();
-        query_raw(metric, 0, results);
+        query_raw(metric, dps[0].first, results);
         CONFIRM(results.size() == dps_cnt);
 
         log("duplicate cases, iteration %d...", i);
         for (auto& dp: dps) CONFIRM(contains(results, dp));
     }
+
+    clean_shutdown();
+    m_stats.add_passed(1);
+}
+
+void
+QueryTests::downsample_tests()
+{
+    Timestamp start = 946684800000; // 2020-01-01
+    Timestamp now = ts_now_ms();
+    int dps_cnt = 20;
+    DataPointVector dps;
+    const char *metric = "query.test.downsample.metric";
+    double avg = 0;
+
+    // make sure archive mode is NOT on
+    update_config(now);
+    clean_start(true);
+    generate_data_points(dps, dps_cnt, start);
+
+    // insert original data points
+    for (DataPointPair& dpp: dps)
+    {
+        Tsdb *tsdb = Tsdb::inst(dpp.first);
+        DataPoint dp(dpp.first, dpp.second);
+        dp.set_metric(metric);
+        tsdb->add(dp);
+        avg += dpp.second;
+        log("%ld: %f", dpp.first, dpp.second);
+    }
+
+    avg /= dps.size();
+
+    CONFIRM(Tsdb::get_dp_count() == dps_cnt);
+    log("dp count = %d", Tsdb::get_dp_count());
+
+    // retrieve all dps and make sure they are correct;
+    DataPointVector results;
+    query_raw(metric, dps[0].first, results);
+    CONFIRM(results.size() == dps_cnt);
+    for (auto& dp: dps) CONFIRM(contains(results, dp));
+
+    // test "0all-last"
+    results.clear();
+    query_with_downsample(metric, "0all-last", dps[0].first, results);
+    CONFIRM(results.size() == 1);
+    CONFIRM(results[0].second == dps.back().second);
+
+    // test "0all-avg"
+    results.clear();
+    query_with_downsample(metric, "0all-avg", dps[0].first, results);
+    CONFIRM(results.size() == 1);
+    CONFIRM(avg == results[0].second);
 
     clean_shutdown();
     m_stats.add_passed(1);

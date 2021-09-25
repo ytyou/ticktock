@@ -38,7 +38,8 @@ Downsampler::Downsampler() :
     m_fill(DownsampleFillPolicy::DFP_NONE),
     m_last_tstamp(0L),
     m_fill_value(0.0),
-    m_ms(false)
+    m_ms(false),
+    m_all(false)
 {
 }
 
@@ -52,6 +53,7 @@ Downsampler::init(char *interval, char *fill, TimeRange& range, bool ms)
     m_time_range = range;
     m_fill = DownsampleFillPolicy::DFP_NONE;
     m_ms = ms;
+    m_all = false;
 
     if (interval == nullptr)
     {
@@ -69,24 +71,26 @@ Downsampler::init(char *interval, char *fill, TimeRange& range, bool ms)
 
             switch (unit)
             {
-                case 's':   factor = 1;         break;
-                case 'm':   factor = 60;        break;
-                case 'h':   factor = 3600;      break;
-                case 'd':   factor = 86400;     break;
-                case 'w':   factor = 604800;    break;
+                case 's':   factor = 1;         break;  // second
+                case 'm':   factor = 60;        break;  // minute
+                case 'h':   factor = 3600;      break;  // hour
+                case 'd':   factor = 86400;     break;  // day
+                case 'w':   factor = 604800;    break;  // week
+                case 'l':   m_all = true;       break;  // all
                 default:    factor = 1;         break;
             };
 
             if (g_tstamp_resolution_ms) factor *= 1000;
         }
 
-        m_interval = std::stol(interval) * factor;
+        m_interval = std::stoul(interval);
+        if (m_interval == 0) m_interval = 1;
+        m_interval *= factor;
     }
 
     ASSERT(m_interval > 0);
 
-    m_time_range.set_from(m_time_range.get_from() - (m_time_range.get_from() % m_interval));
-    m_time_range.set_to(m_time_range.get_to() - (m_time_range.get_to() % m_interval));
+    m_time_range.set_from(step_down(m_time_range.get_from()));
 
     // fill policy
     if (fill != nullptr)

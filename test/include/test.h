@@ -125,10 +125,23 @@ public:
 
     void query_raw(const char *metric, tt::Timestamp start, tt::DataPointVector& results)
     {
+        query_with_downsample(metric, nullptr, start, results);
+    }
+
+    void query_with_downsample(
+        const char *metric,
+        const char *downsample,
+        tt::Timestamp start,
+        tt::DataPointVector& results)
+    {
         tt::HttpRequest request;
         tt::HttpResponse response;
         char content[4096];
-        sprintf(content, "{\"start\":%ld,\"queries\":[{\"metric\":\"%s\"}]}", start, metric);
+        if (downsample == nullptr)
+            sprintf(content, "{\"start\":%ld,\"queries\":[{\"metric\":\"%s\"}]}", start, metric);
+        else
+            sprintf(content, "{\"start\":%ld,\"queries\":[{\"metric\":\"%s\",\"downsample\":\"%s\"}]}",
+                start, metric, downsample);
         request.init();
         request.content = content;
         log("query request: %s", request.content);

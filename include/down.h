@@ -50,7 +50,6 @@ public:
     virtual void add_data_point(DataPointPair& dp, DataPointVector& dps) = 0;
     virtual void add_last_point(DataPointVector& dps) {};
     void fill_if_needed(DataPointVector& dps);
-    void fill_to(Timestamp to, DataPointVector& dps);
 
     inline virtual bool recycle()
     {
@@ -60,7 +59,7 @@ public:
 
     inline Timestamp step_down(Timestamp tstamp) const
     {
-        return tstamp - (tstamp % m_interval);
+        return m_all ? m_start : (tstamp - (tstamp % m_interval));
     }
 
     static bool is_downsampler(const char *str);
@@ -69,6 +68,7 @@ protected:
     Downsampler(const Downsampler&) = delete;
 
     void init(char *interval, char *fill, TimeRange& range, bool ms);
+    void fill_to(Timestamp to, DataPointVector& dps);
 
     inline Timestamp resolution(Timestamp tstamp)
     {
@@ -83,6 +83,7 @@ protected:
     Timestamp m_last_tstamp;
     double m_fill_value;
     bool m_ms;  // output milli-second timestamp resolution?
+    bool m_all; // interval is 'all'?
 };
 
 
