@@ -1,7 +1,7 @@
 # TickTock
-An OpenTSDB-like Time Series Database. It is not 100% compatible with OpenTSDB.
-However, you can use TCollector to send data to it; you can use Grafana to query it
-(select OpenTSDB as the data source type).
+An [OpenTSDB](http://opentsdb.net)-like Time Series Database. It is not 100% compatible with OpenTSDB.
+However, you can use OpenTSDB's [TCollector](https://github.com/OpenTSDB/tcollector) to send data to it;
+you can use [Grafana](https://grafana.com) to query it (select OpenTSDB as the data source type).
 
 Highlights
 ----------
@@ -47,7 +47,7 @@ $ make -f Makefile.ubuntu
 Running TickTock Server
 -----------------------
 ```
-$ tt -c <config> [-d]
+$ bin/tt -c <config> [-d]
 ```
 Use '-d' option to run the server as Linux daemon. To run it in a Docker container,
 ```
@@ -57,15 +57,22 @@ $ docker run -d -v ticktock:/var/lib/ticktock --network=host --name ticktock yty
 Collect Metrics
 ---------------
 Use TCollector to send metrics to the TcpServer (default port number 6181).
+You can also use [Collectd](https://collectd.org), with OpenTSDB plugin, to send metrics to the
+same TcpServer.
 
 Query Metrics
 -------------
 Ask Grafana to send queries to the HttpServer (default port number 6182).
 Select OpenTSDB as the type of the data source.
 
+Licenses
+--------
+This project is licensed under the terms of the GPL-3.0 License.
+Please refer to [LICENSE](LICENSE) for the full terms.
+
 Dependency Licenses
 -------------------
 * git@github.com:AlexeyAB/object_threadsafe.git - Apache License 2.0
 * thread-safe queue by Joe Best-Rotheray - MIT License
 * robin_map by Thibaut Goetghebuer-Planchon <tessil@gmx.com> - MIT License
-* zlib - See zlib.net
+* zlib - See [zlib.net](https://www.zlib.net)
