@@ -44,7 +44,7 @@ Downsampler::Downsampler() :
 }
 
 void
-Downsampler::init(char *interval, char *fill, TimeRange& range, bool ms)
+Downsampler::initialize(char *interval, char *fill, TimeRange& range, bool ms)
 {
     ASSERT(interval != nullptr);
 
@@ -112,6 +112,8 @@ Downsampler::init(char *interval, char *fill, TimeRange& range, bool ms)
             m_fill_value = 0.0;
         }
     }
+
+    init(); // initialize child downsamplers
 }
 
 Downsampler *
@@ -203,7 +205,7 @@ Downsampler::create(const char *downsample, TimeRange& range, bool ms)
 
     if (downsampler != nullptr)
     {
-        downsampler->init(interval, fill, range, ms);
+        downsampler->initialize(interval, fill, range, ms);
     }
 
     return downsampler;
@@ -272,29 +274,6 @@ Downsampler::fill_if_needed(DataPointVector& dps)
 }
 
 
-bool
-DownsamplerAvg::recycle()
-{
-    m_values.clear();
-    m_values.shrink_to_fit();
-    return Downsampler::recycle();
-}
-
-double
-DownsamplerAvg::calc_avg() const
-{
-    ASSERT(! m_values.empty());
-
-    double sum = 0.0;
-
-    for (double v: m_values)
-    {
-        sum += v;
-    }
-
-    return sum / (double)m_values.size();
-}
-
 void
 DownsamplerAvg::add_data_point(DataPointPair& dp, DataPointVector& dps)
 {
@@ -305,18 +284,22 @@ DownsamplerAvg::add_data_point(DataPointPair& dp, DataPointVector& dps)
 
     if (curr_tstamp == m_last_tstamp)
     {
-        m_values.push_back(dp.second);
+        // accumulate in current interval
+        m_count++;
+        m_sum += dp.second;
     }
     else
     {
+        // start a new interval
         if (m_last_tstamp != TT_INVALID_TIMESTAMP)
         {
-            dps.emplace_back(resolution(m_last_tstamp), calc_avg());
-            m_values.clear();
+            ASSERT(m_count != 0L);
+            dps.emplace_back(resolution(m_last_tstamp), m_sum/(double)m_count);
         }
 
         fill_to(curr_tstamp, dps);
-        m_values.push_back(dp.second);
+        m_count = 1L;
+        m_sum = dp.second;
         m_last_tstamp = curr_tstamp;
     }
 }
@@ -324,11 +307,11 @@ DownsamplerAvg::add_data_point(DataPointPair& dp, DataPointVector& dps)
 void
 DownsamplerAvg::add_last_point(DataPointVector& dps)
 {
-    if (! m_values.empty())
-    {
-        dps.emplace_back(resolution(m_last_tstamp), calc_avg());
-        m_values.clear();
-    }
+    if (m_count != 0L)
+        dps.emplace_back(resolution(m_last_tstamp), m_sum/(double)m_count);
+
+    m_sum = 0;
+    m_count = 0L;
 }
 
 
@@ -354,14 +337,6 @@ DownsamplerCount::add_data_point(DataPointPair& dp, DataPointVector& dps)
 }
 
 
-bool
-DownsamplerDev::recycle()
-{
-    m_values.clear();
-    m_values.shrink_to_fit();
-    return Downsampler::recycle();
-}
-
 void
 DownsamplerDev::add_data_point(DataPointPair& dp, DataPointVector& dps)
 {
@@ -372,18 +347,21 @@ DownsamplerDev::add_data_point(DataPointPair& dp, DataPointVector& dps)
 
     if (curr_tstamp == m_last_tstamp)
     {
-        m_values.push_back(dp.second);
+        m_count++;
+        double new_value = dp.second;
+        double new_mean = m_mean + (new_value - m_mean) / (double)m_count;
+        m_m2 += (new_value - m_mean) * (new_value - new_mean);
+        m_mean = new_mean;
     }
     else
     {
         if (m_last_tstamp != TT_INVALID_TIMESTAMP)
-        {
             dps.emplace_back(resolution(m_last_tstamp), calc_dev());
-            m_values.clear();
-        }
 
         fill_to(curr_tstamp, dps);
-        m_values.push_back(dp.second);
+        m_m2 = 0.0;
+        m_count = 1;
+        m_mean = dp.second;
         m_last_tstamp = curr_tstamp;
     }
 }
@@ -391,11 +369,11 @@ DownsamplerDev::add_data_point(DataPointPair& dp, DataPointVector& dps)
 void
 DownsamplerDev::add_last_point(DataPointVector& dps)
 {
-    if (! m_values.empty())
-    {
+    if (m_count != 0L)
         dps.emplace_back(resolution(m_last_tstamp), calc_dev());
-        m_values.clear();
-    }
+
+    m_count = 0L;
+    m_mean = m_m2 = 0;
 }
 
 

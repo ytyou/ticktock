@@ -67,7 +67,7 @@ public:
 protected:
     Downsampler(const Downsampler&) = delete;
 
-    void init(char *interval, char *fill, TimeRange& range, bool ms);
+    void initialize(char *interval, char *fill, TimeRange& range, bool ms);
     void fill_to(Timestamp to, DataPointVector& dps);
 
     inline Timestamp resolution(Timestamp tstamp)
@@ -93,11 +93,15 @@ public:
     void add_data_point(DataPointPair& dp, DataPointVector& dps);
     void add_last_point(DataPointVector& dps);
 
-    bool recycle();
-    double calc_avg() const;
+    inline virtual void init()
+    {
+        m_sum = 0;
+        m_count = 0L;
+    }
 
 private:
-    std::vector<double> m_values;
+    double m_sum;
+    unsigned long m_count;
 };
 
 
@@ -114,16 +118,21 @@ public:
     void add_data_point(DataPointPair& dp, DataPointVector& dps);
     void add_last_point(DataPointVector& dps);
 
-    bool recycle();
+    inline virtual void init()
+    {
+        m_count = 0L;
+        m_mean = m_m2 = 0;
+    }
 
     inline double calc_dev() const
     {
-        ASSERT(! m_values.empty());
-        return AggregatorDev::stddev(m_values);
+        ASSERT(m_count != 0L);
+        return std::sqrt(m_m2 / (double)m_count);
     }
 
 private:
-    std::vector<double> m_values;
+    double m_mean, m_m2;
+    unsigned long m_count;
 };
 
 
@@ -163,6 +172,11 @@ public:
 
     bool recycle();
     double calc_percentile();
+
+    inline virtual void init()
+    {
+        m_values.clear();
+    }
 
     inline void set_quantile(double quantile)
     {
