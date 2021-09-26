@@ -36,7 +36,7 @@ Downsampler::Downsampler() :
     m_start(0L),
     m_interval(0L),
     m_fill(DownsampleFillPolicy::DFP_NONE),
-    m_last_tstamp(0L),
+    m_last_tstamp(TT_INVALID_TIMESTAMP),
     m_fill_value(0.0),
     m_ms(false),
     m_all(false)
@@ -49,7 +49,7 @@ Downsampler::init(char *interval, char *fill, TimeRange& range, bool ms)
     ASSERT(interval != nullptr);
 
     m_start = range.get_from();
-    m_last_tstamp = 0L;
+    m_last_tstamp = TT_INVALID_TIMESTAMP;
     m_time_range = range;
     m_fill = DownsampleFillPolicy::DFP_NONE;
     m_ms = ms;
@@ -229,7 +229,7 @@ Downsampler::fill_to(Timestamp to, DataPointVector& dps)
 
     Timestamp start;
 
-    if (m_last_tstamp == 0L)
+    if (m_last_tstamp == TT_INVALID_TIMESTAMP)
     {
         start = m_time_range.get_from();
         if (start < m_start) start += m_interval;
@@ -299,7 +299,7 @@ void
 DownsamplerAvg::add_data_point(DataPointPair& dp, DataPointVector& dps)
 {
     Timestamp curr_tstamp = step_down(dp.first);
-    ASSERT(m_last_tstamp <= curr_tstamp);
+    ASSERT((m_last_tstamp <= curr_tstamp) || (m_last_tstamp == TT_INVALID_TIMESTAMP));
 
     if (curr_tstamp < m_start) return;
 
@@ -309,7 +309,7 @@ DownsamplerAvg::add_data_point(DataPointPair& dp, DataPointVector& dps)
     }
     else
     {
-        if (m_last_tstamp != 0L)
+        if (m_last_tstamp != TT_INVALID_TIMESTAMP)
         {
             dps.emplace_back(resolution(m_last_tstamp), calc_avg());
             m_values.clear();
@@ -336,7 +336,7 @@ void
 DownsamplerCount::add_data_point(DataPointPair& dp, DataPointVector& dps)
 {
     Timestamp curr_tstamp = step_down(dp.first);
-    ASSERT(m_last_tstamp <= curr_tstamp);
+    ASSERT((m_last_tstamp <= curr_tstamp) || (m_last_tstamp == TT_INVALID_TIMESTAMP));
 
     if (curr_tstamp < m_start) return;
 
@@ -366,7 +366,7 @@ void
 DownsamplerDev::add_data_point(DataPointPair& dp, DataPointVector& dps)
 {
     Timestamp curr_tstamp = step_down(dp.first);
-    ASSERT(m_last_tstamp <= curr_tstamp);
+    ASSERT((m_last_tstamp <= curr_tstamp) || (m_last_tstamp == TT_INVALID_TIMESTAMP));
 
     if (curr_tstamp < m_start) return;
 
@@ -376,7 +376,7 @@ DownsamplerDev::add_data_point(DataPointPair& dp, DataPointVector& dps)
     }
     else
     {
-        if (m_last_tstamp != 0L)
+        if (m_last_tstamp != TT_INVALID_TIMESTAMP)
         {
             dps.emplace_back(resolution(m_last_tstamp), calc_dev());
             m_values.clear();
@@ -403,7 +403,7 @@ void
 DownsamplerFirst::add_data_point(DataPointPair& dp, DataPointVector& dps)
 {
     Timestamp curr_tstamp = step_down(dp.first);
-    ASSERT(m_last_tstamp <= curr_tstamp);
+    ASSERT((m_last_tstamp <= curr_tstamp) || (m_last_tstamp == TT_INVALID_TIMESTAMP));
 
     if (curr_tstamp < m_start) return;
 
@@ -420,7 +420,7 @@ void
 DownsamplerLast::add_data_point(DataPointPair& dp, DataPointVector& dps)
 {
     Timestamp curr_tstamp = step_down(dp.first);
-    ASSERT(m_last_tstamp <= curr_tstamp);
+    ASSERT((m_last_tstamp <= curr_tstamp) || (m_last_tstamp == TT_INVALID_TIMESTAMP));
 
     if (curr_tstamp < m_start) return;
 
@@ -442,7 +442,7 @@ void
 DownsamplerMax::add_data_point(DataPointPair& dp, DataPointVector& dps)
 {
     Timestamp curr_tstamp = step_down(dp.first);
-    ASSERT(m_last_tstamp <= curr_tstamp);
+    ASSERT((m_last_tstamp <= curr_tstamp) || (m_last_tstamp == TT_INVALID_TIMESTAMP));
 
     if (curr_tstamp < m_start) return;
 
@@ -464,7 +464,7 @@ void
 DownsamplerMin::add_data_point(DataPointPair& dp, DataPointVector& dps)
 {
     Timestamp curr_tstamp = step_down(dp.first);
-    ASSERT(m_last_tstamp <= curr_tstamp);
+    ASSERT((m_last_tstamp <= curr_tstamp) || (m_last_tstamp == TT_INVALID_TIMESTAMP));
 
     if (curr_tstamp < m_start) return;
 
@@ -507,7 +507,7 @@ void
 DownsamplerPercentile::add_data_point(DataPointPair& dp, DataPointVector& dps)
 {
     Timestamp curr_tstamp = step_down(dp.first);
-    ASSERT(m_last_tstamp <= curr_tstamp);
+    ASSERT((m_last_tstamp <= curr_tstamp) || (m_last_tstamp == TT_INVALID_TIMESTAMP));
 
     if (curr_tstamp < m_start) return;
 
@@ -517,7 +517,7 @@ DownsamplerPercentile::add_data_point(DataPointPair& dp, DataPointVector& dps)
     }
     else
     {
-        if (m_last_tstamp != 0L)
+        if (m_last_tstamp != TT_INVALID_TIMESTAMP)
         {
             dps.emplace_back(resolution(m_last_tstamp), calc_percentile());
             m_values.clear();
@@ -544,7 +544,7 @@ void
 DownsamplerSum::add_data_point(DataPointPair& dp, DataPointVector& dps)
 {
     Timestamp curr_tstamp = step_down(dp.first);
-    ASSERT(m_last_tstamp <= curr_tstamp);
+    ASSERT((m_last_tstamp <= curr_tstamp) || (m_last_tstamp == TT_INVALID_TIMESTAMP));
 
     if (curr_tstamp < m_start) return;
 

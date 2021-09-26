@@ -53,7 +53,7 @@ public:
 
     inline virtual bool recycle()
     {
-        m_last_tstamp = 0L;
+        m_last_tstamp = TT_INVALID_TIMESTAMP;
         return true;
     }
 

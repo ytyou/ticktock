@@ -194,13 +194,13 @@ QueryTests::downsample_tests()
 
     // retrieve all dps and make sure they are correct;
     DataPointVector results;
-    query_raw(metric, dps[0].first, results);
+    query_raw(metric, 0, results);
     CONFIRM(results.size() == dps_cnt);
     for (auto& dp: dps) CONFIRM(contains(results, dp));
 
     // test "0all-last"
     results.clear();
-    query_with_downsample(metric, "0all-last", dps[0].first, results);
+    query_with_downsample(metric, "0all-last", 0, results);
     CONFIRM(results.size() == 1);
     CONFIRM(results[0].second == dps.back().second);
 

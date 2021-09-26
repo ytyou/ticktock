@@ -31,6 +31,8 @@ typedef uint32_t PageCount;
 typedef uint16_t PageSize;
 typedef uint64_t TsdbSize;
 
+#define TT_INVALID_TIMESTAMP    UINT64_MAX
+
 typedef uint64_t Timestamp;     // milliseconds since epoch
 
 typedef std::pair<Timestamp,double> DataPointPair;
