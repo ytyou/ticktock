@@ -91,6 +91,7 @@ Downsampler::init(char *interval, char *fill, TimeRange& range, bool ms)
     ASSERT(m_interval > 0);
 
     m_time_range.set_from(step_down(m_time_range.get_from()));
+    if (m_all) m_interval = m_time_range.get_duration() + 1;
 
     // fill policy
     if (fill != nullptr)

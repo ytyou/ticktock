@@ -582,6 +582,14 @@ class Multi_Thread_Tests(Test):
                     query = Query(metric=self.metric_name(m,prefix), start=self._options.start-88888, end=dps._end+88888, aggregator=agg, downsampler="10s-"+down+"-zero")
                     self.query_and_verify(query)
 
+        # special downsample interval: all
+        for m in range(metric_cardinality):
+            for down in ["avg", "count", "dev", "first", "last", "max", "min", "p50", "p75", "p90", "p95", "p99", "p999", "sum"]:
+                for agg in ["none", "avg", "count", "dev", "max", "min", "p50", "p75", "p90", "p95", "p99", "p999", "sum"]:
+                    tags = {"tag"+str(m): "val1"}
+                    query = Query(metric=self.metric_name(m,prefix), start=self._options.start+88888, end=dps._end+88888, aggregator=agg, downsampler="0all-"+down+"-zero")
+                    self.query_and_verify(query)
+
 
 class Out_Of_Order_Write_Tests(Test):
 
