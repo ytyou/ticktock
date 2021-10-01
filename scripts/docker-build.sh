@@ -3,7 +3,7 @@
 MAKE="/usr/bin/make -f Makefile.ubuntu"
 STAGE="beta"
 TARGET_BRANCH="main"
-TAG="latest"
+TAGL="latest"
 DOCKERFILE="../Dockerfile"
 _TEST=0
 _GRAFANA=0
@@ -76,6 +76,7 @@ MINOR=${LINE##* }
 LINE=$(grep PATCH include/global.h)
 PATCH=${LINE##* }
 TT_VERSION="${MAJOR}.${MINOR}.${PATCH}"
+TAGV=${TT_VERSION}-${STAGE}
 
 # create build directory
 rm -rf docker/$TT_VERSION/*
@@ -92,7 +93,8 @@ cp docker/run.sh docker/$TT_VERSION/opt/ticktock/scripts/
 cp docker/limits.conf docker/$TT_VERSION/
 
 if [ $_GRAFANA -ne 0 ]; then
-    TAG="${TAG}-grafana"
+    TAGL="${TAGL}-grafana"
+    TAGV="${TAGV}-grafana"
     DOCKERFILE=${DOCKERFILE}.grafana
     cp docker/tcollector docker/$TT_VERSION/
     cp -r ../tcollector docker/$TT_VERSION/opt/
@@ -103,12 +105,13 @@ if [ $_GRAFANA -ne 0 ]; then
 fi
 
 if [ $_TEST -ne 0 ]; then
-    TAG="${TAG}-test"
+    TAGL="${TAGL}-test"
+    TAGV="${TAGV}-test"
 fi
 
 # build
 pushd docker/$TT_VERSION
-docker build -f $DOCKERFILE --tag ytyou/ticktock:${TT_VERSION}-${STAGE} --tag ytyou/ticktock:${TAG} \
+docker build -f $DOCKERFILE --tag ytyou/ticktock:${TAGV} --tag ytyou/ticktock:${TAGL} \
     --build-arg BUILD_DATE=$(date -u +'%Y-%m-%dT%H:%M:%SZ') \
     --build-arg GIT_COMMIT=$(git log -1 --pretty=format:%h) \
     --build-arg VERSION=${TT_VERSION}-${STAGE} --add-host=ticktock:127.0.0.1 \
