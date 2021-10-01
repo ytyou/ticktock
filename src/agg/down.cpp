@@ -19,7 +19,6 @@
 
 #include <algorithm>
 #include <cctype>
-#include <cmath>
 #include <vector>
 #include "aggregate.h"
 #include "down.h"

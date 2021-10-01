@@ -3,7 +3,10 @@
 MAKE="/usr/bin/make -f Makefile.ubuntu"
 STAGE="beta"
 TARGET_BRANCH="main"
+TAG="latest"
+DOCKERFILE="../Dockerfile"
 _TEST=0
+_GRAFANA=0
 
 # process command line arguments
 while [[ $# -gt 0 ]]
@@ -11,6 +14,10 @@ do
     key=$1
 
     case $key in
+        --grafana)
+        _GRAFANA=1
+        ;;
+
         --test)
         _TEST=1
         ;;
@@ -84,12 +91,27 @@ cp admin/* docker/$TT_VERSION/opt/ticktock/scripts/
 cp docker/run.sh docker/$TT_VERSION/opt/ticktock/scripts/
 cp docker/limits.conf docker/$TT_VERSION/
 
+if [ $_GRAFANA -ne 0 ]; then
+    TAG="${TAG}-grafana"
+    DOCKERFILE=${DOCKERFILE}.grafana
+    cp docker/tcollector docker/$TT_VERSION/
+    cp -r ../tcollector docker/$TT_VERSION/opt/
+    tar xfz ~/Downloads/grafana-8.1.5.linux-amd64.tar.gz -C docker/$TT_VERSION/opt/
+    pushd docker/$TT_VERSION/opt
+    ln -s grafana-8.1.5 grafana
+    popd
+fi
+
+if [ $_TEST -ne 0 ]; then
+    TAG="${TAG}-test"
+fi
+
 # build
 pushd docker/$TT_VERSION
-docker build -f ../Dockerfile --tag ytyou/ticktock:${TT_VERSION}-${STAGE} --tag ytyou/ticktock:latest \
+docker build -f $DOCKERFILE --tag ytyou/ticktock:${TT_VERSION}-${STAGE} --tag ytyou/ticktock:${TAG} \
     --build-arg BUILD_DATE=$(date -u +'%Y-%m-%dT%H:%M:%SZ') \
     --build-arg GIT_COMMIT=$(git log -1 --pretty=format:%h) \
-    --build-arg VERSION=0.1.3-alpha --add-host=ticktock:127.0.0.1 \
+    --build-arg VERSION=${TT_VERSION}-${STAGE} --add-host=ticktock:127.0.0.1 \
     --rm $BUILD_OPT .
 popd
 

@@ -19,6 +19,7 @@
 
 #pragma once
 
+#include <cmath>
 #include "range.h"
 #include "recycle.h"
 #include "type.h"
