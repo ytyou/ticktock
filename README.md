@@ -73,12 +73,12 @@ with URL `http://<ticktock-host>:6182`; Create Dashboards using the data source.
 
 ## User Guide
 
-* [Installation][docs/installation.md]
-* [Configuration][docs/configuration.md]
-* [Writing Data][docs/writing_data.md]
-* [Querying Data][docs/querying_data.md]
-* [Logging][docs/logging.md]
-* [Utilities][docs/utilities.md]
-* [Benchmark][docs/benchmark.md]
-* [Reference][docs/reference.md]
-* [License][docs/license.md]
+* [Installation](docs/installation.md)
+* [Configuration](docs/configuration.md)
+* [Writing Data](docs/writing_data.md)
+* [Querying Data](docs/querying_data.md)
+* [Logging](docs/logging.md)
+* [Utilities](docs/utilities.md)
+* [Benchmark](docs/benchmark.md)
+* [Reference](docs/reference.md)
+* [License](docs/license.md)
