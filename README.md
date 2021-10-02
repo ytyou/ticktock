@@ -1,78 +1,99 @@
-# TickTock
-An [OpenTSDB](http://opentsdb.net)-like Time Series Database. It is not 100% compatible with OpenTSDB.
-However, you can use OpenTSDB's [TCollector](https://github.com/OpenTSDB/tcollector) to send data to it;
+# TickTock [![Docker Pulls](https://img.shields.io/docker/pulls/ytyou/ticktock)](https://hub.docker.com/r/ytyou/ticktock)
+
+An [OpenTSDB](http://opentsdb.net)-like Time Series Database, with much better performance.
+It is not 100% compatible with OpenTSDB. However, you can use OpenTSDB's
+[TCollector](https://github.com/OpenTSDB/tcollector) to send data to it;
 you can use [Grafana](https://grafana.com) to query it (select OpenTSDB as the data source type).
 
-Highlights
-----------
+
+## Highlights
+
 * High Performance - High write throughput, low query latency.
 * Replication - Write to any server in the cluster, get replicated to any other servers.
 * Scalability - Partition the database by metric names.
-* Compatibility with OpenTSDB - Compatible enough so that you can use TCollector to send data to it; use Grafana to query it.
-* Docker Ready - To run it: docker run -d -v ticktock:/var/lib/ticktock --network=host --name ticktock ytyou/ticktock:latest
+* Compatibility - Compatible with OpenTSDB enough that you can use TCollector to send data to it; use Grafana to query it.
+* No Dependencies - No runtime dependencies.
+* Docker Ready - Start running in seconds; no installation required.
+* Open Source - You can redistribute it and/or modify it under the terms of the GNU General Public License. For details, see below.
 
-Supported Platforms
--------------------
-* CentOS 7
-* Ubuntu 18 and up
-* Docker Container
 
-Other Linux platforms should also work, although we haven't tested them yet.
+## Quick Start
 
-Build
------
-Install the following:
-* zlib 1.2.11
-* glibc libraries
+### Run TickTock Demo
 
-On CentOS,
-```
-$ yum install zlib-devel
-$ yum groupinstall "Development Tools"
-```
-On Ubuntu,
-```
-$ apt install zlib1g-dev
-$ apt install build-essential
-```
-To build TickTock on CentOS, run
-```
-$ make
-```
-On Ubuntu, run
-```
-$ make -f Makefile.ubuntu
-```
+You need to install [Docker Engine](https://docs.docker.com/engine/install/) first. Then simply run
 
-Running TickTock Server
------------------------
-```
-$ bin/tt -c <config> [-d]
-```
-Use '-d' option to run the server as Linux daemon. To run it in a Docker container,
-```
-$ docker run -d -v ticktock:/var/lib/ticktock --network=host --name ticktock ytyou/ticktock:latest
-```
+    docker run -d --name ticktock -p 3000:3000 -p 6181-6182:6181-6182 -p 6181:6181/udp ytyou/ticktock:latest-grafana
 
-Collect Metrics
----------------
-Use TCollector to send metrics to the TcpServer (default port number 6181).
-You can also use [Collectd](https://collectd.org), with OpenTSDB plugin, to send metrics to the
-same TcpServer.
+To use the built-in Grafana server, point your browser to your docker host at port 3000 (e.g. http://localhost:3000).
+When configuring data source in Grafana, select the OpenTSDB type, with URL: http://localhost:6182. Initial
+username/password is admin/admin.
 
-Query Metrics
--------------
-Ask Grafana to send queries to the HttpServer (default port number 6182).
-Select OpenTSDB as the type of the data source.
+### Run TickTock Only
 
-Licenses
---------
-This project is licensed under the terms of the GPL-3.0 License.
-Please refer to [LICENSE](LICENSE) for the full terms.
+If you already have Docker Engine installed, or if you want to install
+[Docker Engine](https://docs.docker.com/engine/install/) first, then run the official docker image as follows:
 
-Dependency Licenses
--------------------
-* git@github.com:AlexeyAB/object_threadsafe.git - Apache License 2.0
-* thread-safe queue by Joe Best-Rotheray - MIT License
-* robin_map by Thibaut Goetghebuer-Planchon <tessil@gmx.com> - MIT License
-* zlib - See [zlib.net](https://www.zlib.net)
+    docker run -d --name ticktock -p 6181-6182:6181-6182 -p 6181:6181/udp ytyou/ticktock:latest
+
+You can also download the binaries from [GitHub](https://github.com/ytyou/ticktock/releases)(coming soon),
+unpack it, and run it with:
+
+    bin/tt -c conf/tt.conf [-d]
+
+Use `-d` to run it as daemon.
+
+### Collect Metrics
+
+Clone OpenTSDB's TCollector, and run it:
+
+    git clone https://github.com/OpenTSDB/tcollector.git
+    cd tcollector
+    ./tcollector start --host <ticktock-host> --port 6181
+
+Where `<ticktock-host>` is where you run TickTock (the host).
+
+### Run Grafana Server
+
+Run Grafana server in Docker:
+
+    docker run -d --name=grafana -p 3000:3000 grafana/grafana
+
+You can also download the latest binaries from [here](https://grafana.com/grafana/download),
+unpack and run:
+
+    bin/grafana-server web
+
+### Visualize
+
+Fire up your favorite browser and point it to `http://<grafana-host>:3000/`, here `<grafana-host>`
+is where you run Grafana server; initial username/password is admin/admin; add an `OpenTSDB` data source
+with URL `http://<ticktock-host>:6182`; Create Dashboards using the data source. Enjoy it!
+
+
+## User Guide
+
+* [Installation][docs_installation]
+* [Configuration][docs_configuration]
+* [Writing Data][docs_writing_data]
+* [Querying Data][docs_querying_data]
+* [Logging][docs_logging]
+* [Utilities][docs_utilities]
+* [Benchmark][docs_benchmark]
+* [Reference][docs_reference]
+* [License][docs_license]
+
+
+
+
+
+
+[docs_installation]: https://github.com/ytyou/ticktock/blob/main/docs/installation.md
+[docs_configuration]: https://github.com/ytyou/ticktock/blob/main/docs/configuration.md
+[docs_writing_data]: https://github.com/ytyou/ticktock/blob/main/docs/writing_data.md
+[docs_querying_data]: https://github.com/ytyou/ticktock/blob/main/docs/querying_data.md
+[docs_logging]: https://github.com/ytyou/ticktock/blob/main/docs/logging.md
+[docs_utilities]: https://github.com/ytyou/ticktock/blob/main/docs/utilities.md
+[docs_benchmark]: https://github.com/ytyou/ticktock/blob/main/docs/benchmark.md
+[docs_reference]: https://github.com/ytyou/ticktock/blob/main/docs/reference.md
+[docs_license]: https://github.com/ytyou/ticktock/blob/main/docs/license.md
