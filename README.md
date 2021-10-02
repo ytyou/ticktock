@@ -13,6 +13,7 @@ you can use [Grafana](https://grafana.com) to query it (select OpenTSDB as the d
 * Scalability - Partition the database by metric names.
 * Compatibility - Compatible with OpenTSDB enough that you can use TCollector to send data to it; use Grafana to query it.
 * No Dependencies - No runtime dependencies.
+* Simplicity - One process per instance; Low maintenance.
 * Docker Ready - Start running in seconds; no installation required.
 * Open Source - You can redistribute it and/or modify it under the terms of the GNU General Public License. For details, see below.
 
@@ -25,9 +26,8 @@ You need to install [Docker Engine](https://docs.docker.com/engine/install/) fir
 
     docker run -d --name ticktock -p 3000:3000 -p 6181-6182:6181-6182 -p 6181:6181/udp ytyou/ticktock:latest-grafana
 
-To use the built-in Grafana server, point your browser to your docker host at port 3000 (e.g. http://localhost:3000).
-When configuring data source in Grafana, select the OpenTSDB type, with URL: http://localhost:6182. Initial
-username/password is admin/admin.
+To see the pre-built dashboard, point your browser to your docker host at port 3000 (e.g. http://localhost:3000).
+The initial username/password is admin/admin. After login, click on the "TickTock Demo" dashboard.
 
 ### Run TickTock Only
 
@@ -73,12 +73,4 @@ with URL `http://<ticktock-host>:6182`; Create Dashboards using the data source.
 
 ## User Guide
 
-* [Installation](docs/installation.md)
-* [Configuration](docs/configuration.md)
-* [Writing Data](docs/writing_data.md)
-* [Querying Data](docs/querying_data.md)
-* [Logging](docs/logging.md)
-* [Utilities](docs/utilities.md)
-* [Benchmark](docs/benchmark.md)
-* [Reference](docs/reference.md)
-* [License](docs/license.md)
+For detailed instructions, please see [User Guide](https://github.com/ytyou/ticktock/wiki/User-Guide).
