@@ -73,27 +73,12 @@ with URL `http://<ticktock-host>:6182`; Create Dashboards using the data source.
 
 ## User Guide
 
-* [Installation][docs_installation]
-* [Configuration][docs_configuration]
-* [Writing Data][docs_writing_data]
-* [Querying Data][docs_querying_data]
-* [Logging][docs_logging]
-* [Utilities][docs_utilities]
-* [Benchmark][docs_benchmark]
-* [Reference][docs_reference]
-* [License][docs_license]
-
-
-
-
-
-
-[docs_installation]: https://github.com/ytyou/ticktock/blob/main/docs/installation.md
-[docs_configuration]: https://github.com/ytyou/ticktock/blob/main/docs/configuration.md
-[docs_writing_data]: https://github.com/ytyou/ticktock/blob/main/docs/writing_data.md
-[docs_querying_data]: https://github.com/ytyou/ticktock/blob/main/docs/querying_data.md
-[docs_logging]: https://github.com/ytyou/ticktock/blob/main/docs/logging.md
-[docs_utilities]: https://github.com/ytyou/ticktock/blob/main/docs/utilities.md
-[docs_benchmark]: https://github.com/ytyou/ticktock/blob/main/docs/benchmark.md
-[docs_reference]: https://github.com/ytyou/ticktock/blob/main/docs/reference.md
-[docs_license]: https://github.com/ytyou/ticktock/blob/main/docs/license.md
+* [Installation][docs/installation.md]
+* [Configuration][docs/configuration.md]
+* [Writing Data][docs/writing_data.md]
+* [Querying Data][docs/querying_data.md]
+* [Logging][docs/logging.md]
+* [Utilities][docs/utilities.md]
+* [Benchmark][docs/benchmark.md]
+* [Reference][docs/reference.md]
+* [License][docs/license.md]
