@@ -6,7 +6,7 @@ It is not 100% compatible with OpenTSDB. However, you can use OpenTSDB's
 you can use [Grafana](https://grafana.com) to query it (select OpenTSDB as the data source type).
 
 
-1.## Highlights
+## Highlights
 
 * High Performance - High write throughput, low query latency.
 * Replication - Write to any server in the cluster, get replicated to any other servers.
@@ -35,19 +35,20 @@ We prepare a TickTock Demo in a docker image. With a single command to launch th
     
 3. To see the pre-built dashboard, point your browser to your docker host at port 3000 (e.g. http://localhost:3000).
    The initial username/password is admin/admin. 
-    <img src="https://github.com/ytyou/ticktock/blob/feature/dockerReadme/docs/images/dockerDemoLogin1.jpg" width="500"/>
+   <center>img src="https://github.com/ytyou/ticktock/blob/feature/dockerReadme/docs/images/dockerDemoLogin1.jpg" width="650"/></center>
 
    You will be asked to change the password at the first login. Simply skip it if you don't want to.
-    <img src="https://github.com/ytyou/ticktock/blob/feature/dockerReadme/docs/images/dockerDemoLogin2.jpg" width="500"/>
+   <center>img src="https://github.com/ytyou/ticktock/blob/feature/dockerReadme/docs/images/dockerDemoLogin2.jpg" width="650"/></center>
  
 4. After login, go to "TickTock Demo" dashboard to see metric panels.
-    <img src="https://github.com/ytyou/ticktock/blob/feature/dockerReadme/docs/images/dockerDemoDashboard1.jpg" width="500"/>
+   <center>img src="https://github.com/ytyou/ticktock/blob/feature/dockerReadme/docs/images/dockerDemoDashboard1.jpg" width="650"/></center>
 
-    <img src="https://github.com/ytyou/ticktock/blob/feature/dockerReadme/docs/images/dockerDemoDashboard2.jpg" width="500"/>
+   <center>img src="https://github.com/ytyou/ticktock/blob/feature/dockerReadme/docs/images/dockerDemoDashboard2.jpg" width="650"/></center>
  
    The "TickTock Demo" dashboard is initialized with 4 metric panels, i.e., cpu load, memory usage, disk usage, and network usage.
-    <img src="https://github.com/ytyou/ticktock/blob/feature/dockerReadme/docs/images/dockerDemoDashboard3.jpg" width="500"/>
 
-3##. User Guide
+   <center><img src="https://github.com/ytyou/ticktock/blob/feature/dockerReadme/docs/images/dockerDemoDashboard3.jpg" width="650"/></center>
 
-For detailed instructions, please see [User Guide](https://github.com/ytyou/ticktock/wiki/User-Guide).
+## Documentation
+
+For more information, please see Ticktock documentation in [User Guide](https://github.com/ytyou/ticktock/wiki/User-Guide).
