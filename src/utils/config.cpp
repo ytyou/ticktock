@@ -85,14 +85,12 @@ Config::reload(TaskData& data)
 
             if (property == nullptr)
             {
-                property = std::shared_ptr<Property>(new Property());
-                property->name = key;
-                property->value = value;
+                property = std::shared_ptr<Property>(new Property(key, value));
                 m_properties[key] = property;
             }
             else
             {
-                property->value = value;
+                property->set_value(value);
             }
         }
     }
@@ -112,14 +110,12 @@ Config::set_value(const std::string& name, const std::string& value)
 
     if (property == nullptr)
     {
-        property = std::shared_ptr<Property>(new Property());
-        property->name = name;
-        property->value = value;
+        property = std::shared_ptr<Property>(new Property(name, value));
         m_properties[name] = property;
     }
     else
     {
-        property->value = value;
+        property->set_value(value);
     }
 }
 
@@ -136,9 +132,7 @@ Config::get_bool(const std::string& name, bool def_value)
     std::lock_guard<std::mutex> guard(m_lock);
     std::shared_ptr<Property> property = get_property(name);
     if (property == nullptr) return def_value;
-    std::string value = property->value;
-    if (value.empty()) value = def_value;
-    return starts_with(value, 't') || starts_with(value, 'T');
+    return property->as_bool();
 }
 
 int
@@ -147,9 +141,7 @@ Config::get_int(const std::string& name)
     std::lock_guard<std::mutex> guard(m_lock);
     std::shared_ptr<Property> property = get_property(name);
     if (property == nullptr) throw std::exception();
-    std::string value = property->value;
-    if (value.empty()) value = property->def_value;
-    return std::stoi(value);
+    return property->as_int();
 }
 
 int
@@ -158,9 +150,7 @@ Config::get_int(const std::string& name, int def_value)
     std::lock_guard<std::mutex> guard(m_lock);
     std::shared_ptr<Property> property = get_property(name);
     if (property == nullptr) return def_value;
-    std::string value = property->value;
-    if (value.empty()) value = property->def_value;
-    return std::stoi(value);
+    return property->as_int();
 }
 
 const std::string &
@@ -169,14 +159,7 @@ Config::get_str(const std::string& name)
     std::lock_guard<std::mutex> guard(m_lock);
     std::shared_ptr<Property> property = get_property(name);
     if (property == nullptr) return EMPTY_STD_STRING;   //throw std::exception();
-    if (property->value.empty())
-    {
-        return property->def_value;
-    }
-    else
-    {
-        return property->value;
-    }
+    return property->as_str();
 }
 
 const std::string &
@@ -185,14 +168,7 @@ Config::get_str(const std::string& name, const std::string& def_value)
     std::lock_guard<std::mutex> guard(m_lock);
     std::shared_ptr<Property> property = get_property(name);
     if (property == nullptr) return def_value;
-    if (property->value.empty())
-    {
-        return property->def_value;
-    }
-    else
-    {
-        return property->value;
-    }
+    return property->as_str();
 }
 
 int
@@ -201,11 +177,7 @@ Config::get_bytes(const std::string& name)
     std::lock_guard<std::mutex> guard(m_lock);
     std::shared_ptr<Property> property = get_property(name);
     if (property == nullptr) throw std::exception();
-    std::string value = property->value;
-    if (value.empty()) value = property->def_value;
-    int bytes = std::stoi(value);
-    bytes *= get_bytes_factor(value);
-    return bytes;
+    return property->as_bytes();
 }
 
 int
@@ -213,11 +185,10 @@ Config::get_bytes(const std::string& name, const std::string& def_value)
 {
     std::lock_guard<std::mutex> guard(m_lock);
     std::shared_ptr<Property> property = get_property(name);
-    std::string value = (property == nullptr) ? def_value : property->value;
-    if (value.empty()) throw std::exception();
-    int bytes = std::stoi(value);
-    bytes *= get_bytes_factor(value);
-    return bytes;
+    if (property == nullptr)
+        return Property::as_bytes(def_value);
+    else
+        return property->as_bytes();
 }
 
 long
@@ -226,12 +197,7 @@ Config::get_time(const std::string& name, TimeUnit unit)
     std::lock_guard<std::mutex> guard(m_lock);
     std::shared_ptr<Property> property = get_property(name);
     if (property == nullptr) throw std::exception();
-    std::string value = property->value;
-    if (value.empty()) value = property->def_value;
-    long time = std::stol(value);
-    TimeUnit u = to_time_unit(value);
-    if (u == TimeUnit::UNKNOWN) throw std::exception();
-    return convert_time(time, u, unit);
+    return property->as_time(unit);
 }
 
 long
@@ -239,12 +205,10 @@ Config::get_time(const std::string& name, TimeUnit unit, const std::string& def_
 {
     std::lock_guard<std::mutex> guard(m_lock);
     std::shared_ptr<Property> property = get_property(name);
-    std::string value = (property == nullptr) ? def_value : property->value;
-    if (value.empty()) throw std::exception();
-    long time = std::stol(value);
-    TimeUnit u = to_time_unit(value);
-    if (u == TimeUnit::UNKNOWN) throw std::exception();
-    return convert_time(time, u, unit);
+    if (property == nullptr)
+        return Property::as_time(def_value, unit);
+    else
+        return property->as_time(unit);
 }
 
 std::shared_ptr<Property>
@@ -268,7 +232,8 @@ Config::c_str(char *buff, size_t size)
     {
         std::shared_ptr<Property> property = it->second;
 
-        int n = std::snprintf(&buff[idx], size, "%s = %s\n", property->name.c_str(), property->get_effective_value().c_str());
+        int n = std::snprintf(&buff[idx], size, "%s = %s\n",
+            property->get_name().c_str(), property->as_str().c_str());
 
         if (n <= 0)
         {

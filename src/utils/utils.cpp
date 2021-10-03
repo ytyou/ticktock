@@ -257,7 +257,7 @@ to_sec(Timestamp tstamp)
 }
 
 TimeUnit
-to_time_unit(std::string& str)
+to_time_unit(const std::string& str)
 {
     TimeUnit unit = TimeUnit::UNKNOWN;
     size_t i;
@@ -384,7 +384,7 @@ convert_time(long time, TimeUnit from_unit, TimeUnit to_unit)
 }
 
 int
-get_bytes_factor(std::string& str)
+get_bytes_factor(const std::string& str)
 {
     int factor = 1;
     size_t i;
