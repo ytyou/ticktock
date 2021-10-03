@@ -97,7 +97,7 @@ if [ $_GRAFANA -ne 0 ]; then
     TAGV="${TAGV}-grafana"
     DOCKERFILE=${DOCKERFILE}.grafana
     cp docker/tcollector docker/$TT_VERSION/
-    cp -r /opt/tcollector docker/$TT_VERSION/opt/
+    cp -r /opt/tcollector.docker docker/$TT_VERSION/opt/tcollector
     cp -r /opt/grafana-8.1.5.docker docker/$TT_VERSION/opt/grafana-8.1.5
     pushd docker/$TT_VERSION/opt
     ln -s grafana-8.1.5 grafana
