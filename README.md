@@ -6,7 +6,7 @@ It is not 100% compatible with OpenTSDB. However, you can use OpenTSDB's
 you can use [Grafana](https://grafana.com) to query it (select OpenTSDB as the data source type).
 
 
-##1. Highlights
+1.## Highlights
 
 * High Performance - High write throughput, low query latency.
 * Replication - Write to any server in the cluster, get replicated to any other servers.
@@ -18,9 +18,12 @@ you can use [Grafana](https://grafana.com) to query it (select OpenTSDB as the d
 * Open Source - You can redistribute it and/or modify it under the terms of the GNU General Public License. For details, see below.
 
 
-##2. Quick Start
+## Quick Start
 
-We prepare a TickTock Demo in a docker image. With a single command to launch the docker, you can see a). a Ticktock process, b). a tcollector collecting OS metrics of the docker and sending to Ticktock; c). a Grafana providing metric dashboard to visualize the metrics.
+We prepare a TickTock Demo in a docker image. With a single command to launch the docker, there will be a fully functional demo in the docker,
+- A Ticktock TSDB; 
+- A Tcollector collecting OS metrics of the docker and sending to Ticktock; 
+- A Grafana providing metric dashboard to visualize the metrics.
 
 ### Run Ticktock Demo steps:
 1. You need to install [Docker Engine](https://docs.docker.com/engine/install/) first. 
@@ -32,17 +35,19 @@ We prepare a TickTock Demo in a docker image. With a single command to launch th
     
 3. To see the pre-built dashboard, point your browser to your docker host at port 3000 (e.g. http://localhost:3000).
    The initial username/password is admin/admin. 
-    <img src="https://github.com/ytyou/ticktock/blob/feature/dockerReadme/docs/images/dockerDemoLogin1.jpg" width="100"/>
+    <img src="https://github.com/ytyou/ticktock/blob/feature/dockerReadme/docs/images/dockerDemoLogin1.jpg" width="500"/>
+
    You will be asked to change the password at the first login. Simply skip it if you don't want to.
-    <img src="https://github.com/ytyou/ticktock/blob/feature/dockerReadme/docs/images/dockerDemoLogin2.jpg" width="100"/>
+    <img src="https://github.com/ytyou/ticktock/blob/feature/dockerReadme/docs/images/dockerDemoLogin2.jpg" width="500"/>
  
 4. After login, go to "TickTock Demo" dashboard to see metric panels.
-    <img src="https://github.com/ytyou/ticktock/blob/feature/dockerReadme/docs/images/dockerDemoDashboard1.jpg" width="100"/>
-    <img src="https://github.com/ytyou/ticktock/blob/feature/dockerReadme/docs/images/dockerDemoDashboard2.jpg" width="100"/>
+    <img src="https://github.com/ytyou/ticktock/blob/feature/dockerReadme/docs/images/dockerDemoDashboard1.jpg" width="500"/>
+
+    <img src="https://github.com/ytyou/ticktock/blob/feature/dockerReadme/docs/images/dockerDemoDashboard2.jpg" width="500"/>
  
    The "TickTock Demo" dashboard is initialized with 4 metric panels, i.e., cpu load, memory usage, disk usage, and network usage.
-    <img src="https://github.com/ytyou/ticktock/blob/feature/dockerReadme/docs/images/dockerDemoDashboard3.jpg" width="100"/>
+    <img src="https://github.com/ytyou/ticktock/blob/feature/dockerReadme/docs/images/dockerDemoDashboard3.jpg" width="500"/>
 
-##3. User Guide
+3##. User Guide
 
 For detailed instructions, please see [User Guide](https://github.com/ytyou/ticktock/wiki/User-Guide).
