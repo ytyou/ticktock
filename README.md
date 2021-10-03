@@ -22,12 +22,26 @@ you can use [Grafana](https://grafana.com) to query it (select OpenTSDB as the d
 
 ### Run TickTock Demo
 
-You need to install [Docker Engine](https://docs.docker.com/engine/install/) first. Then simply run
+1. You need to install [Docker Engine](https://docs.docker.com/engine/install/) first. 
+2. Then simply run
 
     docker run -d --name ticktock -p 3000:3000 -p 6181-6182:6181-6182 -p 6181:6181/udp ytyou/ticktock:latest-grafana
+    
+    ![Docker command execution example](/docs/images/dockerDemoCmd.jpg)
+        
+3. To see the pre-built dashboard, point your browser to your docker host at port 3000 (e.g. http://localhost:3000).
+   The initial username/password is admin/admin. 
+    ![Docker demo: Login to Grafana to see metrics dashboard](/docs/images/dockerDemoLogin1.jpg)
 
-To see the pre-built dashboard, point your browser to your docker host at port 3000 (e.g. http://localhost:3000).
-The initial username/password is admin/admin. After login, click on the "TickTock Demo" dashboard.
+   You will be asked to change the password at the first login. Simply skip it if you don't want to.
+    ![Docker demo: skip changing username/password.](/docs/images/dockerDemoLogin2.jpg)
+ 
+4. After login, go to "TickTock Demo" dashboard to see metric panels.
+    ![Docker demo: Go to Grafana dashboard Ticktock](/docs/images/dockerDemoDashboard1.jpg)
+    ![Docker demo: Go to Grafana dashboard Ticktock](/docs/images/dockerDemoDashboard2.jpg)
+ 
+   The "TickTock Demo" dashboard is initialized with 4 metric panels, i.e., cpu load, memory usage, disk usage, and network usage.
+    ![Docker demo: Go to Grafana dashboard Ticktock](/docs/images/dockerDemoDashboard3.jpg)
 
 ### Run TickTock Only
 
