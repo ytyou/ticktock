@@ -35,6 +35,7 @@ namespace tt
 
 std::mutex Config::m_lock;
 std::map<std::string, std::shared_ptr<Property>> Config::m_properties;
+std::map<std::string, std::shared_ptr<Property>> Config::m_overrides;
 
 
 void
@@ -80,19 +81,12 @@ Config::reload(TaskData& data)
 
             std::string key = std::get<0>(kv);
             std::string value = std::get<1>(kv);
-
-            std::shared_ptr<Property> property = get_property(key);
-
-            if (property == nullptr)
-            {
-                property = std::shared_ptr<Property>(new Property(key, value));
-                m_properties[key] = property;
-            }
-            else
-            {
-                property->set_value(value);
-            }
+            set_value_no_lock(key, value);
         }
+
+        // let command-line options override config file
+        for (auto const& override: m_overrides)
+            set_value_no_lock(override.first, override.second->as_str());
     }
     catch (std::exception& ex)
     {
@@ -106,6 +100,12 @@ void
 Config::set_value(const std::string& name, const std::string& value)
 {
     std::lock_guard<std::mutex> guard(m_lock);
+    set_value_no_lock(name, value);
+}
+
+void
+Config::set_value_no_lock(const std::string& name, const std::string& value)
+{
     std::shared_ptr<Property> property = get_property(name);
 
     if (property == nullptr)
@@ -117,6 +117,16 @@ Config::set_value(const std::string& name, const std::string& value)
     {
         property->set_value(value);
     }
+}
+
+void
+Config::add_override(const char *name, const char *value)
+{
+    auto search = m_overrides.find(name);
+    if (search == m_overrides.end())
+        m_overrides[name] = std::shared_ptr<Property>(new Property(name, value));
+    else
+        search->second->set_value(value);
 }
 
 bool
@@ -216,6 +226,14 @@ Config::get_property(const std::string& name)
 {
     auto search = m_properties.find(name);
     if (search == m_properties.end()) return nullptr;
+    return search->second;
+}
+
+std::shared_ptr<Property>
+Config::get_override(const std::string& name)
+{
+    auto search = m_overrides.find(name);
+    if (search == m_overrides.end()) return nullptr;
     return search->second;
 }
 

@@ -215,18 +215,24 @@ public:
     static long get_time(const std::string& name, const TimeUnit unit);
     static long get_time(const std::string& name, const TimeUnit unit, const std::string& def_value);
 
-    // FOR TESTING ONLY
     // will override existing value, if any
     static void set_value(const std::string& name, const std::string& value);
+    static void set_value_no_lock(const std::string& name, const std::string& value);
 
+    static void add_override(const char *name, const char *value);
     static const char *c_str(char *buff, size_t size);
 
 private:
     static std::shared_ptr<Property> get_property(const std::string& name);
+    static std::shared_ptr<Property> get_override(const std::string& name);
     static bool reload(TaskData& data);
 
     static std::mutex m_lock;
     static std::map<std::string, std::shared_ptr<Property>> m_properties;
+
+    // these came from command-line options; they take precedence over
+    // m_properties which came from config file;
+    static std::map<std::string, std::shared_ptr<Property>> m_overrides;
 };
 
 
