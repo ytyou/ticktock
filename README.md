@@ -38,7 +38,7 @@ We prepare a TickTock Demo in a docker image. With a single command to launch th
 - A Tcollector collecting OS metrics of the docker and sending to Ticktock; 
 - A Grafana providing metric dashboard to visualize the metrics.
 
-### Run Ticktock Demo steps:
+### To run Ticktock Demo:
 1. You need to install [Docker Engine](https://docs.docker.com/engine/install/) first. 
 2. Then simply run
 
@@ -48,18 +48,18 @@ We prepare a TickTock Demo in a docker image. With a single command to launch th
     
 3. To see the pre-built dashboard, point your browser to your docker host at port 3000 (e.g. http://localhost:3000).
    The initial username/password is admin/admin. 
-   <img src="https://github.com/ytyou/ticktock/blob/feature/dockerReadme/docs/images/dockerDemoLogin1.jpg" width="650" ALIGN="middle"/>
+   ![Docker Demo: Grafana login page](/docs/images/dockerDemoLogin1.jpg)
 
    You will be asked to change the password at the first login. Simply skip it if you don't want to.
-   <img src="https://github.com/ytyou/ticktock/blob/feature/dockerReadme/docs/images/dockerDemoLogin2.jpg" width="650" ALIGN="middle"/>
+   ![Docker Demo: Grafana login page](/docs/images/dockerDemoLogin2.jpg)
  
 4. After login, go to "TickTock Demo" dashboard to see metric panels.
-   <img src="https://github.com/ytyou/ticktock/blob/feature/dockerReadme/docs/images/dockerDemoDashboard1.jpg" width="650" ALIGN="middle"/>
-   <img src="https://github.com/ytyou/ticktock/blob/feature/dockerReadme/docs/images/dockerDemoDashboard2.jpg" width="650" ALIGN="middle"/>
+   ![Docker Demo: Grafana Dashboard](/docs/images/dockerDemoDashboard1.jpg)
+   ![Docker Demo: Grafana Dashboard 2](/docs/images/dockerDemoDashboard2.jpg)
  
    The "TickTock Demo" dashboard is initialized with 4 metric panels, i.e., cpu load, memory usage, disk usage, and network usage.
    
-   ![Docker command execution example](/docs/images/dockerDemoDashboard3.jpg)
+   ![Docker Demo: Grafana Dashboard 3](/docs/images/dockerDemoDashboard3.jpg)
 
 ## Documentation
 
