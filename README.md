@@ -1,6 +1,6 @@
 # TickTock [![Docker Pulls](https://img.shields.io/docker/pulls/ytyou/ticktock)](https://hub.docker.com/r/ytyou/ticktock)
 
-TickTock is an open source Time Series DataBase (TSDB) for DevOps, Internet of Things (IoT), financial data. Based on many years of unsatisfied experience with TSDBs, we set our **design goals** of TickTock as:
+TickTock is an open source Time Series DataBase (TSDB) for DevOps, Internet of Things (IoT), and financial data. Based on many years of unsatisfied experience with TSDBs, we set our **design goals** of TickTock as:
 
 * **Low resource requirement:**
   - It can run even with very low resources.
@@ -66,4 +66,4 @@ We prepare a TickTock Demo in a docker image. With a single command to launch th
 
 ## Documentation
 
-For more information, please see TickTock [documentation](https://github.com/ytyou/ticktock/wiki/User-Guide).
+For more information, please refer to TickTock [documentation](https://github.com/ytyou/ticktock/wiki/User-Guide).
