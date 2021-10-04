@@ -2,7 +2,7 @@
 
 TickTock is an open source Time Series DataBase (TSDB) for DevOps, Internet of Things (IoT), financial data. Based on many years of unsatisfied experience with TSDBs, we set our **design goals** of TickTock as:
 
-* **Low resource required:**
+* **Low resource requirement:**
   - It can run even with very low resources.
 * **High performance:** 
   - At least 10X better than OpenTSDB, competitive to the best TSDBs like InfluxDB.
