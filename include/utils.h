@@ -67,9 +67,9 @@ extern bool is_my_ip(std::string& ip);
 extern Timestamp validate_resolution(Timestamp ts); // return timestamp with correct unit
 extern Timestamp to_ms(Timestamp tstamp);
 extern Timestamp to_sec(Timestamp tstamp);
-extern TimeUnit to_time_unit(std::string& str);
+extern TimeUnit to_time_unit(const std::string& str);
 extern long convert_time(long time, TimeUnit from_unit, TimeUnit to_unit);
-extern int get_bytes_factor(std::string& str);
+extern int get_bytes_factor(const std::string& str);
 extern void tokenize(const std::string& str, std::vector<std::string>& tokens, std::regex& delim);
 extern bool tokenize(const std::string& str, std::tuple<std::string,std::string>& kv, char delim);
 extern bool tokenize(const std::string& str, std::vector<std::string>& tokens, char delim);

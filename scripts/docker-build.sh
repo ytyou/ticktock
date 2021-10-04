@@ -89,7 +89,7 @@ cp bin/tt docker/$TT_VERSION/opt/ticktock/bin/ticktock
 cp bin/backfill docker/$TT_VERSION/opt/ticktock/bin/backfill
 cp conf/tt.docker.conf docker/$TT_VERSION/opt/ticktock/conf/ticktock.conf
 cp admin/* docker/$TT_VERSION/opt/ticktock/scripts/
-cp docker/run.sh docker/$TT_VERSION/opt/ticktock/scripts/
+cp docker/entrypoint.sh docker/$TT_VERSION/opt/ticktock/scripts/
 cp docker/limits.conf docker/$TT_VERSION/
 
 if [ $_GRAFANA -ne 0 ]; then
@@ -97,7 +97,7 @@ if [ $_GRAFANA -ne 0 ]; then
     TAGV="${TAGV}-grafana"
     DOCKERFILE=${DOCKERFILE}.grafana
     cp docker/tcollector docker/$TT_VERSION/
-    cp -r /opt/tcollector docker/$TT_VERSION/opt/
+    cp -r /opt/tcollector.docker docker/$TT_VERSION/opt/tcollector
     cp -r /opt/grafana-8.1.5.docker docker/$TT_VERSION/opt/grafana-8.1.5
     pushd docker/$TT_VERSION/opt
     ln -s grafana-8.1.5 grafana

@@ -99,6 +99,7 @@
 #define CFG_TSDB_COMPRESSOR_VERSION             "tsdb.compressor.version"
 #define CFG_TSDB_COMPRESSOR_VERSION_DEF         1
 #define CFG_TSDB_DATA_DIR                       "tsdb.data.dir"
+#define CFG_TSDB_DATA_DIR_DEF                   "."
 #define CFG_TSDB_OFF_HOUR_BEGIN                 "tsdb.off_hour.begin"
 #define CFG_TSDB_OFF_HOUR_BEGIN_DEF             0
 #define CFG_TSDB_OFF_HOUR_END                   "tsdb.off_hour.end"
@@ -132,18 +133,68 @@ namespace tt
 {
 
 
-typedef struct property Property;
-
-struct property
+class Property
 {
-    std::string name;
-    std::string value;
-    std::string def_value;
-
-    std::string& get_effective_value()
+public:
+    Property(const std::string& name, const std::string& value) :
+        m_name(name),
+        m_value(value)
     {
-        return value.empty() ? def_value : value;
     }
+
+    inline bool as_bool() const
+    {
+        return starts_with(m_value, 't') || starts_with(m_value, 'T');
+    }
+
+    inline int as_bytes() const
+    {
+        return Property::as_bytes(m_value);
+    }
+
+    static int as_bytes(const std::string& value)
+    {
+        int bytes = std::stoi(value);
+        bytes *= get_bytes_factor(value);
+        return bytes;
+    }
+
+    inline int as_int() const
+    {
+        return std::stoi(m_value);
+    }
+
+    inline long as_time(TimeUnit unit) const
+    {
+        return Property::as_time(m_value, unit);
+    }
+
+    static long as_time(const std::string& val, TimeUnit unit)
+    {
+        long time = std::stol(val);
+        TimeUnit u = to_time_unit(val);
+        if (u == TimeUnit::UNKNOWN) throw std::exception();
+        return convert_time(time, u, unit);
+    }
+
+    inline const std::string& as_str() const
+    {
+        return m_value;
+    }
+
+    inline void set_value(const std::string& value)
+    {
+        m_value = value;
+    }
+
+    inline const std::string& get_name() const
+    {
+        return m_name;
+    }
+
+private:
+    std::string m_name;
+    std::string m_value;
 };
 
 
@@ -165,18 +216,24 @@ public:
     static long get_time(const std::string& name, const TimeUnit unit);
     static long get_time(const std::string& name, const TimeUnit unit, const std::string& def_value);
 
-    // FOR TESTING ONLY
     // will override existing value, if any
     static void set_value(const std::string& name, const std::string& value);
+    static void set_value_no_lock(const std::string& name, const std::string& value);
 
+    static void add_override(const char *name, const char *value);
     static const char *c_str(char *buff, size_t size);
 
 private:
     static std::shared_ptr<Property> get_property(const std::string& name);
+    static std::shared_ptr<Property> get_override(const std::string& name);
     static bool reload(TaskData& data);
 
     static std::mutex m_lock;
     static std::map<std::string, std::shared_ptr<Property>> m_properties;
+
+    // these came from command-line options; they take precedence over
+    // m_properties which came from config file;
+    static std::map<std::string, std::shared_ptr<Property>> m_overrides;
 };
 
 

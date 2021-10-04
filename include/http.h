@@ -37,6 +37,7 @@ namespace tt
 
 // paths we handle
 extern const char *HTTP_API_AGGREGATORS;
+extern const char *HTTP_API_CONFIG;
 extern const char *HTTP_API_CONFIG_FILTERS;
 extern const char *HTTP_API_PUT;
 extern const char *HTTP_API_QUERY;
@@ -140,6 +141,11 @@ public:
     static HttpRequestHandler get_get_handler(const char *path);
     static HttpRequestHandler get_put_handler(const char *path);
     static HttpRequestHandler get_post_handler(const char *path);
+
+    // individual request handlers
+    static bool http_get_api_config_handler(HttpRequest& request, HttpResponse& response);
+    static bool http_get_api_stats_handler(HttpRequest& request, HttpResponse& response);
+    static bool http_get_api_version_handler(HttpRequest& request, HttpResponse& response);
 
 protected:
     TcpConnection *create_conn() const;

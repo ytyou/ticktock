@@ -70,4 +70,4 @@ EXPOSE 6182/tcp
 USER ticktock
 WORKDIR /tmp
 VOLUME /var/lib/ticktock
-ENTRYPOINT ["/opt/ticktock/scripts/run.sh"]
+ENTRYPOINT ["/opt/ticktock/scripts/entrypoint.sh"]

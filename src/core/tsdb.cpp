@@ -570,7 +570,7 @@ Tsdb::get_partition_defs() const
 void
 Tsdb::open_meta()
 {
-    std::string data_dir = Config::get_str(CFG_TSDB_DATA_DIR);
+    std::string data_dir = Config::get_str(CFG_TSDB_DATA_DIR, CFG_TSDB_DATA_DIR_DEF);
     ASSERT(! data_dir.empty());
     std::string meta_file = Tsdb::get_file_name(m_time_range, "meta");
 
@@ -987,7 +987,7 @@ Tsdb::search(Timestamp tstamp)
 }
 
 Tsdb *
-Tsdb::inst(Timestamp tstamp)
+Tsdb::inst(Timestamp tstamp, bool create)
 {
     Tsdb *tsdb = nullptr;
 
@@ -999,6 +999,7 @@ Tsdb::inst(Timestamp tstamp)
     if (tsdb != nullptr) return tsdb;
 
     // create one
+    if (create)
     {
         WriteLock guard(m_tsdb_lock);
         tsdb = Tsdb::search(tstamp);  // search again to avoid race condition
@@ -1201,11 +1202,11 @@ Tsdb::http_api_put_handler_plain(HttpRequest& request, HttpResponse& response)
     // is the the 'version' command?
     if ((request.length == 8) && (strncmp(curr, "version\n", 8) == 0))
     {
-        return Stats::http_get_api_version_handler(request, response);
+        return HttpServer::http_get_api_version_handler(request, response);
     }
     else if ((request.length == 6) && (strncmp(curr, "stats\n", 6) == 0))
     {
-        return Stats::http_get_api_stats_handler(request, response);
+        return HttpServer::http_get_api_stats_handler(request, response);
     }
 
     response.content_length = 0;
@@ -1228,7 +1229,7 @@ Tsdb::http_api_put_handler_plain(HttpRequest& request, HttpResponse& response)
             if (std::strncmp(curr, "version\n", 8) == 0)
             {
                 curr += 8;
-                Stats::http_get_api_version_handler(request, response);
+                HttpServer::http_get_api_version_handler(request, response);
             }
             else if (std::strncmp(curr, DONT_FORWARD, std::strlen(DONT_FORWARD)) == 0)
             {
@@ -1432,7 +1433,7 @@ Tsdb::append_meta_all()
 void
 Tsdb::init()
 {
-    std::string data_dir = Config::get_str(CFG_TSDB_DATA_DIR);
+    std::string data_dir = Config::get_str(CFG_TSDB_DATA_DIR, CFG_TSDB_DATA_DIR_DEF);
     DIR *dir;
     struct dirent *dir_ent;
 
@@ -1516,7 +1517,7 @@ Tsdb::get_file_name(const TimeRange& range, std::string ext, bool temp)
 {
     char buff[PATH_MAX];
     snprintf(buff, sizeof(buff), "%s/%" PRIu64 ".%" PRIu64 ".%s%s",
-        Config::get_str(CFG_TSDB_DATA_DIR).c_str(),
+        Config::get_str(CFG_TSDB_DATA_DIR,CFG_TSDB_DATA_DIR_DEF).c_str(),
         range.get_from_sec(),
         range.get_to_sec(),
         ext.c_str(),
@@ -1972,7 +1973,7 @@ void
 Tsdb::compact2()
 {
     glob_t result;
-    std::string pattern = Config::get_str(CFG_TSDB_DATA_DIR);
+    std::string pattern = Config::get_str(CFG_TSDB_DATA_DIR, CFG_TSDB_DATA_DIR_DEF);
 
     pattern.append("/*.*.done.temp");
     glob(pattern.c_str(), GLOB_TILDE, nullptr, &result);
@@ -2029,7 +2030,7 @@ Tsdb::compact2()
         rm_file(done_file);
     }
 
-    std::string temp_files = Config::get_str(CFG_TSDB_DATA_DIR);
+    std::string temp_files = Config::get_str(CFG_TSDB_DATA_DIR, CFG_TSDB_DATA_DIR_DEF);
     temp_files.append("/*.temp");
     rm_all_files(temp_files);
 }

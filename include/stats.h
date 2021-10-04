@@ -66,12 +66,11 @@ public:
     static void init();
     static long get_rss_mb();
 
-    static bool http_get_api_stats_handler(HttpRequest& request, HttpResponse& response);
-    static bool http_get_api_version_handler(HttpRequest& request, HttpResponse& response);
-
     // This is used to collect metrics until inject_metrics() is called,
     // at which point they will be sent to Tsdb.
     static void add_data_point(DataPoint *dp);
+
+    static int collect_stats(char *buff, int size);
 
 private:
     static bool inject_metrics(TaskData& data);

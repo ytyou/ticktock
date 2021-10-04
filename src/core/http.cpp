@@ -54,6 +54,7 @@ const char *CRLF = "\r\n";
 // paths we handle
 const char *HTTP_API_ADMIN = "/api/admin";
 const char *HTTP_API_AGGREGATORS = "/api/aggregators";
+const char *HTTP_API_CONFIG = "/api/config";
 const char *HTTP_API_CONFIG_FILTERS = "/api/config/filters";
 const char *HTTP_API_PUT = "/api/put";
 const char *HTTP_API_QUERY = "/api/query";
@@ -91,11 +92,12 @@ HttpServer::init()
     m_max_resend = Config::get_int(CFG_HTTP_MAX_RETRIES, CFG_HTTP_MAX_RETRIES_DEF);
 
     add_get_handler(HTTP_API_AGGREGATORS, &Aggregator::http_get_api_aggregators_handler);
+    add_get_handler(HTTP_API_CONFIG, &HttpServer::http_get_api_config_handler);
     add_get_handler(HTTP_API_CONFIG_FILTERS, &QueryExecutor::http_get_api_config_filters_handler);
     add_get_handler(HTTP_API_QUERY, &QueryExecutor::http_get_api_query_handler);
-    add_get_handler(HTTP_API_STATS, &Stats::http_get_api_stats_handler);
+    add_get_handler(HTTP_API_STATS, &HttpServer::http_get_api_stats_handler);
     add_get_handler(HTTP_API_SUGGEST, &Tsdb::http_get_api_suggest_handler);
-    add_get_handler(HTTP_API_VERSION, &Stats::http_get_api_version_handler);
+    add_get_handler(HTTP_API_VERSION, &HttpServer::http_get_api_version_handler);
 
     if (Config::get_str(CFG_HTTP_REQUEST_FORMAT, CFG_HTTP_REQUEST_FORMAT_DEF) == "json")
     {
@@ -628,6 +630,37 @@ HttpServer::process_request(HttpRequest& request, HttpResponse& response)
         Logger::error("Unhandled request: %s", request.c_str(buff, sizeof(buff)));
     }
 
+    return true;
+}
+
+bool
+HttpServer::http_get_api_config_handler(HttpRequest& request, HttpResponse& response)
+{
+    const int buf_size = 4096;
+    char buff[buf_size];
+
+    Config::c_str(buff, buf_size);
+    response.init(200, HttpContentType::JSON, std::strlen(buff), buff);
+    return true;
+}
+
+bool
+HttpServer::http_get_api_stats_handler(HttpRequest& request, HttpResponse& response)
+{
+    const int buf_size = 4096;
+    char buff[buf_size];
+
+    int len = Stats::collect_stats(buff, buf_size);
+    response.init(200, HttpContentType::PLAIN, len, buff);
+    return true;
+}
+
+bool
+HttpServer::http_get_api_version_handler(HttpRequest& request, HttpResponse& response)
+{
+    char buff[32];
+    sprintf(buff, "TickTock version: %d.%d.%d", TT_MAJOR_VERSION, TT_MINOR_VERSION, TT_PATCH_VERSION);
+    response.init(200, HttpContentType::PLAIN, std::strlen(buff), buff);
     return true;
 }
 

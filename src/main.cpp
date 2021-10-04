@@ -27,6 +27,7 @@
 #include <sys/resource.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <getopt.h>
 #include "config.h"
 #include "append.h"
 #include "memmgr.h"
@@ -74,21 +75,85 @@ static int
 process_cmdline_opts(int argc, char *argv[])
 {
     int c;
-
-    while ((c = getopt(argc, argv, "c:dl:p:rt:")) != -1)
+    int digit_optind = 0;
+    const char *optstring = "c:dl:p:r";
+    static struct option long_options[] =
     {
+        // ALL options should require argument
+        { CFG_APPEND_LOG_DIR,                       required_argument,  0,  0 },
+        { CFG_APPEND_LOG_ENABLED,                   required_argument,  0,  0 },
+        { CFG_APPEND_LOG_FLUSH_FREQUENCY,           required_argument,  0,  0 },
+        { CFG_APPEND_LOG_ROTATION_FREQUENCY,        required_argument,  0,  0 },
+        { CFG_APPEND_LOG_RETENTION_COUNT,           required_argument,  0,  0 },
+        { CFG_CONFIG_RELOAD_ENABLED,                required_argument,  0,  0 },
+        { CFG_CONFIG_RELOAD_FREQUENCY,              required_argument,  0,  0 },
+        { CFG_HTTP_LISTENER_COUNT,                  required_argument,  0,  0 },
+        { CFG_HTTP_MAX_RETRIES,                     required_argument,  0,  0 },
+        { CFG_HTTP_REQUEST_FORMAT,                  required_argument,  0,  0 },
+        { CFG_HTTP_RESPONDERS_PER_LISTENER,         required_argument,  0,  0 },
+        { CFG_HTTP_SERVER_PORT,                     required_argument,  0,  0 },
+        { CFG_HTTP_SOCKET_RCVBUF_SIZE,              required_argument,  0,  0 },
+        { CFG_HTTP_SOCKET_SNDBUF_SIZE,              required_argument,  0,  0 },
+        { CFG_LOG_FILE,                             required_argument,  0,  0 },
+        { CFG_LOG_LEVEL,                            required_argument,  0,  0 },
+        { CFG_LOG_RETENTION_COUNT,                  required_argument,  0,  0 },
+        { CFG_LOG_ROTATION_SIZE,                    required_argument,  0,  0 },
+        { CFG_QUERY_EXECUTOR_QUEUE_SIZE,            required_argument,  0,  0 },
+        { CFG_QUERY_EXECUTOR_THREAD_COUNT,          required_argument,  0,  0 },
+        { CFG_STATS_FREQUENCY,                      required_argument,  0,  0 },
+        { CFG_TCP_CONNECTION_TIMEOUT,               required_argument,  0,  0 },
+        { CFG_TCP_LISTENER_COUNT,                   required_argument,  0,  0 },
+        { CFG_TCP_MAX_EPOLL_EVENTS,                 required_argument,  0,  0 },
+        { CFG_TCP_BUFFER_SIZE,                      required_argument,  0,  0 },
+        { CFG_TCP_RESPONDERS_PER_LISTENER,          required_argument,  0,  0 },
+        { CFG_TCP_SERVER_PORT,                      required_argument,  0,  0 },
+        { CFG_TCP_SOCKET_RCVBUF_SIZE,               required_argument,  0,  0 },
+        { CFG_TCP_SOCKET_SNDBUF_SIZE,               required_argument,  0,  0 },
+        { CFG_TIMER_GRANULARITY,                    required_argument,  0,  0 },
+        { CFG_TIMER_QUEUE_SIZE,                     required_argument,  0,  0 },
+        { CFG_TIMER_THREAD_COUNT,                   required_argument,  0,  0 },
+        { CFG_TSDB_ARCHIVE_THRESHOLD,               required_argument,  0,  0 },
+        { CFG_TSDB_COMPACT_FREQUENCY,               required_argument,  0,  0 },
+        { CFG_TSDB_COMPRESSOR_VERSION,              required_argument,  0,  0 },
+        { CFG_TSDB_DATA_DIR,                        required_argument,  0,  0 },
+        { CFG_TSDB_OFF_HOUR_BEGIN,                  required_argument,  0,  0 },
+        { CFG_TSDB_OFF_HOUR_END,                    required_argument,  0,  0 },
+        { CFG_TSDB_PAGE_COUNT,                      required_argument,  0,  0 },
+        { CFG_TSDB_FLUSH_FREQUENCY,                 required_argument,  0,  0 },
+        { CFG_TSDB_MAX_DP_LINE,                     required_argument,  0,  0 },
+        { CFG_TSDB_READ_ONLY_THRESHOLD,             required_argument,  0,  0 },
+        { CFG_TSDB_RETENTION_THRESHOLD,             required_argument,  0,  0 },
+        { CFG_TSDB_ROTATION_FREQUENCY,              required_argument,  0,  0 },
+        { CFG_TSDB_SELF_METER_ENABLED,              required_argument,  0,  0 },
+        { CFG_TSDB_TIMESTAMP_RESOLUTION,            required_argument,  0,  0 },
+        { CFG_UDP_LISTENER_COUNT,                   required_argument,  0,  0 },
+        { CFG_UDP_BATCH_SIZE,                       required_argument,  0,  0 },
+        { CFG_UDP_SERVER_ENABLED,                   required_argument,  0,  0 },
+        { CFG_UDP_SERVER_PORT,                      required_argument,  0,  0 },
+        {0, 0, 0, 0},
+    };
+
+    while (1)
+    {
+        int this_option_optind = optind ? optind : 1;
+        int option_index = 0;
+
+        c = getopt_long(argc, argv, optstring, long_options, &option_index);
+        if (c == -1) break;
+
         switch (c)
         {
+            case 0:
+                ASSERT(optarg != nullptr);
+                Config::add_override(long_options[option_index].name, optarg);
+                break;
+
             case 'c':
                 g_config_file = optarg;     // config file
                 break;
 
             case 'd':
                 g_run_as_daemon = true;     // run in daemon mode
-                break;
-
-            case 'l':
-                Logger::set_level(optarg);  // log level
                 break;
 
             case 'p':
@@ -116,6 +181,13 @@ process_cmdline_opts(int argc, char *argv[])
             default:
                 return 2;
         }
+    }
+
+    if (optind < argc)
+    {
+        fprintf(stderr, "Unknown options that are ignored: ");
+        while (optind < argc) fprintf(stderr, "%s ", argv[optind++]);
+        fprintf(stderr, "\n");
     }
 
     return 0;

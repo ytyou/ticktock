@@ -92,7 +92,7 @@ Logger::reopen()
 
     std::string log_file = Config::get_str(CFG_LOG_FILE,CFG_LOG_FILE_DEF);
 
-    if (! log_file.empty())
+    if (! log_file.empty() && (log_file != "-"))
     {
         m_fd = open(log_file.c_str(), O_CREAT|O_WRONLY|O_TRUNC|O_NONBLOCK, S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH);
 
@@ -117,7 +117,7 @@ Logger::reopen()
     }
     else
     {
-        fprintf(stderr, "No log.file config found\n");
+        fprintf(stderr, "Will log to console\n");
     }
 }
 
