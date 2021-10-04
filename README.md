@@ -1,22 +1,22 @@
 # TickTock [![Docker Pulls](https://img.shields.io/docker/pulls/ytyou/ticktock)](https://hub.docker.com/r/ytyou/ticktock)
 
-Ticktock is an open source Time Series DataBase (TSDB) for DevOps, Internet of Things (IoT), financial data. Based on many years of unsatisfied experience with TSDBs, we set our **design goals** of Ticktock as:
+TickTock is an open source Time Series DataBase (TSDB) for DevOps, Internet of Things (IoT), financial data. Based on many years of unsatisfied experience with TSDBs, we set our **design goals** of TickTock as:
 
 * **Low resource required:**
   - It can run even with very low resources.
 * **High performance:** 
   - At least 10X better than OpenTSDB, competitive to the best TSDBs like InfluxDB.
 * **Easy to install and maintain:** 
-  - Many TSDBs are built on top of other DBs, e.g., OpenTSDB on HBase, Clickhouse and Druid on relational DBs. This incurs complexity in installation and maintenance besides performance overhead. Ticktock is natively developed in C++ and has a single process only. It doesn't require additional expertise like HBase for OpenTSDB in maintence. It doesn't have painful Garbage Collection issues to deal with in high load scenarios.
+  - Many TSDBs are built on top of other DBs, e.g., OpenTSDB on HBase, Clickhouse and Druid on relational DBs. This incurs complexity in installation and maintenance besides performance overhead. TickTock is natively developed in C++ and has a single process only. It doesn't require additional expertise like HBase for OpenTSDB in maintence. It doesn't have painful Garbage Collection issues to deal with in high load scenarios.
 * **Replication and Scalability supports:**
-  - Ticktock provides replication and partition features in its open source versions.
+  - TickTock provides replication and partition features in its open source versions.
 * **Compatible with OpenTSDB APIs:** 
-  - OpenTSDB is one of the most widely used TSDBs. Ticktock includes storing and querying APIs compatible with [OpenTSDB](http://opentsdb.net). You can use OpenTSDB's [TCollector](https://github.com/OpenTSDB/tcollector) to collect data and use [Grafana](https://grafana.com) to visualize data.
+  - OpenTSDB is one of the most widely used TSDBs. TickTock includes storing and querying APIs compatible with [OpenTSDB](http://opentsdb.net). You can use OpenTSDB's [TCollector](https://github.com/OpenTSDB/tcollector) to collect data and use [Grafana](https://grafana.com) to visualize data.
 
 ## Highlights
 
 * **High Performance** 
-  - High write throughput, low query latency. In our performance testing with some public available benchmarks, Ticktock is at least 50X better than Opentsdb, 4X than InfluxDB.
+  - High write throughput, low query latency. In our performance testing with some public available benchmarks, TickTock is at least 50X better than Opentsdb, 4X than InfluxDB.
 * **Replication** 
   - Write to any server in the cluster, get replicated to any other servers.
 * **Scalability** 
@@ -36,11 +36,11 @@ Ticktock is an open source Time Series DataBase (TSDB) for DevOps, Internet of T
 ## Quick Start
 
 We prepare a TickTock Demo in a docker image. With a single command to launch the docker, there will be a fully functional demo in the docker,
-- A Ticktock TSDB; 
-- A Tcollector collecting OS metrics of the docker and sending to Ticktock; 
+- A TickTock TSDB; 
+- A Tcollector collecting OS metrics of the docker and sending to TickTock; 
 - A Grafana providing metric dashboard to visualize the metrics.
 
-### To run Ticktock Demo:
+### To run TickTock Demo:
 
 1. You need to install [Docker Engine](https://docs.docker.com/engine/install/) first. 
 2. Then simply run
@@ -66,4 +66,4 @@ We prepare a TickTock Demo in a docker image. With a single command to launch th
 
 ## Documentation
 
-For more information, please see Ticktock [documentation](https://github.com/ytyou/ticktock/wiki/User-Guide).
+For more information, please see TickTock [documentation](https://github.com/ytyou/ticktock/wiki/User-Guide).
