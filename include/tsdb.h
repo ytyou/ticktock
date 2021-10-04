@@ -120,7 +120,7 @@ public:
     // this is not thread-safe
     static void init();
 
-    static Tsdb* inst(Timestamp tstamp);
+    static Tsdb* inst(Timestamp tstamp, bool create = true);
     static void insts(const TimeRange& range, std::vector<Tsdb*>& tsdbs);
     static void shutdown();
     static std::string get_file_name(const TimeRange& range, std::string ext, bool temp = false);

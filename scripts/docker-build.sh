@@ -89,7 +89,7 @@ cp bin/tt docker/$TT_VERSION/opt/ticktock/bin/ticktock
 cp bin/backfill docker/$TT_VERSION/opt/ticktock/bin/backfill
 cp conf/tt.docker.conf docker/$TT_VERSION/opt/ticktock/conf/ticktock.conf
 cp admin/* docker/$TT_VERSION/opt/ticktock/scripts/
-cp docker/run.sh docker/$TT_VERSION/opt/ticktock/scripts/
+cp docker/entrypoint.sh docker/$TT_VERSION/opt/ticktock/scripts/
 cp docker/limits.conf docker/$TT_VERSION/
 
 if [ $_GRAFANA -ne 0 ]; then
