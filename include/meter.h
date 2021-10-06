@@ -33,7 +33,7 @@ extern const char *METRIC_TICKTOCK_TSDB_LOAD_TOTAL_MS;
 extern const char *METRIC_TICKTOCK_TSDB_ROTATE_MS;
 
 
-enum MeterType
+enum MeterType : unsigned char
 {
     COUNT = 0,
     GAUGE = 1

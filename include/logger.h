@@ -30,7 +30,7 @@ namespace tt
 {
 
 
-enum class LogLevel
+enum class LogLevel : unsigned char
 {
     TRACE = 1,
     DEBUG = 2,

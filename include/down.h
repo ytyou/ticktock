@@ -32,7 +32,7 @@ namespace tt
 class QueryResults;
 
 
-enum class DownsampleFillPolicy
+enum class DownsampleFillPolicy : unsigned char
 {
     DFP_NONE = 0,
     DFP_NAN  = 1,

@@ -50,7 +50,7 @@ namespace tt
 		int recursive_xlock_count;
 
 
-		enum index_op_t { unregister_thread_op, get_index_op, register_thread_op };
+		enum index_op_t : unsigned char { unregister_thread_op, get_index_op, register_thread_op };
 
 #if (_WIN32 && _MSC_VER < 1900) // only for MSVS 2013
         typedef int64_t thread_id_t;

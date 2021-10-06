@@ -97,7 +97,7 @@
 #define CFG_TSDB_COMPRESSOR_VERSION             "tsdb.compressor.version"
 #define CFG_TSDB_COMPRESSOR_VERSION_DEF         1
 #define CFG_TSDB_DATA_DIR                       "tsdb.data.dir"
-#define CFG_TSDB_DATA_DIR_DEF                   "."
+#define CFG_TSDB_DATA_DIR_DEF                   "/tmp"
 #define CFG_TSDB_OFF_HOUR_BEGIN                 "tsdb.off_hour.begin"
 #define CFG_TSDB_OFF_HOUR_BEGIN_DEF             0
 #define CFG_TSDB_OFF_HOUR_END                   "tsdb.off_hour.end"

@@ -50,7 +50,7 @@ extern const char *HTTP_API_VERSION;
 // This can only accommodate Content-Type and Content-Length.
 #define MAX_HEADER_SIZE         (64 + MAX_REASON_SIZE + MAX_CONTENT_TYPE_SIZE)
 
-enum HttpContentType
+enum HttpContentType : unsigned char
 {
     HTML = 0,
     JSON = 1,
