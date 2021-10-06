@@ -52,6 +52,14 @@ JsonTests::run()
     CONFIRM(m.find("rate")->second->to_bool());
     JsonParser::free_map(map2);
 
+    char *json3 = strdup("{\"start\":\"1d-ago\",\"queries\":[{\"metric\":\"3.3.nginx.number_requests_reading\"}]}");
+    JsonMap map3;
+    JsonParser::parse_map(json3, map3);
+    auto search = map3.find("start");
+    CONFIRM(search != map3.end());
+    CONFIRM(std::strcmp(search->second->to_string(), "1d-ago") == 0);
+    JsonParser::free_map(map3);
+
     m_stats.add_passed(1);
 
     log("Finished %s", m_name);

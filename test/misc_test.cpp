@@ -38,6 +38,7 @@ MiscTests::run()
     random_tests();
     strbuf_tests();
     url_decode_tests();
+    time_conv_tests();
 
     log("Finished %s", m_name);
 }
@@ -179,6 +180,94 @@ MiscTests::url_decode_tests()
     CONFIRM(strcmp(expected1, actual1) == 0);
 
     m_stats.add_passed(1);
+}
+
+void
+MiscTests::time_conv_tests()
+{
+    // parse time unit
+    CONFIRM(to_time_unit("1m",2) == TimeUnit::MIN);
+    CONFIRM(to_time_unit("2min",4) == TimeUnit::MIN);
+    CONFIRM(to_time_unit("3s",2) == TimeUnit::SEC);
+    CONFIRM(to_time_unit("4ms",3) == TimeUnit::MS);
+    CONFIRM(to_time_unit("5h",2) == TimeUnit::HOUR);
+    CONFIRM(to_time_unit("10w",3) == TimeUnit::WEEK);
+    CONFIRM(to_time_unit("100n",4) == TimeUnit::MONTH);
+    CONFIRM(to_time_unit("20month",7) == TimeUnit::MONTH);
+    CONFIRM(to_time_unit("90y",3) == TimeUnit::YEAR);
+
+    // time conversion
+    CONFIRM(convert_time(4*365*24*3600*1000L, TimeUnit::MS, TimeUnit::YEAR) == 4);
+    CONFIRM(convert_time(3*30*24*3600*1000L, TimeUnit::MS, TimeUnit::MONTH) == 3);
+    CONFIRM(convert_time(5*7*24*3600*1000L, TimeUnit::MS, TimeUnit::WEEK) == 5);
+    CONFIRM(convert_time(8*24*3600*1000, TimeUnit::MS, TimeUnit::DAY) == 8);
+    CONFIRM(convert_time(27*3600*1000, TimeUnit::MS, TimeUnit::HOUR) == 27);
+    CONFIRM(convert_time(207*60*1000, TimeUnit::MS, TimeUnit::MIN) == 207);
+    CONFIRM(convert_time(2*1000, TimeUnit::MS, TimeUnit::SEC) == 2);
+    CONFIRM(convert_time(2345, TimeUnit::MS, TimeUnit::MS) == 2345);
+
+    CONFIRM(convert_time(4*365*24*3600, TimeUnit::SEC, TimeUnit::YEAR) == 4);
+    CONFIRM(convert_time(3*30*24*3600, TimeUnit::SEC, TimeUnit::MONTH) == 3);
+    CONFIRM(convert_time(5*7*24*3600, TimeUnit::SEC, TimeUnit::WEEK) == 5);
+    CONFIRM(convert_time(8*24*3600, TimeUnit::SEC, TimeUnit::DAY) == 8);
+    CONFIRM(convert_time(27*3600, TimeUnit::SEC, TimeUnit::HOUR) == 27);
+    CONFIRM(convert_time(207*60, TimeUnit::SEC, TimeUnit::MIN) == 207);
+    CONFIRM(convert_time(2345, TimeUnit::SEC, TimeUnit::SEC) == 2345);
+    CONFIRM(convert_time(2345, TimeUnit::SEC, TimeUnit::MS) == 2345000);
+
+    CONFIRM(convert_time(4*365*24*60, TimeUnit::MIN, TimeUnit::YEAR) == 4);
+    CONFIRM(convert_time(3*30*24*60, TimeUnit::MIN, TimeUnit::MONTH) == 3);
+    CONFIRM(convert_time(5*7*24*60, TimeUnit::MIN, TimeUnit::WEEK) == 5);
+    CONFIRM(convert_time(8*24*60, TimeUnit::MIN, TimeUnit::DAY) == 8);
+    CONFIRM(convert_time(27*60, TimeUnit::MIN, TimeUnit::HOUR) == 27);
+    CONFIRM(convert_time(2345, TimeUnit::MIN, TimeUnit::MIN) == 2345);
+    CONFIRM(convert_time(23, TimeUnit::MIN, TimeUnit::SEC) == 23*60);
+    CONFIRM(convert_time(23, TimeUnit::MIN, TimeUnit::MS) == 23*60000);
+
+    CONFIRM(convert_time(4*365*24, TimeUnit::HOUR, TimeUnit::YEAR) == 4);
+    CONFIRM(convert_time(3*30*24, TimeUnit::HOUR, TimeUnit::MONTH) == 3);
+    CONFIRM(convert_time(5*7*24, TimeUnit::HOUR, TimeUnit::WEEK) == 5);
+    CONFIRM(convert_time(8*24, TimeUnit::HOUR, TimeUnit::DAY) == 8);
+    CONFIRM(convert_time(27, TimeUnit::HOUR, TimeUnit::HOUR) == 27);
+    CONFIRM(convert_time(23, TimeUnit::HOUR, TimeUnit::MIN) == 23*60);
+    CONFIRM(convert_time(23, TimeUnit::HOUR, TimeUnit::SEC) == 23*3600);
+    CONFIRM(convert_time(23, TimeUnit::HOUR, TimeUnit::MS) == 23*3600000);
+
+    CONFIRM(convert_time(4*365, TimeUnit::DAY, TimeUnit::YEAR) == 4);
+    CONFIRM(convert_time(3*30, TimeUnit::DAY, TimeUnit::MONTH) == 3);
+    CONFIRM(convert_time(5*7, TimeUnit::DAY, TimeUnit::WEEK) == 5);
+    CONFIRM(convert_time(8, TimeUnit::DAY, TimeUnit::DAY) == 8);
+    CONFIRM(convert_time(27, TimeUnit::DAY, TimeUnit::HOUR) == 27*24);
+    CONFIRM(convert_time(13, TimeUnit::DAY, TimeUnit::MIN) == 13*24*60);
+    CONFIRM(convert_time(13, TimeUnit::DAY, TimeUnit::SEC) == 13*24*3600);
+    CONFIRM(convert_time(13, TimeUnit::DAY, TimeUnit::MS) == 13*24*3600000);
+
+    CONFIRM(convert_time(4*53, TimeUnit::WEEK, TimeUnit::YEAR) == 4);
+    CONFIRM(convert_time(9, TimeUnit::WEEK, TimeUnit::MONTH) == 2);
+    CONFIRM(convert_time(5, TimeUnit::WEEK, TimeUnit::WEEK) == 5);
+    CONFIRM(convert_time(8, TimeUnit::WEEK, TimeUnit::DAY) == 8*7);
+    CONFIRM(convert_time(27, TimeUnit::WEEK, TimeUnit::HOUR) == 27*7*24);
+    CONFIRM(convert_time(3, TimeUnit::WEEK, TimeUnit::MIN) == 3*7*24*60);
+    CONFIRM(convert_time(3, TimeUnit::WEEK, TimeUnit::SEC) == 3*7*24*3600);
+    CONFIRM(convert_time(3, TimeUnit::WEEK, TimeUnit::MS) == 3*7*24*3600000);
+
+    CONFIRM(convert_time(4*12+1, TimeUnit::MONTH, TimeUnit::YEAR) == 4);
+    CONFIRM(convert_time(31, TimeUnit::MONTH, TimeUnit::MONTH) == 31);
+    CONFIRM(convert_time(5, TimeUnit::MONTH, TimeUnit::WEEK) == (5*30)/7);
+    CONFIRM(convert_time(8, TimeUnit::MONTH, TimeUnit::DAY) == 8*30);
+    CONFIRM(convert_time(27, TimeUnit::MONTH, TimeUnit::HOUR) == 27*30*24);
+    CONFIRM(convert_time(2, TimeUnit::MONTH, TimeUnit::MIN) == 2*30*24*60);
+    CONFIRM(convert_time(2, TimeUnit::MONTH, TimeUnit::SEC) == 2*30*24*3600);
+    CONFIRM(convert_time(2, TimeUnit::MONTH, TimeUnit::MS) == 2*30*24*3600000L);
+
+    CONFIRM(convert_time(4, TimeUnit::YEAR, TimeUnit::YEAR) == 4);
+    CONFIRM(convert_time(3, TimeUnit::YEAR, TimeUnit::MONTH) == (3*365)/30);
+    CONFIRM(convert_time(5, TimeUnit::YEAR, TimeUnit::WEEK) == (5*365)/7);
+    CONFIRM(convert_time(8, TimeUnit::YEAR, TimeUnit::DAY) == 8*365);
+    CONFIRM(convert_time(27, TimeUnit::YEAR, TimeUnit::HOUR) == 27*365*24);
+    CONFIRM(convert_time(2, TimeUnit::YEAR, TimeUnit::MIN) == 2*365*24*60);
+    CONFIRM(convert_time(2, TimeUnit::YEAR, TimeUnit::SEC) == 2*365*24*3600L);
+    CONFIRM(convert_time(2, TimeUnit::YEAR, TimeUnit::MS) == 2*365*24*3600000L);
 }
 
 

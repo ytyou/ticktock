@@ -633,7 +633,7 @@ PartitionManager::PartitionManager(Tsdb *tsdb, bool existing) :
         for (auto val: arr)
         {
             JsonMap& map = val->to_map();
-            char *from = nullptr, *to = nullptr;
+            const char *from = nullptr, *to = nullptr;
             std::set<int> servers;
 
             // from
@@ -690,7 +690,7 @@ PartitionManager::init()
         for (auto val: arr)
         {
             int id;
-            char *address;
+            const char *address;
             JsonMap& map = val->to_map();
 
             // id

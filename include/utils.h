@@ -52,6 +52,9 @@ extern const int SPIN_YIELD_THRESHOLD;
 
 extern void segv_handler(int sig);
 
+class JsonValue;
+enum JsonValueType : unsigned char;
+
 extern int random(int from, int to);
 extern double random(double from, double to);
 extern long ts_now();   // return ts in either ms or sec, depending on g_tstamp_resolution_ms
@@ -67,7 +70,8 @@ extern bool is_my_ip(std::string& ip);
 extern Timestamp validate_resolution(Timestamp ts); // return timestamp with correct unit
 extern Timestamp to_ms(Timestamp tstamp);
 extern Timestamp to_sec(Timestamp tstamp);
-extern TimeUnit to_time_unit(const std::string& str);
+extern Timestamp parse_ts(const JsonValue *value, Timestamp now);
+extern TimeUnit to_time_unit(const char *str, size_t len);
 extern long convert_time(long time, TimeUnit from_unit, TimeUnit to_unit);
 extern int get_bytes_factor(const std::string& str);
 extern void tokenize(const std::string& str, std::vector<std::string>& tokens, std::regex& delim);

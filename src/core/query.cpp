@@ -152,9 +152,10 @@ Query::Query(JsonMap& map, StringBuffer& strbuf) :
 {
     // TODO: handle bad request (e.g. missing "start");
     //       better way to parse the url params;
+    Timestamp now = ts_now();
     auto search = map.find("start");
     ASSERT(search != map.end());
-    Timestamp start = atol(search->second->to_string());
+    Timestamp start = parse_ts(search->second, now);
     start = validate_resolution(start);
 
     search = map.find("end");
@@ -162,7 +163,7 @@ Query::Query(JsonMap& map, StringBuffer& strbuf) :
     if (search != map.end())
         end = atol(search->second->to_string());
     else
-        end = ts_now();
+        end = now;
     end = validate_resolution(end);
 
     m_time_range = TimeRange(start, end);
@@ -823,7 +824,8 @@ QueryExecutor::http_post_api_query_handler(HttpRequest& request, HttpResponse& r
     if (search == map.end())
         return false;   // will send '400 bad request' back
 
-    Timestamp start = (Timestamp)(search->second->to_double());
+    Timestamp now = ts_now();
+    Timestamp start = parse_ts(search->second, now);
     start = validate_resolution(start);
 
     Timestamp end;
@@ -831,7 +833,7 @@ QueryExecutor::http_post_api_query_handler(HttpRequest& request, HttpResponse& r
     if (search != map.end())
         end = (long)(search->second->to_double());
     else
-        end = ts_now();
+        end = now;
     end = validate_resolution(end);
 
     search = map.find("msResolution");

@@ -36,6 +36,7 @@ private:
     void basic_query_tests();
     void duplicate_dp_tests();
     void downsample_tests();
+    void relative_ts_tests();
 
     void update_config(tt::Timestamp archive_ms);
 };

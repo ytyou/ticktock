@@ -38,14 +38,16 @@ typedef uint64_t Timestamp;     // milliseconds since epoch
 typedef std::pair<Timestamp,double> DataPointPair;
 typedef std::vector<DataPointPair> DataPointVector;
 
-enum TimeUnit
+enum TimeUnit : unsigned char
 {                   // string representation
     MS = 0,         // ms
     SEC = 1,        // s
-    MIN = 2,        // min
+    MIN = 2,        // m[in]
     HOUR = 3,       // h
-    DAY = 4,        // d
-    WEEK = 5,       // w
+    DAY = 4,        // d (24 hours)
+    WEEK = 5,       // w (7 days)
+    MONTH = 6,      // n (30 days)
+    YEAR = 7,       // y (365 days)
     UNKNOWN = 99
 };
 

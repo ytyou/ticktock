@@ -151,6 +151,24 @@ public:
         parse_data_points(body, results);
     }
 
+    void query_with_relative_ts(
+        const char *metric,
+        const char *start,
+        tt::DataPointVector& results)
+    {
+        tt::HttpRequest request;
+        tt::HttpResponse response;
+        char content[4096];
+        sprintf(content, "{\"start\":\"%s\",\"queries\":[{\"metric\":\"%s\"}]}", start, metric);
+        request.init();
+        request.content = content;
+        log("query request: %s", request.content);
+        CONFIRM(tt::QueryExecutor::http_post_api_query_handler(request, response));
+        char *body = std::strstr(response.response, "[");
+        log("query response status: %d, size: %d", (int)response.status_code, response.response_size);
+        parse_data_points(body, results);
+    }
+
     TestStats& get_stats() { return m_stats; }
 
     static void create_config(const char *key, const char *value)

@@ -31,6 +31,9 @@
 *.out
 *.app
 
-# binary folders
+# Binary folders
 bin/
 objs/
+
+# This is a symlink
+Makefile
