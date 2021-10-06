@@ -92,8 +92,6 @@ process_cmdline_opts(int argc, char *argv[])
         { CFG_HTTP_REQUEST_FORMAT,                  required_argument,  0,  0 },
         { CFG_HTTP_RESPONDERS_PER_LISTENER,         required_argument,  0,  0 },
         { CFG_HTTP_SERVER_PORT,                     required_argument,  0,  0 },
-        { CFG_HTTP_SOCKET_RCVBUF_SIZE,              required_argument,  0,  0 },
-        { CFG_HTTP_SOCKET_SNDBUF_SIZE,              required_argument,  0,  0 },
         { CFG_LOG_FILE,                             required_argument,  0,  0 },
         { CFG_LOG_LEVEL,                            required_argument,  0,  0 },
         { CFG_LOG_RETENTION_COUNT,                  required_argument,  0,  0 },
@@ -101,7 +99,7 @@ process_cmdline_opts(int argc, char *argv[])
         { CFG_QUERY_EXECUTOR_QUEUE_SIZE,            required_argument,  0,  0 },
         { CFG_QUERY_EXECUTOR_THREAD_COUNT,          required_argument,  0,  0 },
         { CFG_STATS_FREQUENCY,                      required_argument,  0,  0 },
-        { CFG_TCP_CONNECTION_TIMEOUT,               required_argument,  0,  0 },
+        { CFG_TCP_CONNECTION_IDLE_TIMEOUT,          required_argument,  0,  0 },
         { CFG_TCP_LISTENER_COUNT,                   required_argument,  0,  0 },
         { CFG_TCP_MAX_EPOLL_EVENTS,                 required_argument,  0,  0 },
         { CFG_TCP_BUFFER_SIZE,                      required_argument,  0,  0 },
@@ -272,9 +270,9 @@ initialize()
         printf(" TickTock v%d.%d.%d\n"
                " Copyright (C) 2020-2021  Yongtao You (yongtao.you@gmail.com),\n"
                " Yi Lin (ylin30@gmail.com), and Yalei Wang (wang_yalei@yahoo.com).\n"
-               " This program comes with ABSOLUTELY NO WARRANTY. It is free software, and\n"
-               " you are welcome to redistribute it under certain conditions. For details,\n"
-               " see <https://www.gnu.org/licenses/>.\n",
+               " This program comes with ABSOLUTELY NO WARRANTY. It is free software,\n"
+               " and you are welcome to redistribute it under certain conditions.\n"
+               " For details, see <https://www.gnu.org/licenses/>.\n",
                TT_MAJOR_VERSION, TT_MINOR_VERSION, TT_PATCH_VERSION);
     }
 

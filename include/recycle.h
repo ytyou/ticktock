@@ -24,7 +24,7 @@ namespace tt
 {
 
 
-enum RecyclableType
+enum RecyclableType : unsigned char
 {
     RT_AGGREGATOR_AVG    = 0,
     RT_AGGREGATOR_COUNT  = RT_AGGREGATOR_AVG + 1,       // 1

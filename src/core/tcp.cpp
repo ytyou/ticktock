@@ -1251,7 +1251,9 @@ TcpListener::disconnect()
         TcpConnection *conn = it->second;
         std::chrono::duration<double> elapsed_seconds = now - conn->last_contact;
         long secs = elapsed_seconds.count();
-        int timeout = Config::get_time(CFG_TCP_CONNECTION_TIMEOUT, TimeUnit::SEC, CFG_TCP_CONNECTION_TIMEOUT_DEF);
+        int timeout = Config::get_time(CFG_TCP_CONNECTION_IDLE_TIMEOUT,
+                                       TimeUnit::SEC,
+                                       CFG_TCP_CONNECTION_IDLE_TIMEOUT_DEF);
 
         if (secs > timeout)
         {

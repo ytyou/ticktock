@@ -256,20 +256,45 @@ to_sec(Timestamp tstamp)
     return tstamp;
 }
 
+// 'value' should be either absolute time (e.g. 1633418206)
+// or relative time (e.g. 2h-ago)
+Timestamp
+parse_ts(const JsonValue *value, Timestamp now)
+{
+    if (JsonValueType::JVT_DOUBLE == value->get_type())
+        return (Timestamp)(value->to_double());
+
+    const char *str = value->to_string();
+    Timestamp ts = atol(str);
+    int len = std::strlen(str);
+
+    // relative time? (e.g. 2h-ago)
+    if ((len > 1) && (str[len-1] == 'o'))
+    {
+        TimeUnit unit = to_time_unit(str, len);
+        if (unit == TimeUnit::UNKNOWN) throw std::exception();
+        ts = convert_time(ts, unit, g_tstamp_resolution_ms ? TimeUnit::MS : TimeUnit::SEC);
+        ts = now - ts;  // relative to 'now'
+    }
+
+    return ts;
+}
+
+// 'str' should look something like: "2h"
 TimeUnit
-to_time_unit(const std::string& str)
+to_time_unit(const char *str, size_t len)
 {
     TimeUnit unit = TimeUnit::UNKNOWN;
     size_t i;
 
-    for (i = 0; i < str.size(); i++)
+    for (i = 0; i < len; i++)
     {
         auto ch = std::tolower(str[i]);
         if (('d' <= ch) && (ch <= 'y'))
             break;
     }
 
-    if (i < str.size())
+    if (i < len)
     {
         switch (std::tolower(str[i]))
         {
@@ -277,18 +302,23 @@ to_time_unit(const std::string& str)
             case 'h':   unit = TimeUnit::HOUR;  break;
             case 'm':
                 i++;
-                if (i < str.size())
+                if (i < len)
                 {
                     switch (std::tolower(str[i]))
                     {
                         case 'i':   unit = TimeUnit::MIN;   break;
+                        case 'o':   unit = TimeUnit::MONTH; break;
                         case 's':   unit = TimeUnit::MS;    break;
                         default:                            break;
                     }
                 }
+                else
+                    unit = TimeUnit::MIN;
                 break;
+            case 'n':   unit = TimeUnit::MONTH; break;
             case 's':   unit = TimeUnit::SEC;   break;
             case 'w':   unit = TimeUnit::WEEK;  break;
+            case 'y':   unit = TimeUnit::YEAR;  break;
             default:                            break;
         }
     }
@@ -307,6 +337,8 @@ convert_time(long time, TimeUnit from_unit, TimeUnit to_unit)
         case TimeUnit::MS:
             switch (to_unit)
             {
+                case TimeUnit::YEAR:    time /= 365 * 24 * 3600000L; break;
+                case TimeUnit::MONTH:   time /= 30 * 24 * 3600000L;  break;
                 case TimeUnit::WEEK:    time /= 7;
                 case TimeUnit::DAY:     time /= 24;
                 case TimeUnit::HOUR:    time /= 60;
@@ -319,6 +351,8 @@ convert_time(long time, TimeUnit from_unit, TimeUnit to_unit)
         case TimeUnit::SEC:
             switch (to_unit)
             {
+                case TimeUnit::YEAR:    time /= 365 * 24 * 3600;    break;
+                case TimeUnit::MONTH:   time /= 30 * 24 * 3600;     break;
                 case TimeUnit::WEEK:    time /= 7;
                 case TimeUnit::DAY:     time /= 24;
                 case TimeUnit::HOUR:    time /= 60;
@@ -331,6 +365,8 @@ convert_time(long time, TimeUnit from_unit, TimeUnit to_unit)
         case TimeUnit::MIN:
             switch (to_unit)
             {
+                case TimeUnit::YEAR:    time /= 365 * 24 * 60;  break;
+                case TimeUnit::MONTH:   time /= 30 * 24 * 60;   break;
                 case TimeUnit::WEEK:    time /= 7;
                 case TimeUnit::DAY:     time /= 24;
                 case TimeUnit::HOUR:    time /= 60;     break;
@@ -343,6 +379,8 @@ convert_time(long time, TimeUnit from_unit, TimeUnit to_unit)
         case TimeUnit::HOUR:
             switch (to_unit)
             {
+                case TimeUnit::YEAR:    time /= 365 * 24;   break;
+                case TimeUnit::MONTH:   time /= 30 * 24;    break;
                 case TimeUnit::WEEK:    time /= 7;
                 case TimeUnit::DAY:     time /= 24;     break;
                 case TimeUnit::MS:      time *= 1000;
@@ -355,6 +393,8 @@ convert_time(long time, TimeUnit from_unit, TimeUnit to_unit)
         case TimeUnit::DAY:
             switch (to_unit)
             {
+                case TimeUnit::YEAR:    time /= 365;    break;
+                case TimeUnit::MONTH:   time /= 30;     break;
                 case TimeUnit::WEEK:    time /= 7;      break;
                 case TimeUnit::MS:      time *= 1000;
                 case TimeUnit::SEC:     time *= 60;
@@ -367,11 +407,41 @@ convert_time(long time, TimeUnit from_unit, TimeUnit to_unit)
         case TimeUnit::WEEK:
             switch (to_unit)
             {
+                case TimeUnit::YEAR:    time = (time * 7) / 365;    break;
+                case TimeUnit::MONTH:   time = (time * 7) / 30;     break;
                 case TimeUnit::MS:      time *= 1000;
                 case TimeUnit::SEC:     time *= 60;
                 case TimeUnit::MIN:     time *= 60;
                 case TimeUnit::HOUR:    time *= 24;
                 case TimeUnit::DAY:     time *= 7;      break;
+                default:                                break;
+            }
+            break;
+
+        case TimeUnit::MONTH:
+            switch (to_unit)
+            {
+                case TimeUnit::YEAR:    time = (time * 30) / 365;   break;
+                case TimeUnit::MS:      time *= 1000;
+                case TimeUnit::SEC:     time *= 60;
+                case TimeUnit::MIN:     time *= 60;
+                case TimeUnit::HOUR:    time *= 24;
+                case TimeUnit::DAY:     time *= 30;     break;
+                case TimeUnit::WEEK:    time = (time * 30) / 7;     break;
+                default:                                break;
+            }
+            break;
+
+        case TimeUnit::YEAR:
+            switch (to_unit)
+            {
+                case TimeUnit::MS:      time *= 1000;
+                case TimeUnit::SEC:     time *= 60;
+                case TimeUnit::MIN:     time *= 60;
+                case TimeUnit::HOUR:    time *= 24;
+                case TimeUnit::DAY:     time *= 365;    break;
+                case TimeUnit::WEEK:    time = (time * 365) / 7;    break;
+                case TimeUnit::MONTH:   time = (time * 365) / 30;   break;
                 default:                                break;
             }
             break;

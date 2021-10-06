@@ -198,9 +198,9 @@ private:
     TimeRange m_time_range;
 
     bool m_ms;  // milli-second resolution?
-    char *m_metric;
-    char *m_aggregate;
-    char *m_downsample;
+    const char *m_metric;
+    const char *m_aggregate;
+    const char *m_downsample;
 
     Aggregator *m_aggregator;
     RateCalculator *m_rate_calculator;

@@ -27,7 +27,7 @@ namespace tt
 {
 
 
-enum class ShutdownRequest
+enum class ShutdownRequest : unsigned char
 {
     NONE = 0,       // no shutdown, continue with normal program
     ASAP = 1,       // finish the remaining tasks and then shutdown

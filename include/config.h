@@ -54,8 +54,6 @@
 #define CFG_HTTP_RESPONDERS_PER_LISTENER_DEF    2
 #define CFG_HTTP_SERVER_PORT                    "http.server.port"
 #define CFG_HTTP_SERVER_PORT_DEF                6182
-#define CFG_HTTP_SOCKET_RCVBUF_SIZE             "http.socket.rcvbuf.size"
-#define CFG_HTTP_SOCKET_SNDBUF_SIZE             "http.socket.sndbuf.size"
 #define CFG_LOG_FILE                            "log.file"
 #define CFG_LOG_FILE_DEF                        "/var/log/ticktock.log"
 #define CFG_LOG_LEVEL                           "log.level"
@@ -72,8 +70,8 @@
 #define CFG_QUERY_EXECUTOR_THREAD_COUNT_DEF     8
 #define CFG_STATS_FREQUENCY                     "stats.frequency"
 #define CFG_STATS_FREQUENCY_DEF                 "30s"
-#define CFG_TCP_CONNECTION_TIMEOUT              "tcp.connection.timeout"
-#define CFG_TCP_CONNECTION_TIMEOUT_DEF          "10min"
+#define CFG_TCP_CONNECTION_IDLE_TIMEOUT         "tcp.connection.idle.timeout"
+#define CFG_TCP_CONNECTION_IDLE_TIMEOUT_DEF     "10min"
 #define CFG_TCP_LISTENER_COUNT                  "tcp.listener.count"
 #define CFG_TCP_LISTENER_COUNT_DEF              2
 #define CFG_TCP_MAX_EPOLL_EVENTS                "tcp.max.epoll.events"
@@ -99,7 +97,7 @@
 #define CFG_TSDB_COMPRESSOR_VERSION             "tsdb.compressor.version"
 #define CFG_TSDB_COMPRESSOR_VERSION_DEF         1
 #define CFG_TSDB_DATA_DIR                       "tsdb.data.dir"
-#define CFG_TSDB_DATA_DIR_DEF                   "."
+#define CFG_TSDB_DATA_DIR_DEF                   "/tmp"
 #define CFG_TSDB_OFF_HOUR_BEGIN                 "tsdb.off_hour.begin"
 #define CFG_TSDB_OFF_HOUR_BEGIN_DEF             0
 #define CFG_TSDB_OFF_HOUR_END                   "tsdb.off_hour.end"
@@ -172,7 +170,7 @@ public:
     static long as_time(const std::string& val, TimeUnit unit)
     {
         long time = std::stol(val);
-        TimeUnit u = to_time_unit(val);
+        TimeUnit u = to_time_unit(val.c_str(), val.size());
         if (u == TimeUnit::UNKNOWN) throw std::exception();
         return convert_time(time, u, unit);
     }

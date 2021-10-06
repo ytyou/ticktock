@@ -62,7 +62,7 @@ private:
 };
 
 
-enum JsonValueType
+enum JsonValueType : unsigned char
 {
     JVT_ARRAY,
     JVT_BOOL,
@@ -75,31 +75,36 @@ enum JsonValueType
 class JsonValue : public Recyclable
 {
 public:
-    void set_type(JsonValueType type)
+    inline JsonValueType get_type() const
+    {
+        return type;
+    }
+
+    inline void set_type(JsonValueType type)
     {
         this->type = type;
     }
 
-    void set_value(bool b)
+    inline void set_value(bool b)
     {
         this->boolean = b;
         this->type = JsonValueType::JVT_BOOL;
     }
 
-    void set_value(double dbl)
+    inline void set_value(double dbl)
     {
         this->dbl = dbl;
         this->type = JsonValueType::JVT_DOUBLE;
     }
 
-    void set_value(char *str)
+    inline void set_value(char *str)
     {
         ASSERT(str != nullptr);
         this->str = str;
         this->type = JsonValueType::JVT_STRING;
     }
 
-    JsonArray& to_array()
+    inline JsonArray& to_array()
     {
         ASSERT(type == JsonValueType::JVT_ARRAY);
         return arr;
@@ -119,19 +124,19 @@ public:
         }
     }
 
-    double to_double() const
+    inline double to_double() const
     {
         ASSERT(type == JsonValueType::JVT_DOUBLE);
         return dbl;
     }
 
-    JsonMap& to_map()
+    inline JsonMap& to_map()
     {
         ASSERT(type == JsonValueType::JVT_MAP);
         return map;
     }
 
-    char *to_string()
+    inline const char *to_string() const
     {
         ASSERT(type == JsonValueType::JVT_STRING);
         ASSERT(str != nullptr);
@@ -141,7 +146,7 @@ public:
 private:
     friend class JsonParser;
 
-    int type;       // this determines which one of the following is used
+    JsonValueType type; // this determines which one of the following is used
     bool boolean;
     double dbl;
     char *str;      // we don't own the memory
