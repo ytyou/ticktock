@@ -128,7 +128,7 @@ Downsampler::create(const char *downsample, TimeRange& range, bool ms)
     std::vector<char*> tokens;
 
     tokenize(tmp, '-', tokens);
-    ASSERT(tokens.size() >= 2);
+    if (tokens.size() < 2) return nullptr;
 
     char *interval = tokens[0];
     char *function = tokens[1];

@@ -844,27 +844,23 @@ HttpRequest::init()
 void
 HttpRequest::parse_params(JsonMap& pairs)
 {
-    char *key = params, *value;
+    std::vector<char*> tokens;
+    tokenize(params, '&', tokens);
 
-    if (params == nullptr) return;
-
-    for (char *curr = params; *curr != 0; curr++)
+    for (const auto& token: tokens)
     {
-        if (*curr == '&')
-        {
-            *curr = 0;
-            key = curr + 1;
-        }
-        else if (*curr == '=')
-        {
-            *curr = 0;
-            value = curr + 1;
+        char *key, *value;
 
+        if (tokenize(token, key, value, '='))
+        {
             JsonValue *v =
                 (JsonValue*)MemoryManager::alloc_recyclable(RecyclableType::RT_JSON_VALUE);
             v->set_value(value);
-
             pairs[key] = v;
+        }
+        else
+        {
+            Logger::warn("Failed to parse uri query params: %s", token);
         }
     }
 }
