@@ -16,3 +16,4 @@ sleep 1
 /usr/bin/rm -rf /tmp/hbase-$USER
 /usr/bin/rm -rf /opt/hbase/logs/*
 /usr/bin/rm -f QUERY_LOG_IS_UNDEFINED
+/opt/hbase/bin/hbase-cleanup.sh --cleanAll
