@@ -6,7 +6,7 @@
 # Hbase/Hadoop/Zookeeper is located at /opt/hbase/...
 # Hbase/Hadoop/Zookeeper data is stored at /tmp/hbase-yongtao/...
 
-export JAVA_HOME=/opt/jdk
+export JAVA_HOME=/usr/lib/jvm/java-8-openjdk-amd64
 export JAVA=$JAVA_HOME/bin/java
 export HBASE_HOME=/opt/hbase
 

@@ -15,7 +15,7 @@
 #   docker commit <container-id> <new_image_name>
 #
 # To start ticktock container for the first time:
-#   docker run -d -v ticktock:/var/lib/ticktock --name ticktock-grafana -p 3000:3000 -p 6181-6182:6181-6182 -p 6181:6181/udp ytyou/ticktock:latest-grafana
+#   docker run -d --name ticktock-grafana -p 3000:3000 -p 6181-6182:6181-6182 -p 6181:6181/udp ytyou/ticktock:latest-grafana
 #
 # To attach to a running ticktock container:
 #   docker exec -it ticktock /bin/bash
@@ -38,7 +38,7 @@ LABEL build-date="$BUILD_DATE" git-commit="$GIT_COMMIT"
 LABEL maintainer="yongtao.you@gmail.com"
 LABEL url="https://github.com/ytyou/ticktock"
 LABEL description="An OpenTSDB-like time series database, with much better performance."
-LABEL docker.cmd="docker run -d -v ticktock:/var/lib/ticktock --name ticktock-grafana -p 3000:3000 -p 6181-6182:6181-6182 -p 6181:6181/udp ytyou/ticktock:latest-grafana"
+LABEL docker.cmd="docker run -d --name ticktock-grafana -p 3000:3000 -p 6181-6182:6181-6182 -p 6181:6181/udp ytyou/ticktock:latest-grafana"
 
 HEALTHCHECK --interval=5m --timeout=5s \
   CMD /opt/ticktock/scripts/healthcheck.sh

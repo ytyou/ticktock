@@ -8,13 +8,13 @@ DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 # Hbase/Hadoop/Zookeeper is located at /opt/hbase/...
 # Hbase/Hadoop/Zookeeper data is stored at /tmp/hbase-$USER/...
 
-export JAVA_HOME=/opt/jdk
+export JAVA_HOME=/usr/lib/jvm/java-8-openjdk-amd64
 export JAVA=$JAVA_HOME/bin/java
 export HBASE_HOME=/opt/hbase
 
 # for OpenTSDB
 export LOG_FILE=/tmp/tt/opentsdb.log
-export CLASSPATH=$CLASSPATH:/usr/local/share/opentsdb/etc/opentsdb
+export CLASSPATH=$CLASSPATH:/usr/share/opentsdb/lib:/etc/opentsdb
 
 # stop hbase if necessary
 $DIR/stop-hbase.sh
@@ -32,4 +32,4 @@ sleep 5
 $DIR/create-tables.sh
 
 # start opentsdb (foreground)
-/usr/local/bin/tsdb tsd --config /usr/local/share/opentsdb/etc/opentsdb/opentsdb.conf
+/usr/share/opentsdb/bin/tsdb tsd --config /etc/opentsdb/opentsdb.conf
