@@ -421,6 +421,25 @@ class Test(object):
                 if self._options.verbose:
                     print "actual not list: " + str(actual)
                 return False
+            # When query returns no data points, newer version of OpenTSDB
+            # now returns [{"metric":"metric1","tags":{"tag1":"val1"},"aggregateTags":[],"dps":{}}]
+            # instead of just []. We will not change this behavior, yet. so...
+            if not actual:
+                if not expected:
+                    return True
+                if len(expected) != 1:
+                    return False
+                elem = expected[0]
+                if not isinstance(elem, dict):
+                    return False
+                if not elem.has_key("dps"):
+                    return False
+                elem = elem["dps"]
+                if not isinstance(elem, dict):
+                    return False
+                if elem:
+                    return False
+                return True
             if len(expected) != len(actual):
                 if self._options.verbose:
                     print "list len not same: %s vs %s" % (str(expected), str(actual))
