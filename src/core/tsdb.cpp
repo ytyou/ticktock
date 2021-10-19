@@ -1071,25 +1071,61 @@ Tsdb::load_from_disk_no_lock()
 void
 Tsdb::insts(const TimeRange& range, std::vector<Tsdb*>& tsdbs)
 {
-    //std::lock_guard<std::mutex> guard(m_tsdb_lock);
     ReadLock guard(m_tsdb_lock);
+    int i, size = m_tsdbs.size();
+    if (size == 0) return;
 
-    for (int i = 0; i < m_tsdbs.size(); i++)
+    Timestamp begin = m_tsdbs[0]->m_time_range.get_from();
+    Timestamp end = m_tsdbs[size-1]->m_time_range.get_to();
+
+    if (end < range.get_from()) return;
+    if (range.get_to() < begin) return;
+
+    Timestamp duration = (end - begin) / (Timestamp)size;
+
+    int lower, upper;
+
+    // estimate lower bound
+    if (range.get_from() < begin)
+        lower = 0;
+    else
     {
-        Tsdb *tsdb = m_tsdbs[i];
+        lower = (range.get_from() - begin) / duration;
+        if (lower >= size) lower = size - 1;
+    }
 
-        // TODO: make sure 'tsdb' and 'range' are both using the same time unit
+    // estimate upper bound
+    if (end <= range.get_to())
+        upper = size - 1;
+    else
+    {
+        upper = (range.get_to() - begin) / duration;
+        if (upper >= size) upper = size - 1;
+    }
 
+    // adjust lower bound
+    Tsdb *tsdb = m_tsdbs[lower];
+
+    while (range.get_to() < tsdb->m_time_range.get_from())
+    {
+        lower--;
+        tsdb = m_tsdbs[lower];
+    }
+
+    // adjust upper bound
+    tsdb = m_tsdbs[upper];
+
+    while (tsdb->m_time_range.get_to() < range.get_from())
+    {
+        upper++;
+        tsdb = m_tsdbs[upper];
+    }
+
+    for (i = lower; i <= upper; i++)
+    {
+        tsdb = m_tsdbs[i];
         if (tsdb->in_range(range))
-        {
             tsdbs.push_back(tsdb);
-        }
-        else
-        {
-            char buff1[64], buff2[64];
-            Logger::debug("%s has no intersection with %s",
-                tsdb->c_str(buff1, sizeof(buff1)), range.c_str(buff2, sizeof(buff2)));
-        }
     }
 }
 
@@ -1703,6 +1739,7 @@ Tsdb::unload()
     }
 
     m_page_mgrs.clear();
+    m_page_mgrs.shrink_to_fit();
 
     m_mode &= ~TSDB_MODE_READ_WRITE;
 }
@@ -1740,9 +1777,11 @@ Tsdb::rotate(TaskData& data)
         {
             long load_time = tsdb->m_load_time;
             long now_sec = to_sec(now);
+            long thrashing_threshold =
+                Config::get_time(CFG_TSDB_THRASHING_THRESHOLD, TimeUnit::SEC, CFG_TSDB_THRASHING_THRESHOLD_DEF);
 
             // archive it
-            if ((now_sec - load_time) > 7200)   // TODO: config?
+            if ((now_sec - load_time) > thrashing_threshold)
             {
                 Logger::info("[rotate] Archiving tsdb (lt=%ld, now=%ld): %s", load_time, now_sec, tsdb->c_str(buff, sizeof(buff)));
                 tsdb->flush(true);

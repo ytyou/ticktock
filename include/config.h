@@ -115,6 +115,8 @@
 #define CFG_TSDB_ROTATION_FREQUENCY_DEF         "1d"
 #define CFG_TSDB_SELF_METER_ENABLED             "tsdb.self_meter.enabled"
 #define CFG_TSDB_SELF_METER_ENABLED_DEF         false
+#define CFG_TSDB_THRASHING_THRESHOLD            "tsdb.thrashing.threshold"
+#define CFG_TSDB_THRASHING_THRESHOLD_DEF        "10min"
 #define CFG_TSDB_TIMESTAMP_RESOLUTION           "tsdb.timestamp.resolution"
 #define CFG_TSDB_TIMESTAMP_RESOLUTION_DEF       "second"
 #define CFG_UDP_LISTENER_COUNT                  "udp.listener.count"
