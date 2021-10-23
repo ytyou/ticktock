@@ -27,6 +27,7 @@
 #include "recycle.h"
 #include "strbuf.h"
 #include "stop.h"
+#include "sync.h"
 #include "tag.h"
 #include "type.h"
 
@@ -210,6 +211,7 @@ private:
 class QueryTask : public Recyclable
 {
 public:
+    QueryTask();
     void perform();
 
     Tag *get_tags();
@@ -218,6 +220,11 @@ public:
     inline DataPointVector& get_dps()
     {
         return m_dps;
+    }
+
+    inline void set_signal(CountingSignal *signal)
+    {
+        m_signal = signal;
     }
 
 private:
@@ -232,7 +239,7 @@ private:
     std::vector<TimeSeries*> m_tsv;
     DataPointVector m_dps;  // results before aggregation
     QueryResults m_results; // results after aggregation
-    volatile std::atomic<bool> m_done;
+    CountingSignal *m_signal;   // we don't own this, do not free it
 };
 
 

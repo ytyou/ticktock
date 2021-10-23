@@ -385,8 +385,6 @@ Query::get_query_tasks(std::vector<QueryTask*>& qtv)
                                     nullptr :
                                     Downsampler::create(m_downsample, m_time_range, m_ms);
                 qt->m_tsv.push_back(ts);
-                qt->m_done.store(false, std::memory_order_relaxed);
-
                 map.emplace(ts->get_key(), qt);
             }
             else
@@ -563,18 +561,14 @@ Query::execute(std::vector<QueryResults*>& results, StringBuffer& strbuf)
     get_query_tasks(qtv);
 
     for (QueryTask *qt: qtv)
-    {
         qt->perform();
-    }
 
     aggregate(qtv, results, strbuf);
     calculate_rate(results);
 
     // cleanup
     for (QueryTask *qt: qtv)
-    {
         MemoryManager::free_recyclable(qt);
-    }
 
     // The following code are for debugging purposes only.
 #ifdef _DEBUG
@@ -600,68 +594,44 @@ Query::execute_in_parallel(std::vector<QueryResults*>& results, StringBuffer& st
 
     get_query_tasks(qtv);
 
+    if (qtv.size() > 1) // TODO: config?
     {
-        std::lock_guard<std::mutex> guard(executor->m_lock);
+        int size = qtv.size() - 1;
+        CountingSignal signal(size);
 
-        for (QueryTask *qt: qtv)
         {
-            ASSERT(! qt->m_tsv.empty());
-            executor->submit_query(qt);
+            std::lock_guard<std::mutex> guard(executor->m_lock);
+
+            for (int i = 0; i < size; i++)
+            {
+                QueryTask *task = qtv[i];
+                ASSERT(! task->m_tsv.empty());
+                task->set_signal(&signal);
+                executor->submit_query(task);
+            }
         }
+
+        qtv[size]->perform();
+        signal.wait(false);
     }
-
-    unsigned int progress = SPIN_YIELD_THRESHOLD;
-    std::vector<QueryTask*> done_qtv;
-
-    while (! qtv.empty())
+    else
     {
-        if (progress > 0)
-        {
-            if (progress < (6 * SPIN_YIELD_THRESHOLD)) progress += SPIN_YIELD_THRESHOLD;
-            spin_yield(progress);   // yield for 1ms
-        }
-        else
-        {
-            spin_yield(2 * SPIN_YIELD_THRESHOLD);   // yield for 1ms
-        }
-
-        for (auto it = qtv.begin(); it != qtv.end(); )
-        {
-            QueryTask *task = *it;
-
-            ASSERT(! task->m_tsv.empty());
-
-            if (task->m_done)
-            {
-                // process results
-                //QueryResults *result = find_or_create_query_results(task->m_ts, results);
-                //result->dps.insert(result->dps.end(), task->m_results.dps.begin(), task->m_results.dps.end());
-
-                progress = 0;
-                it = qtv.erase(it);
-                done_qtv.push_back(task);
-            }
-            else
-            {
-                it++;
-            }
-        }
+        for (QueryTask *qt: qtv)
+            qt->perform();
     }
 
     {
         Meter meter(METRIC_TICKTOCK_QUERY_AGGREGATE_LATENCY_MS);
         Logger::trace("calling aggregate()...");
-        aggregate(done_qtv, results, strbuf);
+        aggregate(qtv, results, strbuf);
         Logger::trace("calling calculate_rate()...");
         calculate_rate(results);
     }
 
     // cleanup
     Logger::trace("cleanup...");
-    for (QueryTask *qt: done_qtv)
-    {
+    for (QueryTask *qt: qtv)
         MemoryManager::free_recyclable(qt);
-    }
 
     // The following code are for debugging purposes only.
 #ifdef _DEBUG
@@ -673,7 +643,7 @@ Query::execute_in_parallel(std::vector<QueryResults*>& results, StringBuffer& st
     }
 
     char buff[64];
-    Logger::debug("Finished with %d ts and %d dps in range %s", done_qtv.size(), n, m_time_range.c_str(buff, sizeof(buff)));
+    Logger::debug("Finished with %d ts and %d dps in range %s", qtv.size(), n, m_time_range.c_str(buff, sizeof(buff)));
 #endif
 }
 
@@ -688,28 +658,39 @@ Query::c_str(char *buff, size_t size) const
         m_ms ? "true" : "false");
 
     for (Tag *tag = m_tags; tag != nullptr; tag = tag->next())
-    {
         n += snprintf(&buff[n], size-n, " %s=%s", tag->m_key, tag->m_value);
-    }
 
     return buff;
 }
 
 
+QueryTask::QueryTask() :
+    m_signal(nullptr)
+{
+}
+
 void
 QueryTask::perform()
 {
-    for (TimeSeries *ts: m_tsv)
+    try
     {
-        ts->query(m_time_range, m_downsampler, m_dps);
+        for (TimeSeries *ts: m_tsv)
+            ts->query(m_time_range, m_downsampler, m_dps);
+
+        if (m_downsampler != nullptr)
+        {
+            m_downsampler->fill_if_needed(m_dps);
+            MemoryManager::free_recyclable(m_downsampler);
+            m_downsampler = nullptr;
+        }
+    }
+    catch (...)
+    {
+        Logger::error("Caught exception while performing query.");
     }
 
-    if (m_downsampler != nullptr)
-    {
-        m_downsampler->fill_if_needed(m_dps);
-        MemoryManager::free_recyclable(m_downsampler);
-        m_downsampler = nullptr;
-    }
+    if (m_signal != nullptr)
+        m_signal->count_down();
 }
 
 Tag *
@@ -737,6 +718,7 @@ QueryTask::recycle()
     m_dps.clear();
     m_dps.shrink_to_fit();
     m_results.recycle();
+    m_signal = nullptr;
 
     if (m_downsampler != nullptr)
     {
@@ -954,7 +936,6 @@ QueryExecutor::perform_query(TaskData& data)
 {
     QueryTask *task = (QueryTask*)data.pointer;
     task->perform();
-    task->m_done = true;
     return false;
 }
 
