@@ -446,7 +446,7 @@ TcpServer::process_data(TcpConnection *conn, char *data, int len)
         request.length = len;
         request.forward = conn->forward;
 
-        Logger::trace("TcpServer::process_data():\n%s", data);
+        Logger::tcp("Recved:\n%s", data);
 
         Tsdb::http_api_put_handler_plain(request, response);
 
@@ -479,6 +479,7 @@ void
 TcpServer::send_response(int fd, char *content, int len)
 {
     int sent_total = 0;
+    int retry = 0;
 
     ASSERT(fd != -1);
     ASSERT(content != nullptr);
@@ -489,6 +490,12 @@ TcpServer::send_response(int fd, char *content, int len)
 
         if (sent == -1)
         {
+            if ((errno == EAGAIN) || (errno == EWOULDBLOCK))
+            {
+                spin_yield(++retry);
+                continue;
+            }
+
             Logger::warn("tcp send_response() failed, errno = %d", errno);
             return;
         }
@@ -496,6 +503,8 @@ TcpServer::send_response(int fd, char *content, int len)
         len -= sent;
         sent_total += sent;
     }
+
+    Logger::tcp("Sent %d bytes:\n%s", sent_total, content);
 }
 
 void
@@ -756,7 +765,7 @@ TcpListener::TcpListener(TcpServer *server, int fd, size_t max_conns, int id) :
     m_conn_in_transit(nullptr),
     m_responders(std::string("tcp_")+std::to_string(id),
                  Config::get_int(CFG_TCP_RESPONDERS_PER_LISTENER, CFG_TCP_RESPONDERS_PER_LISTENER_DEF),
-                 16)
+                 Config::get_int(CFG_TCP_RESPONDERS_QUEUE_SIZE, CFG_TCP_RESPONDERS_QUEUE_SIZE_DEF))
     //m_stats_active_conn_count(0)
 {
     if (! init(-1))

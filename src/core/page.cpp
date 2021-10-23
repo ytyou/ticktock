@@ -469,7 +469,7 @@ PageManager::open_mmap(PageCount page_count)
         m_total_size = sb.st_size;
     }
 
-    Logger::info("File size: %" PRIu64, m_total_size);
+    Logger::debug("File size: %" PRIu64, m_total_size);
 
     int rc = ftruncate(m_fd, m_total_size);
 
@@ -559,8 +559,8 @@ PageManager::open_mmap(PageCount page_count)
         // TODO: verify time range in the header. It should agree with our m_time_range!
     }
 
-    Logger::info("page count = %d", *m_page_count);
-    Logger::info("page index = %d", *m_page_index);
+    Logger::debug("page count = %d", *m_page_count);
+    Logger::debug("page index = %d", *m_page_index);
     return is_new;
 }
 

@@ -194,7 +194,7 @@ HttpServer::recv_http_data(TaskData& data)
         buff[len+2] = 0;
         buff[len+3] = 0;
 
-        Logger::trace("recv'ed (%d): len=%d\n%s", fd, len, buff);
+        Logger::http("Recved request on %d (%p): len=%d\n%s", fd, conn, len, buff);
 
         conn->request.init();
 
@@ -228,13 +228,15 @@ HttpServer::recv_http_data(TaskData& data)
                 conn_error = true;
             }
 
-            conn->buff = nullptr;
-            conn->worker_id = INVALID_WORKER_ID;
-
             if ((conn->response.status_code == 200) && (conn->response.content_length == 0))
                 HttpServer::send_response(fd, HTTP_200);
             else
                 HttpServer::send_response(fd, conn->response);
+
+            // This needs to be done AFTER send_response(),
+            // or you are risking 2 threads both sending responses on the same fd.
+            conn->buff = nullptr;
+            conn->worker_id = INVALID_WORKER_ID;
         }
         else
         {
@@ -336,13 +338,15 @@ HttpServer::recv_http_data_cont(HttpConnection *conn)
                 conn_error = true;
             }
 
-            conn->buff = nullptr;
-            conn->worker_id = INVALID_WORKER_ID;
-
             if ((conn->response.status_code == 200) && (conn->response.content_length == 0))
                 HttpServer::send_response(fd, HTTP_200);
             else
                 HttpServer::send_response(fd, conn->response);
+
+            // This needs to be done AFTER send_response(),
+            // or you are risking 2 threads both sending responses on the same fd.
+            conn->buff = nullptr;
+            conn->worker_id = INVALID_WORKER_ID;
         }
         else
         {
@@ -485,18 +489,14 @@ HttpServer::send_response(int fd, HttpResponse& response)
 
     if (sent >= response.response_size)
     {
-#ifdef _DEBUG
-        Logger::debug("finished sending %d bytes in %d tries.",
-            response.response_size, count);
-#endif
+        Logger::http("Sent %d(%d) bytes in %d tries (fd=%d):\n%s",
+            response.response_size, sent, count, fd, response.response);
         return true;    // succeeded
     }
     else
     {
-#ifdef _DEBUG
-        Logger::debug("sent out %d of %d bytes after %d tries, give up!",
+        Logger::http("Sent out %d of %d bytes after %d tries, give up!",
             sent, response.response_size, count);
-#endif
         return false;   // failed
     }
 }

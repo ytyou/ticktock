@@ -34,10 +34,12 @@ enum class LogLevel : unsigned char
 {
     TRACE = 1,
     DEBUG = 2,
-    INFO = 3,
-    WARN = 4,
-    ERROR = 5,
-    FATAL = 6,
+    TCP = 3,
+    HTTP = 4,
+    INFO = 5,
+    WARN = 6,
+    ERROR = 7,
+    FATAL = 8,
     UNKNOWN = 100
 };
 
@@ -52,12 +54,13 @@ public:
     // std::endl will be appended, if it's not already there
     static void trace(const char *format, ...);
     static void debug(const char *format, ...);
+    static void tcp(const char *format, ...);
+    static void http(const char *format, ...);
     static void info(const char *format, ...);
     static void warn(const char *format, ...);
     static void error(const char *format, ...);
     static void fatal(const char *format, ...);
 
-    static const char *get_level_as_string(LogLevel level);
     static void set_level(const char *level);
 
     inline static LogLevel get_level()

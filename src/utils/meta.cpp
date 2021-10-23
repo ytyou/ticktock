@@ -141,7 +141,7 @@ MetaFile::load(Tsdb *tsdb)
 
     if (! is)
     {
-        Logger::warn("failed to open meta data file: %s", m_name.c_str());
+        Logger::debug("failed to open meta data file: %s", m_name.c_str());
         return;
     }
 

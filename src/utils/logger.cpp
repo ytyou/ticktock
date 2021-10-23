@@ -179,7 +179,7 @@ Logger::rename()
 void
 Logger::trace(const char *format, ...)
 {
-    if ((format == nullptr) || (get_level() > LogLevel::TRACE))
+    if ((get_level() > LogLevel::TRACE) || (format == nullptr))
         return;
 
     va_list args;
@@ -194,7 +194,7 @@ Logger::trace(const char *format, ...)
 void
 Logger::debug(const char *format, ...)
 {
-    if ((format == nullptr) || (get_level() > LogLevel::DEBUG))
+    if ((get_level() > LogLevel::DEBUG) || (format == nullptr))
         return;
 
     va_list args;
@@ -207,9 +207,39 @@ Logger::debug(const char *format, ...)
 
 // Add a timestamp and a log level to the passed in log entry;
 void
+Logger::tcp(const char *format, ...)
+{
+    if ((get_level() > LogLevel::TCP) || (format == nullptr))
+        return;
+
+    va_list args;
+    va_start(args, format);
+
+    m_instance->print(LogLevel::TCP, format, args);
+
+    va_end(args);
+}
+
+// Add a timestamp and a log level to the passed in log entry;
+void
+Logger::http(const char *format, ...)
+{
+    if ((get_level() > LogLevel::HTTP) || (format == nullptr))
+        return;
+
+    va_list args;
+    va_start(args, format);
+
+    m_instance->print(LogLevel::HTTP, format, args);
+
+    va_end(args);
+}
+
+// Add a timestamp and a log level to the passed in log entry;
+void
 Logger::info(const char *format, ...)
 {
-    if ((format == nullptr) || (get_level() > LogLevel::INFO))
+    if ((get_level() > LogLevel::INFO) || (format == nullptr))
         return;
 
     va_list args;
@@ -224,7 +254,7 @@ Logger::info(const char *format, ...)
 void
 Logger::warn(const char *format, ...)
 {
-    if ((format == nullptr) || (get_level() > LogLevel::WARN))
+    if ((get_level() > LogLevel::WARN) || (format == nullptr))
         return;
 
     va_list args;
@@ -239,7 +269,7 @@ Logger::warn(const char *format, ...)
 void
 Logger::error(const char *format, ...)
 {
-    if ((format == nullptr) || (get_level() > LogLevel::ERROR))
+    if ((get_level() > LogLevel::ERROR) || (format == nullptr))
         return;
 
     va_list args;
@@ -254,7 +284,7 @@ Logger::error(const char *format, ...)
 void
 Logger::fatal(const char *format, ...)
 {
-    if ((format == nullptr) || (get_level() > LogLevel::FATAL))
+    if ((get_level() > LogLevel::FATAL) || (format == nullptr))
         return;
 
     va_list args;
@@ -266,7 +296,7 @@ Logger::fatal(const char *format, ...)
 }
 
 const char *
-Logger::get_level_as_string(LogLevel level)
+Logger::level_name(const LogLevel level)
 {
     switch (level)
     {
@@ -274,7 +304,9 @@ Logger::get_level_as_string(LogLevel level)
         case LogLevel::DEBUG:   return "DEBUG";
         case LogLevel::ERROR:   return "ERROR";
         case LogLevel::FATAL:   return "FATAL";
+        case LogLevel::HTTP:    return "HTTP";
         case LogLevel::INFO:    return "INFO";
+        case LogLevel::TCP:     return "TCP";
         case LogLevel::WARN:    return "WARN";
         default:                return "UNKNOWN";
     }
@@ -301,13 +333,17 @@ Logger::set_level(const char *level)
             case 'F':
                 logLevel = LogLevel::FATAL;
                 break;
+            case 'h':
+            case 'H':
+                logLevel = LogLevel::HTTP;
+                break;
             case 'i':
             case 'I':
                 logLevel = LogLevel::INFO;
                 break;
             case 't':
             case 'T':
-                logLevel = LogLevel::TRACE;
+                logLevel = (level[1]=='c'||level[1]=='C') ? LogLevel::TCP : LogLevel::TRACE;
                 break;
             case 'w':
             case 'W':
@@ -334,7 +370,7 @@ Logger::prepare_header(char *buff, int size, const LogLevel level, const char *f
     localtime_r(&sec, &timeinfo);
     std::strftime(buff, size, "%Y-%m-%d %H:%M:%S", &timeinfo);
     sprintf(buff+19, ".%03d [%s] [%s] %s",
-        msec, get_level_as_string(level), g_thread_id.c_str(), format);
+        msec, level_name(level), g_thread_id.c_str(), format);
 }
 
 // format parameter is guaranteed to be non-NULL
@@ -365,22 +401,6 @@ Logger::print(const LogLevel level, const char *format, va_list args)
     {
         // log to file
         std::vfprintf(m_stream, fmt, args);
-    }
-}
-
-// it never return NULL
-const char *
-Logger::level_name(const LogLevel level)
-{
-    switch (level)
-    {
-        case LogLevel::TRACE: return " [TRACE] ";   break;
-        case LogLevel::DEBUG: return " [DEBUG] ";   break;
-        case LogLevel::INFO:  return " [INFO] ";    break;
-        case LogLevel::WARN:  return " [WARN] ";    break;
-        case LogLevel::ERROR: return " [ERROR] ";   break;
-        case LogLevel::FATAL: return " [FATAL] ";   break;
-        default:              return " [UNKNOWN] "; break;
     }
 }
 

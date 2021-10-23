@@ -51,7 +51,7 @@
 #define CFG_HTTP_REQUEST_FORMAT                 "http.request.format"
 #define CFG_HTTP_REQUEST_FORMAT_DEF             "plain"
 #define CFG_HTTP_RESPONDERS_PER_LISTENER        "http.responders.per.listener"
-#define CFG_HTTP_RESPONDERS_PER_LISTENER_DEF    2
+#define CFG_HTTP_RESPONDERS_PER_LISTENER_DEF    4
 #define CFG_HTTP_SERVER_PORT                    "http.server.port"
 #define CFG_HTTP_SERVER_PORT_DEF                6182
 #define CFG_LOG_FILE                            "log.file"
@@ -80,6 +80,8 @@
 #define CFG_TCP_BUFFER_SIZE_DEF                 "1mb"
 #define CFG_TCP_RESPONDERS_PER_LISTENER         "tcp.responders.per.listener"
 #define CFG_TCP_RESPONDERS_PER_LISTENER_DEF     2
+#define CFG_TCP_RESPONDERS_QUEUE_SIZE           "tcp.responders.queue.size"
+#define CFG_TCP_RESPONDERS_QUEUE_SIZE_DEF       1024
 #define CFG_TCP_SERVER_PORT                     "tcp.server.port"
 #define CFG_TCP_SERVER_PORT_DEF                 6181
 #define CFG_TCP_SOCKET_RCVBUF_SIZE              "tcp.socket.rcvbuf.size"
