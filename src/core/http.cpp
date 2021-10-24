@@ -38,6 +38,8 @@ namespace tt
 {
 
 
+// TODO: these each consumes 1MB buffer, unnecessarily;
+//       and they can't contain X-Request-ID;
 static HttpResponse HTTP_200 = {200, HttpContentType::HTML};
 static HttpResponse HTTP_400 = {400, HttpContentType::HTML};
 static HttpResponse HTTP_404 = {404, HttpContentType::HTML};
@@ -215,6 +217,8 @@ HttpServer::recv_http_data(TaskData& data)
             conn_error = true;
             Logger::debug("will close connection %d", fd);
         }
+
+        conn->response.id = conn->request.id;
 
         // Check if we have recv'ed the complete request.
         // If not, we need to stop right here, and inform
@@ -553,7 +557,7 @@ HttpServer::parse_header(char *buff, int len, HttpRequest& request)
     // parse header
     while (*curr1 != '\r')
     {
-        // we only care about the following 2 entries in the header
+        // we only care about the following 3 entries in the header
         if (curr1[0] == 'C')
         {
             if (strncmp(curr1, "Content-Length:", 15) == 0)
@@ -566,6 +570,16 @@ HttpServer::parse_header(char *buff, int len, HttpRequest& request)
                 for (curr1 = curr1+11; *curr1 == ' '; curr1++) /* do nothing */;
                 request.close = (strncmp(curr1, "close", 5) == 0);
             }
+        }
+        else if (strncmp(curr1, "X-Request-ID:", 13) == 0)
+        {
+            for (curr1 = curr1+13; *curr1 == ' '; curr1++) /* do nothing */;
+            request.id = curr1;
+            curr1 = strchr(curr1, '\r');
+            if (curr1 == nullptr) return false; // bad request
+            *curr1 = 0;
+            if ((curr1 - request.id) > MAX_ID_SIZE) request.id[MAX_ID_SIZE] = 0;
+            curr1++;
         }
 
         curr1 = strchr(curr1, '\n');
@@ -666,6 +680,7 @@ HttpServer::http_get_api_version_handler(HttpRequest& request, HttpResponse& res
 
 
 HttpResponse::HttpResponse() :
+    id(nullptr),
     buffer(nullptr),
     response(nullptr)
 {
@@ -719,18 +734,32 @@ HttpResponse::init(uint16_t code, HttpContentType type, size_t length)
     status_code = code;
     content_type = type;
     content_length = length;
-    response = body - std::strlen(reason) - std::strlen(HTTP_CONTENT_TYPES[type]) - digits - 51;
+    int offset = (id == nullptr) ? 51 : (67 + std::strlen(id));
+    response = body - std::strlen(reason) - std::strlen(HTTP_CONTENT_TYPES[type]) - digits - offset;
 
     ASSERT(buffer <= response);
     ASSERT(std::strlen(reason) <= MAX_REASON_SIZE);
     ASSERT(std::strlen(HTTP_CONTENT_TYPES[type]) <= MAX_CONTENT_TYPE_SIZE);
 
-    response_size = std::snprintf(response, (uint32_t)size,
-        "HTTP/1.1 %3d %s%sContent-Type: %s%sContent-Length: %d%s%s",
-        (int)status_code, reason, CRLF,
-        HTTP_CONTENT_TYPES[type], CRLF,
-        (int)content_length,
-        CRLF, CRLF);
+    if (id == nullptr)
+    {
+        response_size = std::snprintf(response, (uint32_t)size,
+            "HTTP/1.1 %3d %s%sContent-Type: %s%sContent-Length: %d%s%s",
+            (int)status_code, reason, CRLF,
+            HTTP_CONTENT_TYPES[type], CRLF,
+            (int)content_length,
+            CRLF, CRLF);
+    }
+    else
+    {
+        response_size = std::snprintf(response, (uint32_t)size,
+            "HTTP/1.1 %3d %s%sContent-Type: %s%sContent-Length: %d%sX-Request-ID: %s%s%s",
+            (int)status_code, reason, CRLF,
+            HTTP_CONTENT_TYPES[type], CRLF,
+            (int)content_length, CRLF,
+            id, CRLF, CRLF);
+    }
+
     *body = first;  // restore
 
     response_size += length;
@@ -753,13 +782,26 @@ HttpResponse::init(uint16_t code, HttpContentType type, size_t length, const cha
         response = buffer = MemoryManager::alloc_network_buffer();
     }
 
-    response_size = snprintf(response, buff_size,
-        "HTTP/1.1 %3d %s%sContent-Length: %d%sContent-Type: %s%s%s%s",
-        (int)status_code, status_code_to_reason(status_code), CRLF,
-        (int)content_length, CRLF,
-        HTTP_CONTENT_TYPES[type],
-        CRLF, CRLF,
-        (body == nullptr) ? "" : body);
+    if (id == nullptr)
+    {
+        response_size = snprintf(response, buff_size,
+            "HTTP/1.1 %3d %s%sContent-Length: %d%sContent-Type: %s%s%s%s",
+            (int)status_code, status_code_to_reason(status_code), CRLF,
+            (int)content_length, CRLF,
+            HTTP_CONTENT_TYPES[type],
+            CRLF, CRLF,
+            (body == nullptr) ? "" : body);
+    }
+    else
+    {
+        response_size = snprintf(response, buff_size,
+            "HTTP/1.1 %3d %s%sContent-Length: %d%sContent-Type: %s%sX-Request-ID: %s%s%s%s",
+            (int)status_code, status_code_to_reason(status_code), CRLF,
+            (int)content_length, CRLF,
+            HTTP_CONTENT_TYPES[type], CRLF,
+            id, CRLF, CRLF,
+            (body == nullptr) ? "" : body);
+    }
 
 #ifdef _DEBUG
     if (content_length > 0)
@@ -836,6 +878,7 @@ HttpRequest::init()
     params = nullptr;
     version = nullptr;
     content = nullptr;
+    id = nullptr;
     length = 0;
     complete = false;
     forward = g_cluster_enabled;

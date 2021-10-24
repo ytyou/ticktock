@@ -45,10 +45,11 @@ extern const char *HTTP_API_STATS;
 extern const char *HTTP_API_SUGGEST;
 extern const char *HTTP_API_VERSION;
 
+#define MAX_ID_SIZE             64
 #define MAX_REASON_SIZE         32
 #define MAX_CONTENT_TYPE_SIZE   32
-// This can only accommodate Content-Type and Content-Length.
-#define MAX_HEADER_SIZE         (64 + MAX_REASON_SIZE + MAX_CONTENT_TYPE_SIZE)
+// This can only accommodate Content-Type, Content-Length, and X-Request-ID.
+#define MAX_HEADER_SIZE         (70 + MAX_ID_SIZE + MAX_REASON_SIZE + MAX_CONTENT_TYPE_SIZE)
 
 enum HttpContentType : unsigned char
 {
@@ -64,6 +65,7 @@ public:
     int response_size;
     char *response;     // points to somewhere in the 'buffer', in most cases
     char *buffer;       // original raw buffer
+    char *id;           // X-Request-ID
     uint16_t status_code;
     HttpContentType content_type;
     size_t content_length;
@@ -101,6 +103,7 @@ public:
     char *params;   // q=abc
     char *version;  // HTTP/1.1
     char *content;  // body
+    char *id;       // X-Request-ID
     int length;     // Content-Length
     bool complete;
     bool forward;
