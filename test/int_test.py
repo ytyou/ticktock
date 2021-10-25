@@ -855,13 +855,13 @@ class Advanced_Query_No_Fill_Tests(Test):
         else:
             self.send_data(dps)
 
-        print "Dowsamples without fill..."
+        print "Downsamples without fill..."
         for m in range(metric_cardinality):
             for down in ["avg", "count", "dev", "first", "last", "max", "min", "p50", "p75", "p90", "p95", "p99", "p999", "sum"]:
                 query = Query(metric=self.metric_name(m), start=self._options.start, end=dps._end, downsampler="10000ms-"+down)
                 self.query_and_verify(query)
 
-        print "Dowsamples with zero fill..."
+        print "Downsamples with zero fill..."
         for m in range(metric_cardinality):
             for down in ["avg", "count", "dev", "first", "last", "max", "min", "p50", "p75", "p90", "p95", "p99", "p999", "sum"]:
                 query = Query(metric=self.metric_name(m), start=self._options.start-99999, end=dps._end+99999, downsampler="10000ms-"+down+"-zero")
@@ -924,7 +924,7 @@ class Advanced_Query_With_Fill_Tests(Test):
         else:
             self.send_data(dps)
 
-        print "Dowsamples with zero fill..."
+        print "Downsamples with zero fill..."
         for m in range(metric_cardinality):
             for down in ["avg", "count", "dev", "first", "last", "max", "min", "p50", "p75", "p90", "p95", "p99", "p999", "sum"]:
                 query = Query(metric=self.metric_name(m), start=self._options.start-99999, end=dps._end+99999, downsampler="10000ms-"+down+"-zero")
