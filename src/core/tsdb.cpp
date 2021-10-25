@@ -116,8 +116,7 @@ Mapping::flush()
     for (auto it = m_map.begin(); it != m_map.end(); it++)
     {
         TimeSeries *ts = it->second;
-        char buff[128];
-        Logger::trace("flushing ts: %s", ts->c_str(buff, sizeof(buff)));
+        Logger::trace("Flushing ts: %T", ts);
         ts->flush(true);
     }
 }
@@ -430,8 +429,7 @@ Tsdb::Tsdb(TimeRange& range, bool existing) :
     m_page_mgrs.push_back(new PageManager(range, 0));
     m_partition_mgr = new PartitionManager(this, existing);
 
-    char buff[64];
-    Logger::debug("tsdb %s created (mode=%d)", range.c_str(buff, sizeof(buff)), m_mode);
+    Logger::debug("tsdb %T created (mode=%d)", &range, m_mode);
 }
 
 Tsdb::~Tsdb()
@@ -475,8 +473,7 @@ Tsdb::create(TimeRange& range, bool existing)
     else
     {
         // TODO: load read-only
-        char buff[1024];
-        Logger::trace("tsdb %s mode is: %d", tsdb->c_str(buff, sizeof(buff)), tsdb->m_mode);
+        Logger::trace("tsdb %T mode is: %d", tsdb, tsdb->m_mode);
     }
 
     if (! existing)
@@ -543,9 +540,8 @@ Tsdb::mode_of() const
     }
     else
     {
-        char buff[128];
-        Logger::debug("mode_of: time_range=%s, now=%" PRIu64 ", mode=%x",
-            m_time_range.c_str(buff, sizeof(buff)), now, mode);
+        Logger::debug("mode_of: time_range=%T, now=%" PRIu64 ", mode=%x",
+            &m_time_range, now, mode);
     }
 
     return mode;
@@ -1763,11 +1759,10 @@ Tsdb::rotate(TaskData& data)
         if (g_shutdown_requested) break;
 
         std::lock_guard<std::mutex> guard(tsdb->m_lock);
-        char buff[128];  // for logging
 
         if (! (tsdb->m_mode & TSDB_MODE_READ))
         {
-            Logger::info("[rotate] Tsdb %s already archived!", tsdb->c_str(buff, sizeof(buff)));
+            Logger::info("[rotate] Tsdb %T already archived!", tsdb);
             continue;    // already archived
         }
 
@@ -1783,26 +1778,26 @@ Tsdb::rotate(TaskData& data)
             // archive it
             if ((now_sec - load_time) > thrashing_threshold)
             {
-                Logger::info("[rotate] Archiving tsdb (lt=%ld, now=%ld): %s", load_time, now_sec, tsdb->c_str(buff, sizeof(buff)));
+                Logger::info("[rotate] Archiving tsdb (lt=%ld, now=%ld): %T", load_time, now_sec, tsdb);
                 tsdb->flush(true);
                 tsdb->unload();
             }
             else
             {
-                Logger::info("[rotate] Archiving tsdb %s SKIPPED to avoid thrashing", tsdb->c_str(buff, sizeof(buff)));
+                Logger::info("[rotate] Archiving tsdb %T SKIPPED to avoid thrashing", tsdb);
                 tsdb->m_meta_file.flush();
             }
         }
         else if ((!(mode & TSDB_MODE_WRITE)) && (tsdb->m_mode & TSDB_MODE_WRITE))
         {
             // make it read-only
-            Logger::info("[rotate] Flushing tsdb: %s", tsdb->c_str(buff, sizeof(buff)));
+            Logger::info("[rotate] Flushing tsdb: %T", tsdb);
             tsdb->flush(true);
         }
         else
         {
-            Logger::debug("[rotate] Active tsdb: %s, mode = %d, tsdb->mode = %d",
-                tsdb->c_str(buff, sizeof(buff)), mode, tsdb->m_mode);
+            Logger::debug("[rotate] Active tsdb: %T, mode = %d, tsdb->mode = %d",
+                tsdb, mode, tsdb->m_mode);
             // TODO: do this only if there were writes since last check point
             tsdb->set_check_point();
         }
@@ -1858,7 +1853,7 @@ Tsdb::purge_oldest(int threshold)
     if (tsdb != nullptr)
     {
         char buff[64];
-        Logger::info("[rotate] Purging %s permenantly", tsdb->c_str(buff,sizeof(buff)));
+        Logger::info("[rotate] Purging %T permenantly", tsdb);
 
         std::lock_guard<std::mutex> guard(tsdb->m_lock);
 
@@ -1924,8 +1919,7 @@ Tsdb::compact(TaskData& data)
 
     if (tsdb != nullptr)
     {
-        char buff[1024];
-        Logger::info("[COMPACTION] Found this tsdb to compact: %s", tsdb->c_str(buff, sizeof(buff)));
+        Logger::info("[COMPACTION] Found this tsdb to compact: %T", tsdb);
         std::lock_guard<std::mutex> guard(tsdb->m_lock);
         TimeRange range = tsdb->get_time_range();
         MetaFile meta_file(get_file_name(range, "meta", true));
@@ -2075,11 +2069,10 @@ Tsdb::compact2()
 }
 
 const char *
-Tsdb::c_str(char *buff, size_t size) const
+Tsdb::c_str(char *buff) const
 {
-    if ((buff == nullptr) || (size < 5)) return EMPTY_STRING;
     strcpy(buff, "tsdb");
-    m_time_range.c_str(&buff[4], size-4);
+    m_time_range.c_str(&buff[4]);
     return buff;
 }
 

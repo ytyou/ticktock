@@ -35,6 +35,7 @@
 #include "range.h"
 #include "recycle.h"
 #include "rw.h"
+#include "serial.h"
 #include "type.h"
 #include "utils.h"
 #include "tsl/robin_map.h"
@@ -113,7 +114,7 @@ private:
 
 /* Each instance of Tsdb represents all data points in a specific time range.
  */
-class Tsdb
+class Tsdb : public Serializable
 {
 public:
     // this must be called before anythng else
@@ -230,7 +231,8 @@ public:
     static int get_data_page_count();       // for testing only
     static bool validate(Tsdb *tsdb);
     double get_page_percent_used();
-    const char *c_str(char *buff, size_t size) const;
+    inline size_t c_size() const override { return m_time_range.c_size() + 4; }
+    const char *c_str(char *buff) const override;
 
 private:
     friend class tsdb_less;

@@ -23,6 +23,7 @@
 #include <mutex>
 #include "dp.h"
 #include "config.h"
+#include "serial.h"
 #include "utils.h"
 
 
@@ -133,7 +134,7 @@ private:
  * to a file on disk (similar to an append log). Once the remote server recovers,
  * we backfilled all the data points in those files to the remote server.
  */
-class PartitionServer
+class PartitionServer : public Serializable
 {
 public:
     PartitionServer(int id, std::string address, int tcp_port, int http_port);
@@ -148,9 +149,10 @@ public:
 
     inline bool is_self() const { return m_self; }
 
-    char *c_str(char *buff, size_t len)
+    inline size_t c_size() const override { return 256; }
+    const char *c_str(char *buff) const override
     {
-        snprintf(buff, len, "%d:%s:%d:%d", m_id, m_address.c_str(), m_tcp_port, m_http_port);
+        snprintf(buff, c_size(), "%d:%s:%d:%d", m_id, m_address.c_str(), m_tcp_port, m_http_port);
         return buff;
     }
 

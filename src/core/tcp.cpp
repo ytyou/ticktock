@@ -979,11 +979,10 @@ TcpListener::listener0()
             else if (fd == m_pipe_fds[0])
             {
                 char *cmd;
-                char buff[64];
 
                 while ((cmd = pipe_reader.read_pipe()) != nullptr)
                 {
-                    Logger::debug("cmd:%s; pipe_reader:%s;", cmd, pipe_reader.c_str(buff, sizeof(buff)));
+                    Logger::debug("cmd:%s; pipe_reader:%T;", cmd, &pipe_reader);
 
                     m_server->instruct1(cmd, strlen(cmd));
 
@@ -994,7 +993,7 @@ TcpListener::listener0()
                     }
                 }
 
-                Logger::debug("cmd:null; pipe_reader:%s;", pipe_reader.c_str(buff, sizeof(buff)));
+                Logger::debug("cmd:null; pipe_reader:%T;", &pipe_reader);
             }
         }
 
@@ -1052,11 +1051,10 @@ TcpListener::listener1()
             else if (fd == m_pipe_fds[0])
             {
                 char *cmd;
-                char buff[64];
 
                 while ((cmd = pipe_reader.read_pipe()) != nullptr)
                 {
-                    Logger::debug("cmd:%s; pipe_reader:%s;", cmd, pipe_reader.c_str(buff, sizeof(buff)));
+                    Logger::debug("cmd:%s; pipe_reader:%T;", cmd, &pipe_reader);
 
                     switch (cmd[0])
                     {
@@ -1070,7 +1068,7 @@ TcpListener::listener1()
                     }
                 }
 
-                Logger::debug("cmd:null; pipe_reader:%s;", pipe_reader.c_str(buff, sizeof(buff)));
+                Logger::debug("cmd:null; pipe_reader:%T;", &pipe_reader);
             }
             else
             {
@@ -1475,9 +1473,9 @@ PipeReader::PipeReader(int fd) :
 }
 
 const char *
-PipeReader::c_str(char *buff, size_t size) const
+PipeReader::c_str(char *buff) const
 {
-    snprintf(buff, size, "idx=%d buff=%s buff2=%s", m_index, m_buff, m_buff2);
+    snprintf(buff, c_size(), "idx=%d buff=%s buff2=%s", m_index, m_buff, m_buff2);
     return buff;
 }
 

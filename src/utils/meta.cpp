@@ -109,10 +109,10 @@ MetaFile::append(TimeSeries *ts, PageInfo *info)
     ASSERT(info != nullptr);
     ASSERT(m_file != nullptr);
 
-    char buff[4096];
     std::lock_guard<std::mutex> guard(m_lock);
-    fprintf(m_file, "%s %u %u\n", ts->c_str(buff, sizeof(buff)),
-        info->get_file_id(), info->get_id());
+    char buff[ts->c_size()];
+    fprintf(m_file, "%s %u %u\n", ts->c_str(buff), info->get_file_id(), info->get_id());
+    //fprintf(m_file, "%T %u %u\n", ts, info->get_file_id(), info->get_id());
 }
 
 void
@@ -122,13 +122,15 @@ MetaFile::append(TimeSeries *ts, unsigned int file_id, unsigned int from_id, uns
     ASSERT(m_file != nullptr);
     ASSERT(from_id <= to_id);
 
-    char buff[4096];
     std::lock_guard<std::mutex> guard(m_lock);
+    char buff[ts->c_size()];
 
     if (from_id == to_id)
-        fprintf(m_file, "%s %u %u\n", ts->c_str(buff, sizeof(buff)), file_id, to_id);
+        fprintf(m_file, "%s %u %u\n", ts->c_str(buff), file_id, to_id);
+        //fprintf(m_file, "%T %u %u\n", ts, file_id, to_id);
     else
-        fprintf(m_file, "%s %u %u-%u\n", ts->c_str(buff, sizeof(buff)), file_id, from_id, to_id);
+        fprintf(m_file, "%s %u %u-%u\n", ts->c_str(buff), file_id, from_id, to_id);
+        //fprintf(m_file, "%T %u %u-%u\n", ts, file_id, from_id, to_id);
 }
 
 void

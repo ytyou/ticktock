@@ -350,9 +350,9 @@ PageInfo::get_dp_count() const
 }
 
 const char *
-PageInfo::c_str(char *buff, size_t size) const
+PageInfo::c_str(char *buff) const
 {
-    std::snprintf(buff, size, "idx=%d is_ooo=%d comp=%p",
+    std::snprintf(buff, c_size(), "idx=%d is_ooo=%d comp=%p",
         m_header->m_page_index, m_header->is_out_of_order(), m_compressor);
     return buff;
 }

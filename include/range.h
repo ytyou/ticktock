@@ -19,6 +19,7 @@
 
 #pragma once
 
+#include "serial.h"
 #include "type.h"
 #include "utils.h"
 
@@ -28,7 +29,7 @@ namespace tt
 
 
 // define a range [from, to)
-class TimeRange
+class TimeRange : public Serializable
 {
 public:
     TimeRange() : TimeRange(0L, 0L)
@@ -132,9 +133,11 @@ public:
         m_to = to;
     }
 
-    const char *c_str(char* buff, size_t size) const
+    inline size_t c_size() const override { return 44; }
+
+    inline const char *c_str(char* buff) const override
     {
-        std::snprintf(buff, size, "[%ld,%ld)", m_from, m_to);
+        std::snprintf(buff, c_size(), "[%ld,%ld)", m_from, m_to);
         return buff;
     }
 

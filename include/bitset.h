@@ -19,6 +19,8 @@
 
 #pragma once
 
+#include "serial.h"
+
 
 namespace tt
 {
@@ -41,7 +43,7 @@ private:
 /* This class enables us to store data as series of bits. It is used by
  * the Gorilla compression algorithm.
  */
-class BitSet
+class BitSet : public Serializable
 {
 public:
     BitSet();
@@ -93,7 +95,8 @@ public:
         return size;
     }
 
-    const char *c_str(char *buff, size_t size) const;
+    inline size_t c_size() const override { return 128; }
+    const char *c_str(char *buff) const override;
 
 private:
     friend class BitSetCursor;

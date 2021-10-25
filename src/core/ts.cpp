@@ -67,9 +67,7 @@ TimeSeries::init(const char *metric, const char *key, Tag *tags, Tsdb *tsdb, boo
     m_ooo_buff = nullptr;
 
     ASSERT(m_tsdb != nullptr);
-
-    char buff[128];
-    Logger::debug("ts of %s is loaded in read-only mode", tsdb->c_str(buff,sizeof(buff)));
+    Logger::debug("ts of %T is loaded in read-only mode", tsdb);
 }
 
 TimeSeries::~TimeSeries()
@@ -415,9 +413,7 @@ TimeSeries::query_without_ooo(TimeRange& range, Downsampler *downsampler, DataPo
     }
 
     ASSERT(m_ooo_pages.empty());
-
-    char buff[256];
-    Logger::debug("Found %d data points in ts %s", dps.size(), c_str(buff,sizeof(buff)));
+    Logger::debug("Found %d data points in ts %T", dps.size(), this);
 }
 
 void
@@ -589,12 +585,12 @@ TimeSeries::set_check_point()
 }
 
 const char*
-TimeSeries::c_str(char* buff, size_t size) const
+TimeSeries::c_str(char* buff) const
 {
     ASSERT(m_key != nullptr);
     ASSERT(m_metric != nullptr);
 
-    std::snprintf(buff, size, "%s %s", m_metric, m_key);
+    std::snprintf(buff, c_size(), "%s %s", m_metric, m_key);
     return buff;
 }
 

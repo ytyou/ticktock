@@ -20,10 +20,12 @@
 #include <cstring>
 #include <fcntl.h>
 #include <sys/stat.h>
+#include <printf.h>
 #include "global.h"
 #include "utils.h"
 #include "config.h"
 #include "logger.h"
+#include "serial.h"
 #include "timer.h"
 
 
@@ -33,6 +35,25 @@ namespace tt
 
 Logger *Logger::m_instance = nullptr;
 LogLevel Logger::m_level = LogLevel::UNKNOWN;
+
+
+static int
+handler_func(FILE *stream, const struct printf_info *info, const void * const *args)
+{
+    Serializable *s = *((Serializable **) (args[0]));
+    ASSERT(s->c_size() > 1);
+    char buff[s->c_size()];
+    int len = fprintf(stream, "%*s", (info->left ? -info->width : info->width), s->c_str(buff));
+    return len;
+}
+
+static int
+info_func(const struct printf_info *info, size_t n, int *argtypes, int *size)
+{
+    argtypes[0] = PA_POINTER;
+    size[0] = sizeof(void*);
+    return 1;
+}
 
 
 Logger::Logger() :
@@ -72,6 +93,7 @@ void
 Logger::init()
 {
     m_instance = new Logger;
+    register_printf_specifier('T', handler_func, info_func);
 }
 
 void

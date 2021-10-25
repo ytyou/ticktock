@@ -640,8 +640,7 @@ HttpServer::process_request(HttpRequest& request, HttpResponse& response)
     }
     else
     {
-        char buff[8192];    // TODO: no magic number!
-        Logger::error("Unhandled request: %s", request.c_str(buff, sizeof(buff)));
+        Logger::error("Unhandled request: %T", &request);
     }
 
     return true;
@@ -859,11 +858,11 @@ HttpResponse::status_code_to_reason(uint16_t status_code)
 }
 
 const char *
-HttpResponse::c_str(char *buff, size_t size) const
+HttpResponse::c_str(char *buff) const
 {
     if (buff == nullptr) return EMPTY_STRING;
 
-    snprintf(buff, size, "status=%d content-type:%d content-length:%d response-size:%d response:\n%s",
+    snprintf(buff, c_size(), "status=%d content-type:%d content-length:%d response-size:%d response:\n%s",
         status_code, content_type, (int)content_length, response_size, response);
     return buff;
 }
@@ -909,11 +908,11 @@ HttpRequest::parse_params(JsonMap& pairs)
 }
 
 const char *
-HttpRequest::c_str(char *buff, size_t size) const
+HttpRequest::c_str(char *buff) const
 {
     if (buff == nullptr) return EMPTY_STRING;
 
-    snprintf(buff, size, "[%s %s %s %s, close:%s, len:%d, body:%s]",
+    snprintf(buff, c_size(), "[%s %s %s %s, close:%s, len:%d, body:%s]",
         method, path, params, version, close?"true":"false", length, (content==nullptr)?"":content);
     return buff;
 }

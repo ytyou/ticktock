@@ -36,7 +36,7 @@ Admin::http_post_api_admin_handler(HttpRequest& request, HttpResponse& response)
 {
     char buff[512]; // TODO: no magic numbers
 
-    Logger::info("Handling admin request: %s", request.c_str(buff, sizeof(buff)));
+    Logger::info("Handling admin request: %T", &request);
 
     if (request.params == nullptr)
     {

@@ -25,6 +25,7 @@
 #include "dp.h"
 #include "page.h"
 #include "recycle.h"
+#include "serial.h"
 #include "tag.h"
 #include "meta.h"
 #include "leak.h"
@@ -38,7 +39,7 @@ class Downsampler;
 class Tsdb;
 
 
-class TimeSeries : public TagOwner, public Recyclable
+class TimeSeries : public Serializable, public TagOwner, public Recyclable
 {
 public:
     ~TimeSeries();
@@ -96,7 +97,8 @@ public:
     int get_dp_count();
     int get_page_count(bool ooo);   // for testing only
 
-    const char* c_str(char* buff, size_t size) const;
+    inline size_t c_size() const override { return 64; }
+    const char* c_str(char* buff) const override;
 
 private:
     friend class MemoryManager;

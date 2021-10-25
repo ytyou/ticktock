@@ -288,9 +288,10 @@ DataPoint::parse_raw_tags()
 }
 
 const char *
-DataPoint::c_str(char* buff, size_t size) const
+DataPoint::c_str(char* buff) const
 {
     char *curr = buff;
+    size_t size = c_size();
     int n = std::snprintf(buff, size, "%s %ld %lf", m_metric, m_timestamp, m_value);
 
     Tag *tag = m_tags;
@@ -351,12 +352,13 @@ DataPointSet::add(Timestamp tstamp, double value)
 }
 
 const char *
-DataPointSet::c_str(char* buff, size_t size) const
+DataPointSet::c_str(char* buff) const
 {
     char *curr = buff;
+    size_t size = c_size();
     int n;
 
-    for (int i = 0; i < m_count; i++)
+    for (int i = 0; (i < m_count) && (size > 0); i++)
     {
         n = std::snprintf(buff, size, "%ld %lf", get_timestamp(i), get_value(i));
 

@@ -306,7 +306,7 @@ Query::Query(JsonMap& map, StringBuffer& strbuf) :
         JsonParser::free_map(m);
     }
 
-    Logger::debug("query: %s", c_str(buff, sizeof(buff)));
+    Logger::debug("query: %T", this);
 }
 
 Query::~Query()
@@ -353,9 +353,7 @@ Query::get_query_tasks(std::vector<QueryTask*>& qtv)
     std::vector<Tsdb*> tsdbs;
 
     Tsdb::insts(m_time_range, tsdbs);
-
-    char buff[64];
-    Logger::debug("Found %d tsdbs within %s", tsdbs.size(), m_time_range.c_str(buff, sizeof(buff)));
+    Logger::debug("Found %d tsdbs within %T", tsdbs.size(), &m_time_range);
 
     std::unordered_map<const char*,QueryTask*,hash_func,eq_func> map;
 
@@ -366,12 +364,10 @@ Query::get_query_tasks(std::vector<QueryTask*>& qtv)
         std::unordered_set<TimeSeries*> v;  // TODO: will tsl::robin_set be faster?
         tsdb->query_for_ts(m_metric, m_tags, v);
 
-        Logger::debug("there are %d ts in %s matching %s and tags",
-            v.size(), tsdb->c_str(buff, sizeof(buff)), m_metric);
+        Logger::debug("there are %d ts in %T matching %s and tags", v.size(), tsdb, m_metric);
 
         for (TimeSeries *ts: v)
         {
-            //char buff[1024];
             auto search = map.find(ts->get_key());
 
             if (search == map.end())
@@ -580,8 +576,7 @@ Query::execute(std::vector<QueryResults*>& results, StringBuffer& strbuf)
         n += qr->m_dps.size();
     }
 
-    char buff[64];
-    Logger::debug("Finished with %d ts, %d qr and %d dps in range %s", qtv.size(), c, n, m_time_range.c_str(buff, sizeof(buff)));
+    Logger::debug("Finished with %d ts, %d qr and %d dps in range %T", qtv.size(), c, n, &m_time_range);
 #endif
 }
 
@@ -642,19 +637,19 @@ Query::execute_in_parallel(std::vector<QueryResults*>& results, StringBuffer& st
         n += qr->m_dps.size();
     }
 
-    char buff[64];
-    Logger::debug("Finished with %d ts and %d dps in range %s", qtv.size(), n, m_time_range.c_str(buff, sizeof(buff)));
+    Logger::debug("Finished with %d ts and %d dps in range %T", qtv.size(), n, &m_time_range);
 #endif
 }
 
-char *
-Query::c_str(char *buff, size_t size) const
+const char *
+Query::c_str(char *buff) const
 {
     ASSERT(buff != nullptr);
+    char buf[m_time_range.c_size()];
+    size_t size = c_size();
 
-    char buf[64];
     int n = snprintf(buff, size, "metric=%s agg=%s down=%s range=%s ms=%s",
-        m_metric, m_aggregate, m_downsample, m_time_range.c_str(buf, sizeof(buf)),
+        m_metric, m_aggregate, m_downsample, m_time_range.c_str(buf),
         m_ms ? "true" : "false");
 
     for (Tag *tag = m_tags; tag != nullptr; tag = tag->next())
@@ -664,9 +659,9 @@ Query::c_str(char *buff, size_t size) const
 }
 
 
-QueryTask::QueryTask() :
-    m_signal(nullptr)
+QueryTask::QueryTask()
 {
+    init();
 }
 
 void
@@ -710,6 +705,13 @@ QueryTask::get_cloned_tags(StringBuffer& strbuf)
     return tags;
 }
 
+void
+QueryTask::init()
+{
+    m_signal = nullptr;
+    m_downsampler = nullptr;
+}
+
 bool
 QueryTask::recycle()
 {
@@ -747,15 +749,7 @@ bool
 QueryExecutor::http_get_api_query_handler(HttpRequest& request, HttpResponse& response)
 {
     Meter meter(METRIC_TICKTOCK_QUERY_LATENCY_MS);
-
-#ifdef _DEBUG
-    {
-        char *buff = MemoryManager::alloc_network_buffer();
-        size_t size = MemoryManager::get_network_buffer_size() - 1;
-        Logger::debug("Handling get request: %s", request.c_str(buff, size));
-        MemoryManager::free_network_buffer(buff);
-    }
-#endif
+    Logger::debug("Handling get request: %T", &request);
 
     JsonMap params;
     request.parse_params(params);
@@ -790,14 +784,7 @@ QueryExecutor::http_post_api_query_handler(HttpRequest& request, HttpResponse& r
     bool ms = false;
     JsonMap map;
 
-#ifdef _DEBUG
-    {
-        char *buff = MemoryManager::alloc_network_buffer();
-        size_t size = MemoryManager::get_network_buffer_size() - 1;
-        Logger::debug("Handling post request: %s", request.c_str(buff, size));
-        MemoryManager::free_network_buffer(buff);
-    }
-#endif
+    Logger::debug("Handling post request: %T", &request);
 
     JsonParser::parse_map(request.content, map);
     //JsonMap *map = static_cast<JsonMap*>(JsonParser::from_json(request.content));
@@ -837,8 +824,7 @@ QueryExecutor::http_post_api_query_handler(HttpRequest& request, HttpResponse& r
         TimeRange range(start, end);
         Query query(m, range, strbuf, ms);
 
-        char tmp[1024];
-        Logger::debug("query: %s", query.c_str(tmp, sizeof(tmp)-1));
+        Logger::debug("query: %T", &query);
 
         std::vector<QueryResults*> res;
 
@@ -908,15 +894,7 @@ QueryExecutor::prepare_response(std::vector<QueryResults*>& results, HttpRespons
         response.init(200, HttpContentType::JSON, n);
     }
 
-#ifdef _DEBUG
-    {
-        char *buf = MemoryManager::alloc_network_buffer();
-        size_t size = MemoryManager::get_network_buffer_size() - 1;
-        Logger::debug("response: %s", response.c_str(buf, size));
-        MemoryManager::free_network_buffer(buf);
-    }
-#endif
-
+    Logger::debug("response: %T", &response);
     return status;
 }
 

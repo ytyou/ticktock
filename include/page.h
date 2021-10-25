@@ -23,6 +23,7 @@
 #include <mutex>
 #include "range.h"
 #include "recycle.h"
+#include "serial.h"
 #include "type.h"
 
 
@@ -182,7 +183,7 @@ struct page_info_on_disk
 // these are what we keep in memory for a page;
 // part of it (see struct page_info_on_disk) will be
 // persisted on disk;
-class PageInfo : public Recyclable
+class PageInfo : public Serializable, public Recyclable
 {
 public:
     PageInfo();
@@ -241,7 +242,8 @@ public:
     void merge_after(PageInfo *dst);        // share page with 'dst' (compaction)
     void copy_to(PageCount dst_id);
 
-    const char *c_str(char *buff, size_t size) const;
+    inline size_t c_size() const override { return 64; }
+    const char *c_str(char *buff) const override;
 
 private:
     friend class PageManager;

@@ -22,6 +22,7 @@
 #include <cassert>
 #include <cstddef>
 #include <map>
+#include "serial.h"
 #include "tag.h"
 #include "type.h"
 #include "recycle.h"
@@ -31,7 +32,7 @@ namespace tt
 {
 
 
-class DataPoint : public TagOwner, public Recyclable
+class DataPoint : public Serializable, public TagOwner, public Recyclable
 {
 public:
     DataPoint();
@@ -74,7 +75,8 @@ public:
     inline void set_raw_tags(char *tags) { m_raw_tags = tags; }
     inline void set_metric(const char *metric) { m_metric = metric; }
 
-    const char* c_str(char* buff, size_t size) const;
+    inline size_t c_size() const override { return 128; }
+    const char* c_str(char* buff) const override;
 
 private:
     char* next_word(char* json, char* &word);
@@ -92,7 +94,7 @@ private:
 
 
 // This is used for batch inserts.
-class DataPointSet : public TagOwner
+class DataPointSet : public Serializable, public TagOwner
 {
 public:
     DataPointSet(int max_size);
@@ -128,7 +130,8 @@ public:
         return (m_count <= 0);
     }
 
-    const char* c_str(char* buff, size_t size) const;
+    inline size_t c_size() const override { return 8192; }
+    const char* c_str(char* buff) const override;
 
 private:
     int m_count;

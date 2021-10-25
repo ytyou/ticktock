@@ -316,9 +316,9 @@ BitSet::retrieve(BitSetCursor *cursor, uint8_t& bits, uint8_t& len, uint8_t& sta
 }
 
 const char *
-BitSet::c_str(char *buff, size_t size) const
+BitSet::c_str(char *buff) const
 {
-    std::snprintf(buff, size, "bits=%p cap=%d cur=%p end=%p start=%d",
+    std::snprintf(buff, c_size(), "bits=%p cap=%d cur=%p end=%p start=%d",
         m_bits, (int)m_capacity_in_bytes, m_cursor, m_end, (int)m_start);
     return buff;
 }

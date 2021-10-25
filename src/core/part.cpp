@@ -596,8 +596,7 @@ Partition::add_data_point(DataPoint& dp)
         if (! server->forward(dp))
         {
             success = false;
-            char buff[64];
-            Logger::debug("failed to forward to server %s", server->c_str(buff, sizeof(buff)));
+            Logger::debug("failed to forward to server %T", server);
         }
     }
 

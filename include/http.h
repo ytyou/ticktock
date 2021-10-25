@@ -25,6 +25,7 @@
 #include <thread>
 #include <unistd.h>
 #include "json.h"
+#include "serial.h"
 #include "stop.h"
 #include "task.h"
 #include "tcp.h"
@@ -59,7 +60,7 @@ enum HttpContentType : unsigned char
 };
 
 
-class HttpResponse
+class HttpResponse : public Serializable
 {
 public:
     int response_size;
@@ -85,7 +86,8 @@ public:
     void init(uint16_t code, HttpContentType type, size_t length, const char *body);
     char *get_body() const;
 
-    const char *c_str(char *buff, size_t size) const;
+    inline size_t c_size() const override { return 8192; }
+    const char *c_str(char *buff) const override;
 
     virtual ~HttpResponse();
 
@@ -94,7 +96,7 @@ private:
 };
 
 
-class HttpRequest
+class HttpRequest : public Serializable
 {
 public:
     bool close;     // Connection: close
@@ -115,7 +117,9 @@ public:
 
     void init();
     void parse_params(JsonMap& pairs);
-    const char *c_str(char *buff, size_t size) const;
+
+    inline size_t c_size() const override { return 4096; }
+    const char *c_str(char *buff) const override;
 };
 
 

@@ -27,6 +27,7 @@
 #include <netdb.h>
 #include <sys/socket.h>
 #include "json.h"
+#include "serial.h"
 #include "stop.h"
 #include "task.h"
 
@@ -96,12 +97,13 @@ protected:
 };
 
 
-class PipeReader
+class PipeReader : public Serializable
 {
 public:
     PipeReader(int fd);
     char *read_pipe();
-    const char *c_str(char *buff, size_t size) const;
+    inline size_t c_size() const override { return 164; }
+    const char *c_str(char *buff) const override;
 
 private:
     int m_fd;

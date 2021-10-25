@@ -160,7 +160,7 @@ class Downsampler;
 class RateCalculator;
 
 
-class Query : public TagOwner
+class Query : public Serializable, public TagOwner
 {
 public:
     Query(JsonMap& map, StringBuffer& strbuf);
@@ -182,7 +182,8 @@ public:
     void execute(std::vector<QueryResults*>& results, StringBuffer& strbuf);
     void execute_in_parallel(std::vector<QueryResults*>& results, StringBuffer& strbuf);
 
-    char *c_str(char *buff, size_t size) const;
+    inline size_t c_size() const override { return 1024; }
+    const char *c_str(char *buff) const override;
 
 private:
     Query(const Query&) = delete;
@@ -232,7 +233,8 @@ private:
     friend class Query;
     friend class QueryExecutor;
 
-    bool recycle();
+    void init() override;
+    bool recycle() override;
 
     TimeRange m_time_range;
     Downsampler *m_downsampler;
