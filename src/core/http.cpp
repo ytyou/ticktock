@@ -116,6 +116,13 @@ HttpServer::init()
     add_post_handler(HTTP_API_ADMIN, &Admin::http_post_api_admin_handler);
 }
 
+int
+HttpServer::get_responders_per_listener() const
+{
+    int n = Config::get_int(CFG_HTTP_RESPONDERS_PER_LISTENER, CFG_HTTP_RESPONDERS_PER_LISTENER_DEF);
+    return (n > 0) ? n : CFG_HTTP_RESPONDERS_PER_LISTENER_DEF;
+}
+
 TcpConnection *
 HttpServer::create_conn() const
 {
@@ -144,7 +151,7 @@ HttpServer::recv_http_data(TaskData& data)
     size_t buff_size = MemoryManager::get_network_buffer_size() - 6;
     HttpConnection *conn = static_cast<HttpConnection*>(data.pointer);
 
-    Logger::trace("recv_http_data: conn=%p, fd=%d", conn, conn->fd);
+    Logger::http("recv_http_data: conn=%p", conn->fd, conn);
 
     if (conn->buff != nullptr)
     {
@@ -196,18 +203,20 @@ HttpServer::recv_http_data(TaskData& data)
         buff[len+2] = 0;
         buff[len+3] = 0;
 
-        Logger::http("Recved request on %d (%p): len=%d\n%s", fd, conn, len, buff);
+        Logger::http("Recved request on %p: len=%d\n%s", fd, conn, len, buff);
 
         conn->request.init();
 
         if (! parse_header(buff, len, conn->request))
         {
+            HTTP_400.id = conn->request.id;
             HttpServer::send_response(fd, HTTP_400);
             conn_error = true;
-            Logger::debug("parse_header failed, will close connection: %d", fd);
+            Logger::http("parse_header failed, will close connection", fd);
         }
         else if (conn->request.length < 0)
         {
+            HTTP_400.id = conn->request.id;
             HttpServer::send_response(fd, HTTP_411);
             conn_error = true;
             Logger::debug("request length negative, will close connection: %d", fd);
@@ -228,19 +237,22 @@ HttpServer::recv_http_data(TaskData& data)
         {
             if (! process_request(conn->request, conn->response))
             {
+                HTTP_400.id = conn->request.id;
                 HttpServer::send_response(fd, HTTP_400);
                 conn_error = true;
             }
 
             if ((conn->response.status_code == 200) && (conn->response.content_length == 0))
+            {
+                HTTP_200.id = conn->request.id;
                 HttpServer::send_response(fd, HTTP_200);
+            }
             else
                 HttpServer::send_response(fd, conn->response);
 
             // This needs to be done AFTER send_response(),
             // or you are risking 2 threads both sending responses on the same fd.
             conn->buff = nullptr;
-            conn->worker_id = INVALID_WORKER_ID;
         }
         else
         {
@@ -252,7 +264,7 @@ HttpServer::recv_http_data(TaskData& data)
     }
     else
     {
-        Logger::trace("received request of size %d, fd=%d", len, fd);
+        Logger::http("received request of size %d", fd, len);
     }
 
     if (free_buff) MemoryManager::free_network_buffer(buff);
@@ -268,6 +280,7 @@ HttpServer::recv_http_data(TaskData& data)
         conn->state |= TCS_ERROR;
     }
 
+    conn->pending_tasks--;
     return false;
 }
 
@@ -321,10 +334,15 @@ HttpServer::recv_http_data_cont(HttpConnection *conn)
         buff[len+4] = ';';
         buff[len+5] = 0;
 
-        Logger::trace("recv-cont'ed (%d): len=%d\n%s", fd, len, buff);
+        Logger::http("recv-cont'ed: offset=%d, len=%d\n%s", fd,
+            conn->offset, len, &buff[conn->offset]);
 
+        if (! conn->request.header_ok)
+            parse_header(buff, len, conn->request);
+
+        conn->response.id = conn->request.id;
         conn->request.complete =
-            (conn->request.length == ((uint64_t)&buff[len] - (uint64_t)conn->request.content));
+            (conn->request.length <= ((uint64_t)&buff[len] - (uint64_t)conn->request.content));
 
         // Check if we have recv'ed the complete request.
         // If not, we need to stop right here, and inform
@@ -338,33 +356,37 @@ HttpServer::recv_http_data_cont(HttpConnection *conn)
 
             if (! process_request(conn->request, conn->response))
             {
+                HTTP_400.id = conn->request.id;
                 HttpServer::send_response(fd, HTTP_400);
                 conn_error = true;
             }
 
             if ((conn->response.status_code == 200) && (conn->response.content_length == 0))
+            {
+                HTTP_200.id = conn->request.id;
                 HttpServer::send_response(fd, HTTP_200);
+            }
             else
                 HttpServer::send_response(fd, conn->response);
 
             // This needs to be done AFTER send_response(),
             // or you are risking 2 threads both sending responses on the same fd.
             conn->buff = nullptr;
-            conn->worker_id = INVALID_WORKER_ID;
         }
         else
         {
             free_buff = false;
             conn->buff = buff;
             conn->offset = len;
-            Logger::debug("request.length = %d, len = %d, offset = %d", conn->request.length, len, conn->offset);
+            Logger::http("request.length = %d, len = %d, offset = %d", fd,
+                conn->request.length, len, conn->offset);
         }
     }
     else
     {
         free_buff = false;
         conn->buff = buff;
-        Logger::debug("did not receive anything this time: fd=%d", fd);
+        Logger::http("did not receive anything this time", fd);
     }
 
     if (free_buff) MemoryManager::free_network_buffer(buff);
@@ -380,6 +402,7 @@ HttpServer::recv_http_data_cont(HttpConnection *conn)
         conn->state |= TCS_ERROR;
     }
 
+    conn->pending_tasks--;
     return false;
 }
 
@@ -388,9 +411,7 @@ HttpServer::add_get_handler(const char *path, HttpRequestHandler handler)
 {
     if ((path == nullptr) || (handler == nullptr)) return;
     if (get_get_handler(path) != nullptr)
-    {
         Logger::error("duplicate get handlers for path: %s", path);
-    }
     m_get_handlers[path] = handler;
 }
 
@@ -399,9 +420,7 @@ HttpServer::add_put_handler(const char *path, HttpRequestHandler handler)
 {
     if ((path == nullptr) || (handler == nullptr)) return;
     if (get_put_handler(path) != nullptr)
-    {
         Logger::error("duplicate put handlers for path: %s", path);
-    }
     m_put_handlers[path] = handler;
 }
 
@@ -410,9 +429,7 @@ HttpServer::add_post_handler(const char *path, HttpRequestHandler handler)
 {
     if ((path == nullptr) || (handler == nullptr)) return;
     if (get_post_handler(path) != nullptr)
-    {
         Logger::error("duplicate post handlers for path: %s", path);
-    }
     m_post_handlers[path] = handler;
     ASSERT(get_post_handler(path) != nullptr);
 }
@@ -493,13 +510,13 @@ HttpServer::send_response(int fd, HttpResponse& response)
 
     if (sent >= response.response_size)
     {
-        Logger::http("Sent %d(%d) bytes in %d tries (fd=%d):\n%s",
-            response.response_size, sent, count, fd, response.response);
+        Logger::http("Sent %d(%d) bytes in %d tries:\n%s", fd,
+            response.response_size, sent, count, response.response);
         return true;    // succeeded
     }
     else
     {
-        Logger::http("Sent out %d of %d bytes after %d tries, give up!",
+        Logger::http("Sent out %d of %d bytes after %d tries, give up!", fd,
             sent, response.response_size, count);
         return false;   // failed
     }
@@ -588,13 +605,13 @@ HttpServer::parse_header(char *buff, int len, HttpRequest& request)
     }
 
     if (*curr1 == '\r') curr1++;
-    if (*curr1 == '\n') curr1++;
+    if (*curr1 == '\n') { curr1++; request.header_ok = true; }
 
     // parse body
     if (request.length > 0)
     {
         request.content = curr1;
-        request.complete = ((len - ((uint64_t)curr1 - (uint64_t)buff)) == request.length);
+        request.complete = ((len - ((uint64_t)curr1 - (uint64_t)buff)) >= request.length);
     }
     else
     {
@@ -643,7 +660,7 @@ HttpServer::process_request(HttpRequest& request, HttpResponse& response)
         Logger::error("Unhandled request: %T", &request);
     }
 
-    return true;
+    return false;
 }
 
 bool
@@ -698,6 +715,17 @@ HttpResponse::HttpResponse(uint16_t code, HttpContentType type, size_t length, c
     response(nullptr)
 {
     init(code, type, length, body);
+}
+
+void
+HttpResponse::init()
+{
+    response_size = 0;
+    id = nullptr;
+    status_code = 0;
+    content_type = HttpContentType::JSON;
+    content_length = 0;
+    response = buffer = MemoryManager::alloc_network_buffer();
 }
 
 void
@@ -806,12 +834,24 @@ HttpResponse::init(uint16_t code, HttpContentType type, size_t length, const cha
     if (content_length > 0)
     {
         if ((body == nullptr) || (strlen(body) != content_length))
-        {
-            char buff[8192];
-            Logger::error("invalid response: %s", c_str(buff, sizeof(buff)));
-        }
+            Logger::error("invalid response: %T", this);
     }
 #endif
+}
+
+void
+HttpResponse::recycle()
+{
+    if (buffer != nullptr)
+    {
+        MemoryManager::free_network_buffer(buffer);
+        response = buffer = nullptr;
+    }
+    else if (response != nullptr)
+    {
+        free(response);
+        response = nullptr;
+    }
 }
 
 char *
@@ -825,16 +865,7 @@ HttpResponse::get_body() const
 
 HttpResponse::~HttpResponse()
 {
-    if (buffer != nullptr)
-    {
-        MemoryManager::free_network_buffer(buffer);
-        response = buffer = nullptr;
-    }
-    else if (response != nullptr)
-    {
-        free(response);
-        response = nullptr;
-    }
+    recycle();
 }
 
 const char *
@@ -881,6 +912,7 @@ HttpRequest::init()
     length = 0;
     complete = false;
     forward = g_cluster_enabled;
+    header_ok = false;
 }
 
 void

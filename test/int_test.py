@@ -41,7 +41,7 @@ class TickTockConfig(object):
         self._dict["udp.server.port"] = self._options.dataport
         self._dict["udp.server.enabled"] = "true"
 
-        self._dict["log.level"] = "TRACE"
+        self._dict["log.level"] = "INFO"
         self._dict["log.file"] = os.path.join(self._options.root,"tt.log")
 
         self._dict["query.executor.parallel"] = "false"
@@ -706,7 +706,7 @@ class Backfill_Tests(Test):
     def __call__(self):
 
         config = TickTockConfig(self._options)
-        config.add_entry("log.level", "TRACE")
+        config.add_entry("log.level", "INFO")
         config.add_entry("log.file", "{}/tt.log".format(self._options.root))
         config.add_entry("http.request.format", "plain")
         config.add_entry("append.log.enabled", "true")
@@ -747,7 +747,7 @@ class Backfill_Tests(Test):
                 self.cleanup()
                 config = TickTockConfig(self._options)
                 config.add_entry("log.file", "{}/tt.log".format(self._options.root));
-                config.add_entry("log.level", "TRACE");
+                config.add_entry("log.level", "INFO");
                 config()    # generate config
                 self.start_tt()
                 time.sleep(1)

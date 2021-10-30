@@ -55,15 +55,15 @@ static std::string g_pid_file = "/var/run/ticktock.pid";
 static void
 intr_handler(int sig)
 {
+    if (g_shutdown_requested) return;
+
     g_shutdown_requested = true;
 
-    printf("Interrupted, shutting down...\n");
-    Logger::info("Interrupted, shutting down...");
+    printf("Interrupted (%d), shutting down...\n", sig);
+    Logger::info("Interrupted (%d), shutting down...", sig);
 
     if (http_server_ptr != nullptr)
-    {
         http_server_ptr->shutdown();
-    }
 }
 
 }

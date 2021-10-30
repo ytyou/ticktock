@@ -27,6 +27,7 @@
 #include <netdb.h>
 #include <sys/socket.h>
 #include "json.h"
+#include "memmgr.h"
 #include "serial.h"
 #include "stop.h"
 #include "task.h"
@@ -65,8 +66,9 @@ public:
     TcpListener *listener;
     bool forward;
 
-    std::atomic<int> worker_id;
-    std::atomic<unsigned int> state; // TCS_xxx
+    int worker_id;
+    std::atomic<int> pending_tasks;     // # pending tasks working on this conn
+    std::atomic<unsigned int> state;    // TCS_xxx
 
     char *buff;
     int offset;
@@ -82,17 +84,29 @@ public:
 
 protected:
 
-    void init()
+    void init() override
     {
         fd = -1;
         server = nullptr;
         listener = nullptr;
+        pending_tasks = 0;
         worker_id = INVALID_WORKER_ID;
         state = TCS_NONE;
         buff = nullptr;
         offset = 0;
         forward = g_cluster_enabled;
         last_contact = std::chrono::steady_clock::now();
+    }
+
+    inline bool recycle() override
+    {
+        if (buff != nullptr)
+        {
+            MemoryManager::free_network_buffer(buff);
+            buff = nullptr;
+        }
+
+        return true;
     }
 };
 
@@ -192,6 +206,9 @@ private:
 
     static void write_pipe(int fd, const char *msg);
 
+    static TcpConnection *add_conn_to_all_map(TcpConnection *conn); // if not already there
+    static void del_conn_from_all_map(int fd);
+
     int m_id;
     TcpServer *m_server;       // the http server we belong to
 
@@ -242,7 +259,6 @@ public:
     TcpServer(int listener_count);
     virtual ~TcpServer();
 
-    void init();
     bool start(int port);
     void shutdown(ShutdownRequest request = ShutdownRequest::ASAP);
     void wait(size_t timeout_secs); // BLOCKING CALL!
@@ -260,6 +276,7 @@ public:
 protected:
     virtual TcpConnection *create_conn() const;
     virtual Task get_recv_data_task(TcpConnection *conn) const;
+    virtual int get_responders_per_listener() const;
 
     // task func
     static bool recv_tcp_data(TaskData& data);

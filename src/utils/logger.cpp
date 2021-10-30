@@ -19,6 +19,7 @@
 
 #include <cstring>
 #include <fcntl.h>
+#include <glob.h>
 #include <sys/stat.h>
 #include <printf.h>
 #include "global.h"
@@ -34,6 +35,7 @@ namespace tt
 
 
 Logger *Logger::m_instance = nullptr;
+std::map<int, Logger*> Logger::m_instances;
 LogLevel Logger::m_level = LogLevel::UNKNOWN;
 
 
@@ -84,6 +86,13 @@ Logger::Logger() :
     Timer::inst()->add_task(task, 5, "logger_rotate");  // try every 5 seconds
 }
 
+Logger::Logger(int fd) :
+    m_stream(nullptr),
+    m_fd(-1)
+{
+    reopen(fd);
+}
+
 Logger::~Logger()
 {
     close();
@@ -107,12 +116,48 @@ Logger::close()
     }
 }
 
+Logger *
+Logger::get_instance(int fd)
+{
+    static std::mutex m;
+
+    std::unique_lock<std::mutex> lock(m);
+    auto search = m_instances.find(fd);
+
+    if (search != m_instances.end())
+        return search->second;
+    else    // create one
+    {
+        Logger *logger = new Logger(fd);
+        m_instances[fd] = logger;
+        return logger;
+    }
+}
+
+std::string
+Logger::get_log_file(int fd)
+{
+    std::string log_file = Config::get_str(CFG_LOG_FILE,CFG_LOG_FILE_DEF);
+
+    if (fd > 0)
+    {
+        auto const pos = log_file.find_last_of('/');
+        ASSERT(pos != std::string::npos);
+        log_file = log_file.substr(0, pos+1);
+        log_file += "conn-";
+        log_file += std::to_string(fd);
+        log_file += ".log";
+    }
+
+    return log_file;
+}
+
 void
-Logger::reopen()
+Logger::reopen(int fd)
 {
     close();
 
-    std::string log_file = Config::get_str(CFG_LOG_FILE,CFG_LOG_FILE_DEF);
+    std::string log_file = get_log_file(fd);
 
     if (! log_file.empty() && (log_file != "-"))
     {
@@ -169,11 +214,25 @@ Logger::rotate(TaskData& data)
             logger->rename();
             logger->reopen();
 
-            // cleanup if necessary
+            // cleanup main log file, if necessary
             int retention_count = Config::get_int(CFG_LOG_RETENTION_COUNT, CFG_LOG_RETENTION_COUNT_DEF);
             std::string log_file = Config::get_str(CFG_LOG_FILE, CFG_LOG_FILE_DEF);
             std::string log_pattern = log_file + ".*";
             rotate_files(log_pattern, retention_count);
+
+            // cleanup per connection log files, if necessary
+            auto pos = log_file.find_last_of('/');
+            ASSERT(pos != std::string::npos);
+            log_file = log_file.substr(0, pos+1) + "conn-*.log";
+
+            glob_t glob_result;
+            glob(log_file.c_str(), GLOB_TILDE, nullptr, &glob_result);
+            for (int i = 0; i < glob_result.gl_pathc; i++)
+            {
+                std::string log(glob_result.gl_pathv[i]);
+                log += ".*";
+                rotate_files(log, retention_count);
+            }
         }
         else if (logger->m_stream != nullptr)
         {
@@ -229,30 +288,30 @@ Logger::debug(const char *format, ...)
 
 // Add a timestamp and a log level to the passed in log entry;
 void
-Logger::tcp(const char *format, ...)
+Logger::tcp(const char *format, int fd, ...)
 {
     if ((get_level() > LogLevel::TCP) || (format == nullptr))
         return;
 
     va_list args;
-    va_start(args, format);
+    va_start(args, fd);
 
-    m_instance->print(LogLevel::TCP, format, args);
+    get_instance(fd)->print(LogLevel::TCP, format, args);
 
     va_end(args);
 }
 
 // Add a timestamp and a log level to the passed in log entry;
 void
-Logger::http(const char *format, ...)
+Logger::http(const char *format, int fd, ...)
 {
     if ((get_level() > LogLevel::HTTP) || (format == nullptr))
         return;
 
     va_list args;
-    va_start(args, format);
+    va_start(args, fd);
 
-    m_instance->print(LogLevel::HTTP, format, args);
+    get_instance(fd)->print(LogLevel::HTTP, format, args);
 
     va_end(args);
 }

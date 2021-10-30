@@ -19,6 +19,7 @@
 
 #pragma once
 
+#include <map>
 #include <memory>
 #include <cstdio>
 #include <mutex>
@@ -54,8 +55,8 @@ public:
     // std::endl will be appended, if it's not already there
     static void trace(const char *format, ...);
     static void debug(const char *format, ...);
-    static void tcp(const char *format, ...);
-    static void http(const char *format, ...);
+    static void tcp(const char *format, int fd, ...);
+    static void http(const char *format, int fd, ...);
     static void info(const char *format, ...);
     static void warn(const char *format, ...);
     static void error(const char *format, ...);
@@ -78,7 +79,7 @@ public:
     Logger& operator=(Logger const&) = delete;
 
     void close();
-    void reopen();
+    void reopen(int fd = -1);
 
     // This will be called from Timer periodically to rotate log files.
     static bool rotate(TaskData& data);
@@ -87,21 +88,26 @@ public:
 
 private:
     Logger();
+    Logger(int fd); // per connection logger
     void rename();
 
     void print(const LogLevel level, const char *format, va_list args);
+
+    static Logger *get_instance(int fd);
+    static std::string get_log_file(int fd);
 
     static const char* level_name(const LogLevel level);
     static void prepare_header(char *buff, int size, const LogLevel level, const char *format);
 
     static LogLevel m_level;
-    static const int m_max_level_len = 64;    // this includes timestamp
+    static const int m_max_level_len = 64;  // this includes timestamp
 
     std::mutex m_lock;
     std::FILE *m_stream;
     int m_fd;
 
     static Logger *m_instance;
+    static std::map<int, Logger*> m_instances;  // per connection instances
 };
 
 

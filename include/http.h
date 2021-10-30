@@ -81,6 +81,7 @@ public:
     inline char *get_buffer() { ASSERT(buffer != nullptr); return buffer + MAX_HEADER_SIZE; }
     inline size_t get_buffer_size() const { return MemoryManager::get_network_buffer_size() - MAX_HEADER_SIZE; }
 
+    void init();
     void init(uint16_t code, HttpContentType type = HttpContentType::JSON);
     void init(uint16_t code, HttpContentType type, size_t length);
     void init(uint16_t code, HttpContentType type, size_t length, const char *body);
@@ -89,6 +90,7 @@ public:
     inline size_t c_size() const override { return 8192; }
     const char *c_str(char *buff) const override;
 
+    void recycle();
     virtual ~HttpResponse();
 
 private:
@@ -109,6 +111,7 @@ public:
     int length;     // Content-Length
     bool complete;
     bool forward;
+    bool header_ok; // header parsed ok?
 
     inline bool is_complete() const
     {
@@ -131,6 +134,19 @@ class HttpConnection : public TcpConnection
 public:
     HttpRequest request;
     HttpResponse response;
+
+    void init() override
+    {
+        request.init();
+        response.init();
+        TcpConnection::init();
+    }
+
+    bool recycle() override
+    {
+        response.recycle();
+        return TcpConnection::recycle();
+    }
 };
 
 
@@ -155,8 +171,9 @@ public:
     static bool http_get_api_version_handler(HttpRequest& request, HttpResponse& response);
 
 protected:
-    TcpConnection *create_conn() const;
-    Task get_recv_data_task(TcpConnection *conn) const;
+    TcpConnection *create_conn() const override;
+    Task get_recv_data_task(TcpConnection *conn) const override;
+    int get_responders_per_listener() const override;
 
     // task func
     static bool recv_http_data(TaskData& data);

@@ -101,11 +101,6 @@ TcpServer::close_conns()
     }
 }
 
-void
-TcpServer::init()
-{
-}
-
 bool
 TcpServer::start(int port)
 {
@@ -304,6 +299,7 @@ TcpServer::start(int port)
         m_listeners[i] = new TcpListener(this, m_socket_fd, m_max_conns_per_listener, i);
     }
 
+    // 5. create the level 0 listener
     m_listeners[0] = new TcpListener(this, m_socket_fd, m_max_conns_per_listener);
 
     return true;
@@ -428,6 +424,7 @@ TcpServer::recv_tcp_data(TaskData& data)
         conn->state |= TCS_ERROR;
     }
 
+    conn->pending_tasks--;
     return false;
 }
 
@@ -446,7 +443,7 @@ TcpServer::process_data(TcpConnection *conn, char *data, int len)
         request.length = len;
         request.forward = conn->forward;
 
-        Logger::tcp("Recved:\n%s", data);
+        Logger::tcp("Recved:\n%s", conn->fd, data);
 
         Tsdb::http_api_put_handler_plain(request, response);
 
@@ -725,8 +722,15 @@ TcpServer::get_recv_data_task(TcpConnection *conn) const
     return task;
 }
 
+int
+TcpServer::get_responders_per_listener() const
+{
+    int n = Config::get_int(CFG_TCP_RESPONDERS_PER_LISTENER, CFG_TCP_RESPONDERS_PER_LISTENER_DEF);
+    return (n > 0) ? n : CFG_TCP_RESPONDERS_PER_LISTENER_DEF;
+}
 
-/* TcpListener Implementation
+
+/* Constructing a level 0 listener
  */
 TcpListener::TcpListener(TcpServer *server, int fd, size_t max_conns) :
     m_id(0),
@@ -749,7 +753,8 @@ TcpListener::TcpListener(TcpServer *server, int fd, size_t max_conns) :
     }
 }
 
-// this one handles the tcp traffic
+/* Constructing a level 1 listener to handle tcp traffic
+ */
 TcpListener::TcpListener(TcpServer *server, int fd, size_t max_conns, int id) :
     m_id(id),
     m_server(server),
@@ -764,7 +769,7 @@ TcpListener::TcpListener(TcpServer *server, int fd, size_t max_conns, int id) :
     m_least_conn_listener(nullptr),
     m_conn_in_transit(nullptr),
     m_responders(std::string("tcp_")+std::to_string(id),
-                 Config::get_int(CFG_TCP_RESPONDERS_PER_LISTENER, CFG_TCP_RESPONDERS_PER_LISTENER_DEF),
+                 server->get_responders_per_listener(),
                  Config::get_int(CFG_TCP_RESPONDERS_QUEUE_SIZE, CFG_TCP_RESPONDERS_QUEUE_SIZE_DEF))
     //m_stats_active_conn_count(0)
 {
@@ -999,7 +1004,8 @@ TcpListener::listener0()
 
         if (fd_cnt == 0)
         {
-            rebalance0();
+            // TODO: This is NOT working! It needs re-work!
+            //rebalance0();
         }
     }
 
@@ -1044,8 +1050,7 @@ TcpListener::listener1()
             if ((events[i].events & err_flags) || (!(events[i].events & EPOLLIN)))
             {
                 // socket errors
-                Logger::trace("socket error on listener1, fd: %d, events: 0x%x",
-                    fd, events[i].events);
+                Logger::tcp("socket error on listener1, events: 0x%x, closing conn", fd, events[i].events);
                 close_conn(fd);
             }
             else if (fd == m_pipe_fds[0])
@@ -1076,20 +1081,17 @@ TcpListener::listener1()
                 TcpConnection *conn = get_conn(fd);
 
                 ASSERT(conn != nullptr);
-                Logger::trace("received data on conn %p, fd %d", conn, conn->fd);
+                Logger::tcp("received data on conn %p", conn->fd, conn);
 
                 Task task = m_server->get_recv_data_task(conn);
 
                 // if previous attempt was not able to read the complete
                 // request, we want to assign this one to the same worker.
-                if (conn->worker_id != INVALID_WORKER_ID)
-                {
-                    m_responders.submit_task(task, conn->worker_id);
-                }
-                else
-                {
+                conn->pending_tasks++;
+                if (conn->pending_tasks == 1)
                     conn->worker_id = m_responders.submit_task(task);
-                }
+                else
+                    m_responders.submit_task(task, conn->worker_id);
             }
         }
     }
@@ -1098,6 +1100,7 @@ TcpListener::listener1()
     Logger::info("TCP listener %d stopped.", m_id);
 }
 
+// called by the level 0 listener;
 void
 TcpListener::new_conn0()
 {
@@ -1124,7 +1127,17 @@ TcpListener::new_conn0()
         //Logger::info("new connection: %d", fd);
 
         // send it to level 1 listener
-        TcpListener *listener1 = m_server->next_listener();
+        TcpListener *listener1;
+
+        {
+            std::lock_guard<std::mutex> guard(m_lock);
+            auto search = m_all_conn_map.find(fd);
+            if (search != m_all_conn_map.end())
+                listener1 = search->second->listener;
+            else
+                listener1 = m_server->next_listener();
+        }
+
         char buff[32];
         snprintf(buff, 30, "%c %d\n", PIPE_CMD_NEW_CONN[0], fd);
         write_pipe(listener1->m_pipe_fds[1], buff);
@@ -1133,7 +1146,8 @@ TcpListener::new_conn0()
     // TODO: remove closed connections from m_conn_map!
 }
 
-// accept just one connection at a time
+// called by level 1 listeners;
+// accept just one connection at a time;
 void
 TcpListener::new_conn2(int fd)
 {
@@ -1151,16 +1165,11 @@ TcpListener::new_conn2(int fd)
         conn->state &= ~(TCS_ERROR | TCS_CLOSED);   // start new, clear these flags
 
         if (conn->state & TCS_REGISTERED)
-        {
-            unsigned int state = conn->state;
-            Logger::info("already connected: %d, state: 0x%x", fd, state);
-        }
-        else
-        {
-            register_with_epoll(fd);
-            conn->state |= TCS_REGISTERED;
-            Logger::trace("new connection: %d", fd);
-        }
+            deregister_with_epoll(fd);
+
+        register_with_epoll(fd);
+        conn->state |= TCS_REGISTERED;
+        Logger::trace("new connection: %d", fd);
     }
 }
 
@@ -1172,22 +1181,9 @@ TcpListener::close_conn(int fd)
     if (search != m_conn_map.end())
     {
         TcpConnection *conn = search->second;
-        m_conn_map.erase(search);
         Logger::trace("close_conn: conn=%p fd=%d", conn, conn->fd);
-
-        {
-            std::lock_guard<std::mutex> guard(m_lock);
-            search = m_all_conn_map.find(fd);
-
-            if (search != m_all_conn_map.end())
-            {
-                if (conn == search->second)
-                {
-                    m_all_conn_map.erase(search);
-                }
-            }
-        }
-
+        m_conn_map.erase(search);
+        del_conn_from_all_map(fd);
         MemoryManager::free_recyclable(conn);
     }
 
@@ -1269,16 +1265,7 @@ TcpListener::disconnect()
             //auto search = m_conn_map.find(conn->fd);
             //ASSERT(search != m_conn_map.end());
             it = m_conn_map.erase(it);
-
-            {
-                std::lock_guard<std::mutex> guard(m_lock);
-                auto search = m_all_conn_map.find(conn->fd);
-                if (search != m_all_conn_map.end())
-                {
-                    m_all_conn_map.erase(search);
-                }
-            }
-
+            del_conn_from_all_map(conn->fd);
             deregister_with_epoll(conn->fd);
             close(conn->fd);
             MemoryManager::free_recyclable(conn);
@@ -1347,41 +1334,23 @@ TcpListener::get_or_create_conn(int fd)
 
     if (search == m_conn_map.end())
     {
-        //conn = (TcpConnection*)MemoryManager::alloc_recyclable(RecyclableType::RT_TCP_CONNECTION);
         conn = m_server->create_conn();
-
-        {
-            std::lock_guard<std::mutex> guard(m_lock);
-            search = m_all_conn_map.find(fd);
-
-            if (search == m_all_conn_map.end())
-            {
-                m_all_conn_map.insert(std::pair<int,TcpConnection*>(fd, conn));
-            }
-            else
-            {
-                TcpConnection *c = search->second;
-
-                if (c->state & TCS_CLOSED)
-                {
-                    MemoryManager::free_recyclable(c);
-                    m_all_conn_map.erase(search);
-                    m_all_conn_map.insert(std::pair<int,TcpConnection*>(fd, conn));
-                }
-                else
-                {
-                    unsigned int state = c->state;
-                    Logger::warn("duplicate fd %d discarded, state: 0x%x, conn=%p",
-                        fd, state, c);
-                    MemoryManager::free_recyclable(conn);
-                    return nullptr;
-                }
-            }
-        }
 
         conn->fd = fd;
         conn->server = m_server;
         conn->listener = this;
+
+        TcpConnection *c = add_conn_to_all_map(conn);
+
+        if (c != conn)
+        {
+            MemoryManager::free_recyclable(conn);
+            conn = c;
+
+            ASSERT(conn->fd == fd);
+            ASSERT(conn->listener == this);
+            ASSERT(conn->server == m_server);
+        }
 
         m_conn_map.insert(std::pair<int,TcpConnection*>(fd, conn));
         Logger::trace("created conn %d", fd);
@@ -1389,9 +1358,12 @@ TcpListener::get_or_create_conn(int fd)
     else
     {
         conn = search->second;
+
+        ASSERT(conn->fd == fd);
+        ASSERT(conn->listener == this);
+        ASSERT(conn->server == m_server);
     }
 
-    ASSERT(fd == conn->fd);
     conn->last_contact = std::chrono::steady_clock::now();
     Logger::trace("conn: %p, fd: %d", conn, conn->fd);
 
@@ -1461,6 +1433,31 @@ TcpListener::instruct(const char *instruction, int size)
     if (m_pipe_fds[1] != -1)
     {
         write(m_pipe_fds[1], instruction, size);
+    }
+}
+
+TcpConnection *
+TcpListener::add_conn_to_all_map(TcpConnection *conn)
+{
+    std::lock_guard<std::mutex> guard(m_lock);
+    auto search = m_all_conn_map.find(conn->fd);
+    if (search == m_all_conn_map.end())
+        m_all_conn_map.insert(std::pair<int,TcpConnection*>(conn->fd, conn));
+    else
+        conn = search->second;  // return the one already in map
+    return conn;
+}
+
+void
+TcpListener::del_conn_from_all_map(int fd)
+{
+    std::lock_guard<std::mutex> guard(m_lock);
+    auto search = m_all_conn_map.find(fd);
+
+    if (search != m_all_conn_map.end())
+    {
+        ASSERT(fd == search->second->fd);
+        m_all_conn_map.erase(search);
     }
 }
 
