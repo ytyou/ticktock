@@ -91,16 +91,16 @@ private:
     Logger(int fd); // per connection logger
     void rename();
 
-    void print(const LogLevel level, const char *format, va_list args);
+    void print(const LogLevel level, int fd, const char *format, va_list args);
 
     static Logger *get_instance(int fd);
     static std::string get_log_file(int fd);
 
     static const char* level_name(const LogLevel level);
-    static void prepare_header(char *buff, int size, const LogLevel level, const char *format);
+    static void prepare_header(char *buff, int size, const LogLevel level, int fd, const char *format);
 
     static LogLevel m_level;
-    static const int m_max_level_len = 64;  // this includes timestamp
+    static const int m_max_level_len = 74;  // this includes timestamp
 
     std::mutex m_lock;
     std::FILE *m_stream;

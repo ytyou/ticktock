@@ -221,6 +221,7 @@ Logger::rotate(TaskData& data)
             rotate_files(log_pattern, retention_count);
 
             // cleanup per connection log files, if necessary
+            /*
             auto pos = log_file.find_last_of('/');
             ASSERT(pos != std::string::npos);
             log_file = log_file.substr(0, pos+1) + "conn-*.log";
@@ -233,6 +234,7 @@ Logger::rotate(TaskData& data)
                 log += ".*";
                 rotate_files(log, retention_count);
             }
+            */
         }
         else if (logger->m_stream != nullptr)
         {
@@ -266,7 +268,7 @@ Logger::trace(const char *format, ...)
     va_list args;
     va_start(args, format);
 
-    m_instance->print(LogLevel::TRACE, format, args);
+    m_instance->print(LogLevel::TRACE, -1, format, args);
 
     va_end(args);
 }
@@ -281,7 +283,7 @@ Logger::debug(const char *format, ...)
     va_list args;
     va_start(args, format);
 
-    m_instance->print(LogLevel::DEBUG, format, args);
+    m_instance->print(LogLevel::DEBUG, -1, format, args);
 
     va_end(args);
 }
@@ -296,7 +298,7 @@ Logger::tcp(const char *format, int fd, ...)
     va_list args;
     va_start(args, fd);
 
-    get_instance(fd)->print(LogLevel::TCP, format, args);
+    m_instance->print(LogLevel::TCP, fd, format, args);
 
     va_end(args);
 }
@@ -311,7 +313,7 @@ Logger::http(const char *format, int fd, ...)
     va_list args;
     va_start(args, fd);
 
-    get_instance(fd)->print(LogLevel::HTTP, format, args);
+    m_instance->print(LogLevel::HTTP, fd, format, args);
 
     va_end(args);
 }
@@ -326,7 +328,7 @@ Logger::info(const char *format, ...)
     va_list args;
     va_start(args, format);
 
-    m_instance->print(LogLevel::INFO, format, args);
+    m_instance->print(LogLevel::INFO, -1, format, args);
 
     va_end(args);
 }
@@ -341,7 +343,7 @@ Logger::warn(const char *format, ...)
     va_list args;
     va_start(args, format);
 
-    m_instance->print(LogLevel::WARN, format, args);
+    m_instance->print(LogLevel::WARN, -1, format, args);
 
     va_end(args);
 }
@@ -356,7 +358,7 @@ Logger::error(const char *format, ...)
     va_list args;
     va_start(args, format);
 
-    m_instance->print(LogLevel::ERROR, format, args);
+    m_instance->print(LogLevel::ERROR, -1, format, args);
 
     va_end(args);
 }
@@ -371,7 +373,7 @@ Logger::fatal(const char *format, ...)
     va_list args;
     va_start(args, format);
 
-    m_instance->print(LogLevel::FATAL, format, args);
+    m_instance->print(LogLevel::FATAL, -1, format, args);
 
     va_end(args);
 }
@@ -440,7 +442,7 @@ Logger::set_level(const char *level)
 }
 
 void
-Logger::prepare_header(char *buff, int size, const LogLevel level, const char *format)
+Logger::prepare_header(char *buff, int size, const LogLevel level, int fd, const char *format)
 {
     time_t sec;
     unsigned int msec;
@@ -450,18 +452,27 @@ Logger::prepare_header(char *buff, int size, const LogLevel level, const char *f
     struct tm timeinfo;
     localtime_r(&sec, &timeinfo);
     std::strftime(buff, size, "%Y-%m-%d %H:%M:%S", &timeinfo);
-    sprintf(buff+19, ".%03d [%s] [%s] %s",
-        msec, level_name(level), g_thread_id.c_str(), format);
+
+    if (fd < 0)
+    {
+        sprintf(buff+19, ".%03d [%s] [%s] %s",
+            msec, level_name(level), g_thread_id.c_str(), format);
+    }
+    else
+    {
+        sprintf(buff+19, ".%03d [%s] [%s] [%d] %s",
+            msec, level_name(level), g_thread_id.c_str(), fd, format);
+    }
 }
 
 // format parameter is guaranteed to be non-NULL
 void
-Logger::print(const LogLevel level, const char *format, va_list args)
+Logger::print(const LogLevel level, int fd, const char *format, va_list args)
 {
     size_t len = std::strlen(format);
     char fmt[len + m_max_level_len];
 
-    prepare_header(fmt, sizeof(fmt), level, format);
+    prepare_header(fmt, sizeof(fmt), level, fd, format);
 
     // append std::endl, if not already there
     if (format[len-1] != '\n')

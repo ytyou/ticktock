@@ -1087,8 +1087,7 @@ TcpListener::listener1()
 
                 // if previous attempt was not able to read the complete
                 // request, we want to assign this one to the same worker.
-                conn->pending_tasks++;
-                if (conn->pending_tasks == 1)
+                if (1 == ++conn->pending_tasks)
                     conn->worker_id = m_responders.submit_task(task);
                 else
                     m_responders.submit_task(task, conn->worker_id);
