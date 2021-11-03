@@ -57,6 +57,7 @@ intr_handler(int sig)
 {
     if (g_shutdown_requested) return;
 
+    g_handler_thread_id = std::this_thread::get_id();   // don't wait for me
     g_shutdown_requested = true;
 
     printf("Interrupted (%d), shutting down...\n", sig);

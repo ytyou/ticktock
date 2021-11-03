@@ -185,7 +185,15 @@ TaskScheduler::wait(size_t timeout_secs)
 {
     for (size_t i = 0; i < m_thread_count; i++)
     {
-        m_threads[i].join();
+        /* The thread with id 'g_handler_thread_id' is in trouble.
+         * Something happened in that thread, and now it's inside
+         * intr_handler(), so it simply won't exit cleanly.
+         * Don't wait for it.
+         */
+        if (m_threads[i].get_id() == g_handler_thread_id)
+            m_threads[i].detach();
+        else
+            m_threads[i].join();
     }
 }
 

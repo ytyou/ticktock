@@ -21,6 +21,7 @@
 
 #include <string>
 #include <atomic>
+#include <thread>
 
 
 namespace tt
@@ -29,7 +30,7 @@ namespace tt
 
 #define TT_MAJOR_VERSION    0
 #define TT_MINOR_VERSION    3
-#define TT_PATCH_VERSION    1
+#define TT_PATCH_VERSION    2
 
 class HttpServer;
 class TcpServer;
@@ -52,6 +53,7 @@ extern bool g_tstamp_resolution_ms;
 extern bool g_cluster_enabled;
 extern bool g_self_meter_enabled;
 extern std::atomic<bool> g_shutdown_requested;
+extern std::atomic<std::thread::id> g_handler_thread_id;
 
 
 }

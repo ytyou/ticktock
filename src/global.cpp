@@ -44,6 +44,7 @@ std::atomic<bool> g_shutdown_requested{false};
 
 std::string g_config_file("tt.conf");
 thread_local std::string g_thread_id("unknown");
+std::atomic<std::thread::id> g_handler_thread_id;
 
 const long int g_page_size = sysconf(_SC_PAGE_SIZE);
 
