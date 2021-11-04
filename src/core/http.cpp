@@ -236,11 +236,7 @@ HttpServer::recv_http_data(TaskData& data)
         if (conn->request.is_complete())
         {
             if (! process_request(conn->request, conn->response))
-            {
-                HTTP_400.id = conn->request.id;
-                HttpServer::send_response(fd, HTTP_400);
                 conn_error = true;
-            }
 
             if ((conn->response.status_code == 200) && (conn->response.content_length == 0))
             {
@@ -355,11 +351,7 @@ HttpServer::recv_http_data_cont(HttpConnection *conn)
             Logger::debug("request is finally complete");
 
             if (! process_request(conn->request, conn->response))
-            {
-                HTTP_400.id = conn->request.id;
-                HttpServer::send_response(fd, HTTP_400);
                 conn_error = true;
-            }
 
             if ((conn->response.status_code == 200) && (conn->response.content_length == 0))
             {
@@ -646,10 +638,17 @@ HttpServer::process_request(HttpRequest& request, HttpResponse& response)
         }
         catch (const std::exception& ex)
         {
+            char *buff = response.get_buffer();
+            int size = response.get_buffer_size();
+            std::strncpy(buff, ex.what(), size-1);
+            buff[size-1] = 0;
+            response.init(400, HttpContentType::PLAIN, std::strlen(buff));
             Logger::error("Failed to process http request: %s", ex.what());
         }
         catch (...)
         {
+            response.status_code = 400;
+            response.content_length = 0;
             Logger::error("Failed to process http request with unknown exception");
         }
 
@@ -657,6 +656,8 @@ HttpServer::process_request(HttpRequest& request, HttpResponse& response)
     }
     else
     {
+        response.status_code = 404;
+        response.content_length = 0;
         Logger::error("Unhandled request: %T", &request);
     }
 

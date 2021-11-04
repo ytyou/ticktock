@@ -21,6 +21,7 @@
 #include <cstdint>
 #include <cstring>
 #include <unistd.h>
+#include "admin.h"
 #include "compress.h"
 #include "config.h"
 #include "memmgr.h"
@@ -498,130 +499,141 @@ MemoryManager::alloc_recyclable(RecyclableType type)
 
     if (r == nullptr)
     {
-        switch (type)
+        try
         {
-            case RecyclableType::RT_AGGREGATOR_AVG:
-                r = new AggregatorAvg();
-                break;
+            switch (type)
+            {
+                case RecyclableType::RT_AGGREGATOR_AVG:
+                    r = new AggregatorAvg();
+                    break;
 
-            case RecyclableType::RT_AGGREGATOR_COUNT:
-                r = new AggregatorCount();
-                break;
+                case RecyclableType::RT_AGGREGATOR_COUNT:
+                    r = new AggregatorCount();
+                    break;
 
-            case RecyclableType::RT_AGGREGATOR_DEV:
-                r = new AggregatorDev();
-                break;
+                case RecyclableType::RT_AGGREGATOR_DEV:
+                    r = new AggregatorDev();
+                    break;
 
-            case RecyclableType::RT_AGGREGATOR_MAX:
-                r = new AggregatorMax();
-                break;
+                case RecyclableType::RT_AGGREGATOR_MAX:
+                    r = new AggregatorMax();
+                    break;
 
-            case RecyclableType::RT_AGGREGATOR_MIN:
-                r = new AggregatorMin();
-                break;
+                case RecyclableType::RT_AGGREGATOR_MIN:
+                    r = new AggregatorMin();
+                    break;
 
-            case RecyclableType::RT_AGGREGATOR_NONE:
-                r = new AggregatorNone();
-                break;
+                case RecyclableType::RT_AGGREGATOR_NONE:
+                    r = new AggregatorNone();
+                    break;
 
-            case RecyclableType::RT_AGGREGATOR_PT:
-                r = new AggregatorPercentile();
-                break;
+                case RecyclableType::RT_AGGREGATOR_PT:
+                    r = new AggregatorPercentile();
+                    break;
 
-            case RecyclableType::RT_AGGREGATOR_SUM:
-                r = new AggregatorSum();
-                break;
+                case RecyclableType::RT_AGGREGATOR_SUM:
+                    r = new AggregatorSum();
+                    break;
 
-            case RecyclableType::RT_COMPRESSOR_V0:
-            case RecyclableType::RT_COMPRESSOR_V1:
-            case RecyclableType::RT_COMPRESSOR_V2:
-                r = Compressor::create(type - RecyclableType::RT_COMPRESSOR_V0);
-                break;
+                case RecyclableType::RT_COMPRESSOR_V0:
+                case RecyclableType::RT_COMPRESSOR_V1:
+                case RecyclableType::RT_COMPRESSOR_V2:
+                    r = Compressor::create(type - RecyclableType::RT_COMPRESSOR_V0);
+                    break;
 
-            case RecyclableType::RT_DATA_POINT:
-                r = new DataPoint();
-                break;
+                case RecyclableType::RT_DATA_POINT:
+                    r = new DataPoint();
+                    break;
 
-            case RecyclableType::RT_DOWNSAMPLER_AVG:
-                r = new DownsamplerAvg();
-                break;
+                case RecyclableType::RT_DOWNSAMPLER_AVG:
+                    r = new DownsamplerAvg();
+                    break;
 
-            case RecyclableType::RT_DOWNSAMPLER_COUNT:
-                r = new DownsamplerCount();
-                break;
+                case RecyclableType::RT_DOWNSAMPLER_COUNT:
+                    r = new DownsamplerCount();
+                    break;
 
-            case RecyclableType::RT_DOWNSAMPLER_DEV:
-                r = new DownsamplerDev();
-                break;
+                case RecyclableType::RT_DOWNSAMPLER_DEV:
+                    r = new DownsamplerDev();
+                    break;
 
-            case RecyclableType::RT_DOWNSAMPLER_FIRST:
-                r = new DownsamplerFirst();
-                break;
+                case RecyclableType::RT_DOWNSAMPLER_FIRST:
+                    r = new DownsamplerFirst();
+                    break;
 
-            case RecyclableType::RT_DOWNSAMPLER_LAST:
-                r = new DownsamplerLast();
-                break;
+                case RecyclableType::RT_DOWNSAMPLER_LAST:
+                    r = new DownsamplerLast();
+                    break;
 
-            case RecyclableType::RT_DOWNSAMPLER_MAX:
-                r = new DownsamplerMax();
-                break;
+                case RecyclableType::RT_DOWNSAMPLER_MAX:
+                    r = new DownsamplerMax();
+                    break;
 
-            case RecyclableType::RT_DOWNSAMPLER_MIN:
-                r = new DownsamplerMin();
-                break;
+                case RecyclableType::RT_DOWNSAMPLER_MIN:
+                    r = new DownsamplerMin();
+                    break;
 
-            case RecyclableType::RT_DOWNSAMPLER_PT:
-                r = new DownsamplerPercentile();
-                break;
+                case RecyclableType::RT_DOWNSAMPLER_PT:
+                    r = new DownsamplerPercentile();
+                    break;
 
-            case RecyclableType::RT_DOWNSAMPLER_SUM:
-                r = new DownsamplerSum();
-                break;
+                case RecyclableType::RT_DOWNSAMPLER_SUM:
+                    r = new DownsamplerSum();
+                    break;
 
-            case RecyclableType::RT_HTTP_CONNECTION:
-                r = new HttpConnection();
-                break;
+                case RecyclableType::RT_HTTP_CONNECTION:
+                    r = new HttpConnection();
+                    break;
 
-            case RecyclableType::RT_JSON_VALUE:
-                r = new JsonValue();
-                break;
+                case RecyclableType::RT_JSON_VALUE:
+                    r = new JsonValue();
+                    break;
 
-            case RecyclableType::RT_KEY_VALUE_PAIR:
-                r = new KeyValuePair();
-                break;
+                case RecyclableType::RT_KEY_VALUE_PAIR:
+                    r = new KeyValuePair();
+                    break;
 
-            case RecyclableType::RT_MAPPING:
-                r = new Mapping();
-                break;
+                case RecyclableType::RT_MAPPING:
+                    r = new Mapping();
+                    break;
 
-            case RecyclableType::RT_PAGE_INFO:
-                r = new PageInfo();
-                break;
+                case RecyclableType::RT_PAGE_INFO:
+                    r = new PageInfo();
+                    break;
 
-            case RecyclableType::RT_QUERY_RESULTS:
-                r = new QueryResults();
-                break;
+                case RecyclableType::RT_QUERY_RESULTS:
+                    r = new QueryResults();
+                    break;
 
-            case RecyclableType::RT_QUERY_TASK:
-                r = new QueryTask();
-                break;
+                case RecyclableType::RT_QUERY_TASK:
+                    r = new QueryTask();
+                    break;
 
-            case RecyclableType::RT_RATE_CALCULATOR:
-                r = new RateCalculator();
-                break;
+                case RecyclableType::RT_RATE_CALCULATOR:
+                    r = new RateCalculator();
+                    break;
 
-            case RecyclableType::RT_TCP_CONNECTION:
-                r = new TcpConnection();
-                break;
+                case RecyclableType::RT_TCP_CONNECTION:
+                    r = new TcpConnection();
+                    break;
 
-            case RecyclableType::RT_TIME_SERIES:
-                r = new TimeSeries();
-                break;
+                case RecyclableType::RT_TIME_SERIES:
+                    r = new TimeSeries();
+                    break;
 
-            default:
-                Logger::error("Unknown recyclable type: %d", type);
-                break;
+                default:
+                    Logger::error("Unknown recyclable type: %d", type);
+                    break;
+            }
         }
+        catch (std::bad_alloc& ex)
+        {
+            HttpResponse response;
+            Admin::cmd_stop(nullptr, response);    // shutdown
+            throw std::runtime_error("Out of memory");
+        }
+
+        ASSERT(r != nullptr);
     }
     else
     {

@@ -343,6 +343,32 @@ main(int argc, char *argv[])
 
     initialize();
 
+    // verify configs
+    if (Config::get_int(CFG_HTTP_SERVER_PORT, CFG_HTTP_SERVER_PORT_DEF) <= 0)
+    {
+        Logger::fatal("HTTP Server port must be greater than 0 (instead of %d)",
+            Config::get_int(CFG_HTTP_SERVER_PORT, CFG_HTTP_SERVER_PORT_DEF));
+        shutdown();
+        return 1;
+    }
+
+    if (Config::get_int(CFG_TCP_SERVER_PORT, CFG_TCP_SERVER_PORT_DEF) <= 0)
+    {
+        Logger::fatal("TCP Server port must be greater than 0 (instead of %d)",
+            Config::get_int(CFG_TCP_SERVER_PORT, CFG_TCP_SERVER_PORT_DEF));
+        shutdown();
+        return 2;
+    }
+
+    if (Config::get_bool(CFG_UDP_SERVER_ENABLED, CFG_UDP_SERVER_ENABLED_DEF) &&
+        (Config::get_int(CFG_UDP_SERVER_PORT, CFG_UDP_SERVER_PORT_DEF) <= 0))
+    {
+        Logger::fatal("UDP Server port must be greater than 0 (instead of %d)",
+            Config::get_int(CFG_UDP_SERVER_PORT, CFG_UDP_SERVER_PORT_DEF));
+        shutdown();
+        return 3;
+    }
+
     // start an HttpServer
     HttpServer http_server;
     http_server.init();

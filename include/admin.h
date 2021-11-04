@@ -28,6 +28,8 @@ namespace tt
 {
 
 
+class MemoryManager;
+
 /* Handles various administrative commands received by the HTTP server.
  */
 class Admin
@@ -36,6 +38,7 @@ public:
     static bool http_post_api_admin_handler(HttpRequest& request, HttpResponse& response);
 
 private:
+    friend class MemoryManager;
     Admin() = delete;
 
     static bool cmd_compact(KeyValuePair *params, HttpResponse& response);

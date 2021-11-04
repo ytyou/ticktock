@@ -40,8 +40,6 @@ typedef std::vector<JsonValue*> JsonArray;
 class JsonParser
 {
 public:
-    static void *from_json(char *json); // deprecated???
-
     static int to_json(std::set<std::string>& strs, char *buff, size_t size);
     static int to_json(JsonArray& arr, char *buff, size_t size);
     static int to_json(JsonMap& map, char *buff, size_t size);

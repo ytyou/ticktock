@@ -28,34 +28,15 @@ namespace tt
 {
 
 
-void *
-JsonParser::from_json(char *json)
-{
-    while (std::isspace(*json)) json++;
-
-    if (*json == '{')
-    {
-        JsonMap *map = new JsonMap;
-        parse_map(json, *map);
-        return static_cast<void*>(map);
-    }
-    else
-    {
-        ASSERT(*json == '[');
-        JsonArray *array = new JsonArray;
-        parse_array(json, *array);
-        return static_cast<void*>(array);
-    }
-}
-
 char *
 JsonParser::parse_map(char *json, JsonMap& map, char delim)
 {
     ASSERT(json != nullptr);
 
     while (std::isspace(*json)) json++;
-    ASSERT(*json == '{');
-    if (*json == '{') json++;
+    if (*json != '{')
+        throw std::runtime_error(std::string("Malformatted JSON map: ") + json);
+    json++;
 
     while (*json != 0)
     {
@@ -77,8 +58,9 @@ JsonParser::parse_array(char *json, JsonArray& array)
     ASSERT(json != nullptr);
 
     while (std::isspace(*json)) json++;
-    ASSERT(*json == '[');
-    if (*json == '[') json++;
+    if (*json != '[')
+        throw std::runtime_error(std::string("Malformatted JSON array: ") + json);
+    json++;
 
     while (*json != 0)
     {
@@ -89,7 +71,6 @@ JsonParser::parse_array(char *json, JsonArray& array)
 
         JsonValue *value =
             (JsonValue*)MemoryManager::alloc_recyclable(RecyclableType::RT_JSON_VALUE);
-        ASSERT(value != nullptr);
 
         if (*json == '"')
         {
@@ -148,7 +129,6 @@ JsonParser::parse_key_value(char *json, std::pair<const char*,JsonValue*>& pair,
 
     JsonValue *value =
         (JsonValue*)MemoryManager::alloc_recyclable(RecyclableType::RT_JSON_VALUE);
-    ASSERT(value != nullptr);
 
     if (*json == '"')
     {
@@ -196,8 +176,9 @@ JsonParser::parse_map_unquoted(char *json, JsonMap& map, char delim)
     ASSERT(json != nullptr);
 
     while (std::isspace(*json)) json++;
-    ASSERT(*json == '{');
-    if (*json == '{') json++;
+    if (*json != '{')
+        throw std::runtime_error(std::string("Malformatted JSON map: ") + json);
+    json++;
 
     while (*json != 0)
     {
@@ -225,7 +206,6 @@ JsonParser::parse_key_value_unquoted(char *json, std::pair<const char*,JsonValue
 
     JsonValue *value =
         (JsonValue*)MemoryManager::alloc_recyclable(RecyclableType::RT_JSON_VALUE);
-    ASSERT(value != nullptr);
 
     if (*json == '{')
     {

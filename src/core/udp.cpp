@@ -35,8 +35,6 @@ UdpListener::UdpListener(int id, int port) :
     m_port(port),
     m_fd(-1)
 {
-    ASSERT(m_port > 0);
-
     // create listener thread to receive udp msgs
     m_listener = std::thread(&UdpListener::receiver, this);
 }
@@ -213,7 +211,6 @@ UdpServer::start(int port)
 {
     int listener_cnt = Config::get_int(CFG_UDP_LISTENER_COUNT, CFG_UDP_LISTENER_COUNT_DEF);
 
-    ASSERT(port > 0);
     ASSERT(listener_cnt > 0);
 
     // create listeners to receive and process data points

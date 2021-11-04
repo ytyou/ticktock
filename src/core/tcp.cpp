@@ -104,7 +104,6 @@ TcpServer::close_conns()
 bool
 TcpServer::start(int port)
 {
-    ASSERT(port > 0);
     Logger::info("Starting TCP Server on port %d...", port);
 
     // 1. create and bind the socket

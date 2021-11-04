@@ -54,21 +54,18 @@ Query::Query(JsonMap& map, TimeRange& range, StringBuffer& strbuf, bool ms) :
     TagOwner(false)
 {
     auto search = map.find(METRIC_TAG_NAME);
-    ASSERT(search != map.end());
+    if (search == map.end())
+        throw std::runtime_error("Must specify metric name when query.");
     m_metric = search->second->to_string();
 
     search = map.find("aggregator");
     if (search != map.end())
-    {
         m_aggregate = search->second->to_string();
-    }
     m_aggregator = Aggregator::create(m_aggregate);
 
     search = map.find("downsample");
     if (search != map.end())
-    {
         m_downsample = search->second->to_string();
-    }
 
     if (! m_ms && (m_downsample == nullptr))
     {
@@ -150,11 +147,10 @@ Query::Query(JsonMap& map, StringBuffer& strbuf) :
     m_ms(false),
     TagOwner(false)
 {
-    // TODO: handle bad request (e.g. missing "start");
-    //       better way to parse the url params;
     Timestamp now = ts_now();
     auto search = map.find("start");
-    ASSERT(search != map.end());
+    if (search == map.end())
+        throw std::runtime_error("Must specify start time when query.");
     Timestamp start = parse_ts(search->second, now);
     start = validate_resolution(start);
 
@@ -175,18 +171,21 @@ Query::Query(JsonMap& map, StringBuffer& strbuf) :
     }
 
     search = map.find("m");
-    ASSERT(search != map.end());
+    if (search == map.end())
+        throw std::runtime_error("Must specify m parameter when query.");
 
     char buff[1024];
     bool decode_ok = url_unescape(search->second->to_string(), buff, sizeof(buff));
-    ASSERT(decode_ok);
+    if (! decode_ok)
+        throw std::runtime_error("Failed to URL decode query.");
 
     Logger::debug("after-decoding: %s", buff);
 
     std::vector<std::string> tokens;
 
     tokenize(std::string(buff), tokens, ':');
-    ASSERT(tokens.size() >= 2);
+    if (tokens.size() < 2)
+        throw std::runtime_error(std::string("Failed to parse query: ") + buff);
 
     int idx = 0;
 
@@ -197,8 +196,8 @@ Query::Query(JsonMap& map, StringBuffer& strbuf) :
 
     if (Downsampler::is_downsampler(m_downsample))
     {
-        //Logger::debug("downsampler = %s", m_downsample);
-        ASSERT(tokens.size() > idx);
+        if (tokens.size() <= idx)
+            throw std::runtime_error("Failed to parse query parameter.");
         m_metric = strbuf.strdup(tokens[idx++].c_str());
     }
     else if (std::strncmp(m_downsample, "rate{", 5) == 0)
@@ -235,7 +234,8 @@ Query::Query(JsonMap& map, StringBuffer& strbuf) :
             (RateCalculator*)MemoryManager::alloc_recyclable(RecyclableType::RT_RATE_CALCULATOR);
         m_rate_calculator->init(counter, drop_resets, counter_max, reset_value);
 
-        ASSERT(tokens.size() > idx);
+        if (tokens.size() <= idx)
+            throw std::runtime_error("Failed to parse query parameter.");
         m_downsample = strbuf.strdup(tokens[idx++].c_str());
     }
     else if (std::strncmp(m_downsample, "rate", 4) == 0)
@@ -249,7 +249,8 @@ Query::Query(JsonMap& map, StringBuffer& strbuf) :
             (RateCalculator*)MemoryManager::alloc_recyclable(RecyclableType::RT_RATE_CALCULATOR);
         m_rate_calculator->init(counter, drop_resets, counter_max, reset_value);
 
-        ASSERT(tokens.size() > idx);
+        if (tokens.size() <= idx)
+            throw std::runtime_error("Failed to parse query parameter.");
         m_downsample = strbuf.strdup(tokens[idx++].c_str());
     }
     else
@@ -266,7 +267,8 @@ Query::Query(JsonMap& map, StringBuffer& strbuf) :
     }
     else if (m_metric == nullptr)
     {
-        ASSERT(tokens.size() > idx);
+        if (tokens.size() <= idx)
+            throw std::runtime_error("Failed to parse query parameter.");
         m_metric = strbuf.strdup(tokens[idx++].c_str());
     }
 
@@ -376,7 +378,6 @@ Query::get_query_tasks(std::vector<QueryTask*>& qtv)
                     (QueryTask*)MemoryManager::alloc_recyclable(RecyclableType::RT_QUERY_TASK);
 
                 qt->m_time_range = m_time_range;
-                //ASSERT(m_downsample != nullptr);
                 qt->m_downsampler = (m_downsample == nullptr) ?
                                     nullptr :
                                     Downsampler::create(m_downsample, m_time_range, m_ms);
@@ -787,11 +788,8 @@ QueryExecutor::http_post_api_query_handler(HttpRequest& request, HttpResponse& r
     Logger::debug("Handling post request: %T", &request);
 
     JsonParser::parse_map(request.content, map);
-    //JsonMap *map = static_cast<JsonMap*>(JsonParser::from_json(request.content));
-
     auto search = map.find("start");
-    if (search == map.end())
-        return false;   // will send '400 bad request' back
+    if (search == map.end()) return false;  // will send '400 Bad Request' back
 
     Timestamp now = ts_now();
     Timestamp start = parse_ts(search->second, now);
@@ -812,7 +810,7 @@ QueryExecutor::http_post_api_query_handler(HttpRequest& request, HttpResponse& r
     }
 
     search = map.find("queries");
-    ASSERT(search != map.end());
+    if (search == map.end()) return false;  // will send '400 Bad Request' back
     JsonArray& array = search->second->to_array();
 
     StringBuffer strbuf;
