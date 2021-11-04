@@ -643,13 +643,13 @@ HttpServer::process_request(HttpRequest& request, HttpResponse& response)
             std::strncpy(buff, ex.what(), size-1);
             buff[size-1] = 0;
             response.init(400, HttpContentType::PLAIN, std::strlen(buff));
-            Logger::error("Failed to process http request: %s", ex.what());
+            Logger::debug("Failed to process http request: %s", ex.what());
         }
         catch (...)
         {
             response.status_code = 400;
             response.content_length = 0;
-            Logger::error("Failed to process http request with unknown exception");
+            Logger::debug("Failed to process http request with unknown exception");
         }
 
         return false;

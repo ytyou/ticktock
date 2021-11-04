@@ -461,11 +461,11 @@ TcpServer::process_data(TcpConnection *conn, char *data, int len)
     }
     catch (const std::exception& ex)
     {
-        Logger::error("Failed to process tcp request: %s", ex.what());
+        Logger::debug("Failed to process tcp request: %s", ex.what());
     }
     catch (...)
     {
-        Logger::error("Failed to process tcp request with unknown exception");
+        Logger::debug("Failed to process tcp request with unknown exception");
     }
 
     return false;
