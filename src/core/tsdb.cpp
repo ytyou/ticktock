@@ -1752,7 +1752,26 @@ Tsdb::rotate(TaskData& data)
     TimeRange range(0, now);
     Tsdb::insts(range, tsdbs);
 
-    Logger::info("[rotate] Checking %d tsdbs.", tsdbs.size());
+    Logger::debug("[rotate] Checking %d tsdbs.", tsdbs.size());
+
+    // adjust CFG_TSDB_ARCHIVE_THRESHOLD when system available memory is low
+    if (Stats::get_avphys_pages() < 1600)
+    {
+        long archive_threshold =
+            Config::get_time(CFG_TSDB_ARCHIVE_THRESHOLD, TimeUnit::DAY, CFG_TSDB_ARCHIVE_THRESHOLD_DEF);
+        long rotation_freq =
+            Config::get_time(CFG_TSDB_ROTATION_FREQUENCY, TimeUnit::DAY, CFG_TSDB_ROTATION_FREQUENCY_DEF);
+
+        if (rotation_freq < 1) rotation_freq = 1;
+        long days = archive_threshold / rotation_freq;
+
+        if (days > 1)
+        {
+            // reduce CFG_TSDB_ARCHIVE_THRESHOLD by 1 day
+            Config::set_value(CFG_TSDB_ARCHIVE_THRESHOLD, std::to_string(days-1)+"d");
+            Logger::info("Reducing %s by 1 day", CFG_TSDB_ARCHIVE_THRESHOLD);
+        }
+    }
 
     for (Tsdb *tsdb: tsdbs)
     {
@@ -1762,7 +1781,7 @@ Tsdb::rotate(TaskData& data)
 
         if (! (tsdb->m_mode & TSDB_MODE_READ))
         {
-            Logger::info("[rotate] Tsdb %T already archived!", tsdb);
+            Logger::debug("[rotate] %T already archived!", tsdb);
             continue;    // already archived
         }
 
@@ -1778,13 +1797,13 @@ Tsdb::rotate(TaskData& data)
             // archive it
             if ((now_sec - load_time) > thrashing_threshold)
             {
-                Logger::info("[rotate] Archiving tsdb (lt=%ld, now=%ld): %T", load_time, now_sec, tsdb);
+                Logger::info("[rotate] Archiving %T (lt=%ld, now=%ld)", tsdb, load_time, now_sec);
                 tsdb->flush(true);
                 tsdb->unload();
             }
             else
             {
-                Logger::info("[rotate] Archiving tsdb %T SKIPPED to avoid thrashing", tsdb);
+                Logger::info("[rotate] Archiving %T SKIPPED to avoid thrashing", tsdb);
                 tsdb->m_meta_file.flush();
             }
         }
@@ -1804,9 +1823,7 @@ Tsdb::rotate(TaskData& data)
     }
 
     if (Config::exists(CFG_TSDB_RETENTION_THRESHOLD))
-    {
         purge_oldest(Config::get_int(CFG_TSDB_RETENTION_THRESHOLD));
-    }
 
     return false;
 }

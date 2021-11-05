@@ -31,6 +31,10 @@ class JsonTests : public TestCase
 public:
     JsonTests() { m_name = "json_tests"; }
     void run();
+
+private:
+    void dp_json_tests();
+    void query_json_tests();
 };
 
 

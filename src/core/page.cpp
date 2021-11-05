@@ -449,7 +449,7 @@ PageManager::open_mmap(PageCount page_count)
     struct stat sb;
     bool is_new = ! file_exists(m_file_name);
 
-    Logger::info("Trying to open file %s...", m_file_name.c_str());
+    Logger::debug("Trying to open file %s...", m_file_name.c_str());
     m_fd = open(m_file_name.c_str(), O_CREAT|O_RDWR, S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH);
 
     if (m_fd == -1)

@@ -66,6 +66,12 @@ public:
     static void init();
     static long get_rss_mb();
 
+    // get available physical memory page count
+    static inline long get_avphys_pages()
+    {
+        return sysconf(_SC_AVPHYS_PAGES);
+    }
+
     // This is used to collect metrics until inject_metrics() is called,
     // at which point they will be sent to Tsdb.
     static void add_data_point(DataPoint *dp);

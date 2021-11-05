@@ -213,6 +213,7 @@ DataPoint::next_long(char* json, Timestamp &number)
     number = std::atol(json);
     //number = (g_tstamp_resolution_ms ? to_ms(number) : to_sec(number));
     while (std::isdigit(*json)) json++;
+    if (*json == '"') json++;   // in case the number is quoted
     return json;
 }
 
@@ -222,6 +223,7 @@ DataPoint::next_double(char* json, double &number)
     while (! std::isdigit(*json) && (*json != '.') && (*json != '+') && (*json != '-') && (*json != '\n')) json++;
     number = std::atof(json);
     while (std::isdigit(*json) || (*json == '.') || (*json == '+') || (*json == '-') || (*json == 'e')) json++;
+    if (*json == '"') json++;   // in case the number is quoted
     return json;
 }
 

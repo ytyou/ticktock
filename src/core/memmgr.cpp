@@ -44,9 +44,6 @@ size_t MemoryManager::m_network_buffer_len = 0;
 
 std::mutex MemoryManager::m_page_lock;
 void *MemoryManager::m_page_free_list = nullptr;
-#ifdef _DEBUG
-std::unordered_map<void*,bool> MemoryManager::m_page_map;   // for debugging only
-#endif
 
 std::mutex MemoryManager::m_locks[RecyclableType::RT_COUNT];
 Recyclable * MemoryManager::m_free_lists[RecyclableType::RT_COUNT];
@@ -433,60 +430,6 @@ MemoryManager::cleanup()
     }
 
     // TODO: free m_network_buffer_free_list
-}
-
-void *
-MemoryManager::alloc_page()
-{
-    std::lock_guard<std::mutex> guard(m_page_lock);
-    void *page = m_page_free_list;
-
-    if (page == nullptr)
-    {
-        // TODO: allocate a batch of them
-        //PageSize page_size = sysconf(_SC_PAGE_SIZE);
-        page = static_cast<void*>(aligned_alloc(g_page_size, g_page_size));
-    }
-    else
-    {
-        m_page_free_list = *(static_cast<void**>(page));
-    }
-
-#ifdef _DEBUG
-    m_page_map[page] = true;
-#endif
-
-    Logger::trace("alloc_page: %p", page);
-    return page;
-}
-
-void
-MemoryManager::free_page(void *page)
-{
-    std::lock_guard<std::mutex> guard(m_page_lock);
-
-#ifdef _DEBUG
-    auto result = m_page_map.find(page);
-
-    if (result == m_page_map.end())
-    {
-        Logger::fatal("Trying to free page that's not allocated by MM: %p", page);
-        return;
-    }
-
-    if (! result->second)
-    {
-        Logger::fatal("Trying to double free page: %p", page);
-        return;
-    }
-
-    m_page_map[page] = false;
-#endif
-
-    *((void**)page) = m_page_free_list;
-    m_page_free_list = page;
-
-    Logger::trace("free_page: %p", page);
 }
 
 Recyclable *

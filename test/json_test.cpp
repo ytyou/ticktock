@@ -17,6 +17,7 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+#include "dp.h"
 #include "json.h"
 #include "json_test.h"
 
@@ -29,6 +30,73 @@ namespace tt_test
 
 void
 JsonTests::run()
+{
+    dp_json_tests();
+    query_json_tests();
+}
+
+void
+JsonTests::dp_json_tests()
+{
+    {
+        // timestamp and value are NOT quoted
+        char buff[1024], *curr;
+        strcpy(buff, "{\"metric\":\"test.metric\",\"timestamp\":123456789,\"value\":10,\"tags\":{\"key\":\"val\"}},{");
+        DataPoint dp;
+        curr = dp.from_json(buff);
+        CONFIRM(curr != nullptr);
+        CONFIRM(*curr == ',');
+        CONFIRM(strcmp("test.metric", dp.get_metric()) == 0);
+        CONFIRM(dp.get_timestamp() == 123456789);
+        CONFIRM(dp.get_value() == 10);
+        CONFIRM(strcmp("val", dp.get_tag_value("key")) == 0);
+    }
+
+    {
+        // timestamp IS quoted
+        char buff[1024], *curr;
+        strcpy(buff, "{\"metric\":\"test.metric\",\"timestamp\":\"123456789\",\"value\":10,\"tags\":{\"key\":\"val\"}},{");
+        DataPoint dp;
+        curr = dp.from_json(buff);
+        CONFIRM(curr != nullptr);
+        CONFIRM(*curr == ',');
+        CONFIRM(strcmp("test.metric", dp.get_metric()) == 0);
+        CONFIRM(dp.get_timestamp() == 123456789);
+        CONFIRM(dp.get_value() == 10);
+        CONFIRM(strcmp("val", dp.get_tag_value("key")) == 0);
+    }
+
+    {
+        // value IS quoted
+        char buff[1024], *curr;
+        strcpy(buff, "{\"metric\":\"test.metric\",\"timestamp\":123456789,\"value\":\"10\",\"tags\":{\"key\":\"val\"}},{");
+        DataPoint dp;
+        curr = dp.from_json(buff);
+        CONFIRM(curr != nullptr);
+        CONFIRM(*curr == ',');
+        CONFIRM(strcmp("test.metric", dp.get_metric()) == 0);
+        CONFIRM(dp.get_timestamp() == 123456789);
+        CONFIRM(dp.get_value() == 10);
+        CONFIRM(strcmp("val", dp.get_tag_value("key")) == 0);
+    }
+
+    {
+        // timestamp and value ARE quoted
+        char buff[1024], *curr;
+        strcpy(buff, "{\"metric\":\"test.metric\",\"timestamp\":\"123456789\",\"value\":\"10\",\"tags\":{\"key\":\"val\"}},{");
+        DataPoint dp;
+        curr = dp.from_json(buff);
+        CONFIRM(curr != nullptr);
+        CONFIRM(*curr == ',');
+        CONFIRM(strcmp("test.metric", dp.get_metric()) == 0);
+        CONFIRM(dp.get_timestamp() == 123456789);
+        CONFIRM(dp.get_value() == 10);
+        CONFIRM(strcmp("val", dp.get_tag_value("key")) == 0);
+    }
+}
+
+void
+JsonTests::query_json_tests()
 {
     log("Running %s...", m_name);
 

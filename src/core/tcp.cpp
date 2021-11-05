@@ -945,7 +945,7 @@ TcpListener::listener0()
 
     g_thread_id = "tcp_listener_0";
 
-    Logger::info("entered epoll_wait() loop, fd=%d", m_epoll_fd);
+    Logger::debug("entered epoll_wait() loop, fd=%d", m_epoll_fd);
 
     while (! is_shutdown_requested())
     {
@@ -1022,7 +1022,7 @@ TcpListener::listener1()
 
     g_thread_id = "tcp_listener_" + std::to_string(m_id);
 
-    Logger::info("entered epoll_wait() loop, fd=%d", m_epoll_fd);
+    Logger::debug("entered epoll_wait() loop, fd=%d", m_epoll_fd);
 
     while (! is_shutdown_requested())
     {

@@ -54,10 +54,6 @@ public:
         return m_network_buffer_len;
     }
 
-    // page
-    static void* alloc_page();
-    static void free_page(void *page);
-
     static Recyclable *alloc_recyclable(RecyclableType type);
     static void free_recyclable(Recyclable *r);
     static void free_recyclables(Recyclable *r);
@@ -73,9 +69,6 @@ private:
 
     static std::mutex m_page_lock;
     static void *m_page_free_list;
-#ifdef _DEBUG
-    static std::unordered_map<void*,bool> m_page_map;   // for debugging only
-#endif
 
     static std::mutex m_locks[RecyclableType::RT_COUNT];
     static Recyclable *m_free_lists[RecyclableType::RT_COUNT];

@@ -323,7 +323,7 @@ void
 Stats::write_proc_stat(Timestamp tstamp, Tsdb *tsdb)
 {
     {
-        DataPoint dp(tstamp, (double)(g_proc_stats.rss*sysconf(_SC_PAGE_SIZE)));
+        DataPoint dp(tstamp, (double)(g_proc_stats.rss*g_page_size));
         dp.set_metric("ticktock.memory.rss");
         //dp.add_tag(METRIC_TAG_NAME, "ticktock.memory.rss");
         dp.add_tag(HOST_TAG_NAME, g_host_name.c_str());
@@ -373,7 +373,7 @@ Stats::collect_stats(char *buff, int size)
 long
 Stats::get_rss_mb()
 {
-    return (g_proc_stats.rss * sysconf(_SC_PAGE_SIZE)) / ONE_MEGABYTES;
+    return (g_proc_stats.rss * g_page_size) / ONE_MEGABYTES;
 }
 
 #ifdef _LEAK_DETECTION
