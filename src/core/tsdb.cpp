@@ -1899,10 +1899,10 @@ Tsdb::compact(TaskData& data)
     WriteLock *write_guard = nullptr;
     Meter meter(METRIC_TICKTOCK_TSDB_COMPACT_MS);
 
-    Logger::info("[COMPACTION] Finding tsdbs to compact...");
-
     // called from scheduled task? if so, enforce off-hour rule;
     if ((data.integer == 0) && ! is_off_hour()) return false;
+
+    Logger::info("[compact] Finding tsdbs to compact...");
 
     // Go through all the Tsdbs, from the oldest to the newest,
     // to find the first uncompacted Tsdb to compact.
@@ -1936,7 +1936,7 @@ Tsdb::compact(TaskData& data)
 
     if (tsdb != nullptr)
     {
-        Logger::info("[COMPACTION] Found this tsdb to compact: %T", tsdb);
+        Logger::info("[compact] Found this tsdb to compact: %T", tsdb);
         std::lock_guard<std::mutex> guard(tsdb->m_lock);
         TimeRange range = tsdb->get_time_range();
         MetaFile meta_file(get_file_name(range, "meta", true));
@@ -1971,15 +1971,15 @@ Tsdb::compact(TaskData& data)
             }
 
             tsdb->unload();
-            Logger::info("1 Tsdb compacted");
+            Logger::info("[compact] 1 Tsdb compacted");
         }
         catch (const std::exception& ex)
         {
-            Logger::error("compaction failed: %s", ex.what());
+            Logger::error("[compact] compaction failed: %s", ex.what());
         }
         catch (...)
         {
-            Logger::error("compaction failed for unknown reasons");
+            Logger::error("[compact] compaction failed for unknown reasons");
         }
 
         // mark it as compacted
@@ -2007,12 +2007,12 @@ Tsdb::compact(TaskData& data)
         }
         catch (const std::exception& ex)
         {
-            Logger::error("compaction failed: %s", ex.what());
+            Logger::error("[compact] compaction failed: %s", ex.what());
         }
     }
     else
     {
-        Logger::info("[COMPACTION] Did not find any appropriate Tsdb to compact.");
+        Logger::info("[compact] Did not find any appropriate Tsdb to compact.");
     }
 
     if (write_guard != nullptr) delete write_guard;

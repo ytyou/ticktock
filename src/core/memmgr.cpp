@@ -20,6 +20,7 @@
 #include <cassert>
 #include <cstdint>
 #include <cstring>
+#include <stdlib.h>
 #include <unistd.h>
 #include "admin.h"
 #include "compress.h"
@@ -80,8 +81,10 @@ MemoryManager::alloc_network_buffer()
     if (buff == nullptr)
     {
         // TODO: check if we have enough memory
-        buff = static_cast<char*>(malloc(mm->m_network_buffer_len));
-        ASSERT(buff != nullptr);
+        buff =
+            static_cast<char*>(aligned_alloc(g_page_size, mm->m_network_buffer_len));
+        if (buff == nullptr)
+            throw std::runtime_error("Out of memory");
         Logger::debug("allocate network_buffer %p", buff);
     }
     else
@@ -110,6 +113,8 @@ void
 MemoryManager::init()
 {
     m_network_buffer_len = Config::get_bytes(CFG_TCP_BUFFER_SIZE, CFG_TCP_BUFFER_SIZE_DEF);
+    // make sure it's multiple of g_page_size
+    m_network_buffer_len = ((long)m_network_buffer_len / g_page_size) * g_page_size;
     Logger::info("mm::m_network_buffer_len = %d", m_network_buffer_len);
     m_initialized = true;
 }
