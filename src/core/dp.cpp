@@ -130,18 +130,16 @@ DataPoint::from_json(char* json)
         {
             while ((*json != '{') && (*json != 0)) json++;
             json = next_tags(json);
+            if (json == nullptr) return nullptr;
         }
         else if (strcmp(key, "timestamp") == 0)
         {
             json = next_long(json, m_timestamp);
             ASSERT(g_tstamp_resolution_ms ? is_ms(m_timestamp) : is_sec(m_timestamp));
-            if (json == nullptr) return nullptr;
         }
         else if (strcmp(key, "value") == 0)
         {
             json = next_double(json, m_value);
-            if (json == nullptr) return nullptr;
-            if (*json == '"') json++;
         }
         else
         {
@@ -235,8 +233,12 @@ DataPoint::next_tags(char* json)
         char *name, *value;
         json = next_word(json, name);
         if (json == nullptr) return nullptr;
+        ASSERT(name != nullptr);
+        ASSERT(*name != ',');
         json = next_word(json, value);
         if (json == nullptr) return nullptr;
+        ASSERT(value != nullptr);
+        ASSERT(*value != ':');
         add_tag(name, value);
         while (std::isspace(*json)) json++;
     }

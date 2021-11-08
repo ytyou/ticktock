@@ -128,8 +128,6 @@ HttpServer::create_conn() const
 {
     HttpConnection *conn = (HttpConnection*)MemoryManager::alloc_recyclable(RecyclableType::RT_HTTP_CONNECTION);
     conn->forward = false;
-    conn->request.init();
-    conn->request.forward = false;
     return (TcpConnection*)conn;
 }
 
@@ -153,14 +151,26 @@ HttpServer::recv_http_data(TaskData& data)
 
     Logger::http("recv_http_data: conn=%p", conn->fd, conn);
 
+    char* buff;
+
     if (conn->buff != nullptr)
     {
-        return HttpServer::recv_http_data_cont(conn);
+        if (conn->state & TCS_NEW)
+        {
+            buff = conn->buff;
+            conn->buff = nullptr;
+            conn->state &= ~TCS_NEW;
+        }
+        else
+            return HttpServer::recv_http_data_cont(conn);
+    }
+    else
+    {
+        conn->state &= ~TCS_NEW;
+        buff = MemoryManager::alloc_network_buffer();
     }
 
     int fd = conn->fd;
-
-    char* buff = MemoryManager::alloc_network_buffer();
     int len = 0;
     bool conn_error = false;    // try to keep-alive
     bool free_buff = true;
@@ -276,7 +286,8 @@ HttpServer::recv_http_data(TaskData& data)
         conn->state |= TCS_ERROR;
     }
 
-    conn->pending_tasks--;
+    int n = --conn->pending_tasks;
+    ASSERT(n >= 0);
     return false;
 }
 
@@ -363,12 +374,12 @@ HttpServer::recv_http_data_cont(HttpConnection *conn)
 
             // This needs to be done AFTER send_response(),
             // or you are risking 2 threads both sending responses on the same fd.
-            conn->buff = nullptr;
+            //conn->buff = nullptr;
         }
         else
         {
             free_buff = false;
-            conn->buff = buff;
+            //conn->buff = buff;
             conn->offset = len;
             Logger::http("request.length = %d, len = %d, offset = %d", fd,
                 conn->request.length, len, conn->offset);
@@ -377,11 +388,15 @@ HttpServer::recv_http_data_cont(HttpConnection *conn)
     else
     {
         free_buff = false;
-        conn->buff = buff;
+        //conn->buff = buff;
         Logger::http("did not receive anything this time", fd);
     }
 
-    if (free_buff) MemoryManager::free_network_buffer(buff);
+    if (free_buff)
+    {
+        conn->buff = nullptr;
+        MemoryManager::free_network_buffer(buff);
+    }
 
     // closing the fd will deregister it from epoll
     // since we never dup() or fork(); but let's
@@ -394,7 +409,8 @@ HttpServer::recv_http_data_cont(HttpConnection *conn)
         conn->state |= TCS_ERROR;
     }
 
-    conn->pending_tasks--;
+    int n = --conn->pending_tasks;
+    ASSERT(n >= 0);
     return false;
 }
 

@@ -77,6 +77,7 @@ MemoryManager::alloc_network_buffer()
     char* buff = mm->m_network_buffer_free_list;
 
     ASSERT(m_initialized);
+    ASSERT(((long)buff % g_page_size) == 0);
 
     if (buff == nullptr)
     {
@@ -85,11 +86,13 @@ MemoryManager::alloc_network_buffer()
             static_cast<char*>(aligned_alloc(g_page_size, mm->m_network_buffer_len));
         if (buff == nullptr)
             throw std::runtime_error("Out of memory");
+        ASSERT(((long)buff % g_page_size) == 0);
         Logger::debug("allocate network_buffer %p", buff);
     }
     else
     {
         std::memcpy(&mm->m_network_buffer_free_list, buff, sizeof(void*));
+        ASSERT(((long)mm->m_network_buffer_free_list % g_page_size) == 0);
     }
 
     return buff;
@@ -98,6 +101,8 @@ MemoryManager::alloc_network_buffer()
 void
 MemoryManager::free_network_buffer(char* buff)
 {
+    ASSERT(((long)buff % g_page_size) == 0);
+    ASSERT(((long)mm->m_network_buffer_free_list % g_page_size) == 0);
     if (buff == nullptr)
     {
         Logger::error("Passing nullptr to MemoryManager::free_network_buffer()");

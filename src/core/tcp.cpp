@@ -423,7 +423,8 @@ TcpServer::recv_tcp_data(TaskData& data)
         conn->state |= TCS_ERROR;
     }
 
-    conn->pending_tasks--;
+    int n = --conn->pending_tasks;
+    ASSERT(n >= 0);
     return false;
 }
 
@@ -1131,7 +1132,11 @@ TcpListener::new_conn0()
             std::lock_guard<std::mutex> guard(m_lock);
             auto search = m_all_conn_map.find(fd);
             if (search != m_all_conn_map.end())
-                listener1 = search->second->listener;
+            {
+                TcpConnection *conn = search->second;
+                conn->state |= TCS_NEW;
+                listener1 = conn->listener;
+            }
             else
                 listener1 = m_server->next_listener();
         }
@@ -1179,10 +1184,20 @@ TcpListener::close_conn(int fd)
     if (search != m_conn_map.end())
     {
         TcpConnection *conn = search->second;
-        Logger::trace("close_conn: conn=%p fd=%d", conn, conn->fd);
-        m_conn_map.erase(search);
-        del_conn_from_all_map(fd);
-        MemoryManager::free_recyclable(conn);
+
+        // do not close the connection if there are pending tasks
+        if (conn->pending_tasks <= 0)
+        {
+            Logger::info("close_conn: conn=%p fd=%d", conn, conn->fd);
+            m_conn_map.erase(search);
+            del_conn_from_all_map(fd);
+            MemoryManager::free_recyclable(conn);
+        }
+        else
+        {
+            conn->state |= TCS_CLOSED;
+            conn->state &= ~TCS_REGISTERED;
+        }
     }
 
     deregister_with_epoll(fd);

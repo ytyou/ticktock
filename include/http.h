@@ -65,7 +65,6 @@ class HttpResponse : public Serializable
 public:
     int response_size;
     char *response;     // points to somewhere in the 'buffer', in most cases
-    char *buffer;       // original raw buffer
     char *id;           // X-Request-ID
     uint16_t status_code;
     HttpContentType content_type;
@@ -94,6 +93,8 @@ public:
     virtual ~HttpResponse();
 
 private:
+    char *buffer;       // original raw buffer
+
     static const char *status_code_to_reason(uint16_t status_code);
 };
 

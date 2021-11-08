@@ -1173,18 +1173,21 @@ Tsdb::http_api_put_handler(HttpRequest& request, HttpResponse& response)
 bool
 Tsdb::http_api_put_handler_json(HttpRequest& request, HttpResponse& response)
 {
-    Tsdb* tsdb = nullptr;
     char *curr = strchr(request.content, '[');
+    if (curr == nullptr) return false;
+
+    Tsdb* tsdb = nullptr;
     bool success = true;
 
     AppendLog::inst()->append(request.content, request.length);
 
     ReadLock *guard = nullptr;
 
-    while ((curr != nullptr) && (*curr != ']') && (*curr != 0))
+    while ((*curr != ']') && (*curr != 0))
     {
         DataPoint dp;
         curr = dp.from_json(curr+1);
+        if (curr == nullptr) break;
 
         //char buff[1024];
         //Logger::info("dp: %s", dp.c_str(buff, sizeof(buff)));
@@ -1207,11 +1210,7 @@ Tsdb::http_api_put_handler_json(HttpRequest& request, HttpResponse& response)
         }
 
         success = tsdb->add(dp) && success;
-
-        if (curr != nullptr)
-        {
-            while (isspace(*curr)) curr++;
-        }
+        while (isspace(*curr)) curr++;
     }
 
     if (guard != nullptr) delete guard;

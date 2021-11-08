@@ -54,6 +54,7 @@ class TcpListener;
 #define TCS_REGISTERED  0x00000001
 #define TCS_ERROR       0x00000002
 #define TCS_CLOSED      0x00000004
+#define TCS_NEW         0x00000008
 
 #define INVALID_WORKER_ID   (-1)
 
