@@ -22,6 +22,7 @@
 #include <fcntl.h>
 #include <fstream>
 #include <unistd.h>
+#include <sys/statvfs.h>
 #include "config.h"
 #include "global.h"
 #include "logger.h"
@@ -374,6 +375,16 @@ long
 Stats::get_rss_mb()
 {
     return (g_proc_stats.rss * g_page_size) / ONE_MEGABYTES;
+}
+
+long
+Stats::get_disk_avail()
+{
+    struct statvfs buff;
+    std::string data_dir = Config::get_str(CFG_TSDB_DATA_DIR, CFG_TSDB_DATA_DIR_DEF);
+    int rc = statvfs(data_dir.c_str(), &buff);
+    if (rc != 0) return -1;
+    return (buff.f_bsize * buff.f_bavail);
 }
 
 #ifdef _LEAK_DETECTION

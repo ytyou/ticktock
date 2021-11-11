@@ -107,6 +107,73 @@ TcpServer::start(int port)
     Logger::info("Starting TCP Server on port %d...", port);
 
     // 1. create and bind the socket
+    m_socket_fd = socket(AF_INET6, SOCK_STREAM, IPPROTO_TCP);
+    if (m_socket_fd == -1) return false;
+
+    // enable IPv4
+    int off = false;
+    int retval = setsockopt(m_socket_fd, IPPROTO_IPV6, IPV6_V6ONLY, (const void*)&off, sizeof(off));
+    if (retval < 0) Logger::error("Failed to setsockopt(IPV6_V6ONLY), errno: %d", errno);
+
+    if (g_opt_reuse_port)
+    {
+        int enable = 1;
+        retval = setsockopt(m_socket_fd, SOL_SOCKET, SO_REUSEPORT, &enable, sizeof(int));
+        if (retval < 0) Logger::error("Failed to setsockopt, errno: %d", errno);
+    }
+
+    // adjust TCP window size
+    int opt;
+    socklen_t optlen = sizeof(opt);
+    retval = getsockopt(m_socket_fd, SOL_SOCKET, SO_RCVBUF, &opt, &optlen);
+
+    if (retval == 0)
+        Logger::info("Original SO_RCVBUF = %d", opt);
+    else
+        Logger::info("getsockopt(SO_RCVBUF) failed, errno = %d", errno);
+
+    if (Config::exists(CFG_TCP_SOCKET_RCVBUF_SIZE))
+    {
+        opt = Config::get_bytes(CFG_TCP_SOCKET_RCVBUF_SIZE);
+        retval = setsockopt(m_socket_fd, SOL_SOCKET, SO_RCVBUF, &opt, optlen);
+        if (retval != 0)
+            Logger::warn("setsockopt(RCVBUF) failed, errno = %d", errno);
+        else
+            Logger::info("SO_RCVBUF set to %d", opt);
+    }
+
+    retval = getsockopt(m_socket_fd, SOL_SOCKET, SO_SNDBUF, &opt, &optlen);
+
+    if (retval == 0)
+        Logger::info("Original SO_SNDBUF = %d", opt);
+    else
+        Logger::info("getsockopt(SO_SNDBUF) failed, errno = %d", errno);
+
+    if (Config::exists(CFG_TCP_SOCKET_SNDBUF_SIZE))
+    {
+        opt = Config::get_bytes(CFG_TCP_SOCKET_SNDBUF_SIZE);
+        retval = setsockopt(m_socket_fd, SOL_SOCKET, SO_SNDBUF, &opt, optlen);
+        if (retval != 0)
+            Logger::warn("setsockopt(SNDBUF) failed, errno = %d", errno);
+        else
+            Logger::info("SO_SNDBUF set to %d", opt);
+    }
+
+    sockaddr_in6 addr = {};
+    addr.sin6_family = AF_INET6;
+    addr.sin6_port = htons(port);
+    addr.sin6_addr = in6addr_any;
+
+    retval = bind(m_socket_fd, (sockaddr*)&addr, sizeof(addr));
+
+    if (retval < 0)
+    {
+        close(m_socket_fd);
+        Logger::error("Failed to bind to any network interfaces, errno=%d", errno);
+        return false;
+    }
+
+#if 0
     struct addrinfo hints;
     struct addrinfo *result = nullptr, *ap;
 
@@ -186,6 +253,7 @@ TcpServer::start(int port)
     }
 
     freeaddrinfo(result);
+#endif
 
     // collect socket info (options)
     {

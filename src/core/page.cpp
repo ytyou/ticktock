@@ -375,7 +375,9 @@ PageManager::PageManager(TimeRange& range, PageCount id, bool temp) :
     m_total_size = (TsdbSize)page_count * (TsdbSize)g_page_size;
 
     bool is_new = open_mmap(page_count);
-    ASSERT(m_page_count != nullptr);
+
+    if (m_pages == nullptr)
+        return; // failed to open
 
     if (is_new)
     {
@@ -426,15 +428,12 @@ PageManager::init_headers()
     msync((void*)m_page_info, size, MS_SYNC);
 }
 
-void
+bool
 PageManager::reopen()
 {
     if (m_pages == nullptr)
-    {
         open_mmap(0);   // the parameter is unused since this file exists
-    }
-
-    ASSERT(m_page_count != nullptr);
+    return (m_pages != nullptr);
 }
 
 PageCount

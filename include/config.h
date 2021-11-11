@@ -110,6 +110,8 @@
 #define CFG_TSDB_FLUSH_FREQUENCY_DEF            "5min"
 #define CFG_TSDB_MAX_DP_LINE                    "tsdb.max.dp.line"
 #define CFG_TSDB_MAX_DP_LINE_DEF                256
+#define CFG_TSDB_MIN_DISK_SPACE                 "tsdb.min.disk.space"
+#define CFG_TSDB_MIN_DISK_SPACE_DEF             4
 #define CFG_TSDB_READ_ONLY_THRESHOLD            "tsdb.read_only.threshold"
 #define CFG_TSDB_READ_ONLY_THRESHOLD_DEF        "1h"
 #define CFG_TSDB_RETENTION_THRESHOLD            "tsdb.retention.threshold"
@@ -149,14 +151,14 @@ public:
         return starts_with(m_value, 't') || starts_with(m_value, 'T');
     }
 
-    inline int as_bytes() const
+    inline long as_bytes() const
     {
         return Property::as_bytes(m_value);
     }
 
-    static int as_bytes(const std::string& value)
+    static long as_bytes(const std::string& value)
     {
-        int bytes = std::stoi(value);
+        long bytes = std::stol(value);
         bytes *= get_bytes_factor(value);
         return bytes;
     }
@@ -213,8 +215,8 @@ public:
     static const std::string& get_str(const std::string& name);
     static const std::string& get_str(const std::string& name, const std::string& def_value);
 
-    static int get_bytes(const std::string& name);
-    static int get_bytes(const std::string& name, const std::string& def_value);
+    static long get_bytes(const std::string& name);
+    static long get_bytes(const std::string& name, const std::string& def_value);
     static long get_time(const std::string& name, const TimeUnit unit);
     static long get_time(const std::string& name, const TimeUnit unit, const std::string& def_value);
 

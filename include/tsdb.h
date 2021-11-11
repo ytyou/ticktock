@@ -242,8 +242,8 @@ private:
     Tsdb(TimeRange& range, bool existing);
     virtual ~Tsdb();
     //void open_meta();
-    void load_from_disk();
-    void load_from_disk_no_lock();
+    bool load_from_disk();          // return false if load failed
+    bool load_from_disk_no_lock();  // return false if load failed
     void unload();
     uint32_t mode_of() const;
 

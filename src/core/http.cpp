@@ -344,6 +344,22 @@ HttpServer::recv_http_data_cont(HttpConnection *conn)
         Logger::http("recv-cont'ed: offset=%d, len=%d\n%s", fd,
             conn->offset, len, &buff[conn->offset]);
 
+        // in case this is a new request, instead of second half of
+        // the request we've received previously
+        int offset = conn->offset;
+        if ((buff[offset] == 'P') || (buff[offset] == 'G'))
+        {
+            if ((std::strncmp(&buff[offset], "GET ", 4) == 0) &&
+                (std::strncmp(&buff[offset], "PUT ", 4) == 0) &&
+                (std::strncmp(&buff[offset], "POST ", 5) == 0))
+            {
+                // this appears to be the beginning of a new request
+                len -= offset;
+                std::memmove(&buff[0], &buff[offset], len+5);
+                conn->request.header_ok = false;    // re-parse header
+            }
+        }
+
         if (! conn->request.header_ok)
             parse_header(buff, len, conn->request);
 

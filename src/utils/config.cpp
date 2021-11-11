@@ -181,7 +181,7 @@ Config::get_str(const std::string& name, const std::string& def_value)
     return property->as_str();
 }
 
-int
+long
 Config::get_bytes(const std::string& name)
 {
     std::lock_guard<std::mutex> guard(m_lock);
@@ -190,7 +190,7 @@ Config::get_bytes(const std::string& name)
     return property->as_bytes();
 }
 
-int
+long
 Config::get_bytes(const std::string& name, const std::string& def_value)
 {
     std::lock_guard<std::mutex> guard(m_lock);

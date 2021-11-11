@@ -1010,28 +1010,27 @@ Tsdb::inst(Timestamp tstamp, bool create)
     return tsdb;
 }
 
-void
+bool
 Tsdb::load_from_disk()
 {
     std::lock_guard<std::mutex> guard(m_lock);
-    load_from_disk_no_lock();
+    return load_from_disk_no_lock();
 }
 
-void
+bool
 Tsdb::load_from_disk_no_lock()
 {
     Meter meter(METRIC_TICKTOCK_TSDB_LOAD_TOTAL_MS);
 
     if (m_meta_file.is_open())
-        return; // already loaded
+        return true;    // already loaded
+
+    bool success = true;
 
     for (PageManager *pm: m_page_mgrs)
     {
         if (! pm->is_open())
-        {
-            pm->reopen();
-            ASSERT(pm->is_open());
-        }
+            success = pm->reopen() && success;
     }
 
     for (PageCount id = m_page_mgrs.size(); ; id++)
@@ -1039,10 +1038,11 @@ Tsdb::load_from_disk_no_lock()
         std::string file_name = get_file_name(m_time_range, std::to_string(id));
         if (! file_exists(file_name)) break;
         PageManager *pm = new PageManager(m_time_range, id);
-        pm->reopen();
-        ASSERT(pm->is_open());
+        success = pm->reopen() && success;
         m_page_mgrs.push_back(pm);
     }
+
+    if (! success) return false;
 
     // check/set compacted flag
     bool compacted = true;
@@ -1062,6 +1062,7 @@ Tsdb::load_from_disk_no_lock()
     m_meta_file.open(); // open for append
 
     m_load_time = ts_now_sec();
+    return true;
 }
 
 void
@@ -1150,7 +1151,11 @@ Tsdb::http_api_put_handler(HttpRequest& request, HttpResponse& response)
             guard = new ReadLock(tsdb->m_load_lock);    // prevent from unloading
             if (! (tsdb->m_mode & TSDB_MODE_READ))
             {
-                tsdb->load_from_disk();
+                if (! tsdb->load_from_disk())
+                {
+                    success = false;
+                    break;
+                }
                 tsdb->m_mode |= TSDB_MODE_READ_WRITE;
             }
             else
@@ -1164,7 +1169,7 @@ Tsdb::http_api_put_handler(HttpRequest& request, HttpResponse& response)
     }
 
     if (guard != nullptr) delete guard;
-    response.status_code = 200;
+    response.status_code = (success ? 200 : 500);
     response.content_length = 0;
 
     return success;
@@ -1199,7 +1204,11 @@ Tsdb::http_api_put_handler_json(HttpRequest& request, HttpResponse& response)
             guard = new ReadLock(tsdb->m_load_lock);    // prevent from unloading
             if (! (tsdb->m_mode & TSDB_MODE_READ))
             {
-                tsdb->load_from_disk();
+                if (! tsdb->load_from_disk())
+                {
+                    success = false;
+                    break;
+                }
                 tsdb->m_mode |= TSDB_MODE_READ_WRITE;
             }
             else
@@ -1214,7 +1223,7 @@ Tsdb::http_api_put_handler_json(HttpRequest& request, HttpResponse& response)
     }
 
     if (guard != nullptr) delete guard;
-    response.status_code = (success ? 200 : 400);
+    response.status_code = (success ? 200 : 500);
     response.content_length = 0;
 
     return success;
@@ -1302,7 +1311,11 @@ Tsdb::http_api_put_handler_plain(HttpRequest& request, HttpResponse& response)
             guard = new ReadLock(tsdb->m_load_lock);    // prevent from unloading
             if (! (tsdb->m_mode & TSDB_MODE_READ))
             {
-                tsdb->load_from_disk();
+                if (! tsdb->load_from_disk())
+                {
+                    success = false;
+                    break;
+                }
                 tsdb->m_mode |= TSDB_MODE_READ_WRITE;
             }
             else
@@ -1324,7 +1337,7 @@ Tsdb::http_api_put_handler_plain(HttpRequest& request, HttpResponse& response)
     if (forward && (tsdb != nullptr))
         success = tsdb->submit_data_points() && success; // flush
     if (guard != nullptr) delete guard;
-    response.status_code = (success ? 200 : 400);
+    response.status_code = (success ? 200 : 500);
 
     return success;
 }
@@ -1747,6 +1760,7 @@ Tsdb::rotate(TaskData& data)
     Meter meter(METRIC_TICKTOCK_TSDB_ROTATE_MS);
     Timestamp now = ts_now();
     std::vector<Tsdb*> tsdbs;
+    long disk_avail = Stats::get_disk_avail();
 
     TimeRange range(0, now);
     Tsdb::insts(range, tsdbs);
@@ -1785,6 +1799,9 @@ Tsdb::rotate(TaskData& data)
         }
 
         uint32_t mode = tsdb->mode_of();
+
+        if (disk_avail < 100000000L)    // TODO: get it from config
+            mode &= ~TSDB_MODE_WRITE;
 
         if (! (mode & TSDB_MODE_READ))
         {
@@ -1917,7 +1934,8 @@ Tsdb::compact(TaskData& data)
                 continue;
 
             ASSERT(! (*it)->m_meta_file.is_open());
-            (*it)->load_from_disk_no_lock();    // load from disk to see if it's already compacted
+            // load from disk to see if it's already compacted
+            if (! (*it)->load_from_disk_no_lock()) continue;
 
             if ((*it)->m_mode & TSDB_MODE_COMPACTED)
             {

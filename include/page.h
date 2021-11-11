@@ -311,7 +311,7 @@ public:
 
     void flush(bool sync);
     void close_mmap();
-    void reopen();
+    bool reopen();  // return false if reopen() failed
     void persist();
     void shrink_to_fit();
 

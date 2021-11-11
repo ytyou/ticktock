@@ -21,6 +21,7 @@
 #include "global.h"
 #include "kv.h"
 #include "logger.h"
+#include "stats.h"
 #include "tsdb.h"
 #include "timer.h"
 
@@ -30,6 +31,17 @@ namespace tt
 
 
 static const char *HTTP_MSG_PONG = "pong";
+
+void
+Admin::init()
+{
+    if (Config::get_int(CFG_TSDB_MIN_DISK_SPACE, CFG_TSDB_MIN_DISK_SPACE_DEF) > 0)
+    {
+        Task task;
+        task.doit = &Admin::shutdown_if_disk_full;
+        Timer::inst()->add_task(task, 10, "admin_disk_guard");
+    }
+}
 
 bool
 Admin::http_post_api_admin_handler(HttpRequest& request, HttpResponse& response)
@@ -188,6 +200,21 @@ Admin::shutdown(TaskData& data)
     Logger::trace("Admin::shutdown() entered");
     if ((http_server_ptr != nullptr) && ! http_server_ptr->is_shutdown_requested())
         http_server_ptr->shutdown();
+    return false;
+}
+
+bool
+Admin::shutdown_if_disk_full(TaskData& data)
+{
+    long page_cnt = Config::get_int(CFG_TSDB_PAGE_COUNT, CFG_TSDB_PAGE_COUNT_DEF);
+    long min_disk = Config::get_int(CFG_TSDB_MIN_DISK_SPACE, CFG_TSDB_MIN_DISK_SPACE_DEF);
+
+    if (Stats::get_disk_avail() < (min_disk*g_page_size*page_cnt))
+    {
+        Logger::warn("Disk full, shutting down...");
+        shutdown(data);
+    }
+
     return false;
 }
 

@@ -35,6 +35,7 @@ class MemoryManager;
 class Admin
 {
 public:
+    static void init();
     static bool http_post_api_admin_handler(HttpRequest& request, HttpResponse& response);
 
 private:
@@ -48,6 +49,7 @@ private:
     static bool cmd_stop(KeyValuePair *params, HttpResponse& response);
 
     static bool shutdown(TaskData& data);
+    static bool shutdown_if_disk_full(TaskData& data);
 };
 
 

@@ -28,6 +28,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <getopt.h>
+#include "admin.h"
 #include "config.h"
 #include "append.h"
 #include "memmgr.h"
@@ -287,6 +288,7 @@ initialize()
     Stats::init();
     QueryExecutor::init();
     //SanityChecker::init();
+    Admin::init();
     Timer::inst()->start();
 
     unsigned int n = std::thread::hardware_concurrency();
@@ -391,6 +393,7 @@ main(int argc, char *argv[])
     std::signal(SIGINT, intr_handler);
     std::signal(SIGTERM, intr_handler);
     std::signal(SIGABRT, intr_handler);
+    std::signal(SIGBUS, intr_handler);
 
     // wait for HTTP server to stop
     http_server.wait(0);
