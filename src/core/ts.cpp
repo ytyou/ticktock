@@ -175,7 +175,7 @@ TimeSeries::add_data_point(DataPoint& dp)
 
     Timestamp last_tstamp = m_buff->get_last_tstamp();
 
-    if ((dp.get_timestamp() < last_tstamp) && (! m_buff->is_empty()))
+    if ((dp.get_timestamp() <= last_tstamp) && (! m_buff->is_empty()))
     {
         return add_ooo_data_point(dp);
     }
