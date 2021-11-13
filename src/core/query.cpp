@@ -787,9 +787,19 @@ QueryExecutor::http_post_api_query_handler(HttpRequest& request, HttpResponse& r
 
     Logger::debug("Handling post request: %T", &request);
 
+    if (request.content == nullptr)
+    {
+        response.init(400, HttpContentType::PLAIN);
+        return false;
+    }
+
     JsonParser::parse_map(request.content, map);
     auto search = map.find("start");
-    if (search == map.end()) return false;  // will send '400 Bad Request' back
+    if (search == map.end())
+    {
+        response.init(400, HttpContentType::PLAIN);
+        return false;
+    }
 
     Timestamp now = ts_now();
     Timestamp start = parse_ts(search->second, now);
@@ -810,7 +820,11 @@ QueryExecutor::http_post_api_query_handler(HttpRequest& request, HttpResponse& r
     }
 
     search = map.find("queries");
-    if (search == map.end()) return false;  // will send '400 Bad Request' back
+    if (search == map.end())
+    {
+        response.init(400, HttpContentType::PLAIN);
+        return false;
+    }
     JsonArray& array = search->second->to_array();
 
     StringBuffer strbuf;

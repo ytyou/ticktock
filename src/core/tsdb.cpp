@@ -1179,7 +1179,12 @@ bool
 Tsdb::http_api_put_handler_json(HttpRequest& request, HttpResponse& response)
 {
     char *curr = strchr(request.content, '[');
-    if (curr == nullptr) return false;
+
+    if (curr == nullptr)
+    {
+        response.init(400, HttpContentType::PLAIN);
+        return false;
+    }
 
     Tsdb* tsdb = nullptr;
     bool success = true;
@@ -1223,9 +1228,7 @@ Tsdb::http_api_put_handler_json(HttpRequest& request, HttpResponse& response)
     }
 
     if (guard != nullptr) delete guard;
-    response.status_code = (success ? 200 : 500);
-    response.content_length = 0;
-
+    response.init((success ? 200 : 500), HttpContentType::PLAIN);
     return success;
 }
 
@@ -1337,7 +1340,7 @@ Tsdb::http_api_put_handler_plain(HttpRequest& request, HttpResponse& response)
     if (forward && (tsdb != nullptr))
         success = tsdb->submit_data_points() && success; // flush
     if (guard != nullptr) delete guard;
-    response.status_code = (success ? 200 : 500);
+    response.init((success ? 200 : 500), HttpContentType::PLAIN);
 
     return success;
 }
@@ -1352,11 +1355,19 @@ Tsdb::http_get_api_suggest_handler(HttpRequest& request, HttpResponse& response)
     request.parse_params(params);
 
     auto search = params.find("type");
-    if (search == params.end()) return false;
+    if (search == params.end())
+    {
+        response.init(400, HttpContentType::PLAIN);
+        return false;
+    }
     const char *type = search->second->to_string();
 
     search = params.find("q");
-    if (search == params.end()) return false;
+    if (search == params.end())
+    {
+        response.init(400, HttpContentType::PLAIN);
+        return false;
+    }
     const char *prefix = search->second->to_string();
 
     int max = 1000;
@@ -1449,6 +1460,7 @@ Tsdb::http_get_api_suggest_handler(HttpRequest& request, HttpResponse& response)
     }
     else
     {
+        response.init(400, HttpContentType::PLAIN);
         Logger::warn("Unrecognized suggest type: %s", type);
         return false;
     }

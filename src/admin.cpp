@@ -70,6 +70,7 @@ Admin::http_post_api_admin_handler(HttpRequest& request, HttpResponse& response)
     }
 
     bool status = true;
+    std::string msg;
 
     try
     {
@@ -95,20 +96,31 @@ Admin::http_post_api_admin_handler(HttpRequest& request, HttpResponse& response)
         }
         else
         {
-            const char *msg = "unrecognized cmd";
-            response.init(400, HttpContentType::PLAIN, strlen(msg), msg);
+            msg = "unrecognized cmd: ";
+            msg += cmd;
             status = false;
         }
     }
     catch (const std::exception& ex)
     {
         status = false;
+        msg = ex.what();
         Logger::error("Failed to execute cmd %s: %s", cmd, ex.what());
     }
     catch (...)
     {
         status = false;
+        msg = "Failed to execute cmd: ";
+        msg += cmd;
         Logger::error("Failed to execute cmd %s for unknown reasons", cmd);
+    }
+
+    if (! status)
+    {
+        if (msg.empty())
+            response.init(400, HttpContentType::PLAIN);
+        else
+            response.init(400, HttpContentType::PLAIN, msg.size(), msg.c_str());
     }
 
     return status;
@@ -133,9 +145,7 @@ Admin::cmd_log(KeyValuePair *params, HttpResponse& response)
     const char *level = KeyValuePair::get_value(params, "level");
 
     if (level != nullptr)
-    {
         Logger::set_level(level);
-    }
 
     const char *action = KeyValuePair::get_value(params, "action");
 

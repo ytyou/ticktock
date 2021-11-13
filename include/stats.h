@@ -64,8 +64,8 @@ class Stats
 {
 public:
     static void init();
-    static long get_rss_mb();
-    static long get_disk_avail();
+    static uint64_t get_rss_mb();
+    static uint64_t get_disk_avail();
 
     // get available physical memory page count
     static inline long get_avphys_pages()

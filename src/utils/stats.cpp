@@ -371,20 +371,20 @@ Stats::collect_stats(char *buff, int size)
 }
 
 // Return our current memory usage (RSS) in MB
-long
+uint64_t
 Stats::get_rss_mb()
 {
-    return (g_proc_stats.rss * g_page_size) / ONE_MEGABYTES;
+    return ((uint64_t)g_proc_stats.rss * (uint64_t)g_page_size) / (uint64_t)ONE_MEGABYTES;
 }
 
-long
+uint64_t
 Stats::get_disk_avail()
 {
     struct statvfs buff;
     std::string data_dir = Config::get_str(CFG_TSDB_DATA_DIR, CFG_TSDB_DATA_DIR_DEF);
     int rc = statvfs(data_dir.c_str(), &buff);
     if (rc != 0) return -1;
-    return (buff.f_bsize * buff.f_bavail);
+    return ((uint64_t)buff.f_bsize * (uint64_t)buff.f_bavail);
 }
 
 #ifdef _LEAK_DETECTION

@@ -248,13 +248,7 @@ HttpServer::recv_http_data(TaskData& data)
             if (! process_request(conn->request, conn->response))
                 conn_error = true;
 
-            if ((conn->response.status_code == 200) && (conn->response.content_length == 0))
-            {
-                HTTP_200.id = conn->request.id;
-                HttpServer::send_response(fd, HTTP_200);
-            }
-            else
-                HttpServer::send_response(fd, conn->response);
+            HttpServer::send_response(fd, conn->response);
 
             // This needs to be done AFTER send_response(),
             // or you are risking 2 threads both sending responses on the same fd.
@@ -380,13 +374,7 @@ HttpServer::recv_http_data_cont(HttpConnection *conn)
             if (! process_request(conn->request, conn->response))
                 conn_error = true;
 
-            if ((conn->response.status_code == 200) && (conn->response.content_length == 0))
-            {
-                HTTP_200.id = conn->request.id;
-                HttpServer::send_response(fd, HTTP_200);
-            }
-            else
-                HttpServer::send_response(fd, conn->response);
+            HttpServer::send_response(fd, conn->response);
 
             // This needs to be done AFTER send_response(),
             // or you are risking 2 threads both sending responses on the same fd.
@@ -489,10 +477,6 @@ HttpServer::get_post_handler(const char *path)
 bool
 HttpServer::send_response(int fd, HttpResponse& response)
 {
-#ifdef _DEBUG
-    Logger::debug("sending %d bytes...", response.response_size);
-#endif
-
     size_t target;
     ssize_t sent = 0;
     size_t no_progress_cnt = 0;
@@ -679,8 +663,7 @@ HttpServer::process_request(HttpRequest& request, HttpResponse& response)
         }
         catch (...)
         {
-            response.status_code = 400;
-            response.content_length = 0;
+            response.init(400, HttpContentType::PLAIN);
             Logger::debug("Failed to process http request with unknown exception");
         }
 
@@ -688,8 +671,7 @@ HttpServer::process_request(HttpRequest& request, HttpResponse& response)
     }
     else
     {
-        response.status_code = 404;
-        response.content_length = 0;
+        response.init(404, HttpContentType::PLAIN);
         Logger::error("Unhandled request: %T", &request);
     }
 
@@ -769,9 +751,7 @@ HttpResponse::init(uint16_t code, HttpContentType type)
     content_length = 0;
 
     if (response == nullptr)
-    {
         response = buffer = MemoryManager::alloc_network_buffer();
-    }
 
     response_size = sprintf(response, "HTTP/1.1 %3d %s%sContent-Length: 0%sContent-Type: %s%s%s",
         status_code, status_code_to_reason(status_code),
