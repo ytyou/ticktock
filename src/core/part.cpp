@@ -38,9 +38,9 @@ namespace tt
 {
 
 
-int BackLog::m_rotation_size = 0;
-int PartitionBuffer::m_max_line = 0;
-int PartitionBuffer::m_buff_size = 0;
+uint64_t BackLog::m_rotation_size = 0;
+uint64_t PartitionBuffer::m_max_line = 0;
+uint64_t PartitionBuffer::m_buff_size = 0;
 std::map<int,PartitionServer*> PartitionManager::m_servers;
 
 // indexed by PartitionServer::m_id

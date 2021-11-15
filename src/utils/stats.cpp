@@ -254,18 +254,18 @@ Stats::collect_proc_io(Timestamp tstamp, Tsdb *tsdb)
 
     if (stat_file.is_open())
     {
-        long read_bytes = -1;
-        long write_bytes = -1;
+        uint64_t read_bytes = -1;
+        uint64_t write_bytes = -1;
 
         for (std::string line; std::getline(stat_file, line); )
         {
             if (starts_with(line.c_str(), "read"))
             {
-                read_bytes = std::stol(line.c_str() + 12);
+                read_bytes = std::stoull(line.c_str() + 12);
             }
             else if (starts_with(line.c_str(), "write"))
             {
-                write_bytes = std::stol(line.c_str() + 13);
+                write_bytes = std::stoull(line.c_str() + 13);
             }
         }
 

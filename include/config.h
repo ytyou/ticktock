@@ -151,14 +151,14 @@ public:
         return starts_with(m_value, 't') || starts_with(m_value, 'T');
     }
 
-    inline long as_bytes() const
+    inline uint64_t as_bytes() const
     {
         return Property::as_bytes(m_value);
     }
 
-    static long as_bytes(const std::string& value)
+    static uint64_t as_bytes(const std::string& value)
     {
-        long bytes = std::stol(value);
+        uint64_t bytes = std::stoull(value);
         bytes *= get_bytes_factor(value);
         return bytes;
     }
@@ -168,14 +168,14 @@ public:
         return std::stoi(m_value);
     }
 
-    inline long as_time(TimeUnit unit) const
+    inline Timestamp as_time(TimeUnit unit) const
     {
         return Property::as_time(m_value, unit);
     }
 
-    static long as_time(const std::string& val, TimeUnit unit)
+    static Timestamp as_time(const std::string& val, TimeUnit unit)
     {
-        long time = std::stol(val);
+        Timestamp time = std::stoull(val);
         TimeUnit u = to_time_unit(val.c_str(), val.size());
         if (u == TimeUnit::UNKNOWN) throw std::exception();
         return convert_time(time, u, unit);
@@ -215,10 +215,10 @@ public:
     static const std::string& get_str(const std::string& name);
     static const std::string& get_str(const std::string& name, const std::string& def_value);
 
-    static long get_bytes(const std::string& name);
-    static long get_bytes(const std::string& name, const std::string& def_value);
-    static long get_time(const std::string& name, const TimeUnit unit);
-    static long get_time(const std::string& name, const TimeUnit unit, const std::string& def_value);
+    static uint64_t get_bytes(const std::string& name);
+    static uint64_t get_bytes(const std::string& name, const std::string& def_value);
+    static Timestamp get_time(const std::string& name, const TimeUnit unit);
+    static Timestamp get_time(const std::string& name, const TimeUnit unit, const std::string& def_value);
 
     // will override existing value, if any
     static void set_value(const std::string& name, const std::string& value);

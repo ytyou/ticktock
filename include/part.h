@@ -49,7 +49,7 @@ public:
         return m_buff;
     }
 
-    inline int size() const
+    inline uint64_t size() const
     {
         return m_size;
     }
@@ -59,7 +59,7 @@ public:
         return m_buff_size;
     }
 
-    inline void set_size(size_t size)
+    inline void set_size(uint64_t size)
     {
         ASSERT(size < m_buff_size);
         m_size = size;
@@ -83,10 +83,10 @@ public:
 
 private:
     char *m_buff;
-    int m_size;
+    uint64_t m_size;
 
-    static int m_max_line;
-    static int m_buff_size;
+    static uint64_t m_max_line;
+    static uint64_t m_buff_size;
 };
 
 
@@ -116,13 +116,13 @@ private:
 
     int m_server_id;
     FILE *m_file;
-    int m_size;     // in bytes
+    uint64_t m_size;    // in bytes
     std::string m_file_name;
 
     bool m_open_for_read;
     bool m_open_for_append;
 
-    static int m_rotation_size;
+    static uint64_t m_rotation_size;
 };
 
 

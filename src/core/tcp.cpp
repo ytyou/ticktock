@@ -123,7 +123,7 @@ TcpServer::start(int port)
     }
 
     // adjust TCP window size
-    int opt;
+    uint64_t opt;
     socklen_t optlen = sizeof(opt);
     retval = getsockopt(m_socket_fd, SOL_SOCKET, SO_RCVBUF, &opt, &optlen);
 

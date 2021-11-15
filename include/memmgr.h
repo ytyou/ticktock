@@ -49,7 +49,7 @@ public:
     static char* alloc_network_buffer();
     static void free_network_buffer(char *buff);
 
-    inline static size_t get_network_buffer_size()
+    inline static uint64_t get_network_buffer_size()
     {
         return m_network_buffer_len;
     }
@@ -63,7 +63,7 @@ private:
     MemoryManager();
 
     static bool m_initialized;      // must initialize before using
-    static size_t m_network_buffer_len;
+    static uint64_t m_network_buffer_len;
 
     char *m_network_buffer_free_list;
 

@@ -181,7 +181,7 @@ Config::get_str(const std::string& name, const std::string& def_value)
     return property->as_str();
 }
 
-long
+uint64_t
 Config::get_bytes(const std::string& name)
 {
     std::lock_guard<std::mutex> guard(m_lock);
@@ -190,7 +190,7 @@ Config::get_bytes(const std::string& name)
     return property->as_bytes();
 }
 
-long
+uint64_t
 Config::get_bytes(const std::string& name, const std::string& def_value)
 {
     std::lock_guard<std::mutex> guard(m_lock);
@@ -201,7 +201,7 @@ Config::get_bytes(const std::string& name, const std::string& def_value)
         return property->as_bytes();
 }
 
-long
+Timestamp
 Config::get_time(const std::string& name, TimeUnit unit)
 {
     std::lock_guard<std::mutex> guard(m_lock);
@@ -210,7 +210,7 @@ Config::get_time(const std::string& name, TimeUnit unit)
     return property->as_time(unit);
 }
 
-long
+Timestamp
 Config::get_time(const std::string& name, TimeUnit unit, const std::string& def_value)
 {
     std::lock_guard<std::mutex> guard(m_lock);

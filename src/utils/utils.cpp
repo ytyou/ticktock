@@ -326,8 +326,8 @@ to_time_unit(const char *str, size_t len)
     return unit;
 }
 
-long
-convert_time(long time, TimeUnit from_unit, TimeUnit to_unit)
+Timestamp
+convert_time(Timestamp time, TimeUnit from_unit, TimeUnit to_unit)
 {
     if (from_unit == to_unit)
         return time;
@@ -453,10 +453,10 @@ convert_time(long time, TimeUnit from_unit, TimeUnit to_unit)
     return time;
 }
 
-int
+uint64_t
 get_bytes_factor(const std::string& str)
 {
-    int factor = 1;
+    uint64_t factor = 1;
     size_t i;
 
     for (i = 0; i < str.size(); i++)
