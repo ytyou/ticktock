@@ -41,7 +41,7 @@ namespace tt
 
 
 bool MemoryManager::m_initialized = false;
-size_t MemoryManager::m_network_buffer_len = 0;
+uint64_t MemoryManager::m_network_buffer_len = 0;
 
 std::mutex MemoryManager::m_page_lock;
 void *MemoryManager::m_page_free_list = nullptr;
