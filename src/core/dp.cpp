@@ -68,7 +68,7 @@ DataPoint::from_http(char *http)
 
     // timestamp
     for (curr2 = curr1+10; *curr2 != ' '; curr2++) /* do nothing */;
-    m_timestamp = std::atol(curr1);
+    m_timestamp = std::stoull(curr1);
     ASSERT(g_tstamp_resolution_ms ? is_ms(m_timestamp) : is_sec(m_timestamp));
     curr1 = curr2 + 1;
     if (*curr1 == 0) return nullptr;
@@ -175,7 +175,7 @@ DataPoint::from_plain(char* &text)
         text = strchr(text, ' ');
     if (text == nullptr) { m_metric = nullptr; return false; }
     *text++ = 0;
-    m_timestamp = std::atol(text);
+    m_timestamp = std::stoull(text);
     ASSERT(g_tstamp_resolution_ms ? is_ms(m_timestamp) : is_sec(m_timestamp));
     text = strchr(text, ' ');
     if (text == nullptr) { m_metric = nullptr; return false; }
@@ -208,7 +208,7 @@ char *
 DataPoint::next_long(char* json, Timestamp &number)
 {
     while (! std::isdigit(*json) && (*json != 0) && (*json != '\n')) json++;
-    number = std::atol(json);
+    number = std::stoull(json);
     //number = (g_tstamp_resolution_ms ? to_ms(number) : to_sec(number));
     while (std::isdigit(*json)) json++;
     if (*json == '"') json++;   // in case the number is quoted

@@ -358,7 +358,7 @@ Stats::collect_stats(char *buff, int size)
     if (tsdb == nullptr) return 0;
 
     int len = snprintf(buff, size,
-        "ticktock.connection.count %" PRIu64 " %d %s=%s\nticktock.time_series.count %" PRIu64 " %d %s=%s\nticktock.page.used.percent %" PRIu64 " %f %s=%s\nticktock.ooo_page.count %" PRIu64 " %d %s=%s\nticktock.timer.pending_task.count %" PRIu64 " %lu %s=%s\n",
+        "ticktock.connection.count %" PRIu64 " %d %s=%s\nticktock.time_series.count %" PRIu64 " %d %s=%s\nticktock.page.used.percent %" PRIu64 " %f %s=%s\nticktock.ooo_page.count %" PRIu64 " %d %s=%s\nticktock.timer.pending_task.count %" PRIu64 " %zu %s=%s\n",
         now, TcpListener::get_active_conn_count(), HOST_TAG_NAME, g_host_name.c_str(),
         now, Tsdb::get_ts_count(), HOST_TAG_NAME, g_host_name.c_str(),
         now, tsdb->get_page_percent_used(), HOST_TAG_NAME, g_host_name.c_str(),

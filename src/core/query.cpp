@@ -157,7 +157,7 @@ Query::Query(JsonMap& map, StringBuffer& strbuf) :
     search = map.find("end");
     Timestamp end;
     if (search != map.end())
-        end = atol(search->second->to_string());
+        end = std::stoull(search->second->to_string());
     else
         end = now;
     end = validate_resolution(end);

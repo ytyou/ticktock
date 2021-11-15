@@ -1532,8 +1532,8 @@ Tsdb::init()
             if (tokens.size() != 3) continue;
 
             // these are always in seconds
-            Timestamp start = atol(tokens[0].c_str());
-            Timestamp end = atol(tokens[1].c_str());
+            Timestamp start = std::stoull(tokens[0].c_str());
+            Timestamp end = std::stoull(tokens[1].c_str());
 
             if (g_tstamp_resolution_ms)
             {

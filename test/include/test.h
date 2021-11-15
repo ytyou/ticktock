@@ -106,7 +106,7 @@ public:
                 tt::JsonMap& dpsMap = map["dps"]->to_map();
                 for (auto& it: dpsMap)
                 {
-                    dps.emplace_back(std::atol(it.first), it.second->to_double());
+                    dps.emplace_back(std::stoull(it.first), it.second->to_double());
                     //printf("%s: %f\n", it.first, it.second->to_double());
                 }
             }
