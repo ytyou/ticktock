@@ -337,8 +337,8 @@ convert_time(Timestamp time, TimeUnit from_unit, TimeUnit to_unit)
         case TimeUnit::MS:
             switch (to_unit)
             {
-                case TimeUnit::YEAR:    time /= 365 * 24 * 3600000L; break;
-                case TimeUnit::MONTH:   time /= 30 * 24 * 3600000L;  break;
+                case TimeUnit::YEAR:    time /= 365 * 24 * (Timestamp)3600000;  break;
+                case TimeUnit::MONTH:   time /= 30 * 24 * (Timestamp)3600000;   break;
                 case TimeUnit::WEEK:    time /= 7;
                 case TimeUnit::DAY:     time /= 24;
                 case TimeUnit::HOUR:    time /= 60;
