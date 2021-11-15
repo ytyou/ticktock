@@ -296,7 +296,7 @@ DataPoint::c_str(char* buff) const
 {
     char *curr = buff;
     size_t size = c_size();
-    int n = std::snprintf(buff, size, "%s %ld %lf", m_metric, m_timestamp, m_value);
+    int n = std::snprintf(buff, size, "%s %" PRIu64 " %lf", m_metric, m_timestamp, m_value);
 
     Tag *tag = m_tags;
 
@@ -364,7 +364,7 @@ DataPointSet::c_str(char* buff) const
 
     for (int i = 0; (i < m_count) && (size > 0); i++)
     {
-        n = std::snprintf(buff, size, "%ld %lf", get_timestamp(i), get_value(i));
+        n = std::snprintf(buff, size, "%" PRIu64 " %lf", get_timestamp(i), get_value(i));
 
         Tag *tag = m_tags;
 

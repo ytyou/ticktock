@@ -108,7 +108,7 @@ close_mmap(int fd, char *base, int size)
 void
 dump_tsdb_header(struct tsdb_header *tsdb_header)
 {
-    printf("TSDB: (major=%d, minor=%d, page_cnt=%d, head_idx=%d, page_idx=%d, start=%ld, end=%ld, actual_cnt=%d, flags=0x%x)\n",
+    printf("TSDB: (major=%d, minor=%d, page_cnt=%d, head_idx=%d, page_idx=%d, start=%" PRIu64 ", end=%" PRIu64 ", actual_cnt=%d, flags=0x%x)\n",
         tsdb_header->m_major_version, tsdb_header->m_minor_version,
         tsdb_header->m_page_count, tsdb_header->m_header_index,
         tsdb_header->m_page_index, tsdb_header->m_start_tstamp,
@@ -156,7 +156,7 @@ dump_data(struct tsdb_header *tsdb_header, int header_index)
     compressor->restore(dps, position, nullptr);
     printf("dps.size() == %d, pos.offset = %d, pos.start = %d\n",
         (int)dps.size(), position.m_offset, position.m_start);
-    for (auto& dp: dps) printf("ts = %ld, value = %.2f\n", dp.first, dp.second);
+    for (auto& dp: dps) printf("ts = %" PRIu64 ", value = %.2f\n", dp.first, dp.second);
     delete compressor;
 }
 

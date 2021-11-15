@@ -786,14 +786,14 @@ PageManager::resize(long old_size)
 void
 PageManager::shrink_to_fit()
 {
-    long old_total_size = m_total_size;
+    TsdbSize old_total_size = m_total_size;
     PageCount id = *m_header_index - 1;
     struct page_info_on_disk *header = get_page_info_on_disk(id);
     PageCount last = header->m_page_index + 1;
     *m_actual_pg_cnt = last;
     m_total_size = last * g_page_size;
     persist_compacted_flag(true);
-    Logger::debug("shrink from %ld to %ld", old_total_size, m_total_size);
+    Logger::debug("shrink from %" PRIu64 " to %" PRIu64, old_total_size, m_total_size);
     resize(old_total_size);
 }
 

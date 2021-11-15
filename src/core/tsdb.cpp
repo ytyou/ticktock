@@ -1506,7 +1506,7 @@ Tsdb::init()
 
     if (avail <= page_count)
     {
-        Logger::error("Not enough disk space at %s (%ld <= %ld)",
+        Logger::error("Not enough disk space at %s (%" PRIu64 " <= %ld)",
             data_dir.c_str(), avail, page_count);
     }
     else if (avail <= (2 * page_count))

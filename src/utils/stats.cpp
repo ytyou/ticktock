@@ -352,13 +352,13 @@ Stats::write_proc_stat(Timestamp tstamp, Tsdb *tsdb)
 int
 Stats::collect_stats(char *buff, int size)
 {
-    long now = ts_now();
+    Timestamp now = ts_now();
     Tsdb *tsdb = Tsdb::inst(now, false);
 
     if (tsdb == nullptr) return 0;
 
     int len = snprintf(buff, size,
-        "ticktock.connection.count %ld %d %s=%s\nticktock.time_series.count %ld %d %s=%s\nticktock.page.used.percent %ld %f %s=%s\nticktock.ooo_page.count %ld %d %s=%s\nticktock.timer.pending_task.count %ld %lu %s=%s\n",
+        "ticktock.connection.count %" PRIu64 " %d %s=%s\nticktock.time_series.count %" PRIu64 " %d %s=%s\nticktock.page.used.percent %" PRIu64 " %f %s=%s\nticktock.ooo_page.count %" PRIu64 " %d %s=%s\nticktock.timer.pending_task.count %" PRIu64 " %lu %s=%s\n",
         now, TcpListener::get_active_conn_count(), HOST_TAG_NAME, g_host_name.c_str(),
         now, Tsdb::get_ts_count(), HOST_TAG_NAME, g_host_name.c_str(),
         now, tsdb->get_page_percent_used(), HOST_TAG_NAME, g_host_name.c_str(),

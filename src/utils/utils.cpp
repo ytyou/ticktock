@@ -92,7 +92,7 @@ random(double from, double to)
 }
 
 // TODO: this is NOT WORKING!!!
-long
+Timestamp
 ts_now_ms()
 {
     using namespace std::chrono;
@@ -100,7 +100,7 @@ ts_now_ms()
     return duration_cast<milliseconds>(now.time_since_epoch()).count();
 }
 
-long
+Timestamp
 ts_now_sec()
 {
     return std::time(0);
@@ -117,7 +117,7 @@ ts_now(time_t& sec, unsigned int& msec)
     msec = ms.count() % 1000;
 }
 
-long
+Timestamp
 ts_now()
 {
     return (g_tstamp_resolution_ms ? ts_now_ms() : ts_now_sec());
@@ -815,7 +815,7 @@ void
 print_uint64_t_in_hex(uint64_t n)
 {
     uint8_t *x = reinterpret_cast<uint8_t*>(&n);
-    printf("%ld = 0x%02hhx%02hhx%02hhx%02hhx%02hhx%02hhx%02hhx%02hhx\n",
+    printf("%" PRIu64 " = 0x%02hhx%02hhx%02hhx%02hhx%02hhx%02hhx%02hhx%02hhx\n",
         n, x[0], x[1], x[2], x[3], x[4], x[5], x[6], x[7]);
 }
 

@@ -19,6 +19,7 @@
 
 #pragma once
 
+#include <inttypes.h>
 #include "serial.h"
 #include "type.h"
 #include "utils.h"
@@ -137,7 +138,7 @@ public:
 
     inline const char *c_str(char* buff) const override
     {
-        std::snprintf(buff, c_size(), "[%ld,%ld)", m_from, m_to);
+        std::snprintf(buff, c_size(), "[%" PRIu64 ",%" PRIu64 ")", m_from, m_to);
         return buff;
     }
 

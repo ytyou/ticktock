@@ -187,7 +187,7 @@ QueryTests::downsample_tests()
         dp.set_metric(metric);
         tsdb->add(dp);
         avg += dpp.second;
-        log("%ld: %f", dpp.first, dpp.second);
+        log("%" PRIu64 ": %f", dpp.first, dpp.second);
     }
 
     avg /= dps.size();

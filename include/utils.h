@@ -57,9 +57,9 @@ enum JsonValueType : unsigned char;
 
 extern int random(int from, int to);
 extern double random(double from, double to);
-extern long ts_now();   // return ts in either ms or sec, depending on g_tstamp_resolution_ms
-extern long ts_now_ms();
-extern long ts_now_sec();
+extern Timestamp ts_now();  // return ts in either ms or sec, depending on g_tstamp_resolution_ms
+extern Timestamp ts_now_ms();
+extern Timestamp ts_now_sec();
 extern void ts_now(char *buff, const size_t size);
 extern void ts_now(time_t& sec, unsigned int& msec);
 extern bool is_ms(Timestamp tstamp);

@@ -138,9 +138,9 @@ public:
         tt::HttpResponse response;
         char content[4096];
         if (downsample == nullptr)
-            sprintf(content, "{\"start\":%ld,\"queries\":[{\"metric\":\"%s\"}]}", start, metric);
+            sprintf(content, "{\"start\":%" PRIu64 ",\"queries\":[{\"metric\":\"%s\"}]}", start, metric);
         else
-            sprintf(content, "{\"start\":%ld,\"queries\":[{\"metric\":\"%s\",\"downsample\":\"%s\"}]}",
+            sprintf(content, "{\"start\":%" PRIu64 ",\"queries\":[{\"metric\":\"%s\",\"downsample\":\"%s\"}]}",
                 start, metric, downsample);
         request.init();
         request.content = content;

@@ -500,7 +500,7 @@ TimeSeries::compact(MetaFile& meta_file)
     for (auto& dp : dps)
     {
         ASSERT(range.in_range(dp.first));
-        Logger::trace("dp.first=%ld, dp.second=%f", dp.first, dp.second);
+        Logger::trace("dp.first=%" PRIu64 ", dp.second=%f", dp.first, dp.second);
 
         if (info == nullptr)
         {
