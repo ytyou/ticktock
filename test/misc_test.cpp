@@ -197,9 +197,9 @@ MiscTests::time_conv_tests()
     CONFIRM(to_time_unit("90y",3) == TimeUnit::YEAR);
 
     // time conversion
-    CONFIRM(convert_time(4*365*24*3600*1000L, TimeUnit::MS, TimeUnit::YEAR) == 4);
-    CONFIRM(convert_time(3*30*24*3600*1000L, TimeUnit::MS, TimeUnit::MONTH) == 3);
-    CONFIRM(convert_time(5*7*24*3600*1000L, TimeUnit::MS, TimeUnit::WEEK) == 5);
+    CONFIRM(convert_time((Timestamp)4*365*24*3600*1000L, TimeUnit::MS, TimeUnit::YEAR) == 4);
+    CONFIRM(convert_time((Timestamp)3*30*24*3600*1000L, TimeUnit::MS, TimeUnit::MONTH) == 3);
+    CONFIRM(convert_time((Timestamp)5*7*24*3600*1000L, TimeUnit::MS, TimeUnit::WEEK) == 5);
     CONFIRM(convert_time(8*24*3600*1000, TimeUnit::MS, TimeUnit::DAY) == 8);
     CONFIRM(convert_time(27*3600*1000, TimeUnit::MS, TimeUnit::HOUR) == 27);
     CONFIRM(convert_time(207*60*1000, TimeUnit::MS, TimeUnit::MIN) == 207);
@@ -258,7 +258,7 @@ MiscTests::time_conv_tests()
     CONFIRM(convert_time(27, TimeUnit::MONTH, TimeUnit::HOUR) == 27*30*24);
     CONFIRM(convert_time(2, TimeUnit::MONTH, TimeUnit::MIN) == 2*30*24*60);
     CONFIRM(convert_time(2, TimeUnit::MONTH, TimeUnit::SEC) == 2*30*24*3600);
-    CONFIRM(convert_time(2, TimeUnit::MONTH, TimeUnit::MS) == 2*30*24*3600000L);
+    CONFIRM(convert_time(2, TimeUnit::MONTH, TimeUnit::MS) == (Timestamp)2*30*24*3600000L);
 
     CONFIRM(convert_time(4, TimeUnit::YEAR, TimeUnit::YEAR) == 4);
     CONFIRM(convert_time(3, TimeUnit::YEAR, TimeUnit::MONTH) == (3*365)/30);
@@ -267,7 +267,7 @@ MiscTests::time_conv_tests()
     CONFIRM(convert_time(27, TimeUnit::YEAR, TimeUnit::HOUR) == 27*365*24);
     CONFIRM(convert_time(2, TimeUnit::YEAR, TimeUnit::MIN) == 2*365*24*60);
     CONFIRM(convert_time(2, TimeUnit::YEAR, TimeUnit::SEC) == 2*365*24*3600L);
-    CONFIRM(convert_time(2, TimeUnit::YEAR, TimeUnit::MS) == 2*365*24*3600000L);
+    CONFIRM(convert_time(2, TimeUnit::YEAR, TimeUnit::MS) == (Timestamp)2*365*24*3600000L);
 }
 
 
