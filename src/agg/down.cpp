@@ -62,7 +62,7 @@ Downsampler::initialize(char *interval, char *fill, TimeRange& range, bool ms)
     else
     {
         // interval
-        long factor = 1;
+        uint64_t factor = 1;
 
         if (! ends_with(interval, "ms"))
         {
@@ -82,7 +82,7 @@ Downsampler::initialize(char *interval, char *fill, TimeRange& range, bool ms)
             if (g_tstamp_resolution_ms) factor *= 1000;
         }
 
-        m_interval = std::stoul(interval);
+        m_interval = std::stoull(interval);
         if (m_interval == 0) m_interval = 1;
         m_interval *= factor;
     }

@@ -197,7 +197,7 @@ Compressor_v2::compress(Timestamp timestamp, double value)
 
         // Timestamp first
         Timestamp delta = timestamp - m_prev_tstamp;
-        long delta_of_delta = (long)delta - (long)m_prev_delta;
+        uint64_t delta_of_delta = (uint64_t)delta - (uint64_t)m_prev_delta;
 
         if (delta_of_delta == 0)
         {
@@ -309,7 +309,7 @@ Compressor_v2::uncompress(DataPointVector& dps, bool restore)
     uint32_t delta32 = 0;
     m_bitset.retrieve(cursor, reinterpret_cast<uint8_t*>(&delta32), 32, 0);
     timestamp = m_start_tstamp + delta32;
-    long delta = delta32;
+    uint64_t delta = delta32;
     m_bitset.retrieve(cursor, reinterpret_cast<uint8_t*>(&value), 8*sizeof(double), 0);
     ASSERT(m_start_tstamp <= timestamp);
     dps.emplace_back(timestamp, value);
@@ -338,7 +338,7 @@ Compressor_v2::uncompress(DataPointVector& dps, bool restore)
         }
         else
         {
-            long delta_of_delta = 0;
+            uint64_t delta_of_delta = 0;
 
             m_bitset.retrieve(cursor, &byte, 1, 0);
 
@@ -395,7 +395,7 @@ Compressor_v2::uncompress(DataPointVector& dps, bool restore)
                         dod_be &= 0xFFFFFFFF00000000;
                     }
 
-                    delta_of_delta = (long)htobe64(dod_be);
+                    delta_of_delta = (uint64_t)htobe64(dod_be);
                 }
             }
 
@@ -582,7 +582,7 @@ Compressor_v1::compress(
 
     // Timestamp first
     Timestamp delta = timestamp - m_prev_tstamp;
-    long delta_of_delta = (long)delta - (long)m_prev_delta;
+    uint64_t delta_of_delta = (uint64_t)delta - (uint64_t)m_prev_delta;
 
     if (g_tstamp_resolution_ms)
     {
@@ -658,7 +658,7 @@ void
 Compressor_v1::uncompress(DataPointVector& dps, bool restore)
 {
     uint8_t *b = m_base;
-    long delta;
+    uint64_t delta;
     double value;
     Timestamp tstamp;
     DataPointPair dp;
@@ -682,7 +682,7 @@ Compressor_v1::uncompress(DataPointVector& dps, bool restore)
     // rest of the dps
     while (b < m_cursor)
     {
-        long delta_of_delta;
+        uint64_t delta_of_delta;
 
         if (g_tstamp_resolution_ms)
         {
@@ -696,7 +696,7 @@ Compressor_v1::uncompress(DataPointVector& dps, bool restore)
             }
             else
             {
-                delta_of_delta = (long)x;
+                delta_of_delta = (uint64_t)x;
             }
         }
         else    // timestamp resolution is 'second'
@@ -711,7 +711,7 @@ Compressor_v1::uncompress(DataPointVector& dps, bool restore)
             }
             else
             {
-                delta_of_delta = (long)x;
+                delta_of_delta = (uint64_t)x;
             }
         }
 

@@ -26,6 +26,7 @@
 #include <glob.h>
 #include <vector>
 #include <algorithm>
+#include <inttypes.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -36,8 +37,8 @@
 #define BUF_SIZE 8192
 
 std::string g_append_log_dir;
-unsigned long g_from_tstamp = 0;
-unsigned long g_to_tstamp = ULONG_MAX;
+uint64_t g_from_tstamp = 0;
+uint64_t g_to_tstamp = ULONG_MAX;
 unsigned long g_rotation_sec = 3600;
 
 int g_socket_fd = -1;
@@ -74,7 +75,7 @@ process_cmdline_opts(int argc, char *argv[])
                 break;
 
             case 'f':
-                g_from_tstamp = std::stoul(optarg);
+                g_from_tstamp = std::stoull(optarg);
                 break;
 
             case 'h':
@@ -86,11 +87,11 @@ process_cmdline_opts(int argc, char *argv[])
                 break;
 
             case 'r':
-                g_rotation_sec = std::stoul(optarg);
+                g_rotation_sec = std::stoull(optarg);
                 break;
 
             case 't':
-                g_to_tstamp = std::stoul(optarg);
+                g_to_tstamp = std::stoull(optarg);
                 break;
 
             case 'v':
@@ -437,7 +438,7 @@ main(int argc, char *argv[])
     {
         std::string f = file.substr(dir_len+7); // 7 is length of 'append.'
         std::string::size_type n = f.find_first_of('.');
-        unsigned long ts = std::stoul(f.substr(0, n));
+        uint64_t ts = std::stoull(f.substr(0, n));
         // [g_from_tstamp - g_to_tstamp] intersect [ts - ts+g_rotation_sec]?
         if (((ts+g_rotation_sec) < g_from_tstamp) || (g_to_tstamp < ts))
         {

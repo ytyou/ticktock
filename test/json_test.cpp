@@ -31,6 +31,9 @@ namespace tt_test
 void
 JsonTests::run()
 {
+    // The timestamps we use are in seconds.
+    tt::g_tstamp_resolution_ms = false;
+
     dp_json_tests();
     query_json_tests();
 }
