@@ -135,12 +135,12 @@ process_cmdline_opts(int argc, char *argv[])
 
     if (g_from_tstamp > g_to_tstamp)
     {
-        fprintf(stderr, "'From' timstamp (%lu) can't be greater than 'to' timestamp (%lu)!\n",
+        fprintf(stderr, "'From' timstamp (%" PRIu64 ") can't be greater than 'to' timestamp (%" PRIu64 ")!\n",
             g_from_tstamp, g_to_tstamp);
         return 4;
     }
 
-    printf("Restoring from append logs under: %s (time range: %lu - %lu)\n",
+    printf("Restoring from append logs under: %s (time range: %" PRIu64 " - %" PRIu64 ")\n",
         g_append_log_dir.c_str(), g_from_tstamp, g_to_tstamp);
     return 0;
 }
