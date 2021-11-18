@@ -253,7 +253,7 @@ Compressor_v2::compress(Timestamp timestamp, double value)
             t = htobe32(t);
 
             uint8_t leading_zeros = __builtin_clz(l);
-            uint8_t trailing_zeros = __builtin_ctz(t);
+            uint8_t trailing_zeros = (t == 0) ? 32 : __builtin_ctz(t);
 
             if ((m_prev_leading_zeros > 0) &&
                 (m_prev_leading_zeros <= leading_zeros) && (m_prev_trailing_zeros <= trailing_zeros))
