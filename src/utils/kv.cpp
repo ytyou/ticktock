@@ -315,18 +315,20 @@ KeyValuePair::free_list(KeyValuePair *list, bool deep)
 char *
 KeyValuePair::to_json(KeyValuePair *list, char *buff, int size)
 {
+    ASSERT(size > 0);
+
     int n = snprintf(buff, size, "{");
 
     for (KeyValuePair *kv = list; kv != nullptr; kv = kv->next())
     {
+        if ((n+3) > size) break;
         if (buff[n-1] != '{')
-        {
             n += snprintf(buff+n, size-n, ",");
-        }
         n += snprintf(buff+n, size-n, "\"%s\":\"%s\"", kv->m_key, kv->m_value);
     }
 
-    n += snprintf(buff+n, size-n, "}");
+    if (size > n)
+        snprintf(buff+n, size-n, "}");
     return buff;
 }
 

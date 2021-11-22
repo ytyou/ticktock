@@ -60,7 +60,7 @@ public:
         recycle();
     }
 
-    bool recycle()
+    bool recycle() override
     {
         // we don't own 'metric' so don't free it
         m_metric = nullptr;
@@ -70,11 +70,7 @@ public:
         m_aggregate_tags.shrink_to_fit();
         m_qtv.clear();
         m_qtv.shrink_to_fit();
-        if (m_tags != nullptr)
-        {
-            Tag::free_list(m_tags, false);
-            m_tags = nullptr;
-        }
+        TagOwner::recycle();
         return true;
     }
 
@@ -91,6 +87,7 @@ public:
         return m_dps.empty();
     }
 
+/*
     bool has_tag(const char *key) const
     {
         ASSERT(key != nullptr);
@@ -102,13 +99,7 @@ public:
         ASSERT(tag != nullptr);
         return Tag::has_key_value(m_tags, tag->m_key, tag->m_value);
     }
-
-    char *to_json_tags(char *buff, int size) const
-    {
-        int n = snprintf(buff, size, "\"tags\":");
-        KeyValuePair::to_json(m_tags, buff+n, size-n);
-        return buff;
-    }
+*/
 
     char *to_json_aggregate_tags(char *buff, int size) const
     {
@@ -116,6 +107,7 @@ public:
 
         for (const char *name: m_aggregate_tags)
         {
+            if ((n+3) >= size) break;
             if (buff[n-1] != '[')
             {
                 n += snprintf(buff+n, size-n, ",");
@@ -123,7 +115,8 @@ public:
             n += snprintf(buff+n, size-n, "\"%s\"", name);
         }
 
-        n += snprintf(buff+n, size-n, "]");
+        if (size > n)
+            snprintf(buff+n, size-n, "]");
 
         return buff;
     }
@@ -139,18 +132,27 @@ public:
 
         for (const DataPointPair& dp: m_dps)
         {
-            if (size <= n) break;
+            if ((n+8) >= size) break;
             if (buff[n-1] != '{')
-            {
                 n += snprintf(buff+n, size-n, ",");
-            }
             n += snprintf(buff+n, size-n, "\"%" PRIu64 "\":%.16lf", dp.first, dp.second);
+            if (n > size) n = size;
             while ((buff[n-1] == '0') && (buff[n-2] != '.') && (buff[n-2] != ':')) buff[--n] = 0;
         }
 
-        n += snprintf(buff+n, size-n, "}}");
+        if (size > n)
+            n += snprintf(buff+n, size-n, "}}");
 
-        return n;
+        return (n <= size) ? n : size;
+    }
+
+private:
+    char *to_json_tags(char *buff, int size) const
+    {
+        int n = snprintf(buff, size, "\"tags\":");
+        ASSERT(size > n);
+        KeyValuePair::to_json(m_tags, buff+n, size-n);
+        return buff;
     }
 };
 

@@ -248,11 +248,11 @@ Config::c_str(char *buff, size_t size)
 
     idx += std::snprintf(&buff[idx], size, "{\n");
 
-    for (auto it = m_properties.begin(); (it != m_properties.end()) && (size > 0); it++)
+    for (auto it = m_properties.begin(); (it != m_properties.end()) && (size > idx); it++)
     {
         std::shared_ptr<Property> property = it->second;
 
-        int n = std::snprintf(&buff[idx], size, "  \"%s\": \"%s\",\n",
+        int n = std::snprintf(&buff[idx], size-idx, "  \"%s\": \"%s\",\n",
             property->get_name().c_str(), property->as_str().c_str());
 
         if (n <= 0)
@@ -263,11 +263,10 @@ Config::c_str(char *buff, size_t size)
         else
         {
             idx += n;
-            size -= n;
         }
     }
 
-    std::snprintf(&buff[idx-2], size, "\n}");
+    std::snprintf(&buff[idx-2], size-idx+2, "\n}");
     return buff;
 }
 

@@ -266,6 +266,7 @@ JsonParser::to_json(std::set<std::string>& strs, char *buff, size_t size)
         std::string s(str);
         s.erase(std::remove(s.begin(), s.end(), '"'), s.end());
         n += snprintf(buff+n, size-n, "\"%s\",", s.c_str());
+        if (n >= size) break;
     }
 
     if (n == 1) n++;
@@ -296,6 +297,7 @@ JsonParser::to_json(JsonMap& map, char *buff, size_t size)
     for (std::pair<const char*,JsonValue*> kv : map)
     {
         n += snprintf(buff+n, size-n, "\"%s\":", kv.first);
+        if (n >= size) break;
 
         switch (kv.second->type)
         {
@@ -324,6 +326,7 @@ JsonParser::to_json(JsonMap& map, char *buff, size_t size)
         }
 
         n += snprintf(buff+n, size-n, ",");
+        if (n >= size) break;
     }
 
     if (n == 1) n++;
@@ -379,7 +382,9 @@ JsonParser::to_json(JsonArray& arr, char *buff, size_t size)
                 break;
         }
 
-        n += snprintf(buff+n, size-n, ",");
+        if (size > n)
+            n += snprintf(buff+n, size-n, ",");
+        if (n >= size) break;
     }
 
     if (n == 1) n++;

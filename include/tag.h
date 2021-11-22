@@ -72,14 +72,23 @@ public:
     void get_keys(std::set<std::string>& keys) const;
     void get_values(std::set<std::string>& values) const;
 
+/*
     inline void add_tag(Tag *tag)
     {
         ASSERT(tag != nullptr);
         KeyValuePair::insert_in_order(&m_tags, tag->m_key, tag->m_value);
     }
+*/
 
     inline void add_tag(const char *name, const char *value)
     {
+        ASSERT(std::strchr(name, ' ') == nullptr);
+        ASSERT(std::strchr(value, ' ') == nullptr);
+        ASSERT(std::strlen(name) > 0);
+        ASSERT(std::strlen(value) > 0);
+        ASSERT(std::strchr(name, '"') == nullptr);
+        ASSERT(std::strchr(value, '"') == nullptr);
+
         KeyValuePair::insert_in_order(&m_tags, name, value);
     }
 

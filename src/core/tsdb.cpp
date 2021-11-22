@@ -1496,7 +1496,9 @@ Tsdb::init()
     PartitionManager::init();
 
     tsdb_rotation_freq =
-        validate_resolution(Config::get_time(CFG_TSDB_ROTATION_FREQUENCY, TimeUnit::SEC, CFG_TSDB_ROTATION_FREQUENCY_DEF));
+        Config::get_time(CFG_TSDB_ROTATION_FREQUENCY, TimeUnit::SEC, CFG_TSDB_ROTATION_FREQUENCY_DEF);
+    if (g_tstamp_resolution_ms)
+        tsdb_rotation_freq *= 1000L;
     if (tsdb_rotation_freq < 1) tsdb_rotation_freq = 1;
 
     // check if we have enough disk space
@@ -1537,8 +1539,8 @@ Tsdb::init()
 
             if (g_tstamp_resolution_ms)
             {
-                start = to_ms(start);
-                end = to_ms(end);
+                start *= 1000L;
+                end *= 1000L;
             }
 
             TimeRange range(start, end);

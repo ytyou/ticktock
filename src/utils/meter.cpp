@@ -60,7 +60,8 @@ Meter::~Meter()
     Timestamp ts = duration_cast<milliseconds>(end.time_since_epoch()).count();
     DataPoint *dp = (DataPoint*) MemoryManager::alloc_recyclable(RecyclableType::RT_DATA_POINT);
 
-    ts = validate_resolution(ts);
+    if (! g_tstamp_resolution_ms)
+        ts /= 1000L;
 
     if (m_type == MeterType::COUNT)
     {

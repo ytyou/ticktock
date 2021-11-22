@@ -203,7 +203,6 @@ http_post(char *body)
     int n = snprintf(buff, sizeof(buff),
         "POST /api/put HTTP/1.1\r\nContent-Type: text/plain\r\nContent-Length: %d\r\nConnection: keep-alive\r\n\r\n%s\r\n",
         length+2, body);
-    buff[n] = 0;
     length = std::strlen(buff);
 
     if (g_dry_run)

@@ -295,16 +295,14 @@ const char *
 DataPoint::c_str(char* buff) const
 {
     char *curr = buff;
-    size_t size = c_size();
+    int size = c_size();
     int n = std::snprintf(buff, size, "%s %" PRIu64 " %lf", m_metric, m_timestamp, m_value);
 
     Tag *tag = m_tags;
 
-    while ((tag != nullptr) && (size > 0))
+    while ((tag != nullptr) && ((size -= n) > 0))
     {
-        size -= n;
         curr += n;
-
         n = std::snprintf(curr, size, " %s=%s", tag->m_key, tag->m_value);
         tag = tag->next();
     }
@@ -359,7 +357,7 @@ const char *
 DataPointSet::c_str(char* buff) const
 {
     char *curr = buff;
-    size_t size = c_size();
+    int size = c_size();
     int n;
 
     for (int i = 0; (i < m_count) && (size > 0); i++)
@@ -368,11 +366,9 @@ DataPointSet::c_str(char* buff) const
 
         Tag *tag = m_tags;
 
-        while ((tag != nullptr) && (size > 0))
+        while ((tag != nullptr) && ((size -= n) > 0))
         {
-            size -= n;
             curr += n;
-
             n = std::snprintf(curr, size, " %s=%s", tag->m_key, tag->m_value);
             tag = tag->next();
         }

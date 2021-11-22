@@ -101,8 +101,6 @@ MemoryManager::alloc_network_buffer()
 void
 MemoryManager::free_network_buffer(char* buff)
 {
-    ASSERT(((long)buff % g_page_size) == 0);
-    ASSERT(((long)mm->m_network_buffer_free_list % g_page_size) == 0);
     if (buff == nullptr)
     {
         Logger::error("Passing nullptr to MemoryManager::free_network_buffer()");
@@ -110,6 +108,8 @@ MemoryManager::free_network_buffer(char* buff)
     }
 
     MemoryManager *mm = MemoryManager::inst();
+    ASSERT(((long)buff % g_page_size) == 0);
+    ASSERT(((long)mm->m_network_buffer_free_list % g_page_size) == 0);
     std::memcpy(buff, &mm->m_network_buffer_free_list, sizeof(void*));
     mm->m_network_buffer_free_list = buff;
 }

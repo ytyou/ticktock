@@ -392,7 +392,7 @@ TimeSeries::query_with_ooo(TimeRange& range, Downsampler *downsampler, DataPoint
         }
         else if (range.get_to() < dp.first)
         {
-            continue;
+            break;
         }
 
         if ((i+1) < container->size())
