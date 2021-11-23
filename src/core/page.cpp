@@ -94,14 +94,10 @@ PageInfo::flush()
     int rc = madvise(get_page(), g_page_size, MADV_DONTNEED);
 
     if (rc == -1)
-    {
-        Logger::warn("Failed to madvise memory mapped file, errno = %d", errno);
-    }
+        Logger::info("Failed to madvise(DONTNEED), page = %p, errno = %d", get_page(), errno);
 
     if (is_full())
-    {
         recycle();
-    }
 }
 
 void
@@ -495,9 +491,7 @@ PageManager::open_mmap(PageCount page_count)
     rc = madvise(m_pages, m_total_size, MADV_RANDOM);
 
     if (rc != 0)
-    {
-        Logger::warn("Failed to madvise, errno = %d", errno);
-    }
+        Logger::info("Failed to madvise(RANDOM), page = %p, errno = %d", m_pages, errno);
 
     struct tsdb_header *header = reinterpret_cast<struct tsdb_header*>(m_pages);
 
@@ -734,16 +728,12 @@ PageManager::flush(bool sync)
     int rc = msync(m_pages, size, (sync?MS_SYNC:MS_ASYNC));
 
     if (rc == -1)
-    {
         Logger::info("Failed to flush file %s, errno = %d", m_file_name.c_str(), errno);
-    }
 
     rc = madvise(m_pages, m_total_size, MADV_DONTNEED);
 
     if (rc == -1)
-    {
-        Logger::info("Failed to madvise file %s, errno = %d", m_file_name.c_str(), errno);
-    }
+        Logger::info("Failed to madvise(DONTNEED), page = %p, errno = %d", m_pages, errno);
 }
 
 void

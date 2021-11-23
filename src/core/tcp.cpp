@@ -1256,7 +1256,7 @@ TcpListener::close_conn(int fd)
         // do not close the connection if there are pending tasks
         if (conn->pending_tasks <= 0)
         {
-            Logger::info("close_conn: conn=%p fd=%d", conn, conn->fd);
+            Logger::debug("close_conn: conn=%p fd=%d", conn, conn->fd);
             m_conn_map.erase(search);
             del_conn_from_all_map(fd);
             MemoryManager::free_recyclable(conn);
