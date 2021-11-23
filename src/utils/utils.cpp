@@ -209,7 +209,6 @@ ts_resolution_ms()
     return starts_with(Config::get_str(CFG_TSDB_TIMESTAMP_RESOLUTION, CFG_TSDB_TIMESTAMP_RESOLUTION_DEF), 'm');
 }
 
-/*
 Timestamp
 validate_resolution(Timestamp ts)
 {
@@ -219,7 +218,6 @@ validate_resolution(Timestamp ts)
         ts = to_sec(ts);
     return ts;
 }
-*/
 
 // TODO: make it inlined
 bool
@@ -238,8 +236,8 @@ is_sec(Timestamp tstamp)
 Timestamp
 to_ms(Timestamp tstamp)
 {
-    //if (tstamp < MAX_SEC_SINCE_EPOCH)
-    if (! g_tstamp_resolution_ms)
+    if (tstamp < MAX_SEC_SINCE_EPOCH)
+    //if (! g_tstamp_resolution_ms)
         tstamp *= 1000L;
     return tstamp;
 }
@@ -248,8 +246,8 @@ to_ms(Timestamp tstamp)
 Timestamp
 to_sec(Timestamp tstamp)
 {
-    //if (tstamp > MAX_SEC_SINCE_EPOCH)
-    if (g_tstamp_resolution_ms)
+    if (tstamp > MAX_SEC_SINCE_EPOCH)
+    //if (g_tstamp_resolution_ms)
         tstamp /= 1000L;
     return tstamp;
 }

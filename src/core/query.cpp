@@ -152,7 +152,7 @@ Query::Query(JsonMap& map, StringBuffer& strbuf) :
     if (search == map.end())
         throw std::runtime_error("Must specify start time when query.");
     Timestamp start = parse_ts(search->second, now);
-    //start = validate_resolution(start);
+    start = validate_resolution(start);
 
     search = map.find("end");
     Timestamp end;
@@ -160,7 +160,7 @@ Query::Query(JsonMap& map, StringBuffer& strbuf) :
         end = std::stoull(search->second->to_string());
     else
         end = now;
-    //end = validate_resolution(end);
+    end = validate_resolution(end);
 
     m_time_range = TimeRange(start, end);
 
@@ -803,7 +803,7 @@ QueryExecutor::http_post_api_query_handler(HttpRequest& request, HttpResponse& r
 
     Timestamp now = ts_now();
     Timestamp start = parse_ts(search->second, now);
-    //start = validate_resolution(start);
+    start = validate_resolution(start);
 
     Timestamp end;
     search = map.find("end");
@@ -811,7 +811,7 @@ QueryExecutor::http_post_api_query_handler(HttpRequest& request, HttpResponse& r
         end = (long)(search->second->to_double());
     else
         end = now;
-    //end = validate_resolution(end);
+    end = validate_resolution(end);
 
     search = map.find("msResolution");
     if (search != map.end())

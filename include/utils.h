@@ -67,7 +67,7 @@ extern bool is_sec(Timestamp tstamp);
 extern bool is_off_hour();
 extern bool ts_resolution_ms();     // timestamp resolution is millisecond?
 extern bool is_my_ip(std::string& ip);
-//extern Timestamp validate_resolution(Timestamp ts); // return timestamp with correct unit
+extern Timestamp validate_resolution(Timestamp ts); // return timestamp with correct unit
 extern Timestamp to_ms(Timestamp tstamp);
 extern Timestamp to_sec(Timestamp tstamp);
 extern Timestamp parse_ts(const JsonValue *value, Timestamp now);
