@@ -97,7 +97,7 @@ public:
     int get_dp_count();
     int get_page_count(bool ooo);   // for testing only
 
-    inline size_t c_size() const override { return 64; }
+    inline size_t c_size() const override { return 1024; }
     const char* c_str(char* buff) const override;
 
 private:
