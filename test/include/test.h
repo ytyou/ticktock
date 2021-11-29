@@ -213,7 +213,8 @@ public:
     {
         char cmd[1024];
         snprintf(cmd, sizeof(cmd), "exec rm -f -r %s/*", tt::Config::get_str(CFG_TSDB_DATA_DIR).c_str());
-        system(cmd);
+        if (tt::starts_with(cmd, "exec rm -f -r /tmp/"))
+            system(cmd);
     }
 
     static void clean_start(bool rm_data)

@@ -84,7 +84,8 @@ TagOwner::get_ordered_tags(char *buff, size_t size) const
 
     for (Tag *tag = m_tags; tag != nullptr; tag = tag->next())
     {
-        if (strcmp(tag->m_key, METRIC_TAG_NAME) == 0) continue;
+        //if (strcmp(tag->m_key, METRIC_TAG_NAME) == 0) continue;
+        ASSERT(strcmp(tag->m_key, METRIC_TAG_NAME) != 0);
         n = std::snprintf(curr, size, "%s=%s;", tag->m_key, tag->m_value);
         if (size <= n) break;
         size -= n;

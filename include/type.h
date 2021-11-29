@@ -27,6 +27,9 @@ namespace tt
 {
 
 
+#define LIKELY(X)       __builtin_expect((X), 1)
+#define UNLIKELY(X)     __builtin_expect((X), 0)
+
 typedef uint32_t PageCount;
 typedef uint16_t PageSize;
 typedef uint64_t TsdbSize;

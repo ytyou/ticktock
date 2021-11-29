@@ -91,7 +91,8 @@ MemoryManager::alloc_network_buffer()
     }
     else
     {
-        std::memcpy(&mm->m_network_buffer_free_list, buff, sizeof(void*));
+        //std::memcpy(&mm->m_network_buffer_free_list, buff, sizeof(void*));
+        mm->m_network_buffer_free_list = *((char**)buff);
         ASSERT(((long)mm->m_network_buffer_free_list % g_page_size) == 0);
     }
 
@@ -110,7 +111,8 @@ MemoryManager::free_network_buffer(char* buff)
     MemoryManager *mm = MemoryManager::inst();
     ASSERT(((long)buff % g_page_size) == 0);
     ASSERT(((long)mm->m_network_buffer_free_list % g_page_size) == 0);
-    std::memcpy(buff, &mm->m_network_buffer_free_list, sizeof(void*));
+    //std::memcpy(buff, &mm->m_network_buffer_free_list, sizeof(void*));
+    *((char**)buff) = mm->m_network_buffer_free_list;
     mm->m_network_buffer_free_list = buff;
 }
 

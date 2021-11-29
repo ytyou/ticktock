@@ -162,7 +162,7 @@ bool
 DataPoint::from_plain(char* &text)
 {
     m_metric = text;
-    if (*text == '"')
+    if (UNLIKELY(*text == '"'))
     {
         m_metric++;
         do
@@ -172,21 +172,18 @@ DataPoint::from_plain(char* &text)
         *text++ = 0;
     }
     else
-        text = strchr(text, ' ');
-    if (text == nullptr) { m_metric = nullptr; return false; }
+        text = (char*)rawmemchr((void*)text, ' ');
     *text++ = 0;
-    m_timestamp = std::stoull(text);
+    m_timestamp = (Timestamp)std::atoll(text);
     ASSERT(g_tstamp_resolution_ms ? is_ms(m_timestamp) : is_sec(m_timestamp));
-    text = strchr(text, ' ');
-    if (text == nullptr) { m_metric = nullptr; return false; }
+    text = (char*)rawmemchr((void*)text, ' ');
     m_value = std::atof(++text);
     while ((*text != ' ') && (*text != '\n')) text++;
     if (*text == '\n') { text++; return true; }
     m_raw_tags = ++text;
-    text = strchr(text, '\n');
-    if (text == nullptr) { m_raw_tags = nullptr; return false; }
+    text = (char*)rawmemchr((void*)text, '\n');
     *text++ = 0;
-    if (*(text-2) == '\r') *(text-2) = 0;
+    if (UNLIKELY(*(text-2) == '\r')) *(text-2) = 0;
     return true;
 }
 
@@ -208,7 +205,7 @@ char *
 DataPoint::next_long(char* json, Timestamp &number)
 {
     while (! std::isdigit(*json) && (*json != 0) && (*json != '\n')) json++;
-    number = std::stoull(json);
+    number = (Timestamp)std::atoll(json);
     //number = (g_tstamp_resolution_ms ? to_ms(number) : to_sec(number));
     while (std::isdigit(*json)) json++;
     if (*json == '"') json++;   // in case the number is quoted

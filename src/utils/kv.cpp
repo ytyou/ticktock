@@ -100,7 +100,7 @@ KeyValuePair::match_value(KeyValuePair *list, const char *key, const char *value
         }
         return false;
     }
-    else if (ends_with(value, "*"))
+    else if (ends_with(value, '*'))
     {
         size_t len = std::strlen(value) - 1;
         return (std::strncmp(kv->m_value, value, len) == 0);

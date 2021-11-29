@@ -261,7 +261,7 @@ parse_ts(const JsonValue *value, Timestamp now)
         return (Timestamp)(value->to_double());
 
     const char *str = value->to_string();
-    Timestamp ts = std::stoull(str);
+    Timestamp ts = (Timestamp)std::atoll(str);
     int len = std::strlen(str);
 
     // relative time? (e.g. 2h-ago)
@@ -756,6 +756,13 @@ starts_with(const char *str, const char *prefix)
     int len = strlen(prefix);
     if (len > strlen(str)) return false;
     return (strncmp(str, prefix, len) == 0);
+}
+
+bool
+ends_with(const char *str, const char tail)
+{
+    std::size_t len = std::strlen(str);
+    return (len > 0) && (str[len-1] == tail);
 }
 
 bool

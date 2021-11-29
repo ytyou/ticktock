@@ -157,7 +157,7 @@ Query::Query(JsonMap& map, StringBuffer& strbuf) :
     search = map.find("end");
     Timestamp end;
     if (search != map.end())
-        end = std::stoull(search->second->to_string());
+        end = (Timestamp)std::atoll(search->second->to_string());
     else
         end = now;
     end = validate_resolution(end);
@@ -474,7 +474,7 @@ Query::create_query_results(std::vector<QueryTask*>& qtv, std::vector<QueryResul
     for (Tag *tag = m_tags; tag != nullptr; tag = tag->next())
     {
         //if (std::strcmp(tag->m_value, "*") == 0)
-        if (ends_with(tag->m_value, "*"))
+        if (ends_with(tag->m_value, '*'))
         {
             star_tags.push_back(tag->m_key);
         }
@@ -701,8 +701,8 @@ QueryTask::get_cloned_tags(StringBuffer& strbuf)
 {
     ASSERT(! m_tsv.empty());
     Tag *tags = m_tsv.front()->get_cloned_tags(strbuf);
-    Tag *removed = Tag::remove_first(&tags, METRIC_TAG_NAME);
-    Tag::free_list(removed, false);
+    //Tag *removed = Tag::remove_first(&tags, METRIC_TAG_NAME);
+    //Tag::free_list(removed, false);
     return tags;
 }
 
@@ -945,7 +945,8 @@ QueryResults::add_query_task(QueryTask *qt, StringBuffer& strbuf)
 
     for (Tag *tag = qt->get_tags(); tag != nullptr; tag = tag->next())
     {
-        if (std::strcmp(tag->m_key, METRIC_TAG_NAME) == 0) continue;
+        //if (std::strcmp(tag->m_key, METRIC_TAG_NAME) == 0) continue;
+        ASSERT(std::strcmp(tag->m_key, METRIC_TAG_NAME) != 0);
 
         Tag *match = find_by_key(tag->m_key);
 
@@ -968,7 +969,7 @@ QueryResults::add_query_task(QueryTask *qt, StringBuffer& strbuf)
                 add_tag(strbuf.strdup(tag->m_key), strbuf.strdup(tag->m_value));
             }
         }
-        else if (ends_with(match->m_value, "*"))
+        else if (ends_with(match->m_value, '*'))
         {
             // move it from tags to aggregate_tags
             remove_tag(match->m_key);

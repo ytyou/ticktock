@@ -82,7 +82,7 @@ Downsampler::initialize(char *interval, char *fill, TimeRange& range, bool ms)
             if (g_tstamp_resolution_ms) factor *= 1000;
         }
 
-        m_interval = std::stoull(interval);
+        m_interval = (Timestamp)std::atoll(interval);
         if (m_interval == 0) m_interval = 1;
         m_interval *= factor;
     }

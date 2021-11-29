@@ -85,6 +85,7 @@ extern std::string ltrim(const std::string& str);
 extern std::string rtrim(const std::string& str);
 extern bool starts_with(const std::string& str, char ch);
 extern bool starts_with(const char *str, const char *prefix);
+extern bool ends_with(const char *str, const char tail);
 extern bool ends_with(const std::string& str, const std::string& tail);
 extern int replace_all(std::string& str, const std::string& from, const std::string& to);
 extern void spin_yield(unsigned int k);

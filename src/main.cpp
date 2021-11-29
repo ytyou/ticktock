@@ -26,6 +26,7 @@
 #include <pthread.h>
 #include <sys/resource.h>
 #include <sys/stat.h>
+#include <execinfo.h>
 #include <fcntl.h>
 #include <getopt.h>
 #include "admin.h"
@@ -53,6 +54,13 @@ static bool g_run_as_daemon = false;
 static std::string g_pid_file = "/var/run/ticktock.pid";
 
 
+static void print_stack_trace()
+{
+    void *array[32];
+    size_t size = backtrace(array, sizeof(array)/sizeof(array[0]));
+    backtrace_symbols_fd(array, size, STDERR_FILENO);
+}
+
 static void
 intr_handler(int sig)
 {
@@ -61,11 +69,47 @@ intr_handler(int sig)
     g_handler_thread_id = std::this_thread::get_id();   // don't wait for me
     g_shutdown_requested = true;
 
+    if (sig != SIGINT)
+        print_stack_trace();
+
     printf("Interrupted (%d), shutting down...\n", sig);
     Logger::info("Interrupted (%d), shutting down...", sig);
 
     if (http_server_ptr != nullptr)
         http_server_ptr->shutdown();
+}
+
+static void
+terminate_handler()
+{
+    if (g_shutdown_requested) return;
+
+    g_handler_thread_id = std::this_thread::get_id();   // don't wait for me
+    g_shutdown_requested = true;
+
+    std::exception_ptr exptr = std::current_exception();
+
+    if (exptr != nullptr)
+    {
+        try
+        {
+            std::rethrow_exception(exptr);
+        }
+        catch (std::exception &ex)
+        {
+            printf("Uncaught exception: %s\n", ex.what());
+        }
+        catch (...)
+        {
+            printf("Unknown exception\n");
+        }
+    }
+    else
+    {
+        printf("Unknown exception\n");
+    }
+
+    print_stack_trace();
 }
 
 }
@@ -394,6 +438,7 @@ main(int argc, char *argv[])
     std::signal(SIGTERM, intr_handler);
     std::signal(SIGABRT, intr_handler);
     std::signal(SIGBUS, intr_handler);
+    std::set_terminate(terminate_handler);
 
     // wait for HTTP server to stop
     http_server.wait(0);

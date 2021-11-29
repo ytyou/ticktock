@@ -1565,9 +1565,11 @@ Tsdb::init()
     task.doit = &Tsdb::compact;
     task.data.integer = 0;  // indicates this is from scheduled task (vs. interactive cmd)
     freq_sec = Config::get_time(CFG_TSDB_COMPACT_FREQUENCY, TimeUnit::SEC, CFG_TSDB_COMPACT_FREQUENCY_DEF);
-    if (freq_sec < 1) freq_sec = 1;
-    Timer::inst()->add_task(task, freq_sec, "tsdb_compact");
-    Logger::info("Will try to compact tsdb every %d secs.", freq_sec);
+    if (freq_sec > 0)
+    {
+        Timer::inst()->add_task(task, freq_sec, "tsdb_compact");
+        Logger::info("Will try to compact tsdb every %d secs.", freq_sec);
+    }
 }
 
 std::string

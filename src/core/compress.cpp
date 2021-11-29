@@ -643,7 +643,9 @@ Compressor_v1::compress(
         return false;
     }
 
-    memcpy(m_cursor, base, cnt);
+    //memcpy(m_cursor, base, cnt);
+    for (int i = 0; i < cnt; i++)
+        m_cursor[i] = base[i];
     m_cursor += cnt;
     m_dp_count++;
 
