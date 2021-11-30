@@ -91,10 +91,14 @@ PageInfo::flush()
     }
     */
 
-    int rc = madvise(get_page(), g_page_size, MADV_DONTNEED);
-
-    if (rc == -1)
-        Logger::info("Failed to madvise(DONTNEED), page = %p, errno = %d", get_page(), errno);
+    // Skip this if m_offset != 0. madvise() can only be done when address is
+    // aligned perfectly along 4K.
+    if (m_header->m_offset == 0)
+    {
+        int rc = madvise(get_page(), g_page_size, MADV_DONTNEED);
+        if (rc == -1)
+            Logger::info("Failed to madvise(DONTNEED), page = %p, errno = %d", get_page(), errno);
+    }
 
     if (is_full())
         recycle();
@@ -733,7 +737,10 @@ PageManager::flush(bool sync)
     rc = madvise(m_pages, m_total_size, MADV_DONTNEED);
 
     if (rc == -1)
-        Logger::info("Failed to madvise(DONTNEED), page = %p, errno = %d", m_pages, errno);
+    {
+        Logger::info("Failed to madvise(DONTNEED), page = %p, size = %" PRIu64 ", errno = %d",
+            m_pages, m_total_size, errno);
+    }
 }
 
 void
