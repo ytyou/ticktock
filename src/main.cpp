@@ -1,7 +1,6 @@
 /*
-    TickTock is an open-source Time Series Database for your metrics.
-    Copyright (C) 2020-2021  Yongtao You (yongtao.you@gmail.com),
-    Yi Lin (ylin30@gmail.com), and Yalei Wang (wang_yalei@yahoo.com).
+    TickTock is an open-source Time Series Database, maintained by
+    Yongtao You (yongtao.you@gmail.com) and Yi Lin (ylin30@gmail.com).
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -315,9 +314,8 @@ initialize()
     }
     else
     {
-        printf(" TickTock v%d.%d.%d\n"
-               " Copyright (C) 2020-2021  Yongtao You (yongtao.you@gmail.com),\n"
-               " Yi Lin (ylin30@gmail.com), and Yalei Wang (wang_yalei@yahoo.com).\n"
+        printf(" TickTock v%d.%d.%d,  Maintained by\n"
+               " Yongtao You (yongtao.you@gmail.com) and Yi Lin (ylin30@gmail.com).\n"
                " This program comes with ABSOLUTELY NO WARRANTY. It is free software,\n"
                " and you are welcome to redistribute it under certain conditions.\n"
                " For details, see <https://www.gnu.org/licenses/>.\n",
