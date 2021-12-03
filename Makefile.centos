@@ -6,7 +6,7 @@ LINK = $(CPP)
 RM = /usr/bin/rm -f
 
 #DEBUG_FLAGS = -g3 -rdynamic -ggdb -D_DEBUG -D_TEST -D_GLIBCXX_DEBUG -O0
-PROD_FLAGS = -O3
+PROD_FLAGS = -O3 -march=native -ffast-math
 #LEAK_FLAGS = -D_LEAK_DETECTION
 #PROF_FLAGS = -pg -D_GLIBCXX_DEBUG
 LIBS = /usr/lib64/libz.so

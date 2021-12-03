@@ -1,6 +1,6 @@
 #!/bin/bash
 
-MAKE="/usr/bin/make -f Makefile.ubuntu"
+MAKE="/usr/bin/make -f Makefile.docker"
 STAGE="beta"
 TARGET_BRANCH="main"
 TAGL="latest"
@@ -47,7 +47,7 @@ else
 fi
 
 # make sure we are at the root of repo
-if ! test -f "Makefile.ubuntu"; then
+if ! test -f "Makefile.docker"; then
     echo "[ERROR] Not at root of repo"
     exit 2
 fi
