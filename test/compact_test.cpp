@@ -143,6 +143,23 @@ CompactTests::two_partial_with_ooo4(int dps_cnt, int ooo_cnt, DataPointVector dp
     CONFIRM(results.size() == (dps_cnt + ooo_cnt));
     for (auto& dp: dps) CONFIRM(contains(results, dp));
     for (auto& dp: ooo_dps) CONFIRM(contains(results, dp));
+
+    // insert some more dps
+    DataPointVector v;
+    generate_data_points(v, 20, start+4000000);
+
+    for (DataPointPair& dpp: v)
+    {
+        Tsdb *tsdb = Tsdb::inst(dpp.first);
+        DataPoint dp(dpp.first, dpp.second);
+        dp.set_metric(metric);
+        tsdb->add(dp);
+    }
+
+    results.clear();
+    query_raw(metric, start+4000000, results);
+    CONFIRM(results.size() == 20);
+    for (auto& dp: v) CONFIRM(contains(results, dp));
 }
 
 void

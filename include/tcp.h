@@ -58,7 +58,7 @@ class TcpListener;
 #define INVALID_WORKER_ID   (-1)
 
 
-class TcpConnection : public Recyclable
+class alignas(64) TcpConnection : public Recyclable
 {
 public:
     int fd; // socket file-descriptor

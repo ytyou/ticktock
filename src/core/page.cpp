@@ -407,6 +407,7 @@ PageManager::PageManager(TimeRange& range, PageCount id, bool temp) :
                 (*m_header_index)-id);
             *m_header_index = id;
             *m_page_index = page_idx;
+            ASSERT(*m_page_index <= *m_actual_pg_cnt);
         }
     }
 }
@@ -519,6 +520,7 @@ PageManager::open_mmap(PageCount page_count)
         *m_page_index = calc_first_page_info_index(page_count);
         *m_header_index = 0;
         *m_actual_pg_cnt = page_count;
+        ASSERT(*m_page_index <= *m_actual_pg_cnt);
     }
     else
     {
@@ -551,6 +553,7 @@ PageManager::open_mmap(PageCount page_count)
 
         m_compacted = header->is_compacted();
         m_total_size = (TsdbSize)*m_actual_pg_cnt * (TsdbSize)g_page_size;
+        ASSERT(*m_page_index <= *m_actual_pg_cnt);
 
         // TODO: verify time range in the header. It should agree with our m_time_range!
     }
@@ -627,6 +630,7 @@ PageManager::get_free_page_on_disk(Tsdb *tsdb, bool ooo)
         Logger::debug("Running out of pages!");
     }
 
+    ASSERT(*m_page_index <= *m_actual_pg_cnt);
     return info;
 }
 
@@ -654,7 +658,6 @@ PageManager::get_free_page_for_compaction(Tsdb *tsdb)
         struct page_info_on_disk *header = get_page_info_on_disk(id);
         info->init_for_disk(this, header, page_idx, g_page_size, false);
 
-        (*m_page_index)++;
         (*m_header_index)++;
 
         if (id > 0)
@@ -672,6 +675,7 @@ PageManager::get_free_page_for_compaction(Tsdb *tsdb)
             }
             else
             {
+                (*m_page_index)++;
                 info->m_header->m_page_index = header->m_page_index + 1;
             }
         }
@@ -686,6 +690,7 @@ PageManager::get_free_page_for_compaction(Tsdb *tsdb)
         Logger::debug("Running out of pages!");
     }
 
+    ASSERT(*m_page_index <= *m_actual_pg_cnt);
     return info;
 }
 
@@ -787,6 +792,7 @@ PageManager::shrink_to_fit()
     struct page_info_on_disk *header = get_page_info_on_disk(id);
     PageCount last = header->m_page_index + 1;
     *m_actual_pg_cnt = last;
+    ASSERT(*m_page_index <= *m_actual_pg_cnt);
     m_total_size = last * g_page_size;
     persist_compacted_flag(true);
     Logger::debug("shrink from %" PRIu64 " to %" PRIu64, old_total_size, m_total_size);
