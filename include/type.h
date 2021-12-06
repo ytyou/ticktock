@@ -40,6 +40,12 @@ typedef uint64_t Timestamp;     // milliseconds since epoch
 typedef std::pair<Timestamp,double> DataPointPair;
 typedef std::vector<DataPointPair> DataPointVector;
 
+template <typename T>
+struct __attribute__((__packed__)) aligned_type
+{
+    T value;
+};
+
 enum TimeUnit : unsigned char
 {                   // string representation
     MS = 0,         // ms

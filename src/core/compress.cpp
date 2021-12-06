@@ -544,9 +544,9 @@ Compressor_v1::compress1(
     ASSERT(m_start_tstamp <= timestamp);
     m_prev_delta = timestamp - m_start_tstamp;
     ASSERT(m_prev_delta <= INT_MAX);
-    *(reinterpret_cast<uint32_t*>(m_cursor)) = (uint32_t)m_prev_delta;
+    (reinterpret_cast<aligned_type<uint32_t>*>(m_cursor))->value = (uint32_t)m_prev_delta;
     m_cursor += sizeof(uint32_t);
-    *(reinterpret_cast<double*>(m_cursor)) = value;
+    (reinterpret_cast<aligned_type<double>*>(m_cursor))->value = value;
     m_cursor += sizeof(double);
 
     m_prev_tstamp = timestamp;
@@ -587,14 +587,14 @@ Compressor_v1::compress(
     {
         if (std::labs(delta_of_delta) > 32767)
         {
-            *(reinterpret_cast<int16_t*>(cursor)) = -32768;
+            (reinterpret_cast<aligned_type<int16_t>*>(cursor))->value = -32768;
             cursor += sizeof(int16_t);
-            *(reinterpret_cast<int32_t*>(cursor)) = (int32_t)delta_of_delta;
+            (reinterpret_cast<aligned_type<int32_t>*>(cursor))->value = (int32_t)delta_of_delta;
             cursor += sizeof(int32_t);
         }
         else
         {
-            *(reinterpret_cast<int16_t*>(cursor)) = (int16_t)delta_of_delta;
+            (reinterpret_cast<aligned_type<int16_t>*>(cursor))->value = (int16_t)delta_of_delta;
             cursor += sizeof(int16_t);
         }
     }
@@ -604,7 +604,7 @@ Compressor_v1::compress(
         {
             *(reinterpret_cast<int8_t*>(cursor)) = -128;
             cursor += sizeof(int8_t);
-            *(reinterpret_cast<int32_t*>(cursor)) = (int32_t)delta_of_delta;
+            (reinterpret_cast<aligned_type<int32_t>*>(cursor))->value = (int32_t)delta_of_delta;
             cursor += sizeof(int32_t);
         }
         else
@@ -671,11 +671,11 @@ Compressor_v1::uncompress(DataPointVector& dps, bool restore)
     }
 
     // first dp
-    delta = *(reinterpret_cast<uint32_t*>(b));
+    delta = (reinterpret_cast<aligned_type<uint32_t>*>(b))->value;
     tstamp = m_start_tstamp + delta;
     dp.first = tstamp;
     b += sizeof(uint32_t);
-    value = *(reinterpret_cast<double*>(b));
+    value = (reinterpret_cast<aligned_type<double>*>(b))->value;
     dp.second = value;
     b += sizeof(double);
     dps.push_back(dp);
@@ -687,12 +687,12 @@ Compressor_v1::uncompress(DataPointVector& dps, bool restore)
 
         if (g_tstamp_resolution_ms)
         {
-            int16_t x = *(reinterpret_cast<int16_t*>(b));
+            int16_t x = (reinterpret_cast<aligned_type<int16_t>*>(b))->value;
             b += sizeof(int16_t);
 
             if (x == -32768)
             {
-                delta_of_delta = *(reinterpret_cast<int32_t*>(b));
+                delta_of_delta = (reinterpret_cast<aligned_type<int32_t>*>(b))->value;
                 b += sizeof(int32_t);
             }
             else
@@ -707,7 +707,7 @@ Compressor_v1::uncompress(DataPointVector& dps, bool restore)
 
             if (x == -128)
             {
-                delta_of_delta = *(reinterpret_cast<int32_t*>(b));
+                delta_of_delta = (reinterpret_cast<aligned_type<int32_t>*>(b))->value;
                 b += sizeof(int32_t);
             }
             else
