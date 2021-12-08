@@ -247,7 +247,8 @@ HttpServer::recv_http_data(TaskData& data)
             if (! process_request(conn->request, conn->response))
                 conn_error = true;
 
-            HttpServer::send_response(fd, conn->response);
+            if (! HttpServer::send_response(fd, conn->response))
+                conn_error = true;
 
             // This needs to be done AFTER send_response(),
             // or you are risking 2 threads both sending responses on the same fd.
@@ -484,7 +485,8 @@ HttpServer::send_response(int fd, HttpResponse& response)
 
     ASSERT(0 < m_max_resend);
 
-    while (no_progress_cnt < m_max_resend)
+    // Loop until sending all data or socket error != EAGAIN
+    while (sent < response.response_size) 
     {
         char *buff = response.response + sent;
         target = response.response_size - sent;
@@ -502,10 +504,17 @@ HttpServer::send_response(int fd, HttpResponse& response)
             }
 
             no_progress_cnt++;
+            if (no_progress_cnt % m_max_resend == 0)
+		    Logger::http("Sent out %d of %d bytes after %d tries, will keep trying!", fd, 
+				    sent, response.response_size, count);
+
         }
         else if (n == 0)
         {
             spin_yield(++no_progress_cnt);
+            if (no_progress_cnt % m_max_resend == 0)
+		    Logger::http("Sent out %d of %d bytes after %d tries, will key trying!", fd, 
+				    sent, response.response_size, count);
         }
         else
         {
