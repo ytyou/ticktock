@@ -45,8 +45,8 @@
 #define CFG_CONFIG_RELOAD_FREQUENCY_DEF         "5min"
 #define CFG_HTTP_LISTENER_COUNT                 "http.listener.count"
 #define CFG_HTTP_LISTENER_COUNT_DEF             2
-#define CFG_HTTP_MAX_RETRIES                    "http.max.retries"
-#define CFG_HTTP_MAX_RETRIES_DEF                1024
+//#define CFG_HTTP_MAX_RETRIES                    "http.max.retries"
+//#define CFG_HTTP_MAX_RETRIES_DEF                1024
 #define CFG_HTTP_REQUEST_FORMAT                 "http.request.format"
 #define CFG_HTTP_REQUEST_FORMAT_DEF             "plain"
 #define CFG_HTTP_RESPONDERS_PER_LISTENER        "http.responders.per.listener"

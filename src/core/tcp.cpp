@@ -1160,10 +1160,34 @@ TcpListener::listener1()
                     m_responders.submit_task(task, conn->worker_id);
             }
         }
+
+        if (UNLIKELY(m_resend))
+        {
+            const std::lock_guard<std::mutex> lock(m_resend_mutex);
+            while (! m_resend_queue.empty())
+            {
+                Task task = m_resend_queue.front();
+                TcpConnection *conn = (TcpConnection*)task.data.pointer;
+                if (1 == ++conn->pending_tasks)
+                    conn->worker_id = m_responders.submit_task(task);
+                else
+                    m_responders.submit_task(task, conn->worker_id);
+                m_resend_queue.pop();
+            }
+            m_resend = false;
+        }
     }
 
     set_stopped();
     Logger::info("TCP listener %d stopped.", m_id);
+}
+
+void
+TcpListener::resubmit(Task& task)
+{
+    const std::lock_guard<std::mutex> lock(m_resend_mutex);
+    m_resend_queue.push(task);
+    m_resend = true;
 }
 
 // called by the level 0 listener;
