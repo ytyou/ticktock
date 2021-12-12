@@ -1102,8 +1102,9 @@ Tsdb::insts(const TimeRange& range, std::vector<Tsdb*>& tsdbs)
     // adjust lower bound
     Tsdb *tsdb = m_tsdbs[lower];
 
-    while (range.get_to() < tsdb->m_time_range.get_from())
+    while (range.get_from() < tsdb->m_time_range.get_to())
     {
+        if (lower == 0) break;
         lower--;
         tsdb = m_tsdbs[lower];
     }
@@ -1111,8 +1112,9 @@ Tsdb::insts(const TimeRange& range, std::vector<Tsdb*>& tsdbs)
     // adjust upper bound
     tsdb = m_tsdbs[upper];
 
-    while (tsdb->m_time_range.get_to() < range.get_from())
+    while (tsdb->m_time_range.get_from() < range.get_to())
     {
+        if (upper == (size-1)) break;
         upper++;
         tsdb = m_tsdbs[upper];
     }
