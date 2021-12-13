@@ -498,8 +498,8 @@ PageManager::open_mmap(PageCount page_count)
 
         if (is_new)
         {
-        	// Meta file not ready yet. Delete the data file to be safe.
-        	if (rm_file(m_file_name.c_str()) == 0)
+            // Meta file not ready yet. Delete the data file to be safe.
+            if (rm_file(m_file_name.c_str()) == 0)
             {
                 Logger::info("Due to mmap failure, remove newly created file %s", m_file_name.c_str());
             }
