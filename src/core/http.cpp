@@ -39,12 +39,12 @@ namespace tt
 
 // TODO: these each consumes 1MB buffer, unnecessarily;
 //       and they can't contain X-Request-ID;
-static HttpResponse HTTP_200 = {200, HttpContentType::HTML};
-static HttpResponse HTTP_400 = {400, HttpContentType::HTML};
-static HttpResponse HTTP_404 = {404, HttpContentType::HTML};
-static HttpResponse HTTP_408 = {408, HttpContentType::HTML};
-static HttpResponse HTTP_411 = {411, HttpContentType::HTML};
-static HttpResponse HTTP_413 = {413, HttpContentType::HTML};
+//static HttpResponse HTTP_200 = {200, HttpContentType::HTML};
+//static HttpResponse HTTP_400 = {400, HttpContentType::HTML};
+//static HttpResponse HTTP_404 = {404, HttpContentType::HTML};
+//static HttpResponse HTTP_408 = {408, HttpContentType::HTML};
+//static HttpResponse HTTP_411 = {411, HttpContentType::HTML};
+//static HttpResponse HTTP_413 = {413, HttpContentType::HTML};
 
 
 const char *HTTP_METHOD_GET = "GET";
@@ -72,7 +72,7 @@ static const char *HTTP_CONTENT_TYPES[] =
     "text/plain"
 };
 
-int HttpServer::m_max_resend = 0;
+//int HttpServer::m_max_resend = 0;
 
 
 std::map<const char*,HttpRequestHandler,cstr_less> HttpServer::m_get_handlers;
@@ -90,7 +90,7 @@ HttpServer::HttpServer() :
 void
 HttpServer::init()
 {
-    m_max_resend = Config::get_int(CFG_HTTP_MAX_RETRIES, CFG_HTTP_MAX_RETRIES_DEF);
+    //m_max_resend = Config::get_int(CFG_HTTP_MAX_RETRIES, CFG_HTTP_MAX_RETRIES_DEF);
 
     add_get_handler(HTTP_API_AGGREGATORS, &Aggregator::http_get_api_aggregators_handler);
     add_get_handler(HTTP_API_CONFIG, &HttpServer::http_get_api_config_handler);
@@ -201,7 +201,7 @@ HttpServer::recv_http_data(TaskData& data)
 
     if (len >= buff_size)
     {
-        HttpServer::send_response(fd, HTTP_413);
+        HttpServer::send_response(conn, 413);
         conn_error = true;
         Logger::debug("received request of size %d, returning 413", len);
     }
@@ -218,15 +218,13 @@ HttpServer::recv_http_data(TaskData& data)
 
         if (! parse_header(buff, len, conn->request))
         {
-            HTTP_400.id = conn->request.id;
-            HttpServer::send_response(fd, HTTP_400);
+            HttpServer::send_response(conn, 400);
             conn_error = true;
             Logger::http("parse_header failed, will close connection", fd);
         }
         else if (conn->request.length < 0)
         {
-            HTTP_400.id = conn->request.id;
-            HttpServer::send_response(fd, HTTP_411);
+            HttpServer::send_response(conn, 411);
             conn_error = true;
             Logger::debug("request length negative, will close connection: %d", fd);
         }
@@ -247,11 +245,11 @@ HttpServer::recv_http_data(TaskData& data)
             if (! process_request(conn->request, conn->response))
                 conn_error = true;
 
-            HttpServer::send_response(fd, conn->response);
+            free_buff = HttpServer::send_response(conn);
 
             // This needs to be done AFTER send_response(),
             // or you are risking 2 threads both sending responses on the same fd.
-            conn->buff = nullptr;
+            //conn->buff = nullptr;
         }
         else
         {
@@ -266,7 +264,11 @@ HttpServer::recv_http_data(TaskData& data)
         Logger::http("received request of size %d", fd, len);
     }
 
-    if (free_buff) MemoryManager::free_network_buffer(buff);
+    if (free_buff)
+    {
+        conn->buff = nullptr;
+        MemoryManager::free_network_buffer(buff);
+    }
 
     // closing the fd will deregister it from epoll
     // since we never dup() or fork(); but let's
@@ -320,7 +322,7 @@ HttpServer::recv_http_data_cont(HttpConnection *conn)
 
     if (len >= buff_size)
     {
-        HttpServer::send_response(fd, HTTP_413);
+        HttpServer::send_response(conn, 413);
         conn_error = true;
         Logger::debug("received request of size %d, returning 413", len);
     }
@@ -373,7 +375,7 @@ HttpServer::recv_http_data_cont(HttpConnection *conn)
             if (! process_request(conn->request, conn->response))
                 conn_error = true;
 
-            HttpServer::send_response(fd, conn->response);
+            free_buff = HttpServer::send_response(conn);
 
             // This needs to be done AFTER send_response(),
             // or you are risking 2 threads both sending responses on the same fd.
@@ -474,59 +476,82 @@ HttpServer::get_post_handler(const char *path)
 
 
 bool
-HttpServer::send_response(int fd, HttpResponse& response)
+HttpServer::resend_response(TaskData& data)
+{
+    HttpConnection *conn = (HttpConnection*)data.pointer;
+    bool success = send_response(conn);
+    if (success)
+    {
+        if (conn->buff != nullptr)
+        {
+            MemoryManager::free_network_buffer(conn->buff);
+            conn->buff = nullptr;
+        }
+    }
+    --conn->pending_tasks;
+    return success;
+}
+
+bool
+HttpServer::send_response(HttpConnection *conn, uint16_t status)
+{
+    conn->response.id = conn->request.id;
+    conn->response.init(status, HttpContentType::PLAIN);
+    return send_response(conn);
+}
+
+bool
+HttpServer::send_response(HttpConnection *conn)
 {
     size_t target;
-    ssize_t sent = 0;
-    size_t no_progress_cnt = 0;
-    size_t count = 0;
+    ssize_t sent = conn->sent;
+    int fd = conn->fd;
+    HttpResponse& response = conn->response;
     //size_t max_chunk = 1000000;
 
-    ASSERT(0 < m_max_resend);
-
-    while (no_progress_cnt < m_max_resend)
+    while (sent < response.response_size)
     {
         char *buff = response.response + sent;
         target = response.response_size - sent;
 
         //ssize_t sent = send(fd, buff, std::min(target,max_chunk), MSG_DONTWAIT);
         ssize_t n = send(fd, buff, target, MSG_DONTWAIT);
-        count++;
 
         if (n < 0)
         {
             if (errno != EAGAIN)
             {
+                conn->state |= TCS_ERROR;
                 Logger::warn("send(%d) failed with errno=%d; conn will be closed", fd, errno);
                 break;
             }
-
-            no_progress_cnt++;
         }
         else if (n == 0)
         {
-            spin_yield(++no_progress_cnt);
+            break;
         }
         else
         {
             sent += n;
-            if (sent >= response.response_size) break;
-            no_progress_cnt = 0;
         }
     }
 
     if (sent >= response.response_size)
     {
-        Logger::http("Sent %d(%d) bytes in %d tries:\n%s", fd,
-            response.response_size, sent, count, response.response);
-        return true;    // succeeded
+        Logger::http("Sent %d(%d) bytes:\n%s", fd,
+            response.response_size, sent, response.response);
+        return true;
     }
-    else
+    else if ((conn->state & TCS_ERROR) == 0)
     {
-        Logger::http("Sent out %d of %d bytes after %d tries, give up!", fd,
-            sent, response.response_size, count);
-        return false;   // failed
+        // requeue it to try later
+        Task task;
+        task.doit = &HttpServer::resend_response;
+        task.data.pointer = conn;
+        conn->listener->resubmit(task);
     }
+
+    return false;
 }
 
 // parse raw request sitting in the buff into an HttpRequest

@@ -182,6 +182,8 @@ public:
         return m_socket_fd;
     }
 
+    void resubmit(Task& task);
+
 private:
     bool init(int socket_fd);
     void listener0();   // level 0: handle tcp connections
@@ -249,6 +251,10 @@ private:
 
     TaskScheduler m_responders; // threads to handle http requests
     std::thread m_listener;     // the thread that goes into the event loop
+
+    std::atomic<bool> m_resend; // true if m_resend_queue is not empty
+    std::mutex m_resend_mutex;  // to guard m_resend_queue
+    std::queue<Task> m_resend_queue;
 };
 
 
