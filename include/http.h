@@ -134,9 +134,11 @@ class HttpConnection : public TcpConnection
 public:
     HttpRequest request;
     HttpResponse response;
+    ssize_t sent;   // number of bytes of response already sent
 
     void init() override
     {
+        sent = 0;
         request.init();
         response.init();
         TcpConnection::init();
@@ -178,18 +180,20 @@ protected:
     // task func
     static bool recv_http_data(TaskData& data);
     static bool recv_http_data_cont(HttpConnection *conn);
+    static bool resend_response(TaskData& data);
 
 private:
     static bool parse_header(char *buff, int len, HttpRequest& request);
     static bool process_request(HttpRequest& request, HttpResponse& response);
-    static bool send_response(int fd, HttpResponse& response);
+    static bool send_response(HttpConnection *conn);
+    static bool send_response(HttpConnection *conn, uint16_t status);
 
     // request handlers
     static std::map<const char*,HttpRequestHandler,cstr_less> m_get_handlers;
     static std::map<const char*,HttpRequestHandler,cstr_less> m_put_handlers;
     static std::map<const char*,HttpRequestHandler,cstr_less> m_post_handlers;
 
-    static int m_max_resend;
+    //static int m_max_resend;
 };
 
 

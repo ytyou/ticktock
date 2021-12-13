@@ -261,7 +261,7 @@ Logger::rename()
 void
 Logger::trace(const char *format, ...)
 {
-    if ((get_level() > LogLevel::TRACE) || (format == nullptr))
+    if (LIKELY((get_level() > LogLevel::TRACE) || (format == nullptr)))
         return;
 
     va_list args;
@@ -276,7 +276,7 @@ Logger::trace(const char *format, ...)
 void
 Logger::debug(const char *format, ...)
 {
-    if ((get_level() > LogLevel::DEBUG) || (format == nullptr))
+    if (LIKELY((get_level() > LogLevel::DEBUG) || (format == nullptr)))
         return;
 
     va_list args;
@@ -291,7 +291,7 @@ Logger::debug(const char *format, ...)
 void
 Logger::tcp(const char *format, int fd, ...)
 {
-    if ((get_level() > LogLevel::TCP) || (format == nullptr))
+    if (LIKELY((get_level() > LogLevel::TCP) || (format == nullptr)))
         return;
 
     va_list args;
@@ -306,7 +306,7 @@ Logger::tcp(const char *format, int fd, ...)
 void
 Logger::http(const char *format, int fd, ...)
 {
-    if ((get_level() > LogLevel::HTTP) || (format == nullptr))
+    if (LIKELY((get_level() > LogLevel::HTTP) || (format == nullptr)))
         return;
 
     va_list args;

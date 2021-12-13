@@ -488,7 +488,26 @@ PageManager::open_mmap(PageCount page_count)
     if (m_pages == MAP_FAILED)
     {
         Logger::error("Failed to mmap file %s, errno = %d", m_file_name.c_str(), errno);
-        m_pages == nullptr;
+        m_pages = nullptr;
+
+        if (m_fd > 0)
+        {
+            close(m_fd);
+            m_fd = -1;
+        }
+
+        if (is_new)
+        {
+            // Meta file not ready yet. Delete the data file to be safe.
+            if (rm_file(m_file_name.c_str()) == 0)
+            {
+                Logger::info("Due to mmap failure, remove newly created file %s", m_file_name.c_str());
+            }
+            else
+            {
+                Logger::error("Mmap fails, but unable to remove newly created file %s", m_file_name.c_str());
+            }
+        }
         return false;
     }
 
