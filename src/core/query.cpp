@@ -156,7 +156,7 @@ Query::Query(JsonMap& map, StringBuffer& strbuf) :
     search = map.find("end");
     Timestamp end;
     if (search != map.end())
-        end = (Timestamp)std::atoll(search->second->to_string());
+        end = parse_ts(search->second, now);
     else
         end = now;
     end = validate_resolution(end);
@@ -807,7 +807,7 @@ QueryExecutor::http_post_api_query_handler(HttpRequest& request, HttpResponse& r
     Timestamp end;
     search = map.find("end");
     if (search != map.end())
-        end = (long)(search->second->to_double());
+        end = parse_ts(search->second, now);
     else
         end = now;
     end = validate_resolution(end);

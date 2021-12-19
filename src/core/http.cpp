@@ -478,6 +478,7 @@ HttpServer::get_post_handler(const char *path)
 bool
 HttpServer::resend_response(TaskData& data)
 {
+    if (g_shutdown_requested) return false;
     HttpConnection *conn = (HttpConnection*)data.pointer;
     bool success = send_response(conn);
     if (success)
@@ -525,6 +526,9 @@ HttpServer::send_response(HttpConnection *conn)
                 Logger::warn("send(%d) failed with errno=%d; conn will be closed", fd, errno);
                 break;
             }
+
+            if (g_shutdown_requested)
+                break;
         }
         else if (n == 0)
         {

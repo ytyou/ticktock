@@ -1164,7 +1164,7 @@ TcpListener::listener1()
         if (UNLIKELY(m_resend))
         {
             const std::lock_guard<std::mutex> lock(m_resend_mutex);
-            while (! m_resend_queue.empty())
+            while (! m_resend_queue.empty() && ! g_shutdown_requested)
             {
                 Task task = m_resend_queue.front();
                 TcpConnection *conn = (TcpConnection*)task.data.pointer;
