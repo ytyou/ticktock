@@ -281,7 +281,7 @@ private:
     // this is true if, 1. m_map is populated; 2. m_page_mgr is open; 3. m_meta_file is open;
     // this is false if all the above are not true;
     uint32_t m_mode;
-    std::atomic<long> m_load_time;  // epoch time in sec
+    std::atomic<Timestamp> m_load_time; // epoch time in sec
     default_contention_free_shared_mutex m_load_lock;
 
     PartitionManager *m_partition_mgr;

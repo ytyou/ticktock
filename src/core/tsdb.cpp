@@ -43,7 +43,7 @@ namespace tt
 
 default_contention_free_shared_mutex Tsdb::m_tsdb_lock;
 std::vector<Tsdb*> Tsdb::m_tsdbs;
-static long tsdb_rotation_freq = 0;
+static uint64_t tsdb_rotation_freq = 0;
 static thread_local tsl::robin_map<const char*, Mapping*, hash_func, eq_func> thread_local_cache;
 
 
@@ -1777,7 +1777,7 @@ Tsdb::rotate(TaskData& data)
     Meter meter(METRIC_TICKTOCK_TSDB_ROTATE_MS);
     Timestamp now = ts_now();
     std::vector<Tsdb*> tsdbs;
-    long disk_avail = Stats::get_disk_avail();
+    uint64_t disk_avail = Stats::get_disk_avail();
 
     TimeRange range(0, now);
     Tsdb::insts(range, tsdbs);
@@ -1787,13 +1787,13 @@ Tsdb::rotate(TaskData& data)
     // adjust CFG_TSDB_ARCHIVE_THRESHOLD when system available memory is low
     if (Stats::get_avphys_pages() < 1600)
     {
-        long archive_threshold =
+        Timestamp archive_threshold =
             Config::get_time(CFG_TSDB_ARCHIVE_THRESHOLD, TimeUnit::DAY, CFG_TSDB_ARCHIVE_THRESHOLD_DEF);
-        long rotation_freq =
+        Timestamp rotation_freq =
             Config::get_time(CFG_TSDB_ROTATION_FREQUENCY, TimeUnit::DAY, CFG_TSDB_ROTATION_FREQUENCY_DEF);
 
         if (rotation_freq < 1) rotation_freq = 1;
-        long days = archive_threshold / rotation_freq;
+        uint64_t days = archive_threshold / rotation_freq;
 
         if (days > 1)
         {
@@ -1822,9 +1822,9 @@ Tsdb::rotate(TaskData& data)
 
         if (! (mode & TSDB_MODE_READ))
         {
-            long load_time = tsdb->m_load_time;
-            long now_sec = to_sec(now);
-            long thrashing_threshold =
+            uint64_t load_time = tsdb->m_load_time;
+            uint64_t now_sec = to_sec(now);
+            uint64_t thrashing_threshold =
                 Config::get_time(CFG_TSDB_THRASHING_THRESHOLD, TimeUnit::SEC, CFG_TSDB_THRASHING_THRESHOLD_DEF);
 
             // archive it
@@ -1902,7 +1902,6 @@ Tsdb::purge_oldest(int threshold)
 
     if (tsdb != nullptr)
     {
-        char buff[64];
         Logger::info("[rotate] Purging %T permenantly", tsdb);
 
         std::lock_guard<std::mutex> guard(tsdb->m_lock);

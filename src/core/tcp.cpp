@@ -382,28 +382,26 @@ TcpServer::recv_tcp_data(TaskData& data)
 
     int fd = conn->fd;
 
-    char* (buffs[2]);
+    char *buff;
     int len = 0, curr = 0;
     bool conn_error = false;    // try to keep-alive
 
     if (conn->buff != nullptr)
     {
         len = conn->offset;
-        buffs[0] = conn->buff;
-        buffs[1] = MemoryManager::alloc_network_buffer();
+        buff = conn->buff;
         conn->buff = nullptr;
     }
     else
     {
-        buffs[0] = MemoryManager::alloc_network_buffer();
-        buffs[1] = MemoryManager::alloc_network_buffer();
+        buff = MemoryManager::alloc_network_buffer();
     }
 
     while (len < buff_size)
     {
         // the MSG_DONTWAIT is not really needed, since
         // the socket itself is non-blocking
-        int cnt = recv(fd, &buffs[curr][len], buff_size-len, MSG_DONTWAIT);
+        int cnt = recv(fd, &buff[len], buff_size-len, MSG_DONTWAIT);
 
         if (cnt > 0)
         {
@@ -411,6 +409,7 @@ TcpServer::recv_tcp_data(TaskData& data)
         }
         else if (cnt == 0)
         {
+            Logger::debug("recv(%d) returned 0, errno = %d", fd, errno);
             break;
         }
         else //if (cnt == -1)
@@ -423,19 +422,20 @@ TcpServer::recv_tcp_data(TaskData& data)
             break;
         }
 
-        buffs[curr][len] = 0;
+        buff[len] = 0;
 
-        if (buffs[curr][len-1] == '\n')
+        if (buff[len-1] == '\n')
         {
-            process_data(conn, buffs[curr], len);
+            process_data(conn, buff, len);
             len = 0;
+            break;
         }
         else if (len >= buff_size)
         {
             //char *last = std::strrchr(buffs[curr], '\n');
 
             // find the last '\n'
-            char *first = buffs[curr];
+            char *first = buff;
             char *last = nullptr;
 
             for (char *p = first+(len-2); p != first; p--)
@@ -454,32 +454,38 @@ TcpServer::recv_tcp_data(TaskData& data)
             }
             else
             {
-                int next = (curr + 1) % 2;
-                int l = last - first + 1;
-                len -= l;
-                memcpy((void*)buffs[next], last+1, len);
-                process_data(conn, buffs[curr], l);
-                curr = next;
+                int l = last - first + 1;   // length of full lines we will process now
+                len -= l;                   // length of partial line to be processed later
+                char tmp[len+1];
+
+                memcpy((void*)tmp, last+1, len);
+                process_data(conn, buff, l);
+                memcpy((void*)buff, tmp, len);
+
+                if (conn->pending_tasks <= 1)
+                {
+                    Task task;
+                    task.doit = &TcpServer::recv_tcp_data;
+                    task.data.pointer = conn;
+                    conn->listener->resubmit(task);
+                }
             }
+            break;
         }
     }
 
     if (len > 0)
     {
         conn_error = false;
-        conn->buff = buffs[curr];
+        conn->buff = buff;
         conn->offset = len;
-
-        int next = (curr + 1) % 2;
-        MemoryManager::free_network_buffer(buffs[next]);
     }
     else
     {
         conn->buff = nullptr;
         conn->offset = 0;
 
-        MemoryManager::free_network_buffer(buffs[0]);
-        MemoryManager::free_network_buffer(buffs[1]);
+        MemoryManager::free_network_buffer(buff);
     }
 
     // closing the fd will deregister it from epoll
@@ -1146,18 +1152,20 @@ TcpListener::listener1()
             {
                 // new data on existing connections
                 TcpConnection *conn = get_conn(fd);
-
                 ASSERT(conn != nullptr);
                 Logger::tcp("received data on conn %p", conn->fd, conn);
 
-                Task task = m_server->get_recv_data_task(conn);
+                if (conn->pending_tasks < 2)
+                {
+                    Task task = m_server->get_recv_data_task(conn);
 
-                // if previous attempt was not able to read the complete
-                // request, we want to assign this one to the same worker.
-                if (1 == ++conn->pending_tasks)
-                    conn->worker_id = m_responders.submit_task(task);
-                else
-                    m_responders.submit_task(task, conn->worker_id);
+                    // if previous attempt was not able to read the complete
+                    // request, we want to assign this one to the same worker.
+                    if (1 == ++conn->pending_tasks)
+                        conn->worker_id = m_responders.submit_task(task);
+                    else
+                        m_responders.submit_task(task, conn->worker_id);
+                }
             }
         }
 

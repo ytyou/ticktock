@@ -778,7 +778,7 @@ PageManager::persist()
 }
 
 bool
-PageManager::resize(long old_size)
+PageManager::resize(TsdbSize old_size)
 {
     ASSERT(m_fd != -1);
 

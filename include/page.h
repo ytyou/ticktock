@@ -330,7 +330,7 @@ public:
 private:
     bool open_mmap(PageCount page_count);
     void persist_compacted_flag(bool compacted);
-    bool resize(long old_size);     // resize (shrink) the data file
+    bool resize(TsdbSize old_size);     // resize (shrink) the data file
     void init_headers();    // zero-out headers
     struct page_info_on_disk *get_page_info_on_disk(PageCount index);
     static PageCount calc_first_page_info_index(PageCount page_count);
