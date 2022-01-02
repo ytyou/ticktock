@@ -50,7 +50,8 @@ static thread_local tsl::robin_map<const char*, Mapping*, hash_func, eq_func> th
 Mapping::Mapping() :
     m_metric(nullptr),
     m_tsdb(nullptr),
-    m_partition(nullptr)
+    m_partition(nullptr),
+    m_ref_count(0)
 {
 }
 
@@ -58,13 +59,13 @@ void
 Mapping::init(const char *name, Tsdb *tsdb)
 {
     if (m_metric != nullptr)
-    {
         FREE(m_metric);
-    }
 
     m_metric = STRDUP(name);
+    ASSERT(m_metric != nullptr);
     m_tsdb = tsdb;
     m_partition = tsdb->get_partition(name);
+    m_ref_count = 1;
 
     m_map.clear();
     m_map.rehash(16);
@@ -78,11 +79,11 @@ Mapping::~Mapping()
         m_metric = nullptr;
     }
 
-    unload(false);
+    unload();
 }
 
 void
-Mapping::unload(bool release)
+Mapping::unload()
 {
     std::unordered_set<TimeSeries*> tss;
     WriteLock guard(m_lock);
@@ -98,11 +99,6 @@ Mapping::unload(bool release)
 
     m_map.clear();
     m_tsdb = nullptr;
-
-    if (release)
-    {
-        MemoryManager::free_recyclable(this);
-    }
 }
 
 void
@@ -130,6 +126,7 @@ Mapping::recycle()
     }
 
     m_map.clear();
+    m_tsdb = nullptr;
 
     return true;
 }
@@ -648,6 +645,7 @@ Tsdb::get_or_add_mapping(TagOwner& dp)
         }
     }
 
+    ASSERT(mapping->m_metric != nullptr);
     thread_local_cache[mapping->m_metric] = mapping;
 
     return mapping;
@@ -668,21 +666,20 @@ Tsdb::get_or_add_mapping2(DataPoint& dp)
     if (result != thread_local_cache.end())
     {
         Mapping *m = result->second;
-
-        if (m->m_tsdb == this)
-        {
-            return m;
-        }
+        ASSERT(m->m_metric != nullptr);
+        ASSERT(std::strcmp(metric, m->m_metric) == 0);
+        if (m->m_tsdb == this) return m;
+        thread_local_cache.erase(m->m_metric);
+        ASSERT(thread_local_cache.find(m->m_metric) == thread_local_cache.end());
+        m->dec_ref_count();
     }
 
     Mapping *mapping;
 
     {
         std::lock_guard<std::mutex> guard(m_lock);
-
         auto result1 = m_map.find(metric);
 
-        // TODO: this is not thread-safe!
         if ((result1 == m_map.end()) && ((m_mode & TSDB_MODE_READ) == 0))
         {
             ensure_readable();
@@ -700,8 +697,14 @@ Tsdb::get_or_add_mapping2(DataPoint& dp)
         {
             mapping = result1->second;
         }
+
+        mapping->inc_ref_count();
+        ASSERT(mapping->m_tsdb == this);
     }
 
+    ASSERT(mapping->m_tsdb == this);
+    ASSERT(mapping->m_metric != nullptr);
+    ASSERT(strcmp(mapping->m_metric, metric) == 0);
     thread_local_cache[mapping->m_metric] = mapping;
 
     return mapping;
@@ -794,6 +797,7 @@ Tsdb::query_for_ts(const char *metric, Tag *tags, std::unordered_set<TimeSeries*
         if (result != m_map.end())
         {
             mapping = result->second;
+            ASSERT(result->first == mapping->m_metric);
         }
     }
 
@@ -838,6 +842,7 @@ Tsdb::flush(bool sync)
     {
         Mapping *mapping = it->second;
         mapping->flush();
+        ASSERT(it->first == mapping->m_metric);
     }
 
     m_meta_file.flush();
@@ -859,6 +864,7 @@ Tsdb::set_check_point()
     {
         Mapping *mapping = it->second;
         mapping->set_check_point();
+        ASSERT(it->first == mapping->m_metric);
     }
 
     m_meta_file.flush();
@@ -1057,6 +1063,7 @@ Tsdb::load_from_disk_no_lock()
     m_mode |= TSDB_MODE_READ;
     if (compacted) m_mode |= TSDB_MODE_COMPACTED;
 
+    ASSERT(m_map.empty());
     m_meta_file.load(this);
     m_meta_file.open(); // open for append
 
@@ -1420,6 +1427,7 @@ Tsdb::http_get_api_suggest_handler(HttpRequest& request, HttpResponse& response)
             for (auto it = tsdb->m_map.begin(); it != tsdb->m_map.end(); it++)
             {
                 Mapping *mapping = it->second;
+                ASSERT(it->first == mapping->m_metric);
 
                 ReadLock mapping_guard(mapping->m_lock);
 
@@ -1446,6 +1454,7 @@ Tsdb::http_get_api_suggest_handler(HttpRequest& request, HttpResponse& response)
             for (auto it = tsdb->m_map.begin(); it != tsdb->m_map.end(); it++)
             {
                 Mapping *mapping = it->second;
+                ASSERT(it->first == mapping->m_metric);
 
                 ReadLock mapping_guard(mapping->m_lock);
 
@@ -1478,6 +1487,7 @@ Tsdb::append_meta_all()
     for (const auto& t: m_map)
     {
         Mapping *mapping = t.second;
+        ASSERT(t.first == mapping->m_metric);
 
         for (const auto& m: mapping->m_map)
         {
@@ -1597,6 +1607,7 @@ Tsdb::add_ts(std::string& metric, std::string& key, PageCount file_id, PageCount
     {
         // found
         mapping = search->second;
+        ASSERT(search->first == mapping->m_metric);
     }
     else
     {
@@ -1740,23 +1751,30 @@ Tsdb::get_page_percent_used()
     return pct_used / m_page_mgrs.size();
 }
 
-// This will archive the tsdb. No write nor read will be possible afterwards.
 void
 Tsdb::unload()
 {
     WriteLock unload_guard(m_load_lock);
+    unload_no_lock();
+}
 
+// This will archive the tsdb. No write nor read will be possible afterwards.
+void
+Tsdb::unload_no_lock()
+{
     m_meta_file.close();
 
     for (auto it = m_map.begin(); it != m_map.end(); it++)
     {
         Mapping *mapping = it->second;
-        mapping->unload(true);
+        ASSERT(it->first == mapping->m_metric);
+        mapping->unload();
+        mapping->dec_ref_count();
     }
 
     m_map.clear();
 
-    std::lock_guard<std::mutex> guard(m_pm_lock);
+    std::lock_guard<std::mutex> pm_guard(m_pm_lock);
 
     for (PageManager *pm: m_page_mgrs)
     {
@@ -1807,6 +1825,7 @@ Tsdb::rotate(TaskData& data)
     {
         if (g_shutdown_requested) break;
 
+        WriteLock unload_guard(tsdb->m_load_lock);
         std::lock_guard<std::mutex> guard(tsdb->m_lock);
 
         if (! (tsdb->m_mode & TSDB_MODE_READ))
@@ -1832,7 +1851,7 @@ Tsdb::rotate(TaskData& data)
             {
                 Logger::info("[rotate] Archiving %T (lt=%ld, now=%ld)", tsdb, load_time, now_sec);
                 tsdb->flush(true);
-                tsdb->unload();
+                tsdb->unload_no_lock();
             }
             else
             {
@@ -1991,6 +2010,7 @@ Tsdb::compact(TaskData& data)
             for (const auto& t: tsdb->m_map)
             {
                 Mapping *mapping = t.second;
+                ASSERT(t.first == mapping->m_metric);
 
                 WriteLock guard(mapping->m_lock);
 

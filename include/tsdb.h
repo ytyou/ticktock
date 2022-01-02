@@ -82,7 +82,7 @@ private:
     ~Mapping();
 
     void init(const char *name, Tsdb* tsdb);
-    void unload(bool release);
+    void unload();
     void flush();
     bool recycle();
     void set_check_point();
@@ -108,6 +108,14 @@ private:
 
     Tsdb *m_tsdb;
     Partition *m_partition;
+
+    int m_ref_count;
+    inline void inc_ref_count() { m_ref_count++; }
+    inline void dec_ref_count()
+    {
+        ASSERT(m_ref_count > 0);
+        if (--m_ref_count == 0) MemoryManager::free_recyclable(this);
+    }
 };
 
 
@@ -244,6 +252,7 @@ private:
     bool load_from_disk();          // return false if load failed
     bool load_from_disk_no_lock();  // return false if load failed
     void unload();
+    void unload_no_lock();
     uint32_t mode_of() const;
 
     Mapping *get_or_add_mapping(TagOwner& dp);
