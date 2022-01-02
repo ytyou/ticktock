@@ -903,6 +903,7 @@ Tsdb::shutdown()
     }
 
     m_tsdbs.clear();
+    Logger::info("Tsdb::shutdown complete");
 }
 
 PageManager *
@@ -1503,6 +1504,8 @@ Tsdb::init()
     std::string data_dir = Config::get_str(CFG_TSDB_DATA_DIR, CFG_TSDB_DATA_DIR_DEF);
     DIR *dir;
     struct dirent *dir_ent;
+
+    Logger::info("Loading data from %s", data_dir.c_str());
 
     PartitionManager::init();
 

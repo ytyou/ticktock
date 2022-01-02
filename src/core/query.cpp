@@ -933,7 +933,7 @@ QueryExecutor::shutdown(ShutdownRequest request)
     Stoppable::shutdown(request);
     m_executors.shutdown(request);
     m_executors.wait(5);
-    Logger::debug("QueryExecutor shutdown complete");
+    Logger::info("QueryExecutor::shutdown complete");
 }
 
 

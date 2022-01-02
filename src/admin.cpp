@@ -188,6 +188,8 @@ Admin::cmd_stat(KeyValuePair *params, HttpResponse& response)
 bool
 Admin::cmd_stop(KeyValuePair *params, HttpResponse& response)
 {
+    Logger::info("Shutdown initiated");
+
     g_shutdown_requested = true;
 
     if (http_server_ptr != nullptr)
