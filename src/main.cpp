@@ -384,7 +384,15 @@ main(int argc, char *argv[])
 
     if (process_cmdline_opts(argc, argv) != 0) return 1;
 
-    initialize();
+    try
+    {
+        initialize();
+    }
+    catch (...)
+    {
+        fprintf(stderr, "Initialization failed. Abort!\n");
+        return 9;
+    }
 
     // verify configs
     if (Config::get_int(CFG_HTTP_SERVER_PORT, CFG_HTTP_SERVER_PORT_DEF) <= 0)

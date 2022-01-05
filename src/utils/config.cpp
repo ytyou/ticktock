@@ -67,8 +67,11 @@ Config::reload(TaskData& data)
     {
         m_properties.clear();
 
-        std::fstream file(g_config_file);
+        std::fstream file(g_config_file, std::ios::in);
         std::string line;
+
+        if (! file.is_open())
+            throw std::ios_base::failure("Failed to open config file for read");
 
         while (std::getline(file, line))
         {
@@ -89,7 +92,8 @@ Config::reload(TaskData& data)
     }
     catch (std::exception& ex)
     {
-        fprintf(stderr, "failed to read config file %s: %s", g_config_file.c_str(), ex.what());
+        fprintf(stderr, "Failed to read config file %s: %s\n", g_config_file.c_str(), ex.what());
+        throw;
     }
 
     return false;
