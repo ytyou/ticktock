@@ -422,7 +422,8 @@ Tsdb::Tsdb(TimeRange& range, bool existing) :
 
     m_map.rehash(16);
     m_mode = mode_of();
-    m_page_mgrs.push_back(new PageManager(range, 0));
+    if (m_mode & TSDB_MODE_READ_WRITE)
+        m_page_mgrs.push_back(new PageManager(range, 0));
     m_partition_mgr = new PartitionManager(this, existing);
 
     Logger::debug("tsdb %T created (mode=%d)", &range, m_mode);
@@ -462,7 +463,7 @@ Tsdb::create(TimeRange& range, bool existing)
 {
     Tsdb *tsdb = new Tsdb(range, existing);
 
-    if (tsdb->m_mode & TSDB_MODE_READ)
+    if (tsdb->m_mode & TSDB_MODE_READ_WRITE)
     {
         tsdb->load_from_disk_no_lock();
     }
@@ -921,14 +922,20 @@ Tsdb::create_page_manager(int id)
 PageInfo *
 Tsdb::get_free_page_on_disk(bool out_of_order)
 {
-    ASSERT(! m_page_mgrs.empty());
     std::lock_guard<std::mutex> guard(m_pm_lock);
-    PageInfo *pi = m_page_mgrs.back()->get_free_page_on_disk(this, out_of_order);
+    PageManager *pm;
+
+    if (m_page_mgrs.empty())
+        pm = create_page_manager();
+    else
+        pm = m_page_mgrs.back();
+
+    PageInfo *pi = pm->get_free_page_on_disk(this, out_of_order);
 
     if (pi == nullptr)
     {
         // We need a new mmapp'ed file!
-        PageManager *pm = create_page_manager();
+        pm = create_page_manager();
         ASSERT(m_time_range.contains(pm->get_time_range()));
         ASSERT(pm->get_time_range().contains(m_time_range));
         pi = pm->get_free_page_on_disk(this, out_of_order);
@@ -1852,7 +1859,7 @@ Tsdb::rotate(TaskData& data)
             // archive it
             if ((now_sec - load_time) > thrashing_threshold)
             {
-                Logger::info("[rotate] Archiving %T (lt=%ld, now=%ld)", tsdb, load_time, now_sec);
+                Logger::info("[rotate] Archiving %T (lt=%" PRIu64 ", now=%" PRIu64 ")", tsdb, load_time, now_sec);
                 tsdb->flush(true);
                 tsdb->unload_no_lock();
             }
