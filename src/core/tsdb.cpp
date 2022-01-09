@@ -1865,7 +1865,7 @@ Tsdb::rotate(TaskData& data)
             }
             else
             {
-                Logger::info("[rotate] Archiving %T SKIPPED to avoid thrashing", tsdb);
+                Logger::info("[rotate] Archiving %T SKIPPED to avoid thrashing (lt=%" PRIu64 ")", tsdb, load_time);
                 tsdb->m_meta_file.flush();
             }
         }
