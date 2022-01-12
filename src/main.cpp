@@ -323,6 +323,8 @@ initialize()
 
     Config::init();
     Logger::init();
+    Logger::info("TickTock version: %d.%d.%d, on %s",
+        TT_MAJOR_VERSION, TT_MINOR_VERSION, TT_PATCH_VERSION, g_host_name.c_str());
     MemoryManager::init();
     Tsdb::init();
     AppendLog::init();
@@ -333,8 +335,6 @@ initialize()
     Timer::inst()->start();
 
     unsigned int n = std::thread::hardware_concurrency();
-    Logger::info("TickTock version: %d.%d.%d, on %s",
-        TT_MAJOR_VERSION, TT_MINOR_VERSION, TT_PATCH_VERSION, g_host_name.c_str());
     Logger::info("std::thread::hardware_concurrency() = %d", n);
     Logger::info("sizeof(std::pair<Timestamp,double>) = %d", sizeof(std::pair<Timestamp,double>));
     Logger::info("sizeof(struct page_info_on_disk) = %d", sizeof(struct page_info_on_disk));
@@ -365,7 +365,7 @@ shutdown()
         fprintf(stderr, "caught exception when shutting down: %s\n", ex.what());
     }
 
-    Logger::info("Shutdown process complete");
+    Logger::info("Shutdown process complete\n\n");
     LD_STATS("After shutdown");
     Logger::inst()->close();
     printf("Shutdown process complete\n");

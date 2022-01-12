@@ -160,7 +160,7 @@ Logger::reopen(int fd)
 
     if (! log_file.empty() && (log_file != "-"))
     {
-        m_fd = open(log_file.c_str(), O_CREAT|O_WRONLY|O_TRUNC|O_NONBLOCK, S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH);
+        m_fd = open(log_file.c_str(), O_APPEND|O_CREAT|O_WRONLY|O_NONBLOCK, S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH);
 
         if (m_fd == -1)
         {
