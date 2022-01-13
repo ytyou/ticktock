@@ -403,75 +403,61 @@ TcpServer::recv_tcp_data(TaskData& data)
         // the socket itself is non-blocking
         int cnt = recv(fd, &buff[len], buff_size-len, MSG_DONTWAIT);
 
-        if (cnt > 0)
-        {
-            len += cnt;
-        }
-        else if (cnt == 0)
-        {
-            Logger::debug("recv(%d) returned 0, errno = %d", fd, errno);
-            break;
-        }
-        else //if (cnt == -1)
+        if (UNLIKELY(cnt < 0))
         {
             // TODO: what about EINTR???
             //       maybe we should delete conn???
-            if ((errno == EAGAIN) || (errno == EWOULDBLOCK)) break;
-            Logger::warn("recv(%d) failed, errno = %d", fd, errno);
-            conn_error = true;
+            if ((errno != EAGAIN) && (errno != EWOULDBLOCK))
+            {
+                conn_error = true;
+                Logger::warn("recv(%d) failed, errno = %d", fd, errno);
+            }
             break;
         }
-
-        buff[len] = 0;
-
-        if (buff[len-1] == '\n')
+        else if (cnt == 0)
         {
-            process_data(conn, buff, len);
-            len = 0;
-            break;
+            break;  // no more data available at this time
         }
-        else if (len >= buff_size)
+
+        len += cnt;
+    }
+
+    buff[len] = 0;
+    bool again = (len >= buff_size);
+
+    if (len > 5)
+    {
+        // find the last '\n'
+        char *first = buff;
+        char *last = nullptr;
+
+        for (char *p = first+(len-1); p != first; p--)
         {
-            //char *last = std::strrchr(buffs[curr], '\n');
-
-            // find the last '\n'
-            char *first = buff;
-            char *last = nullptr;
-
-            for (char *p = first+(len-2); p != first; p--)
+            if (*p == '\n')
             {
-                if (*p == '\n')
-                {
-                    last = p;
-                    break;
-                }
+                last = p;
+                break;
             }
-
-            if (last == nullptr)
-            {
-                Logger::error("Bad data format received in TcpListener:\n%s", first);
-                len = 0;
-            }
-            else
-            {
-                int l = last - first + 1;   // length of full lines we will process now
-                len -= l;                   // length of partial line to be processed later
-                char tmp[len+1];
-
-                memcpy((void*)tmp, last+1, len);
-                process_data(conn, buff, l);
-                memcpy((void*)buff, tmp, len);
-
-                if (conn->pending_tasks <= 1)
-                {
-                    Task task;
-                    task.doit = &TcpServer::recv_tcp_data;
-                    task.data.pointer = conn;
-                    conn->listener->resubmit(task);
-                }
-            }
-            break;
         }
+
+        if (last != nullptr)
+        {
+            int l = last - first + 1;   // length of full lines we will process now
+            len -= l;                   // length of partial line to be processed later
+            char tmp[len+1];
+
+            memcpy((void*)tmp, last+1, len);
+            process_data(conn, buff, l);
+            if (len > 0) memcpy((void*)buff, tmp, len);
+        }
+    }
+
+    if (again && (conn->pending_tasks <= 1))
+    {
+        Task task;
+        task.doit = &TcpServer::recv_tcp_data;
+        task.data.pointer = conn;
+        conn->listener->resubmit(task);
     }
 
     if (len > 0)
