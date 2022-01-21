@@ -798,7 +798,7 @@ QueryExecutor::http_post_api_query_handler(HttpRequest& request, HttpResponse& r
     auto search = map.find("start");
     if (search == map.end())
     {
-        const char* errMsg = "Error: POST request doesn't have a START!\n";
+        const char* errMsg = "Error: POST request doesn't specify parameter 'start'!\n";
         response.init(400, HttpContentType::PLAIN, strlen(errMsg), errMsg);
         return false;
     }
@@ -824,7 +824,7 @@ QueryExecutor::http_post_api_query_handler(HttpRequest& request, HttpResponse& r
     search = map.find("queries");
     if (search == map.end())
     {
-        const char* errMsg = "Error: POST request doesn't specify 'queries'!\n";
+        const char* errMsg = "Error: POST request doesn't specify parameter 'queries'!\n";
         response.init(400, HttpContentType::PLAIN, strlen(errMsg), errMsg);
         return false;
     }
