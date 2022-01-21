@@ -788,7 +788,10 @@ QueryExecutor::http_post_api_query_handler(HttpRequest& request, HttpResponse& r
 
     if (request.content == nullptr)
     {
-        response.init(400, HttpContentType::PLAIN);
+        char* errMsg = "Error: POST request content is null. Did you mean to use GET instead?";
+        response.init(400, HttpContentType::PLAIN, strlen(errMsg), errMsg);
+        Logger::debug("Failed to process http request: %s", errMsg);
+
         return false;
     }
 
