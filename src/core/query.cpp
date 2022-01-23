@@ -788,7 +788,9 @@ QueryExecutor::http_post_api_query_handler(HttpRequest& request, HttpResponse& r
 
     if (request.content == nullptr)
     {
-        response.init(400, HttpContentType::PLAIN);
+        const char* errMsg = "Error: POST request content is null. Did you mean to use GET instead?\n";
+        response.init(400, HttpContentType::PLAIN, strlen(errMsg), errMsg);
+
         return false;
     }
 
@@ -796,7 +798,8 @@ QueryExecutor::http_post_api_query_handler(HttpRequest& request, HttpResponse& r
     auto search = map.find("start");
     if (search == map.end())
     {
-        response.init(400, HttpContentType::PLAIN);
+        const char* errMsg = "Error: POST request doesn't specify parameter 'start'!\n";
+        response.init(400, HttpContentType::PLAIN, strlen(errMsg), errMsg);
         return false;
     }
 
@@ -821,7 +824,8 @@ QueryExecutor::http_post_api_query_handler(HttpRequest& request, HttpResponse& r
     search = map.find("queries");
     if (search == map.end())
     {
-        response.init(400, HttpContentType::PLAIN);
+        const char* errMsg = "Error: POST request doesn't specify parameter 'queries'!\n";
+        response.init(400, HttpContentType::PLAIN, strlen(errMsg), errMsg);
         return false;
     }
     JsonArray& array = search->second->to_array();
