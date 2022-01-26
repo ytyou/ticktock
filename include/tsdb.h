@@ -84,7 +84,7 @@ private:
     void init(const char *name, Tsdb* tsdb);
     void unload();
     void flush();
-    bool recycle();
+    bool recycle() override;
     void set_check_point();
 
     char *m_metric;

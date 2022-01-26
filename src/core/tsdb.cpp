@@ -85,17 +85,21 @@ Mapping::~Mapping()
 void
 Mapping::unload()
 {
-    std::unordered_set<TimeSeries*> tss;
     WriteLock guard(m_lock);
 
     // More than one key could be mapped to the same
     // TimeSeries; so we need to dedup first to avoid
     // double free it.
     for (auto it = m_map.begin(); it != m_map.end(); it++)
-        tss.insert(it->second);
+    {
+        const char *key = it->first;
+        TimeSeries *ts = it->second;
 
-    for (auto ts: tss)
-        MemoryManager::free_recyclable(ts);
+        if (ts->get_key() == key)
+            MemoryManager::free_recyclable(ts);
+        else
+            FREE((void*)key);
+    }
 
     m_map.clear();
     m_tsdb = nullptr;
@@ -930,12 +934,15 @@ Tsdb::get_free_page_on_disk(bool out_of_order)
     else
         pm = m_page_mgrs.back();
 
+    ASSERT(pm->is_open());
     PageInfo *pi = pm->get_free_page_on_disk(this, out_of_order);
 
     if (pi == nullptr)
     {
         // We need a new mmapp'ed file!
+        ASSERT(pm->is_full());
         pm = create_page_manager();
+        ASSERT(pm->is_open());
         ASSERT(m_time_range.contains(pm->get_time_range()));
         ASSERT(pm->get_time_range().contains(m_time_range));
         pi = pm->get_free_page_on_disk(this, out_of_order);
@@ -1365,7 +1372,6 @@ bool
 Tsdb::http_get_api_suggest_handler(HttpRequest& request, HttpResponse& response)
 {
     size_t buff_size = MemoryManager::get_network_buffer_size() - 6;
-    char* buff = MemoryManager::alloc_network_buffer();
 
     JsonMap params;
     request.parse_params(params);
@@ -1483,8 +1489,10 @@ Tsdb::http_get_api_suggest_handler(HttpRequest& request, HttpResponse& response)
         return false;
     }
 
+    char* buff = MemoryManager::alloc_network_buffer();
     int n = JsonParser::to_json(suggestions, buff, buff_size);
     response.init(200, HttpContentType::JSON, n, buff);
+    MemoryManager::free_network_buffer(buff);
 
     return true;
 }

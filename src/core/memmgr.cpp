@@ -45,6 +45,9 @@ uint64_t MemoryManager::m_network_buffer_len = 0;
 std::mutex MemoryManager::m_page_lock;
 void *MemoryManager::m_page_free_list = nullptr;
 
+std::mutex MemoryManager::m_network_lock;
+char *MemoryManager::m_network_buffer_free_list = nullptr;
+
 std::mutex MemoryManager::m_locks[RecyclableType::RT_COUNT];
 Recyclable * MemoryManager::m_free_lists[RecyclableType::RT_COUNT];
 #ifdef _DEBUG
@@ -60,8 +63,7 @@ MemoryManager::inst()
     return (mm == nullptr) ? (mm = new MemoryManager) : mm;
 }
 
-MemoryManager::MemoryManager() :
-    m_network_buffer_free_list(nullptr)
+MemoryManager::MemoryManager()
 {
     for (int i = 0; i < RecyclableType::RT_COUNT; i++)
     {
@@ -72,29 +74,31 @@ MemoryManager::MemoryManager() :
 char *
 MemoryManager::alloc_network_buffer()
 {
-    MemoryManager *mm = MemoryManager::inst();
-    char* buff = mm->m_network_buffer_free_list;
+    char* buff = nullptr;
+
+    {
+        std::lock_guard<std::mutex> guard(m_network_lock);
+        buff = m_network_buffer_free_list;
+        if (buff != nullptr)
+        {
+            m_network_buffer_free_list = *((char**)buff);
+            ASSERT(((long)m_network_buffer_free_list % g_page_size) == 0);
+        }
+    }
 
     ASSERT(m_initialized);
-    ASSERT(((long)buff % g_page_size) == 0);
 
     if (buff == nullptr)
     {
         // TODO: check if we have enough memory
         buff =
-            static_cast<char*>(aligned_alloc(g_page_size, mm->m_network_buffer_len));
+            static_cast<char*>(aligned_alloc(g_page_size, m_network_buffer_len));
         if (buff == nullptr)
             throw std::runtime_error("Out of memory");
         ASSERT(((long)buff % g_page_size) == 0);
-        Logger::debug("allocate network_buffer %p", buff);
-    }
-    else
-    {
-        //std::memcpy(&mm->m_network_buffer_free_list, buff, sizeof(void*));
-        mm->m_network_buffer_free_list = *((char**)buff);
-        ASSERT(((long)mm->m_network_buffer_free_list % g_page_size) == 0);
     }
 
+    ASSERT(((long)buff % g_page_size) == 0);
     return buff;
 }
 
@@ -107,12 +111,11 @@ MemoryManager::free_network_buffer(char* buff)
         return;
     }
 
-    MemoryManager *mm = MemoryManager::inst();
     ASSERT(((long)buff % g_page_size) == 0);
-    ASSERT(((long)mm->m_network_buffer_free_list % g_page_size) == 0);
-    //std::memcpy(buff, &mm->m_network_buffer_free_list, sizeof(void*));
-    *((char**)buff) = mm->m_network_buffer_free_list;
-    mm->m_network_buffer_free_list = buff;
+    ASSERT(((long)m_network_buffer_free_list % g_page_size) == 0);
+    std::lock_guard<std::mutex> guard(m_network_lock);
+    *((char**)buff) = m_network_buffer_free_list;
+    m_network_buffer_free_list = buff;
 }
 
 void

@@ -64,7 +64,8 @@ private:
     static bool m_initialized;      // must initialize before using
     static uint64_t m_network_buffer_len;
 
-    char *m_network_buffer_free_list;
+    static std::mutex m_network_lock;
+    static char *m_network_buffer_free_list;
 
     static std::mutex m_page_lock;
     static void *m_page_free_list;
