@@ -190,7 +190,7 @@ Mapping::get_ts(TagOwner& to)
 
         if (ts == nullptr)
         {
-            ts = (TimeSeries*)MemoryManager::inst()->alloc_recyclable(RecyclableType::RT_TIME_SERIES);
+            ts = (TimeSeries*)MemoryManager::alloc_recyclable(RecyclableType::RT_TIME_SERIES);
             ts->init(m_metric, buff, to.get_cloned_tags(), m_tsdb, false);
             m_map[ts->get_key()] = ts;
         }
@@ -244,7 +244,7 @@ Mapping::get_ts2(DataPoint& dp)
 
         if (ts == nullptr)
         {
-            ts = (TimeSeries*)MemoryManager::inst()->alloc_recyclable(RecyclableType::RT_TIME_SERIES);
+            ts = (TimeSeries*)MemoryManager::alloc_recyclable(RecyclableType::RT_TIME_SERIES);
             ts->init(m_metric, buff, dp.get_cloned_tags(), m_tsdb, false);
             m_map[ts->get_key()] = ts;
         }
@@ -358,14 +358,14 @@ Mapping::add_ts(Tsdb *tsdb, std::string& metric, std::string& keys, PageInfo *pa
             std::tuple<std::string,std::string> kv;
             tokenize(token, kv, '=');
 
-            Tag *tag = (Tag*)MemoryManager::inst()->alloc_recyclable(RecyclableType::RT_KEY_VALUE_PAIR);
+            Tag *tag = (Tag*)MemoryManager::alloc_recyclable(RecyclableType::RT_KEY_VALUE_PAIR);
             tag->m_key = STRDUP(std::get<0>(kv).c_str());
             tag->m_value = STRDUP(std::get<1>(kv).c_str());
             tag->next() = tags;
             tags = tag;
         }
 
-        ts = (TimeSeries*)MemoryManager::inst()->alloc_recyclable(RecyclableType::RT_TIME_SERIES);
+        ts = (TimeSeries*)MemoryManager::alloc_recyclable(RecyclableType::RT_TIME_SERIES);
         ts->init(metric.c_str(), keys.c_str(), tags, tsdb, tsdb->is_read_only());
         m_map[ts->get_key()] = ts;
 

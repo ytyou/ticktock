@@ -54,14 +54,6 @@ Recyclable * MemoryManager::m_free_lists[RecyclableType::RT_COUNT];
 std::unordered_map<Recyclable*,bool> MemoryManager::m_maps[RecyclableType::RT_COUNT];
 #endif
 
-static thread_local MemoryManager *mm = nullptr;
-
-
-MemoryManager *
-MemoryManager::inst()
-{
-    return (mm == nullptr) ? (mm = new MemoryManager) : mm;
-}
 
 MemoryManager::MemoryManager()
 {

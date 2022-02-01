@@ -132,8 +132,7 @@ KeyValuePair::prepend(KeyValuePair **list, const char *key, const char *value)
         return;
     }
 
-    MemoryManager *mm = MemoryManager::inst();
-    KeyValuePair *kv = (KeyValuePair*)mm->alloc_recyclable(RecyclableType::RT_KEY_VALUE_PAIR);
+    KeyValuePair *kv = (KeyValuePair*)MemoryManager::alloc_recyclable(RecyclableType::RT_KEY_VALUE_PAIR);
     kv->m_key = key;
     kv->m_value = value;
     kv->next() = *list;
@@ -234,14 +233,13 @@ KeyValuePair::get_value(KeyValuePair *list, const char *key)
 KeyValuePair *
 KeyValuePair::clone(KeyValuePair *list)
 {
-    MemoryManager *mm = MemoryManager::inst();
     KeyValuePair *dup = nullptr;
     KeyValuePair *last = nullptr;
 
     for (KeyValuePair *kv = list; kv != nullptr; kv = kv->next())
     {
         KeyValuePair *tmp =
-            (KeyValuePair*)mm->alloc_recyclable(RecyclableType::RT_KEY_VALUE_PAIR);
+            (KeyValuePair*)MemoryManager::alloc_recyclable(RecyclableType::RT_KEY_VALUE_PAIR);
 
         tmp->m_key = STRDUP(kv->m_key);
         tmp->m_value = STRDUP(kv->m_value);
@@ -264,14 +262,13 @@ KeyValuePair::clone(KeyValuePair *list)
 KeyValuePair *
 KeyValuePair::clone(KeyValuePair *list, StringBuffer& strbuf)
 {
-    MemoryManager *mm = MemoryManager::inst();
     KeyValuePair *dup = nullptr;
     KeyValuePair *last = nullptr;
 
     for (KeyValuePair *kv = list; kv != nullptr; kv = kv->next())
     {
         KeyValuePair *tmp =
-            (KeyValuePair*)mm->alloc_recyclable(RecyclableType::RT_KEY_VALUE_PAIR);
+            (KeyValuePair*)MemoryManager::alloc_recyclable(RecyclableType::RT_KEY_VALUE_PAIR);
 
         tmp->m_key = strbuf.strdup(kv->m_key);
         tmp->m_value = strbuf.strdup(kv->m_value);
@@ -294,8 +291,6 @@ KeyValuePair::clone(KeyValuePair *list, StringBuffer& strbuf)
 void
 KeyValuePair::free_list(KeyValuePair *list, bool deep)
 {
-    MemoryManager *mm = MemoryManager::inst();
-
     while (list != nullptr)
     {
         KeyValuePair *kv = list;
@@ -307,7 +302,7 @@ KeyValuePair::free_list(KeyValuePair *list, bool deep)
             FREE((char*)kv->m_value);
         }
 
-        mm->free_recyclable(kv);
+        MemoryManager::free_recyclable(kv);
     }
 }
 

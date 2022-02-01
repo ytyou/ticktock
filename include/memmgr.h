@@ -36,8 +36,6 @@ class QueryTask;
 class MemoryManager
 {
 public:
-    static MemoryManager* inst();
-
     static void init();
     static void cleanup();
 
