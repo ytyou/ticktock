@@ -79,7 +79,7 @@ MemoryManager::alloc_network_buffer()
     {
         std::lock_guard<std::mutex> guard(m_network_lock);
         buff = m_network_buffer_free_list;
-        if (buff != nullptr)
+        if (LIKELY(buff != nullptr))
         {
             m_network_buffer_free_list = *((char**)buff);
             ASSERT(((long)m_network_buffer_free_list % g_page_size) == 0);
@@ -88,7 +88,7 @@ MemoryManager::alloc_network_buffer()
 
     ASSERT(m_initialized);
 
-    if (buff == nullptr)
+    if (UNLIKELY(buff == nullptr))
     {
         // TODO: check if we have enough memory
         buff =
@@ -105,7 +105,7 @@ MemoryManager::alloc_network_buffer()
 void
 MemoryManager::free_network_buffer(char* buff)
 {
-    if (buff == nullptr)
+    if (UNLIKELY(buff == nullptr))
     {
         Logger::error("Passing nullptr to MemoryManager::free_network_buffer()");
         return;
