@@ -84,6 +84,7 @@
 #define CFG_TCP_SERVER_PORT                     "tcp.server.port"
 #define CFG_TCP_SERVER_PORT_DEF                 6181
 #define CFG_TCP_SOCKET_RCVBUF_SIZE              "tcp.socket.rcvbuf.size"
+#define CFG_TCP_SOCKET_RCVBUF_SIZE_DEF          "106496b"
 #define CFG_TCP_SOCKET_SNDBUF_SIZE              "tcp.socket.sndbuf.size"
 #define CFG_TIMER_GRANULARITY                   "timer.granularity"
 #define CFG_TIMER_GRANULARITY_DEF               "1s"

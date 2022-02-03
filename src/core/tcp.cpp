@@ -122,7 +122,7 @@ TcpServer::start(int port)
     }
 
     // adjust TCP window size
-    uint64_t opt;
+    int opt;
     socklen_t optlen = sizeof(opt);
     retval = getsockopt(m_socket_fd, SOL_SOCKET, SO_RCVBUF, &opt, &optlen);
 
@@ -131,15 +131,14 @@ TcpServer::start(int port)
     else
         Logger::info("getsockopt(SO_RCVBUF) failed, errno = %d", errno);
 
-    if (Config::exists(CFG_TCP_SOCKET_RCVBUF_SIZE))
-    {
-        opt = Config::get_bytes(CFG_TCP_SOCKET_RCVBUF_SIZE);
-        retval = setsockopt(m_socket_fd, SOL_SOCKET, SO_RCVBUF, &opt, optlen);
-        if (retval != 0)
-            Logger::warn("setsockopt(RCVBUF) failed, errno = %d", errno);
-        else
-            Logger::info("SO_RCVBUF set to %d", opt);
-    }
+    uint64_t opt64 = Config::get_bytes(CFG_TCP_SOCKET_RCVBUF_SIZE, CFG_TCP_SOCKET_RCVBUF_SIZE_DEF);
+    if (opt64 > INT_MAX) opt64 = INT_MAX;
+    opt = (int)opt64;
+    retval = setsockopt(m_socket_fd, SOL_SOCKET, SO_RCVBUF, &opt, optlen);
+    if (retval != 0)
+        Logger::warn("setsockopt(RCVBUF) failed, errno = %d", errno);
+    else
+        Logger::info("SO_RCVBUF set to %d", opt);
 
     retval = getsockopt(m_socket_fd, SOL_SOCKET, SO_SNDBUF, &opt, &optlen);
 
@@ -150,7 +149,9 @@ TcpServer::start(int port)
 
     if (Config::exists(CFG_TCP_SOCKET_SNDBUF_SIZE))
     {
-        opt = Config::get_bytes(CFG_TCP_SOCKET_SNDBUF_SIZE);
+        opt64 = Config::get_bytes(CFG_TCP_SOCKET_SNDBUF_SIZE);
+        if (opt64 > INT_MAX) opt64 = INT_MAX;
+        opt = (int)opt64;
         retval = setsockopt(m_socket_fd, SOL_SOCKET, SO_SNDBUF, &opt, optlen);
         if (retval != 0)
             Logger::warn("setsockopt(SNDBUF) failed, errno = %d", errno);
@@ -256,8 +257,6 @@ TcpServer::start(int port)
 
     // collect socket info (options)
     {
-        int opt;
-        socklen_t optlen;
         char dev[IFNAMSIZ];
 
         optlen = sizeof(dev);
