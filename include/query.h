@@ -44,7 +44,6 @@ class QueryResults : public TagOwner, public Recyclable
 // TODO: make them private
 public:
     const char *m_metric;
-    std::vector<char*> m_aggregate_tags;
     DataPointVector m_dps;
     std::vector<QueryTask*> m_qtv;
 
@@ -122,8 +121,8 @@ public:
 
     int to_json(char *buff, int size) const
     {
-        char buf1[1024];
-        char buf2[1024];
+        char buf1[1024];    // TODO: no magic numbers
+        char buf2[1024];    // TODO: no magic numbers
 
         int n = snprintf(buff, size, "{\"metric\":\"%s\",%s,%s,\"dps\":{",
             m_metric, to_json_tags(buf1, sizeof(buf1)),
@@ -153,6 +152,8 @@ private:
         KeyValuePair::to_json(m_tags, buff+n, size-n);
         return buff;
     }
+
+    std::vector<char*> m_aggregate_tags;
 };
 
 
