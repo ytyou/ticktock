@@ -16,7 +16,7 @@ TickTock is an open source Time Series DataBase (TSDB) for DevOps, Internet of T
 ## Highlights
 
 * **High Performance** 
-  - High write throughput, low query latency. In our performance testing with some public available benchmarks, TickTock is at least 50X better than Opentsdb, 4X than InfluxDB.
+  - High write throughput, low query latency. In our performance testing with some public available benchmarks, TickTock is at least 50X better than Opentsdb, 10X than InfluxDB.
 * **Replication** 
   - Write to any server in the cluster, get replicated to any other servers.
 * **Scalability** 
