@@ -376,7 +376,8 @@ PageManager::PageManager(TimeRange& range, PageCount id, bool temp) :
     bool is_new = open_mmap(page_count);
 
     if (m_pages == nullptr)
-        return; // failed to open
+        throw std::runtime_error("Failed to create data file in page manager.");
+        //return; // failed to open
 
     if (is_new)
     {

@@ -781,9 +781,20 @@ HttpResponse::init(uint16_t code, HttpContentType type)
     if (response == nullptr)
         response = buffer = MemoryManager::alloc_network_buffer();
 
-    response_size = sprintf(response, "HTTP/1.1 %3d %s%sContent-Length: 0%sContent-Type: %s%s%s",
-        status_code, status_code_to_reason(status_code),
-        CRLF, CRLF, HTTP_CONTENT_TYPES[type], CRLF, CRLF);
+    if (id == nullptr)
+    {
+        response_size = sprintf(response, "HTTP/1.1 %3d %s%sContent-Length: 0%sContent-Type: %s%s%s",
+            (int)status_code, status_code_to_reason(status_code),
+            CRLF, CRLF, HTTP_CONTENT_TYPES[type], CRLF, CRLF);
+    }
+    else
+    {
+        response_size = sprintf(response, "HTTP/1.1 %3d %s%sContent-Length: 0%sContent-Type: %s%sX-Request-ID: %s%s%s",
+            (int)status_code, status_code_to_reason(status_code), CRLF,
+            CRLF,
+            HTTP_CONTENT_TYPES[type], CRLF,
+            id, CRLF, CRLF);
+    }
 }
 
 void

@@ -655,6 +655,7 @@ CompactTests::need_to_fill_empty_page_again4(int compressor, int dps_cnt, DataPo
     Tsdb::init();
     CONFIRM(! Tsdb::inst(start)->is_archived());
     CONFIRM(Tsdb::inst(start)->is_compacted());
+    log("page_count() = %d", Tsdb::get_data_page_count());
     CONFIRM(Tsdb::get_data_page_count() == ((compressor==0)?4:2));
     log("numer of pages after compaction: %d", Tsdb::get_data_page_count());
 
@@ -676,7 +677,7 @@ CompactTests::need_to_fill_empty_page_again(int compressor)
     // 1. write 10 in order dps; then 10 out-of-order dps;
     //Timestamp start = 946684800000; // 2020-01-01
     Timestamp now = ts_now_ms();
-    int dps_cnts[] = { 2, 2, 2, 2, 1000, 2 };
+    int dps_cnts[] = { 8, 8, 8, 8, 980, 8 };
     DataPointVector dps[6];
     int dps_cnt = 0;
 

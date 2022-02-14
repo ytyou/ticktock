@@ -45,9 +45,14 @@ static TestCase *tests[] =
 int
 main(int argc, char *argv[])
 {
-    long seed = std::time(0);
-    std::srand(seed);
-    printf("rand() seed used: %ld\n", seed);
+    if (argc > 1)
+        std::srand(std::atoi(argv[1]));
+    else
+    {
+        long seed = std::time(0);
+        std::srand(seed);
+        printf("rand() seed used: %ld\n", seed);
+    }
 
     // update g_config_file to point to our test config
     tt::g_config_file = TestCase::str_join(TEST_ROOT, "test.conf");

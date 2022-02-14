@@ -122,7 +122,7 @@ TcpServer::start(int port)
     }
 
     // adjust TCP window size
-    uint64_t opt;
+    int opt;
     socklen_t optlen = sizeof(opt);
     retval = getsockopt(m_socket_fd, SOL_SOCKET, SO_RCVBUF, &opt, &optlen);
 
@@ -131,15 +131,14 @@ TcpServer::start(int port)
     else
         Logger::info("getsockopt(SO_RCVBUF) failed, errno = %d", errno);
 
-    if (Config::exists(CFG_TCP_SOCKET_RCVBUF_SIZE))
-    {
-        opt = Config::get_bytes(CFG_TCP_SOCKET_RCVBUF_SIZE);
-        retval = setsockopt(m_socket_fd, SOL_SOCKET, SO_RCVBUF, &opt, optlen);
-        if (retval != 0)
-            Logger::warn("setsockopt(RCVBUF) failed, errno = %d", errno);
-        else
-            Logger::info("SO_RCVBUF set to %d", opt);
-    }
+    uint64_t opt64 = Config::get_bytes(CFG_TCP_SOCKET_RCVBUF_SIZE, CFG_TCP_SOCKET_RCVBUF_SIZE_DEF);
+    if (opt64 > INT_MAX) opt64 = INT_MAX;
+    opt = (int)opt64;
+    retval = setsockopt(m_socket_fd, SOL_SOCKET, SO_RCVBUF, &opt, optlen);
+    if (retval != 0)
+        Logger::warn("setsockopt(RCVBUF) failed, errno = %d", errno);
+    else
+        Logger::info("SO_RCVBUF set to %d", opt);
 
     retval = getsockopt(m_socket_fd, SOL_SOCKET, SO_SNDBUF, &opt, &optlen);
 
@@ -150,7 +149,9 @@ TcpServer::start(int port)
 
     if (Config::exists(CFG_TCP_SOCKET_SNDBUF_SIZE))
     {
-        opt = Config::get_bytes(CFG_TCP_SOCKET_SNDBUF_SIZE);
+        opt64 = Config::get_bytes(CFG_TCP_SOCKET_SNDBUF_SIZE);
+        if (opt64 > INT_MAX) opt64 = INT_MAX;
+        opt = (int)opt64;
         retval = setsockopt(m_socket_fd, SOL_SOCKET, SO_SNDBUF, &opt, optlen);
         if (retval != 0)
             Logger::warn("setsockopt(SNDBUF) failed, errno = %d", errno);
@@ -256,8 +257,6 @@ TcpServer::start(int port)
 
     // collect socket info (options)
     {
-        int opt;
-        socklen_t optlen;
         char dev[IFNAMSIZ];
 
         optlen = sizeof(dev);
@@ -403,75 +402,61 @@ TcpServer::recv_tcp_data(TaskData& data)
         // the socket itself is non-blocking
         int cnt = recv(fd, &buff[len], buff_size-len, MSG_DONTWAIT);
 
-        if (cnt > 0)
-        {
-            len += cnt;
-        }
-        else if (cnt == 0)
-        {
-            Logger::debug("recv(%d) returned 0, errno = %d", fd, errno);
-            break;
-        }
-        else //if (cnt == -1)
+        if (UNLIKELY(cnt < 0))
         {
             // TODO: what about EINTR???
             //       maybe we should delete conn???
-            if ((errno == EAGAIN) || (errno == EWOULDBLOCK)) break;
-            Logger::warn("recv(%d) failed, errno = %d", fd, errno);
-            conn_error = true;
+            if ((errno != EAGAIN) && (errno != EWOULDBLOCK))
+            {
+                conn_error = true;
+                Logger::warn("recv(%d) failed, errno = %d", fd, errno);
+            }
             break;
         }
-
-        buff[len] = 0;
-
-        if (buff[len-1] == '\n')
+        else if (cnt == 0)
         {
-            process_data(conn, buff, len);
-            len = 0;
-            break;
+            break;  // no more data available at this time
         }
-        else if (len >= buff_size)
+
+        len += cnt;
+    }
+
+    buff[len] = 0;
+    bool again = (len >= buff_size);
+
+    if (len > 5)
+    {
+        // find the last '\n'
+        char *first = buff;
+        char *last = nullptr;
+
+        for (char *p = first+(len-1); p != first; p--)
         {
-            //char *last = std::strrchr(buffs[curr], '\n');
-
-            // find the last '\n'
-            char *first = buff;
-            char *last = nullptr;
-
-            for (char *p = first+(len-2); p != first; p--)
+            if (*p == '\n')
             {
-                if (*p == '\n')
-                {
-                    last = p;
-                    break;
-                }
+                last = p;
+                break;
             }
-
-            if (last == nullptr)
-            {
-                Logger::error("Bad data format received in TcpListener:\n%s", first);
-                len = 0;
-            }
-            else
-            {
-                int l = last - first + 1;   // length of full lines we will process now
-                len -= l;                   // length of partial line to be processed later
-                char tmp[len+1];
-
-                memcpy((void*)tmp, last+1, len);
-                process_data(conn, buff, l);
-                memcpy((void*)buff, tmp, len);
-
-                if (conn->pending_tasks <= 1)
-                {
-                    Task task;
-                    task.doit = &TcpServer::recv_tcp_data;
-                    task.data.pointer = conn;
-                    conn->listener->resubmit(task);
-                }
-            }
-            break;
         }
+
+        if (last != nullptr)
+        {
+            int l = last - first + 1;   // length of full lines we will process now
+            len -= l;                   // length of partial line to be processed later
+            char tmp[len+1];
+
+            memcpy((void*)tmp, last+1, len);
+            process_data(conn, buff, l);
+            if (len > 0) memcpy((void*)buff, tmp, len);
+        }
+    }
+
+    if (again && (conn->pending_tasks <= 1))
+    {
+        Task task;
+        task.doit = &TcpServer::recv_tcp_data;
+        task.data.pointer = conn;
+        conn->listener->resubmit(task);
     }
 
     if (len > 0)

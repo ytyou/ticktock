@@ -85,17 +85,21 @@ Mapping::~Mapping()
 void
 Mapping::unload()
 {
-    std::unordered_set<TimeSeries*> tss;
     WriteLock guard(m_lock);
 
     // More than one key could be mapped to the same
     // TimeSeries; so we need to dedup first to avoid
     // double free it.
     for (auto it = m_map.begin(); it != m_map.end(); it++)
-        tss.insert(it->second);
+    {
+        const char *key = it->first;
+        TimeSeries *ts = it->second;
 
-    for (auto ts: tss)
-        MemoryManager::free_recyclable(ts);
+        if (ts->get_key() == key)
+            MemoryManager::free_recyclable(ts);
+        else
+            FREE((void*)key);
+    }
 
     m_map.clear();
     m_tsdb = nullptr;
@@ -111,8 +115,12 @@ Mapping::flush()
     for (auto it = m_map.begin(); it != m_map.end(); it++)
     {
         TimeSeries *ts = it->second;
-        Logger::trace("Flushing ts: %T", ts);
-        ts->flush(true);
+
+        if (it->first == ts->get_key())
+        {
+            Logger::trace("Flushing ts: %T", ts);
+            ts->flush(true);
+        }
     }
 }
 
@@ -186,7 +194,7 @@ Mapping::get_ts(TagOwner& to)
 
         if (ts == nullptr)
         {
-            ts = (TimeSeries*)MemoryManager::inst()->alloc_recyclable(RecyclableType::RT_TIME_SERIES);
+            ts = (TimeSeries*)MemoryManager::alloc_recyclable(RecyclableType::RT_TIME_SERIES);
             ts->init(m_metric, buff, to.get_cloned_tags(), m_tsdb, false);
             m_map[ts->get_key()] = ts;
         }
@@ -240,7 +248,7 @@ Mapping::get_ts2(DataPoint& dp)
 
         if (ts == nullptr)
         {
-            ts = (TimeSeries*)MemoryManager::inst()->alloc_recyclable(RecyclableType::RT_TIME_SERIES);
+            ts = (TimeSeries*)MemoryManager::alloc_recyclable(RecyclableType::RT_TIME_SERIES);
             ts->init(m_metric, buff, dp.get_cloned_tags(), m_tsdb, false);
             m_map[ts->get_key()] = ts;
         }
@@ -354,14 +362,14 @@ Mapping::add_ts(Tsdb *tsdb, std::string& metric, std::string& keys, PageInfo *pa
             std::tuple<std::string,std::string> kv;
             tokenize(token, kv, '=');
 
-            Tag *tag = (Tag*)MemoryManager::inst()->alloc_recyclable(RecyclableType::RT_KEY_VALUE_PAIR);
+            Tag *tag = (Tag*)MemoryManager::alloc_recyclable(RecyclableType::RT_KEY_VALUE_PAIR);
             tag->m_key = STRDUP(std::get<0>(kv).c_str());
             tag->m_value = STRDUP(std::get<1>(kv).c_str());
             tag->next() = tags;
             tags = tag;
         }
 
-        ts = (TimeSeries*)MemoryManager::inst()->alloc_recyclable(RecyclableType::RT_TIME_SERIES);
+        ts = (TimeSeries*)MemoryManager::alloc_recyclable(RecyclableType::RT_TIME_SERIES);
         ts->init(metric.c_str(), keys.c_str(), tags, tsdb, tsdb->is_read_only());
         m_map[ts->get_key()] = ts;
 
@@ -683,7 +691,7 @@ Tsdb::get_or_add_mapping2(DataPoint& dp)
 
         if ((result1 == m_map.end()) && ((m_mode & TSDB_MODE_READ) == 0))
         {
-            ensure_readable();
+            //ensure_readable();
             result1 = m_map.find(metric);
         }
 
@@ -893,6 +901,7 @@ Tsdb::shutdown()
 
     for (Tsdb *tsdb: m_tsdbs)
     {
+        WriteLock unload_guard(tsdb->m_load_lock);
         std::lock_guard<std::mutex> tsdb_guard(tsdb->m_lock);
 
         if (! tsdb->is_read_only())
@@ -930,12 +939,15 @@ Tsdb::get_free_page_on_disk(bool out_of_order)
     else
         pm = m_page_mgrs.back();
 
+    ASSERT(pm->is_open());
     PageInfo *pi = pm->get_free_page_on_disk(this, out_of_order);
 
     if (pi == nullptr)
     {
         // We need a new mmapp'ed file!
+        ASSERT(pm->is_full());
         pm = create_page_manager();
+        ASSERT(pm->is_open());
         ASSERT(m_time_range.contains(pm->get_time_range()));
         ASSERT(pm->get_time_range().contains(m_time_range));
         pi = pm->get_free_page_on_disk(this, out_of_order);
@@ -1058,7 +1070,7 @@ Tsdb::load_from_disk_no_lock()
     if (! success) return false;
 
     // check/set compacted flag
-    bool compacted = true;
+    bool compacted = ! m_page_mgrs.empty();
     for (PageManager *pm: m_page_mgrs)
     {
         if (! pm->is_compacted())
@@ -1365,7 +1377,6 @@ bool
 Tsdb::http_get_api_suggest_handler(HttpRequest& request, HttpResponse& response)
 {
     size_t buff_size = MemoryManager::get_network_buffer_size() - 6;
-    char* buff = MemoryManager::alloc_network_buffer();
 
     JsonMap params;
     request.parse_params(params);
@@ -1483,8 +1494,10 @@ Tsdb::http_get_api_suggest_handler(HttpRequest& request, HttpResponse& response)
         return false;
     }
 
+    char* buff = MemoryManager::alloc_network_buffer();
     int n = JsonParser::to_json(suggestions, buff, buff_size);
     response.init(200, HttpContentType::JSON, n, buff);
+    MemoryManager::free_network_buffer(buff);
 
     return true;
 }
@@ -1957,7 +1970,6 @@ bool
 Tsdb::compact(TaskData& data)
 {
     Tsdb *tsdb = nullptr;
-    WriteLock *write_guard = nullptr;
     Meter meter(METRIC_TICKTOCK_TSDB_COMPACT_MS);
 
     // called from scheduled task? if so, enforce off-hour rule;
@@ -1989,7 +2001,6 @@ Tsdb::compact(TaskData& data)
             else    // not compacted yet
             {
                 tsdb = *it;
-                write_guard = new WriteLock(tsdb->m_load_lock);
                 //m_tsdbs.erase(it);
                 break;
             }
@@ -1998,79 +2009,84 @@ Tsdb::compact(TaskData& data)
 
     if (tsdb != nullptr)
     {
-        Logger::info("[compact] Found this tsdb to compact: %T", tsdb);
-        std::lock_guard<std::mutex> guard(tsdb->m_lock);
-        TimeRange range = tsdb->get_time_range();
-        MetaFile meta_file(get_file_name(range, "meta", true));
+        WriteLock load_lock(tsdb->m_load_lock);
 
-        ASSERT(tsdb->m_temp_page_mgrs.empty());
-
-        // perform compaction
-        try
+        if (tsdb->m_mode == TSDB_MODE_READ) // make sure it's not unloaded
         {
-            // create a temporary data file to compact data into
+            Logger::info("[compact] Found this tsdb to compact: %T", tsdb);
+            std::lock_guard<std::mutex> guard(tsdb->m_lock);
+            TimeRange range = tsdb->get_time_range();
+            MetaFile meta_file(get_file_name(range, "meta", true));
 
-            // cleanup existing temporary files, if any
-            std::string temp_files = get_file_name(tsdb->m_time_range, "*", true);
-            rm_all_files(temp_files);
+            ASSERT(tsdb->m_temp_page_mgrs.empty());
 
-            meta_file.open();
-            ASSERT(meta_file.is_open());
-
-            for (const auto& t: tsdb->m_map)
+            // perform compaction
+            try
             {
-                Mapping *mapping = t.second;
-                ASSERT(t.first == mapping->m_metric);
+                // create a temporary data file to compact data into
 
-                WriteLock guard(mapping->m_lock);
+                // cleanup existing temporary files, if any
+                std::string temp_files = get_file_name(tsdb->m_time_range, "*", true);
+                rm_all_files(temp_files);
 
-                for (const auto& m: mapping->m_map)
+                meta_file.open();
+                ASSERT(meta_file.is_open());
+
+                for (const auto& t: tsdb->m_map)
                 {
-                    TimeSeries *ts = m.second;
+                    Mapping *mapping = t.second;
+                    ASSERT(t.first == mapping->m_metric);
 
-                    if (std::strcmp(ts->get_key(), m.first) == 0)
-                        ts->compact(meta_file);
+                    WriteLock guard(mapping->m_lock);
+
+                    for (const auto& m: mapping->m_map)
+                    {
+                        TimeSeries *ts = m.second;
+
+                        if (std::strcmp(ts->get_key(), m.first) == 0)
+                            ts->compact(meta_file);
+                    }
                 }
+
+                tsdb->unload();
+                Logger::info("[compact] 1 Tsdb compacted");
+            }
+            catch (const std::exception& ex)
+            {
+                Logger::error("[compact] compaction failed: %s", ex.what());
+            }
+            catch (...)
+            {
+                Logger::error("[compact] compaction failed for unknown reasons");
             }
 
-            tsdb->unload();
-            Logger::info("[compact] 1 Tsdb compacted");
-        }
-        catch (const std::exception& ex)
-        {
-            Logger::error("[compact] compaction failed: %s", ex.what());
-        }
-        catch (...)
-        {
-            Logger::error("[compact] compaction failed for unknown reasons");
-        }
+            // mark it as compacted
+            tsdb->m_mode |= TSDB_MODE_COMPACTED;
+            meta_file.close();
 
-        // mark it as compacted
-        tsdb->m_mode |= TSDB_MODE_COMPACTED;
-        meta_file.close();
+            for (auto mgr: tsdb->m_temp_page_mgrs)
+            {
+                mgr->shrink_to_fit();
+                ASSERT(mgr->is_compacted());
+                delete mgr;
+            }
 
-        for (auto mgr: tsdb->m_temp_page_mgrs)
-        {
-            mgr->shrink_to_fit();
-            ASSERT(mgr->is_compacted());
-            delete mgr;
-        }
+            tsdb->m_temp_page_mgrs.clear();
+            tsdb->m_temp_page_mgrs.shrink_to_fit();
 
-        tsdb->m_temp_page_mgrs.clear();
-        tsdb->m_temp_page_mgrs.shrink_to_fit();
-
-        try
-        {
-            // create a file to indicate compaction was successful
-            std::string done_name = get_file_name(range, "done", true);
-            std::ofstream done_file(done_name);
-            done_file.flush();
-            done_file.close();
-            compact2();
-        }
-        catch (const std::exception& ex)
-        {
-            Logger::error("[compact] compaction failed: %s", ex.what());
+            try
+            {
+                // create a file to indicate compaction was successful
+                std::string done_name = get_file_name(range, "done", true);
+                std::ofstream done_file(done_name);
+                done_file.flush();
+                done_file.close();
+                compact2();
+            }
+            catch (const std::exception& ex)
+            {
+                Logger::error("[compact] compaction failed: %s", ex.what());
+            }
         }
     }
     else
@@ -2078,7 +2094,6 @@ Tsdb::compact(TaskData& data)
         Logger::info("[compact] Did not find any appropriate Tsdb to compact.");
     }
 
-    if (write_guard != nullptr) delete write_guard;
     return false;
 }
 

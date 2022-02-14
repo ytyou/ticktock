@@ -466,7 +466,7 @@ get_bytes_factor(const std::string& str)
         switch (std::tolower(str[i]))
         {
             case 't':   factor *= 1024;
-            case 'b':   factor *= 1024;
+            case 'g':   factor *= 1024;
             case 'm':   factor *= 1024;
             case 'k':   factor *= 1024;
             default:    break;
