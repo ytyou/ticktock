@@ -66,6 +66,7 @@ bin/all_tests: $(OBJI) $(TOBJS)
 	$(LINK) $(LFLAGS) -o $@ $(OBJI) $(TOBJS) $(LIBS)
 
 tools: $(TOOLS)
+UOBJS = $(wildcard objs/tools/*.o)
 
 bin/backfill: objs/tools/backfill.o
 	@mkdir -p $(@D)
@@ -79,4 +80,4 @@ tt: clean build
 all: build test tools
 
 clean:
-	$(RM) $(OBJS) $(TOBJS) $(TARGET) $(TESTS) $(TOOLS)
+	$(RM) $(OBJS) $(TOBJS) $(UOBJS) $(TARGET) $(TESTS) $(TOOLS)
