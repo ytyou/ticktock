@@ -76,7 +76,7 @@ public:
     void shutdown(ShutdownRequest request = ShutdownRequest::ASAP);
     void wait(size_t timeout_secs); // BLOCKING CALL!
 
-    size_t get_pending_task_count() const;
+    size_t get_pending_task_count(std::vector<size_t> &counts) const;
     int get_total_task_count(size_t counts[], int size) const;
     bool is_stopped() const;        // return true if all workers have exited
 

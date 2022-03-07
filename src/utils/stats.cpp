@@ -25,6 +25,7 @@
 #include "config.h"
 #include "global.h"
 #include "logger.h"
+#include "query.h"
 #include "stats.h"
 #include "timer.h"
 #include "tsdb.h"
@@ -136,6 +137,63 @@ Stats::inject_metrics(TaskData& data)
             //dp.add_tag(METRIC_TAG_NAME, "ticktock.page.used.percent");
             dp.add_tag(HOST_TAG_NAME, g_host_name.c_str());
             tsdb->add(dp);
+        }
+
+        // ticktock.tcp.pending_task.count
+        if (tcp_server_ptr != nullptr)
+        {
+            std::vector<std::vector<size_t>> counts;
+            tcp_server_ptr->get_pending_task_count(counts);
+
+            for (int i = 0; i < counts.size(); i++)
+            {
+                for (int j = 0; j < counts[i].size(); j++)
+                {
+                    DataPoint dp(now, counts[i][j]);
+                    dp.set_metric("ticktock.tcp.pending_task.count");
+                    std::string listener = std::to_string(i);
+                    std::string responder = std::to_string(j);
+                    dp.add_tag("listener", listener.c_str());
+                    dp.add_tag("responder", responder.c_str());
+                    tsdb->add(dp);
+                }
+            }
+        }
+
+        // ticktock.http.pending_task.count
+        if (http_server_ptr != nullptr)
+        {
+            std::vector<std::vector<size_t>> counts;
+            http_server_ptr->get_pending_task_count(counts);
+
+            for (int i = 0; i < counts.size(); i++)
+            {
+                for (int j = 0; j < counts[i].size(); j++)
+                {
+                    DataPoint dp(now, counts[i][j]);
+                    dp.set_metric("ticktock.http.pending_task.count");
+                    std::string listener = std::to_string(i);
+                    std::string responder = std::to_string(j);
+                    dp.add_tag("listener", listener.c_str());
+                    dp.add_tag("responder", responder.c_str());
+                    tsdb->add(dp);
+                }
+            }
+        }
+
+        // ticktock.query.pending_task.count
+        {
+            std::vector<size_t> counts;
+            QueryExecutor::get_pending_task_count(counts);
+
+            for (int i = 0; i < counts.size(); i++)
+            {
+                DataPoint dp(now, counts[i]);
+                dp.set_metric("ticktock.query.pending_task.count");
+                std::string executor = std::to_string(i);
+                dp.add_tag("executor", executor.c_str());
+                tsdb->add(dp);
+            }
         }
 
         collect_proc_io(now, tsdb);
@@ -356,13 +414,15 @@ Stats::collect_stats(char *buff, int size)
 
     if (tsdb == nullptr) return 0;
 
+    std::vector<size_t> counts;
+
     int len = snprintf(buff, size,
         "ticktock.connection.count %" PRIu64 " %d %s=%s\nticktock.time_series.count %" PRIu64 " %d %s=%s\nticktock.page.used.percent %" PRIu64 " %f %s=%s\nticktock.ooo_page.count %" PRIu64 " %d %s=%s\nticktock.timer.pending_task.count %" PRIu64 " %zu %s=%s\n",
         now, TcpListener::get_active_conn_count(), HOST_TAG_NAME, g_host_name.c_str(),
         now, Tsdb::get_ts_count(), HOST_TAG_NAME, g_host_name.c_str(),
         now, tsdb->get_page_percent_used(), HOST_TAG_NAME, g_host_name.c_str(),
         now, Tsdb::get_page_count(true), HOST_TAG_NAME, g_host_name.c_str(),
-        now, Timer::inst()->m_scheduler.get_pending_task_count(), HOST_TAG_NAME, g_host_name.c_str());
+        now, Timer::inst()->m_scheduler.get_pending_task_count(counts), HOST_TAG_NAME, g_host_name.c_str());
 
     if ((0 < len) && (len < size))
         buff[len] = 0;

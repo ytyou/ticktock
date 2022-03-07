@@ -266,6 +266,7 @@ public:
     static bool http_post_api_query_handler(HttpRequest& request, HttpResponse& response);
 
     static bool perform_query(TaskData& data);
+    static size_t get_pending_task_count(std::vector<size_t> &counts);
 
 private:
     friend class Query;

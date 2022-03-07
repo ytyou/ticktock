@@ -167,9 +167,9 @@ public:
 
     static int get_active_conn_count();
 
-    inline size_t get_pending_task_count() const
+    inline size_t get_pending_task_count(std::vector<size_t> &counts) const
     {
-        return m_responders.get_pending_task_count();
+        return m_responders.get_pending_task_count(counts);
     }
 
     inline int get_total_task_count(size_t counts[], int size) const
@@ -276,7 +276,7 @@ public:
     void get_level1_listeners(std::vector<TcpListener*>& listeners) const;
 
     size_t get_active_conn_count() const;
-    size_t get_pending_task_count() const;
+    size_t get_pending_task_count(std::vector<std::vector<size_t>> &counts) const;
     int get_total_task_count(size_t counts[], int size) const;
 
 protected:
@@ -300,7 +300,7 @@ private:
 
     int m_next_listener;        // used to distribute new connections
     size_t m_listener_count;    // number of listeners (max 2 as hard-coded below)
-    TcpListener **m_listeners; // threads that go into the event loop
+    TcpListener **m_listeners;  // threads that go into the event loop
 
     size_t m_max_conns_per_listener;
     int m_socket_fd;            // main socket we listen on

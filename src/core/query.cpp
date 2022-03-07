@@ -1009,5 +1009,11 @@ QueryExecutor::http_get_api_config_filters_handler(HttpRequest& request, HttpRes
     return true;
 }
 
+size_t
+QueryExecutor::get_pending_task_count(std::vector<size_t> &counts)
+{
+    return m_instance->m_executors.get_pending_task_count(counts);
+}
+
 
 }

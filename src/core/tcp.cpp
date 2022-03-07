@@ -670,15 +670,17 @@ TcpServer::get_most_conn_listener() const
 }
 
 size_t
-TcpServer::get_pending_task_count() const
+TcpServer::get_pending_task_count(std::vector<std::vector<size_t>> &counts) const
 {
     size_t count = 0;
 
     for (size_t i = 0; i < m_listener_count; i++)
     {
+        counts.push_back(std::vector<size_t>());
+
         if (m_listeners[i] != nullptr)
         {
-            count += m_listeners[i]->get_pending_task_count();
+            count += m_listeners[i]->get_pending_task_count(counts[i]);
         }
     }
 
