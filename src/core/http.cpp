@@ -91,6 +91,7 @@ void
 HttpServer::init()
 {
     //m_max_resend = Config::get_int(CFG_HTTP_MAX_RETRIES, CFG_HTTP_MAX_RETRIES_DEF);
+    TcpServer::init();
 
     add_get_handler(HTTP_API_AGGREGATORS, &Aggregator::http_get_api_aggregators_handler);
     add_get_handler(HTTP_API_CONFIG, &HttpServer::http_get_api_config_handler);
@@ -115,18 +116,12 @@ HttpServer::init()
     add_post_handler(HTTP_API_ADMIN, &Admin::http_post_api_admin_handler);
 }
 
-int
-HttpServer::get_responders_per_listener() const
-{
-    int n = Config::get_int(CFG_HTTP_RESPONDERS_PER_LISTENER, CFG_HTTP_RESPONDERS_PER_LISTENER_DEF);
-    return (n > 0) ? n : CFG_HTTP_RESPONDERS_PER_LISTENER_DEF;
-}
-
 TcpConnection *
 HttpServer::create_conn() const
 {
     HttpConnection *conn = (HttpConnection*)MemoryManager::alloc_recyclable(RecyclableType::RT_HTTP_CONNECTION);
     conn->forward = false;
+    conn->server = this;
     return (TcpConnection*)conn;
 }
 

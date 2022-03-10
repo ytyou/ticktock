@@ -27,6 +27,7 @@
 #include <sys/socket.h>
 #include "json.h"
 #include "memmgr.h"
+#include "rw.h"
 #include "serial.h"
 #include "stop.h"
 #include "task.h"
@@ -62,7 +63,7 @@ class alignas(64) TcpConnection : public Recyclable
 {
 public:
     int fd; // socket file-descriptor
-    TcpServer *server;
+    const TcpServer *server;
     TcpListener *listener;
     bool forward;
 
@@ -232,10 +233,13 @@ private:
     // are passed the TcpConnection* which they can update, but they will
     // not search nor update this map.
     // TODO: this can be a simple array of TcpConnection indiced by fd
-    std::map<int,TcpConnection*> m_conn_map;   // from fd to TcpConnection
+    //std::map<int,TcpConnection*> m_conn_map;   // from fd to TcpConnection
 
     static std::mutex m_lock;
     static std::map<int,TcpConnection*> m_all_conn_map;   // from fd to TcpConnection
+
+    // used when accepting new connections
+    static default_contention_free_shared_mutex m_new_conn_lock;
 
     TcpConnection *m_live_conns; // list (double-linked) of live connections
     TcpConnection *m_free_conns; // stack of available connections
@@ -272,7 +276,7 @@ public:
     bool is_stopped() const;
     void instruct0(const char *instruction, int size);
 
-    TcpListener* next_listener();  // listener to receive new connection
+    static TcpListener* next_listener();    // listener to receive new connection
     void get_level1_listeners(std::vector<TcpListener*>& listeners) const;
 
     size_t get_active_conn_count() const;
@@ -280,9 +284,9 @@ public:
     int get_total_task_count(size_t counts[], int size) const;
 
 protected:
+    static void init();
     virtual TcpConnection *create_conn() const;
     virtual Task get_recv_data_task(TcpConnection *conn) const;
-    virtual int get_responders_per_listener() const;
 
     // task func
     static bool recv_tcp_data(TaskData& data);
@@ -298,9 +302,10 @@ private:
     TcpListener *get_least_conn_listener() const;
     TcpListener *get_most_conn_listener() const;
 
-    int m_next_listener;        // used to distribute new connections
-    size_t m_listener_count;    // number of listeners (max 2 as hard-coded below)
-    TcpListener **m_listeners; // threads that go into the event loop
+    static int m_next_listener;     // used to distribute new connections
+    static size_t m_listener_count; // number of listeners (max 2 as hard-coded below)
+    static TcpListener **m_listeners;   // threads that go into the event loop
+    TcpListener *m_listener0;       // one listener0 per server
 
     size_t m_max_conns_per_listener;
     int m_socket_fd;            // main socket we listen on

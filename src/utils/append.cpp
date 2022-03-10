@@ -120,8 +120,8 @@ bool
 AppendLog::rotate(TaskData& data)
 {
     int retention_count = Config::get_int(CFG_APPEND_LOG_RETENTION_COUNT, CFG_APPEND_LOG_RETENTION_COUNT_DEF);
-    int listener_count = Config::get_int(CFG_HTTP_LISTENER_COUNT, CFG_HTTP_LISTENER_COUNT_DEF);
-    int responder_count = Config::get_int(CFG_HTTP_RESPONDERS_PER_LISTENER, CFG_HTTP_RESPONDERS_PER_LISTENER_DEF);
+    int listener_count = Config::get_int(CFG_TCP_LISTENER_COUNT, CFG_TCP_LISTENER_COUNT_DEF);
+    int responder_count = Config::get_int(CFG_TCP_RESPONDERS_PER_LISTENER, CFG_TCP_RESPONDERS_PER_LISTENER_DEF);
 
     Logger::debug("retention_count = %d, listener_count = %d, responder_count = %d",
         retention_count, listener_count, responder_count);
