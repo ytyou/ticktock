@@ -18,10 +18,12 @@
 
 #pragma once
 
+#include <atomic>
 #include <map>
 #include <memory>
 #include <mutex>
 #include <unordered_map>
+#include "dp.h"
 #include "recycle.h"
 
 
@@ -40,6 +42,7 @@ public:
     static void cleanup();
 
     static void log_stats();
+    static void collect_stats(Timestamp ts, std::vector<DataPoint> &dps);
     static int get_recyclable_total();
 
     // network buffer
@@ -70,6 +73,12 @@ private:
 
     static std::mutex m_locks[RecyclableType::RT_COUNT];
     static Recyclable *m_free_lists[RecyclableType::RT_COUNT];
+
+    // keep track of number of reusable objects,
+    // both free and in total
+    static std::atomic<int> m_free[RecyclableType::RT_COUNT+1];
+    static std::atomic<int> m_total[RecyclableType::RT_COUNT+1];
+
 #ifdef _DEBUG
     // for debugging only
     static std::unordered_map<Recyclable*,bool> m_maps[RecyclableType::RT_COUNT];

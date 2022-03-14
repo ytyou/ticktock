@@ -946,7 +946,7 @@ HttpResponse::c_str(char *buff) const
     if (buff == nullptr) return EMPTY_STRING;
 
     snprintf(buff, c_size(), "status=%d content-type:%d content-length:%d response-size:%d response:\n%s",
-        status_code, content_type, (int)content_length, response_size, response);
+        status_code, content_type, (int)content_length, response_size, (content_length>0)?response:"");
     return buff;
 }
 

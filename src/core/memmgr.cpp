@@ -50,6 +50,10 @@ char *MemoryManager::m_network_buffer_free_list = nullptr;
 
 std::mutex MemoryManager::m_locks[RecyclableType::RT_COUNT];
 Recyclable * MemoryManager::m_free_lists[RecyclableType::RT_COUNT];
+
+std::atomic<int> MemoryManager::m_free[RecyclableType::RT_COUNT+1];
+std::atomic<int> MemoryManager::m_total[RecyclableType::RT_COUNT+1];
+
 #ifdef _DEBUG
 std::unordered_map<Recyclable*,bool> MemoryManager::m_maps[RecyclableType::RT_COUNT];
 #endif
@@ -71,16 +75,17 @@ MemoryManager::alloc_network_buffer()
     {
         std::lock_guard<std::mutex> guard(m_network_lock);
         buff = m_network_buffer_free_list;
-        if (LIKELY(buff != nullptr))
+        if (buff != nullptr)
         {
             m_network_buffer_free_list = *((char**)buff);
             ASSERT(((long)m_network_buffer_free_list % g_page_size) == 0);
+            m_free[RecyclableType::RT_COUNT]--;
         }
     }
 
     ASSERT(m_initialized);
 
-    if (UNLIKELY(buff == nullptr))
+    if (buff == nullptr)
     {
         // TODO: check if we have enough memory
         buff =
@@ -88,6 +93,7 @@ MemoryManager::alloc_network_buffer()
         if (buff == nullptr)
             throw std::runtime_error("Out of memory");
         ASSERT(((long)buff % g_page_size) == 0);
+        m_total[RecyclableType::RT_COUNT]++;
     }
 
     ASSERT(((long)buff % g_page_size) == 0);
@@ -108,6 +114,7 @@ MemoryManager::free_network_buffer(char* buff)
     std::lock_guard<std::mutex> guard(m_network_lock);
     *((char**)buff) = m_network_buffer_free_list;
     m_network_buffer_free_list = buff;
+    m_free[RecyclableType::RT_COUNT]++;
 }
 
 void
@@ -117,7 +124,103 @@ MemoryManager::init()
     // make sure it's multiple of g_page_size
     m_network_buffer_len = ((long)m_network_buffer_len / g_page_size) * g_page_size;
     Logger::info("mm::m_network_buffer_len = %d", m_network_buffer_len);
+    for (int i = 0; i < RecyclableType::RT_COUNT; i++)
+        m_free_lists[i] = nullptr;
+    for (int i = 0; i <= RecyclableType::RT_COUNT; i++)
+        m_free[i] = m_total[i] = 0;
     m_initialized = true;
+}
+
+void
+MemoryManager::collect_stats(Timestamp ts, std::vector<DataPoint> &dps)
+{
+#define COLLECT_STATS_FOR(RTYPE, RNAME)     \
+    {   \
+        {   \
+            dps.emplace_back(ts, (double)m_total[RTYPE]);   \
+            auto& dp = dps.back();  \
+            dp.set_metric("ticktock.mem.reusable.total");   \
+            dp.add_tag(TYPE_TAG_NAME, RNAME);    \
+        }   \
+        {   \
+            dps.emplace_back(ts, (double)m_free[RTYPE]);    \
+            auto& dp = dps.back();  \
+            dp.set_metric("ticktock.mem.reusable.free");    \
+            dp.add_tag(TYPE_TAG_NAME, RNAME);    \
+        }   \
+    }
+
+    COLLECT_STATS_FOR(RT_AGGREGATOR_AVG, "aggregator_avg")
+    COLLECT_STATS_FOR(RT_AGGREGATOR_COUNT, "aggregator_count")
+    COLLECT_STATS_FOR(RT_AGGREGATOR_DEV, "aggregator_dev")
+    COLLECT_STATS_FOR(RT_AGGREGATOR_MAX, "aggregator_max")
+    COLLECT_STATS_FOR(RT_AGGREGATOR_MIN, "aggregator_min")
+    COLLECT_STATS_FOR(RT_AGGREGATOR_NONE, "aggregator_none")
+    COLLECT_STATS_FOR(RT_AGGREGATOR_PT, "aggregator_pt")
+    COLLECT_STATS_FOR(RT_AGGREGATOR_SUM, "aggregator_sum")
+    COLLECT_STATS_FOR(RT_COMPRESSOR_V0, "compressor_v0")
+    COLLECT_STATS_FOR(RT_COMPRESSOR_V1, "compressor_v1")
+    COLLECT_STATS_FOR(RT_COMPRESSOR_V2, "compressor_v2")
+    COLLECT_STATS_FOR(RT_DATA_POINT, "data_point")
+    COLLECT_STATS_FOR(RT_DOWNSAMPLER_AVG, "downsampler_avg")
+    COLLECT_STATS_FOR(RT_DOWNSAMPLER_COUNT, "downsampler_count")
+    COLLECT_STATS_FOR(RT_DOWNSAMPLER_DEV, "downsampler_dev")
+    COLLECT_STATS_FOR(RT_DOWNSAMPLER_FIRST, "downsampler_first")
+    COLLECT_STATS_FOR(RT_DOWNSAMPLER_LAST, "downsampler_last")
+    COLLECT_STATS_FOR(RT_DOWNSAMPLER_MAX, "downsampler_max")
+    COLLECT_STATS_FOR(RT_DOWNSAMPLER_MIN, "downsampler_min")
+    COLLECT_STATS_FOR(RT_DOWNSAMPLER_PT, "downsampler_pt")
+    COLLECT_STATS_FOR(RT_DOWNSAMPLER_SUM, "downsampler_sum")
+    COLLECT_STATS_FOR(RT_HTTP_CONNECTION, "http_connection")
+    COLLECT_STATS_FOR(RT_JSON_VALUE, "json_value")
+    COLLECT_STATS_FOR(RT_KEY_VALUE_PAIR, "key_value_pair")
+    COLLECT_STATS_FOR(RT_MAPPING, "mapping")
+    COLLECT_STATS_FOR(RT_PAGE_INFO, "page_info")
+    COLLECT_STATS_FOR(RT_QUERY_RESULTS, "query_results")
+    COLLECT_STATS_FOR(RT_QUERY_TASK, "query_task")
+    COLLECT_STATS_FOR(RT_RATE_CALCULATOR, "rate_calculator")
+    COLLECT_STATS_FOR(RT_TCP_CONNECTION, "tcp_connection")
+    COLLECT_STATS_FOR(RT_TIME_SERIES, "time_series")
+    COLLECT_STATS_FOR(RT_COUNT, "network_buffer")
+
+    float total = 0;
+    total += m_total[RT_AGGREGATOR_AVG] * sizeof(AggregatorAvg);
+    total += m_total[RT_AGGREGATOR_COUNT] * sizeof(AggregatorCount);
+    total += m_total[RT_AGGREGATOR_DEV] * sizeof(AggregatorDev);
+    total += m_total[RT_AGGREGATOR_MAX] * sizeof(AggregatorMax);
+    total += m_total[RT_AGGREGATOR_MIN] * sizeof(AggregatorMin);
+    total += m_total[RT_AGGREGATOR_NONE] * sizeof(AggregatorNone);
+    total += m_total[RT_AGGREGATOR_PT] * sizeof(AggregatorPercentile);
+    total += m_total[RT_AGGREGATOR_SUM] * sizeof(AggregatorSum);
+    total += m_total[RT_COMPRESSOR_V0] * sizeof(Compressor_v0);
+    total += m_total[RT_COMPRESSOR_V1] * sizeof(Compressor_v1);
+    total += m_total[RT_COMPRESSOR_V2] * sizeof(Compressor_v2);
+    total += m_total[RT_DATA_POINT] * sizeof(DataPoint);
+    total += m_total[RT_DOWNSAMPLER_AVG] * sizeof(DownsamplerAvg);
+    total += m_total[RT_DOWNSAMPLER_COUNT] * sizeof(DownsamplerCount);
+    total += m_total[RT_DOWNSAMPLER_DEV] * sizeof(DownsamplerDev);
+    total += m_total[RT_DOWNSAMPLER_FIRST] * sizeof(DownsamplerFirst);
+    total += m_total[RT_DOWNSAMPLER_LAST] * sizeof(DownsamplerLast);
+    total += m_total[RT_DOWNSAMPLER_MAX] * sizeof(DownsamplerMax);
+    total += m_total[RT_DOWNSAMPLER_MIN] * sizeof(DownsamplerMin);
+    total += m_total[RT_DOWNSAMPLER_PT] * sizeof(DownsamplerPercentile);
+    total += m_total[RT_DOWNSAMPLER_SUM] * sizeof(DownsamplerSum);
+    total += m_total[RT_HTTP_CONNECTION] * sizeof(HttpConnection);
+    total += m_total[RT_JSON_VALUE] * sizeof(JsonValue);
+    total += m_total[RT_KEY_VALUE_PAIR] * sizeof(KeyValuePair);
+    total += m_total[RT_MAPPING] * sizeof(Mapping);
+    total += m_total[RT_PAGE_INFO] * sizeof(PageInfo);
+    total += m_total[RT_QUERY_RESULTS] * sizeof(QueryResults);
+    total += m_total[RT_QUERY_TASK] * sizeof(QueryTask);
+    total += m_total[RT_RATE_CALCULATOR] * sizeof(RateCalculator);
+    total += m_total[RT_TCP_CONNECTION] * sizeof(TcpConnection);
+    total += m_total[RT_TIME_SERIES] * sizeof(TimeSeries);
+    total += m_total[RT_COUNT] * m_network_buffer_len;
+
+    dps.emplace_back(ts, total);
+    auto& dp = dps.back();
+    dp.set_metric("ticktock.mem.reusable.total");
+    dp.add_tag(TYPE_TAG_NAME, "all");
 }
 
 void
@@ -583,10 +686,12 @@ MemoryManager::alloc_recyclable(RecyclableType type)
         }
 
         ASSERT(r != nullptr);
+        m_total[type]++;
     }
     else
     {
         m_free_lists[type] = r->next();
+        m_free[type]--;
     }
 
 #ifdef _DEBUG
@@ -633,10 +738,12 @@ MemoryManager::free_recyclable(Recyclable *r)
     {
         r->next() = m_free_lists[type];
         m_free_lists[type] = r;
+        m_free[type]++;
     }
     else
     {
         delete r;
+        m_total[type]--;
 #ifdef _DEBUG
         m_maps[type].erase(r);
 #endif
@@ -678,10 +785,12 @@ MemoryManager::free_recyclables(Recyclable *rs)
         {
             r->next() = m_free_lists[type];
             m_free_lists[type] = r;
+            m_free[type]++;
         }
         else
         {
             delete r;
+            m_total[type]--;
 #ifdef _DEBUG
             m_maps[type].erase(r);
 #endif

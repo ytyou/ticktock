@@ -35,6 +35,13 @@ TagOwner::TagOwner(bool own_mem) :
 {
 }
 
+TagOwner::TagOwner(TagOwner&& src) :
+    m_own_mem(src.m_own_mem),
+    m_tags(src.m_tags)
+{
+    src.m_tags = nullptr;
+}
+
 TagOwner::~TagOwner()
 {
     recycle();

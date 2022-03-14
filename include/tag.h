@@ -39,6 +39,8 @@ class TagOwner
 {
 public:
     TagOwner(bool own_mem);
+    TagOwner(TagOwner&& src);   // move constructor
+    TagOwner(const TagOwner&) = delete; // copy constructor
     virtual ~TagOwner();
 
     void init(bool own_mem);

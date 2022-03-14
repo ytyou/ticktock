@@ -201,17 +201,12 @@ Stats::inject_metrics(TaskData& data)
         // proc stat metrics (rss, vsize, proc.num_thread) have been collected above.
         write_proc_stat(now, tsdb);
 
-#ifdef _DEBUG
         // memory manager stats
         {
-            int total = MemoryManager::get_recyclable_total();
-            DataPoint dp(now, (double)total);
-            dp.set_metric("ticktock.mm.recyclable.count");
-            //dp.add_tag(METRIC_TAG_NAME, "ticktock.mm.recyclable.count");
-            dp.add_tag(HOST_TAG_NAME, g_host_name.c_str());
-            tsdb->add(dp);
+            std::vector<DataPoint> dps;
+            MemoryManager::collect_stats(now, dps);
+            for (DataPoint& dp: dps) tsdb->add(dp);
         }
-#endif
 
 #ifdef _LEAK_DETECTION
         // memory leak detection stats
