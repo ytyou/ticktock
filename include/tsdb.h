@@ -109,7 +109,7 @@ private:
     Tsdb *m_tsdb;
     Partition *m_partition;
 
-    int m_ref_count;
+    std::atomic<int> m_ref_count;
     inline void inc_ref_count() { m_ref_count++; }
     inline void dec_ref_count()
     {
