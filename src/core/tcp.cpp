@@ -39,7 +39,8 @@ namespace tt
 
 std::mutex TcpListener::m_lock;
 std::map<int,TcpConnection*> TcpListener::m_all_conn_map;
-default_contention_free_shared_mutex TcpListener::m_new_conn_lock;
+//default_contention_free_shared_mutex TcpListener::m_new_conn_lock;
+NewConnectionSignal TcpListener::m_new_conn_signal;
 TcpListener **TcpServer::m_listeners;
 int TcpServer::m_next_listener = 0;
 size_t TcpServer::m_listener_count;
@@ -1130,7 +1131,8 @@ TcpListener::listener1()
 
         if (fd_cnt > 0)
         {
-            ReadLock lock(m_new_conn_lock);
+            //ReadLock lock(m_new_conn_lock);
+            m_new_conn_signal.wait();
         }
 
         // process fd_cnt of events, by handing them over to responders
@@ -1231,54 +1233,55 @@ TcpListener::new_conn0()
         TcpListener *listener1;
         int fd;
 
+        // acquire lock to prevent listeners from accepting data
+        // on this new connection, until we set it up
+        //WriteLock lock(m_new_conn_lock);
+        m_new_conn_signal.count_up();
+
+        fd = accept4(m_socket_fd, &addr, &len, SOCK_NONBLOCK | SOCK_CLOEXEC);
+
+        if (fd == -1)
         {
-            // acquire lock to prevent listeners from accepting data
-            // on this new connection, until we set it up
-            WriteLock lock(m_new_conn_lock);
-
-            fd = accept4(m_socket_fd, &addr, &len, SOCK_NONBLOCK | SOCK_CLOEXEC);
-
-            if (fd == -1)
+            m_new_conn_signal.count_down();
+            if ((errno == EAGAIN) || (errno == EWOULDBLOCK))
             {
-                if ((errno == EAGAIN) || (errno == EWOULDBLOCK))
-                {
-                    break;  // done handling all incoming connections
-                }
-                else
-                {
-                    Logger::error("accept4() error: %d", errno);
-                    break;
-                }
+                break;  // done handling all incoming connections
             }
-
+            else
             {
-                TcpConnection *conn;
-                std::lock_guard<std::mutex> guard(m_lock);
-                auto search = m_all_conn_map.find(fd);
-                if (search != m_all_conn_map.end())
+                Logger::error("accept4() error: %d", errno);
+                break;
+            }
+        }
+
+        {
+            TcpConnection *conn;
+            std::lock_guard<std::mutex> guard(m_lock);
+            auto search = m_all_conn_map.find(fd);
+            if (search != m_all_conn_map.end())
+            {
+                conn = search->second;
+                listener1 = conn->listener;
+                if (conn->server != m_server)
                 {
-                    conn = search->second;
-                    listener1 = conn->listener;
-                    if (conn->server != m_server)
-                    {
-                        m_all_conn_map.erase(search);
-                        MemoryManager::free_recyclable(conn);
-                        conn = m_server->create_conn();
-                        conn->fd = fd;
-                        conn->listener = listener1;
-                        m_all_conn_map.insert(std::pair<int,TcpConnection*>(fd, conn));
-                    }
-                    conn->state |= TCS_NEW;
-                }
-                else
-                {
+                    m_all_conn_map.erase(search);
+                    MemoryManager::free_recyclable(conn);
                     conn = m_server->create_conn();
-                    listener1 = m_server->next_listener();
                     conn->fd = fd;
                     conn->listener = listener1;
                     m_all_conn_map.insert(std::pair<int,TcpConnection*>(fd, conn));
                 }
+                conn->state |= TCS_NEW;
             }
+            else
+            {
+                conn = m_server->create_conn();
+                listener1 = m_server->next_listener();
+                conn->fd = fd;
+                conn->listener = listener1;
+                m_all_conn_map.insert(std::pair<int,TcpConnection*>(fd, conn));
+            }
+            m_new_conn_signal.count_down();
         }
 
         char buff[32];

@@ -27,9 +27,9 @@
 #include <sys/socket.h>
 #include "json.h"
 #include "memmgr.h"
-#include "rw.h"
 #include "serial.h"
 #include "stop.h"
+#include "sync.h"
 #include "task.h"
 
 
@@ -239,7 +239,8 @@ private:
     static std::map<int,TcpConnection*> m_all_conn_map;   // from fd to TcpConnection
 
     // used when accepting new connections
-    static default_contention_free_shared_mutex m_new_conn_lock;
+    //static default_contention_free_shared_mutex m_new_conn_lock;
+    static NewConnectionSignal m_new_conn_signal;
 
     TcpConnection *m_live_conns; // list (double-linked) of live connections
     TcpConnection *m_free_conns; // stack of available connections

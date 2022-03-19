@@ -100,4 +100,42 @@ CountingSignal::unlock()
 }
 
 
+NewConnectionSignal::NewConnectionSignal(int count) :
+    m_count(count)
+{
+}
+
+bool
+NewConnectionSignal::count_up(unsigned int count)
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    m_count += count;
+    return true;
+}
+
+void
+NewConnectionSignal::count_down(unsigned int count)
+{
+    bool notify = false;
+
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        m_count -= count;
+        if (m_count <= 0)
+            notify = true;
+    }
+
+    if (notify)
+        m_cv.notify_all();
+}
+
+void
+NewConnectionSignal::wait()
+{
+    std::unique_lock<std::mutex> lock(m_mutex);
+    while (m_count > 0)
+        m_cv.wait(lock, [this]{return (m_count <= 0);});
+}
+
+
 }

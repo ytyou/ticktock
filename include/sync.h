@@ -46,4 +46,23 @@ private:
 };
 
 
+// When a new TCP connection is being 'accept()'ed, all
+// responders need to stop and wait.
+class NewConnectionSignal
+{
+public:
+    NewConnectionSignal(int count = 0);
+
+    bool count_up(unsigned int count = 1);  // return true if successful
+    void count_down(unsigned int count = 1);
+    void unlock();
+    void wait();
+
+private:
+    int m_count;
+    std::mutex m_mutex;
+    std::condition_variable m_cv;
+};
+
+
 }
