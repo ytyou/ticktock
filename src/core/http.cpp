@@ -85,6 +85,7 @@ std::map<const char*,HttpRequestHandler,cstr_less> HttpServer::m_post_handlers;
 HttpServer::HttpServer() :
     TcpServer(Config::get_int(CFG_TCP_LISTENER_COUNT, CFG_TCP_LISTENER_COUNT_DEF)+1)
 {
+    m_fd_type = FileDescriptorType::FD_HTTP;
 }
 
 void

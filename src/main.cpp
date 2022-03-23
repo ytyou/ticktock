@@ -31,6 +31,7 @@
 #include "admin.h"
 #include "config.h"
 #include "append.h"
+#include "fd.h"
 #include "memmgr.h"
 #include "http.h"
 #include "udp.h"
@@ -323,6 +324,7 @@ initialize()
     }
 
     Config::init();
+    FileDescriptorManager::init();
     Logger::init();
     Logger::info("TickTock version: %d.%d.%d, on %s",
         TT_MAJOR_VERSION, TT_MINOR_VERSION, TT_PATCH_VERSION, g_host_name.c_str());

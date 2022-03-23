@@ -52,7 +52,8 @@ TcpServer::TcpServer(int listener_count) :
     m_socket_fd(-1),
     m_max_conns_per_listener(512),
     m_next_listener(0),
-    m_listener_count(listener_count)
+    m_listener_count(listener_count),
+    m_fd_type(FileDescriptorType::FD_TCP)
 {
     size_t size = sizeof(TcpListener*) * m_listener_count;
     m_listeners = static_cast<TcpListener**>(malloc(size));
@@ -1195,6 +1196,7 @@ TcpListener::new_conn0()
         socklen_t len = sizeof(struct sockaddr);
 
         int fd = accept4(m_socket_fd, &addr, &len, SOCK_NONBLOCK | SOCK_CLOEXEC);
+        fd = FileDescriptorManager::dup_fd(fd, m_server->m_fd_type);
 
         if (fd == -1)
         {
@@ -1253,10 +1255,11 @@ TcpListener::new_conn2(int fd)
         ASSERT(fd == conn->fd);
         conn->state &= ~(TCS_ERROR | TCS_CLOSED);   // start new, clear these flags
 
-        if (conn->state & TCS_REGISTERED)
-            deregister_with_epoll(fd);
+        //if (conn->state & TCS_REGISTERED)
+            //deregister_with_epoll(fd);
 
-        register_with_epoll(fd);
+        if ((conn->state & TCS_REGISTERED) == 0)
+            register_with_epoll(fd);
         conn->state |= TCS_REGISTERED;
         Logger::trace("new connection: %d", fd);
     }

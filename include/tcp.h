@@ -25,6 +25,7 @@
 #include <unistd.h>
 #include <netdb.h>
 #include <sys/socket.h>
+#include "fd.h"
 #include "json.h"
 #include "memmgr.h"
 #include "serial.h"
@@ -286,6 +287,8 @@ protected:
 
     // task func
     static bool recv_tcp_data(TaskData& data);
+
+    FileDescriptorType m_fd_type;
 
 private:
     friend class TcpListener;
