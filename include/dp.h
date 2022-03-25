@@ -35,6 +35,8 @@ class DataPoint : public Serializable, public TagOwner, public Recyclable
 {
 public:
     DataPoint();
+    DataPoint(const DataPoint&) = delete;
+    DataPoint(DataPoint&&) = default;
     DataPoint(Timestamp ts, double value);
     void init(Timestamp ts, double value);
 

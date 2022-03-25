@@ -44,6 +44,7 @@ namespace tt
 default_contention_free_shared_mutex Tsdb::m_tsdb_lock;
 std::vector<Tsdb*> Tsdb::m_tsdbs;
 static uint64_t tsdb_rotation_freq = 0;
+//static thread_local std::unordered_map<const char*, Mapping*, hash_func, eq_func> thread_local_cache;
 static thread_local tsl::robin_map<const char*, Mapping*, hash_func, eq_func> thread_local_cache;
 
 
@@ -133,6 +134,7 @@ Mapping::recycle()
         m_metric = nullptr;
     }
 
+    ASSERT(m_map.size() == 0);
     m_map.clear();
     m_tsdb = nullptr;
 
@@ -689,11 +691,13 @@ Tsdb::get_or_add_mapping2(DataPoint& dp)
         std::lock_guard<std::mutex> guard(m_lock);
         auto result1 = m_map.find(metric);
 
+/*
         if ((result1 == m_map.end()) && ((m_mode & TSDB_MODE_READ) == 0))
         {
             //ensure_readable();
             result1 = m_map.find(metric);
         }
+*/
 
         if (result1 == m_map.end())
         {
@@ -705,10 +709,12 @@ Tsdb::get_or_add_mapping2(DataPoint& dp)
         else
         {
             mapping = result1->second;
+            ASSERT(mapping->m_ref_count >= 1);
         }
 
         mapping->inc_ref_count();
         ASSERT(mapping->m_tsdb == this);
+        ASSERT(mapping->m_ref_count >= 2);
     }
 
     ASSERT(mapping->m_tsdb == this);
@@ -1080,13 +1086,12 @@ Tsdb::load_from_disk_no_lock()
         }
     }
 
-    m_mode |= TSDB_MODE_READ;
-    if (compacted) m_mode |= TSDB_MODE_COMPACTED;
-
     ASSERT(m_map.empty());
     m_meta_file.load(this);
     m_meta_file.open(); // open for append
 
+    m_mode |= TSDB_MODE_READ;
+    if (compacted) m_mode |= TSDB_MODE_COMPACTED;
     m_load_time = ts_now_sec();
     return true;
 }
@@ -1190,6 +1195,7 @@ Tsdb::http_api_put_handler(HttpRequest& request, HttpResponse& response)
             {
                 tsdb->m_mode |= TSDB_MODE_WRITE;
                 tsdb->m_load_time = ts_now_sec();
+                ASSERT(tsdb->m_meta_file.is_open());
             }
         }
 
@@ -1353,15 +1359,18 @@ Tsdb::http_api_put_handler_plain(HttpRequest& request, HttpResponse& response)
             {
                 tsdb->m_mode |= TSDB_MODE_WRITE;
                 tsdb->m_load_time = ts_now_sec();
+                ASSERT(tsdb->m_meta_file.is_open());
             }
         }
 
         ASSERT(tsdb != nullptr);
+        ASSERT(tsdb->m_meta_file.is_open());
 
         //if (forward)
             //success = tsdb->add_data_point(dp) && success;
         //else
             //success = tsdb->add(dp) && success;
+        ASSERT((tsdb->m_mode & TSDB_MODE_READ_WRITE) == TSDB_MODE_READ_WRITE);
         success = tsdb->add_data_point(dp, forward) && success;
     }
 
@@ -1796,6 +1805,7 @@ Tsdb::unload_no_lock()
     }
 
     m_map.clear();
+    ASSERT(m_map.size() == 0);
 
     std::lock_guard<std::mutex> pm_guard(m_pm_lock);
 

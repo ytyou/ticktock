@@ -30,6 +30,7 @@ const char* const EMPTY_STRING = "";
 std::string EMPTY_STD_STRING("");
 const char* const METRIC_TAG_NAME = "metric";
 const char* const HOST_TAG_NAME = "host";
+const char* const TYPE_TAG_NAME = "type";
 const std::string WHITE_SPACES = " \n\r\t\f\v";
 std::string g_host_name;
 HttpServer *http_server_ptr = nullptr;

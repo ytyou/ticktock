@@ -28,8 +28,8 @@ namespace tt
 
 
 #define TT_MAJOR_VERSION    0
-#define TT_MINOR_VERSION    3
-#define TT_PATCH_VERSION    10
+#define TT_MINOR_VERSION    4
+#define TT_PATCH_VERSION    0
 
 class HttpServer;
 class TcpServer;
@@ -39,6 +39,7 @@ extern const char* const EMPTY_STRING;
 extern std::string EMPTY_STD_STRING;
 extern const char* const METRIC_TAG_NAME;
 extern const char* const HOST_TAG_NAME;
+extern const char* const TYPE_TAG_NAME;
 extern const std::string WHITE_SPACES;
 extern std::string g_config_file;
 extern std::string g_host_name;

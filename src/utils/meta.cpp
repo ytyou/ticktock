@@ -20,6 +20,7 @@
 #include <fstream>
 #include <sys/stat.h>
 #include "logger.h"
+#include "fd.h"
 #include "meta.h"
 #include "tsdb.h"
 #include "utils.h"
@@ -52,6 +53,7 @@ MetaFile::open()
 
     std::lock_guard<std::mutex> guard(m_lock);
     int fd = ::open(m_name.c_str(), O_CREAT|O_WRONLY|O_NONBLOCK, S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH);
+    fd = FileDescriptorManager::dup_fd(fd, FileDescriptorType::FD_FILE);
 
     if (fd == -1)
     {

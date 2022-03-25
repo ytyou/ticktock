@@ -197,13 +197,16 @@ TaskScheduler::wait(size_t timeout_secs)
 }
 
 size_t
-TaskScheduler::get_pending_task_count() const
+TaskScheduler::get_pending_task_count(std::vector<size_t> &counts) const
 {
+    ASSERT(counts.empty());
     size_t total = 0;
 
-    for (size_t i = 0; i < m_thread_count; i++)
+    for (int i = 0; i < m_thread_count; i++)
     {
-        total += m_workers[i]->m_tasks.size();
+        size_t count = m_workers[i]->m_tasks.size();
+        counts.push_back(count);
+        total += count;
     }
 
     return total;

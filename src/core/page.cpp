@@ -28,6 +28,7 @@
 #include <sys/stat.h>
 #include "compress.h"
 #include "config.h"
+#include "fd.h"
 #include "memmgr.h"
 #include "meter.h"
 #include "page.h"
@@ -451,6 +452,7 @@ PageManager::open_mmap(PageCount page_count)
 
     Logger::debug("Trying to open file %s...", m_file_name.c_str());
     m_fd = open(m_file_name.c_str(), O_CREAT|O_RDWR, S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH);
+    m_fd = FileDescriptorManager::dup_fd(m_fd, FileDescriptorType::FD_FILE);
 
     if (m_fd == -1)
     {

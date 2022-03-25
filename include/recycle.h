@@ -68,6 +68,8 @@ public:
     {
     }
 
+    virtual ~Recyclable() { }
+
     inline Recyclable*& next()
     {
         return m_recyclable_next;

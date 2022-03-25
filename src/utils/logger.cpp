@@ -25,6 +25,7 @@
 #include "utils.h"
 #include "config.h"
 #include "logger.h"
+#include "fd.h"
 #include "serial.h"
 #include "timer.h"
 
@@ -161,6 +162,7 @@ Logger::reopen(int fd)
     if (! log_file.empty() && (log_file != "-"))
     {
         m_fd = open(log_file.c_str(), O_APPEND|O_CREAT|O_WRONLY|O_NONBLOCK, S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH);
+        m_fd = FileDescriptorManager::dup_fd(m_fd, FileDescriptorType::FD_FILE);
 
         if (m_fd == -1)
         {

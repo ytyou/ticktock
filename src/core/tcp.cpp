@@ -52,7 +52,8 @@ TcpServer::TcpServer(int listener_count) :
     m_socket_fd(-1),
     m_max_conns_per_listener(512),
     m_next_listener(0),
-    m_listener_count(listener_count)
+    m_listener_count(listener_count),
+    m_fd_type(FileDescriptorType::FD_TCP)
 {
     size_t size = sizeof(TcpListener*) * m_listener_count;
     m_listeners = static_cast<TcpListener**>(malloc(size));
@@ -670,15 +671,17 @@ TcpServer::get_most_conn_listener() const
 }
 
 size_t
-TcpServer::get_pending_task_count() const
+TcpServer::get_pending_task_count(std::vector<std::vector<size_t>> &counts) const
 {
     size_t count = 0;
 
     for (size_t i = 0; i < m_listener_count; i++)
     {
+        counts.push_back(std::vector<size_t>());
+
         if (m_listeners[i] != nullptr)
         {
-            count += m_listeners[i]->get_pending_task_count();
+            count += m_listeners[i]->get_pending_task_count(counts[i]);
         }
     }
 
@@ -1193,6 +1196,7 @@ TcpListener::new_conn0()
         socklen_t len = sizeof(struct sockaddr);
 
         int fd = accept4(m_socket_fd, &addr, &len, SOCK_NONBLOCK | SOCK_CLOEXEC);
+        fd = FileDescriptorManager::dup_fd(fd, m_server->m_fd_type);
 
         if (fd == -1)
         {
@@ -1251,10 +1255,11 @@ TcpListener::new_conn2(int fd)
         ASSERT(fd == conn->fd);
         conn->state &= ~(TCS_ERROR | TCS_CLOSED);   // start new, clear these flags
 
-        if (conn->state & TCS_REGISTERED)
-            deregister_with_epoll(fd);
+        //if (conn->state & TCS_REGISTERED)
+            //deregister_with_epoll(fd);
 
-        register_with_epoll(fd);
+        if ((conn->state & TCS_REGISTERED) == 0)
+            register_with_epoll(fd);
         conn->state |= TCS_REGISTERED;
         Logger::trace("new connection: %d", fd);
     }

@@ -24,6 +24,7 @@
 #include "utils.h"
 #include "config.h"
 #include "logger.h"
+#include "fd.h"
 #include "meter.h"
 #include "http.h"
 #include "timer.h"
@@ -204,7 +205,15 @@ AppendLog::reopen()
             log_file = append_dir + "/append." + std::to_string(time) + "." + g_thread_id + "." + std::to_string(i) + ".log.zip";
         }
 
-        m_file = fopen(log_file.c_str(), "a+");
+        //m_file = fopen(log_file.c_str(), "a+");
+
+        int fd = open(log_file.c_str(), O_APPEND|O_CREAT|O_RDWR|O_NONBLOCK, S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH);
+        fd = FileDescriptorManager::dup_fd(fd, FileDescriptorType::FD_FILE);
+
+        if (fd >= 0)
+            m_file = fdopen(fd, "a+");
+        else
+            m_file = nullptr;
 
         if (m_file == nullptr)
         {

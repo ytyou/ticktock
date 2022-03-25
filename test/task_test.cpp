@@ -103,9 +103,11 @@ TaskTests::run_once(size_t scheduler_count, size_t thread_count)
 
     //Logger::info("All task_creators are done.");
 
+    std::vector<size_t> counts;
+
     for (int i = 0; i < scheduler_count; i++)
     {
-        while (schedulers[i]->get_pending_task_count() > 0)
+        while (schedulers[i]->get_pending_task_count(counts) > 0)
         {
             std::this_thread::sleep_for(std::chrono::milliseconds(50));
         }
