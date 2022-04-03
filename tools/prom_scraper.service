@@ -1,0 +1,10 @@
+[Unit]
+Description=Prometheus Scraper
+
+[Service]
+# User=<user>
+ExecStart=/opt/prom_scraper/prom_scraper.sh
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
