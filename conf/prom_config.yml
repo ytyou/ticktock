@@ -1,0 +1,17 @@
+# we are assuming node_exporter runs on host 'sun'
+global:
+  scrape_interval:     15s
+  evaluation_interval: 30s
+  # scrape_timeout is set to the global default (10s).
+
+  external_labels:
+    monitor: codelab
+
+  ticktock:
+    address: 127.0.0.1:6181
+
+scrape_configs:
+  - job_name: 'node_exporter'
+
+    static_configs:
+      - targets: ['sun:9100']

@@ -389,7 +389,7 @@ PageManager::PageManager(TimeRange& range, PageCount id, bool temp) :
         // In the case of abnormal shutdown, there's a chance m_page_index was
         // persisted, but the latest page_info_on_disk was not. In that case,
         // we need to discard those pages to avoid corrupted data.
-        PageCount id = *m_header_index;
+        int id = *m_header_index;
         PageCount page_idx = *m_page_index;
 
         for (id--; id >= 0; id--)
