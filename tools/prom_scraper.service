@@ -3,6 +3,7 @@ Description=Prometheus Scraper
 
 [Service]
 # User=<user>
+# Environment="PYTHONPATH=$PYTHONPATH:..."
 ExecStart=/opt/prom_scraper/prom_scraper.sh
 Restart=always
 
