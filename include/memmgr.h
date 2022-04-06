@@ -32,7 +32,7 @@ namespace tt
 {
 
 
-#define MAX_USAGE_SIZE  100
+#define MAX_USAGE_SIZE  12
 
 class QueryTask;
 
