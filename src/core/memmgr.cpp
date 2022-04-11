@@ -845,6 +845,9 @@ MemoryManager::collect_garbage(TaskData& data)
         // perform gc
         for (int i = 0; i < RecyclableType::RT_COUNT; i++)
         {
+            if (i == RecyclableType::RT_MAPPING)
+                continue;   // workaround issue of contention_free_shared_mutex
+
             int max_usage = 0;
 
             for (int j = 0; j < MAX_USAGE_SIZE; j++)

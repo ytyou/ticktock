@@ -80,14 +80,19 @@ Mapping::~Mapping()
         m_metric = nullptr;
     }
 
-    unload();
+    unload_no_lock();
 }
 
 void
 Mapping::unload()
 {
     WriteLock guard(m_lock);
+    unload_no_lock();
+}
 
+void
+Mapping::unload_no_lock()
+{
     // More than one key could be mapped to the same
     // TimeSeries; so we need to dedup first to avoid
     // double free it.
