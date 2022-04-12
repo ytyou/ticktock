@@ -912,12 +912,10 @@ Tsdb::shutdown()
 
     for (Tsdb *tsdb: m_tsdbs)
     {
-        WriteLock unload_guard(tsdb->m_load_lock);
-        std::lock_guard<std::mutex> tsdb_guard(tsdb->m_lock);
-
-        if (! tsdb->is_read_only())
         {
-            tsdb->flush(true);
+            WriteLock unload_guard(tsdb->m_load_lock);
+            std::lock_guard<std::mutex> tsdb_guard(tsdb->m_lock);
+            if (! tsdb->is_read_only()) tsdb->flush(true);
         }
 
         delete tsdb;
