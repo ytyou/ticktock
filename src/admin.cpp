@@ -118,6 +118,9 @@ Admin::http_post_api_admin_handler(HttpRequest& request, HttpResponse& response)
         Logger::error("Failed to execute cmd %s for unknown reasons", cmd);
     }
 
+    if (params != nullptr)
+        MemoryManager::free_recyclables(params);
+
     if (! status)
     {
         if (msg.empty())
@@ -215,7 +218,8 @@ Admin::cmd_stop(KeyValuePair *params, HttpResponse& response)
     task.doit = &Admin::shutdown;
     Timer::inst()->add_task(task, 1, "admin_stop");
 
-    response.init(200);
+    const char *msg = "Exiting now.";
+    response.init(200, HttpContentType::PLAIN, std::strlen(msg), msg);
     return true;
 }
 

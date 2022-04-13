@@ -169,6 +169,7 @@ public:
 
     // individual request handlers
     static bool http_get_api_config_handler(HttpRequest& request, HttpResponse& response);
+    static bool http_get_api_help_handler(HttpRequest& request, HttpResponse& response);
     static bool http_get_api_stats_handler(HttpRequest& request, HttpResponse& response);
     static bool http_get_api_version_handler(HttpRequest& request, HttpResponse& response);
 

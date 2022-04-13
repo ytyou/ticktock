@@ -23,6 +23,7 @@
 #include <dirent.h>
 #include <functional>
 #include <glob.h>
+#include "admin.h"
 #include "append.h"
 #include "config.h"
 #include "memmgr.h"
@@ -1280,13 +1281,27 @@ Tsdb::http_api_put_handler_plain(HttpRequest& request, HttpResponse& response)
     bool success = true;
 
     // is the the 'version' command?
-    if ((request.length == 8) && (strncmp(curr, "version\n", 8) == 0))
+    if (request.length <= 10)
     {
-        return HttpServer::http_get_api_version_handler(request, response);
-    }
-    else if ((request.length == 6) && (strncmp(curr, "stats\n", 6) == 0))
-    {
-        return HttpServer::http_get_api_stats_handler(request, response);
+        if ((request.length == 8) && (strncmp(curr, "version\n", 8) == 0))
+        {
+            return HttpServer::http_get_api_version_handler(request, response);
+        }
+        else if ((request.length == 6) && (strncmp(curr, "stats\n", 6) == 0))
+        {
+            return HttpServer::http_get_api_stats_handler(request, response);
+        }
+        else if ((request.length == 5) && (strncmp(curr, "help\n", 5) == 0))
+        {
+            return HttpServer::http_get_api_help_handler(request, response);
+        }
+        else if ((request.length == 10) && (strncmp(curr, "diediedie\n", 10) == 0))
+        {
+            char buff[10];
+            std::strcpy(buff, "cmd=stop");
+            request.params = buff;
+            return Admin::http_post_api_admin_handler(request, response);
+        }
     }
 
     response.content_length = 0;
