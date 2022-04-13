@@ -21,6 +21,7 @@
 #include "kv.h"
 #include "logger.h"
 #include "stats.h"
+#include "tcp.h"
 #include "tsdb.h"
 #include "timer.h"
 
@@ -76,6 +77,10 @@ Admin::http_post_api_admin_handler(HttpRequest& request, HttpResponse& response)
         if (strcmp(cmd, "compact") == 0)
         {
             status = cmd_compact(params, response);
+        }
+        else if (strcmp(cmd, "debug") == 0)
+        {
+            status = cmd_debug(params, response);
         }
         else if (strcmp(cmd, "log") == 0)
         {
@@ -135,6 +140,19 @@ Admin::cmd_compact(KeyValuePair *params, HttpResponse& response)
     char buff[32];
     int len = snprintf(buff, sizeof(buff), "1 tsdbs compacted");
     response.init(200, HttpContentType::PLAIN, len, buff);
+    return true;
+}
+
+bool
+Admin::cmd_debug(KeyValuePair *params, HttpResponse& response)
+{
+    // dump out all connections
+    Logger::info("======== Begin Debug Info ========");
+    TcpListener::dump_debug_info();
+    Logger::info("======== End Debug Info ========");
+
+    const char *msg = "Debug info written into log file.";
+    response.init(200, HttpContentType::PLAIN, std::strlen(msg), msg);
     return true;
 }
 

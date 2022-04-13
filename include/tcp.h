@@ -27,6 +27,7 @@
 #include <sys/socket.h>
 #include "fd.h"
 #include "json.h"
+#include "logger.h"
 #include "memmgr.h"
 #include "serial.h"
 #include "stop.h"
@@ -83,6 +84,14 @@ public:
         init();
     }
 
+    void dump_debug_info()
+    {
+#ifdef DEBUG_INFO
+        Logger::info("access=%" PRIu64 ", fd=%d, state=%u, pending=%d, action=%s",
+            last_access, fd, state.load(), pending_tasks.load(), &last_action[0]);
+#endif
+    }
+
 protected:
 
     void init() override
@@ -97,6 +106,10 @@ protected:
         offset = 0;
         forward = g_cluster_enabled;
         last_contact = std::chrono::steady_clock::now();
+#ifdef DEBUG_INFO
+        last_access = 0;
+        last_action[0] = 0;
+#endif
     }
 
     inline bool recycle() override
@@ -109,6 +122,13 @@ protected:
 
         return true;
     }
+
+public:
+
+#ifdef DEBUG_INFO
+    Timestamp last_access;
+    char last_action[64];
+#endif
 };
 
 
@@ -184,6 +204,8 @@ public:
     }
 
     void resubmit(Task& task);
+
+    static void dump_debug_info();
 
 private:
     bool init(int socket_fd);

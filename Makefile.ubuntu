@@ -5,7 +5,7 @@ CPP = g++
 LINK = $(CPP)
 RM = /bin/rm -f
 
-#DEBUG_FLAGS = -g3 -rdynamic -ggdb -D_DEBUG -D_TEST -D_GLIBCXX_DEBUG -O0
+#DEBUG_FLAGS = -g3 -rdynamic -ggdb -D_DEBUG -DDEBUG_INFO -D_TEST -D_GLIBCXX_DEBUG -O0
 #DEBUG_LIBS = /usr/lib/debug/lib/x86_64-linux-gnu/libSegFault.so
 PROD_FLAGS = -O3 -march=native -ffast-math
 #LEAK_FLAGS = -D_LEAK_DETECTION

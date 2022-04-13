@@ -378,6 +378,11 @@ TcpServer::recv_tcp_data(TaskData& data)
     size_t buff_size = MemoryManager::get_network_buffer_size() - 2;
     TcpConnection *conn = static_cast<TcpConnection*>(data.pointer);
 
+#ifdef DEBUG_INFO
+    conn->last_access = ts_now_sec();
+    snprintf(&conn->last_action[0], sizeof(conn->last_action), "[%s] recv_tcp_data", g_thread_id.c_str());
+#endif
+
     Logger::trace("recv_tcp_data: conn=%p, fd=%d", conn, conn->fd);
 
     int fd = conn->fd;
@@ -458,6 +463,11 @@ TcpServer::recv_tcp_data(TaskData& data)
         task.doit = &TcpServer::recv_tcp_data;
         task.data.pointer = conn;
         conn->listener->resubmit(task);
+
+#ifdef DEBUG_INFO
+        conn->last_access = ts_now_sec();
+        snprintf(&conn->last_action[0], sizeof(conn->last_action), "[%s] resubmit", g_thread_id.c_str());
+#endif
     }
 
     if (len > 0)
@@ -490,6 +500,11 @@ TcpServer::recv_tcp_data(TaskData& data)
 bool
 TcpServer::process_data(TcpConnection *conn, char *data, int len)
 {
+#ifdef DEBUG_INFO
+    conn->last_access = ts_now_sec();
+    snprintf(&conn->last_action[0], sizeof(conn->last_action), "[%s] process_data", g_thread_id.c_str());
+#endif
+
     try
     {
         data[len] = 0;
@@ -1143,6 +1158,10 @@ TcpListener::listener1()
                 ASSERT(conn != nullptr);
                 Logger::tcp("received data on conn %p", conn->fd, conn);
 
+#ifdef DEBUG_INFO
+                conn->last_access = ts_now_sec();
+#endif
+
                 if (conn->pending_tasks < 2)
                 {
                     Task task = m_server->get_recv_data_task(conn);
@@ -1153,7 +1172,16 @@ TcpListener::listener1()
                         conn->worker_id = m_responders.submit_task(task);
                     else
                         m_responders.submit_task(task, conn->worker_id);
+#ifdef DEBUG_INFO
+                    snprintf(&conn->last_action[0], sizeof(conn->last_action), "[%s] assigned to %d", g_thread_id.c_str(), conn->worker_id);
+#endif
                 }
+#ifdef DEBUG_INFO
+                else
+                {
+                    snprintf(&conn->last_action[0], sizeof(conn->last_action), "[%s] assignment deduped", g_thread_id.c_str());
+                }
+#endif
             }
         }
 
@@ -1561,6 +1589,24 @@ TcpListener::del_conn_from_all_map(int fd)
         ASSERT(fd == search->second->fd);
         m_all_conn_map.erase(search);
     }
+}
+
+void
+TcpListener::dump_debug_info()
+{
+#ifdef DEBUG_INFO
+    // dump conn info
+    {
+        std::lock_guard<std::mutex> guard(m_lock);
+
+        for (auto it = m_all_conn_map.begin(); it != m_all_conn_map.end(); it++)
+        {
+            TcpConnection *conn = it->second;
+            ASSERT(it->first == conn->fd);
+            conn->dump_debug_info();
+        }
+    }
+#endif
 }
 
 
