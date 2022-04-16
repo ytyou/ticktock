@@ -71,7 +71,7 @@ Timer::run()
         {
             if (task.m_next_run <= now)
             {
-                Logger::debug("Timer submitting task %s", task.m_name);
+                Logger::info("Timer submitting task %s", task.m_name);
                 m_scheduler.submit_task(task.m_task);
                 task.m_next_run = now + task.m_freq_sec;
             }
@@ -90,6 +90,7 @@ Timer::add_task(Task& task, int freq_sec, const char *name)
 {
     TimedTask timed(task, freq_sec, name);
     m_tasks.push_back(timed);
+    Logger::info("Timer add task %s", name);
 }
 
 

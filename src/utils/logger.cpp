@@ -78,12 +78,6 @@ Logger::Logger() :
             fprintf(stderr, "failed to set log level %s\n", ex.what());
         }
     }
-
-    // Schedule tasks to rotate logs.
-    Task task;
-    task.doit = &Logger::rotate;
-    task.data.pointer = (void*)this;
-    Timer::inst()->add_task(task, 5, "logger_rotate");  // try every 5 seconds
 }
 
 Logger::Logger(int fd) :
@@ -103,6 +97,12 @@ Logger::init()
 {
     m_instance = new Logger;
     register_printf_specifier('T', handler_func, info_func);
+
+    // Schedule tasks to rotate logs.
+    Task task;
+    task.doit = &Logger::rotate;
+    task.data.pointer = (void*)m_instance;
+    Timer::inst()->add_task(task, 5, "logger_rotate");  // try every 5 seconds
 }
 
 void

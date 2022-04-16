@@ -1833,7 +1833,7 @@ Tsdb::rotate(TaskData& data)
     TimeRange range(0, now);
     Tsdb::insts(range, tsdbs);
 
-    Logger::debug("[rotate] Checking %d tsdbs.", tsdbs.size());
+    Logger::info("[rotate] Checking %d tsdbs.", tsdbs.size());
 
     // adjust CFG_TSDB_ARCHIVE_THRESHOLD when system available memory is low
     if (Stats::get_avphys_pages() < 1600)
@@ -1900,7 +1900,7 @@ Tsdb::rotate(TaskData& data)
         }
         else
         {
-            Logger::debug("[rotate] Active tsdb: %T, mode = %d, tsdb->mode = %d",
+            Logger::info("[rotate] Active tsdb: %T, mode = %d, tsdb->mode = %d",
                 tsdb, mode, tsdb->m_mode);
             // TODO: do this only if there were writes since last check point
             tsdb->set_check_point();
