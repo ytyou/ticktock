@@ -1605,6 +1605,7 @@ Tsdb::init()
     Timer::inst()->add_task(task, freq_sec, "tsdb_flush");
     Logger::info("Will try to rotate tsdb every %d secs.", freq_sec);
 
+/*
     task.doit = &Tsdb::compact;
     task.data.integer = 0;  // indicates this is from scheduled task (vs. interactive cmd)
     freq_sec = Config::get_time(CFG_TSDB_COMPACT_FREQUENCY, TimeUnit::SEC, CFG_TSDB_COMPACT_FREQUENCY_DEF);
@@ -1613,6 +1614,7 @@ Tsdb::init()
         Timer::inst()->add_task(task, freq_sec, "tsdb_compact");
         Logger::info("Will try to compact tsdb every %d secs.", freq_sec);
     }
+*/
 }
 
 std::string
