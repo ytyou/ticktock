@@ -112,7 +112,7 @@ class Scraper(object):
         scheme = job.get_scheme()
         for target in job.get_targets():
             response = requests.get(scheme + "://" + target + path, timeout=10)
-            self._ticktock.send(round(now), response.text)
+            self._ticktock.send(round(now), target, response.text)
 
 
 class TickTock(object):
@@ -134,7 +134,8 @@ class TickTock(object):
         if self._sock:
             self._sock.close()
 
-    def send(self, ts, msgs):
+    def send(self, ts, target, msgs):
+        host = target.split(':')[0]
         puts = ""
         lines = msgs.splitlines()
         for line in lines:
@@ -186,7 +187,7 @@ class TickTock(object):
                     continue
             elif metric.endswith("_info"):
                 continue
-            dp = "put {} {} {}".format(metric, int(ts), value)
+            dp = "put {} {} {} host={}".format(metric, int(ts), value, host)
             if not labels is None:
                 kvs = parse_key_value_pairs(labels[1:-1])
                 for k, v in kvs.iteritems():
