@@ -59,6 +59,8 @@ public:
     static void free_recyclables(Recyclable *r);
     static void assert_recyclable(Recyclable *r);   // for debugging only
 
+    static void dump_debug_info();
+
 private:
     MemoryManager();
 

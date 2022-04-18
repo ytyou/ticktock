@@ -272,6 +272,141 @@ MemoryManager::log_stats()
 #endif
 }
 
+void
+MemoryManager::dump_debug_info()
+{
+    long total = 0, tmp;
+
+    tmp = m_total[RecyclableType::RT_AGGREGATOR_AVG].load() * sizeof(AggregatorAvg);
+    total += tmp;
+    Logger::info("mm::aggregator_avg = %ld", tmp);
+
+    tmp = m_total[RecyclableType::RT_AGGREGATOR_COUNT].load() * sizeof(AggregatorCount);
+    total += tmp;
+    Logger::info("mm::aggregator_count = %ld", tmp);
+
+    tmp = m_total[RecyclableType::RT_AGGREGATOR_DEV].load() * sizeof(AggregatorDev);
+    total += tmp;
+    Logger::info("mm::aggregator_dev = %ld", tmp);
+
+    tmp = m_total[RecyclableType::RT_AGGREGATOR_MAX].load() * sizeof(AggregatorMax);
+    total += tmp;
+    Logger::info("mm::aggregator_max = %ld", tmp);
+
+    tmp = m_total[RecyclableType::RT_AGGREGATOR_MIN].load() * sizeof(AggregatorMin);
+    total += tmp;
+    Logger::info("mm::aggregator_min = %ld", tmp);
+
+    tmp = m_total[RecyclableType::RT_AGGREGATOR_NONE].load() * sizeof(AggregatorNone);
+    total += tmp;
+    Logger::info("mm::aggregator_none = %ld", tmp);
+
+    tmp = m_total[RecyclableType::RT_AGGREGATOR_PT].load() * sizeof(AggregatorPercentile);
+    total += tmp;
+    Logger::info("mm::aggregator_pt = %ld", tmp);
+
+    tmp = m_total[RecyclableType::RT_AGGREGATOR_SUM].load() * sizeof(AggregatorSum);
+    total += tmp;
+    Logger::info("mm::aggregator_sum = %ld", tmp);
+
+    tmp = m_total[RecyclableType::RT_COMPRESSOR_V0].load() * sizeof(Compressor_v0);
+    total += tmp;
+    Logger::info("mm::compressor_v0 = %ld", tmp);
+
+    tmp = m_total[RecyclableType::RT_COMPRESSOR_V1].load() * sizeof(Compressor_v1);
+    total += tmp;
+    Logger::info("mm::compressor_v1 = %ld", tmp);
+
+    tmp = m_total[RecyclableType::RT_COMPRESSOR_V2].load() * sizeof(Compressor_v2);
+    total += tmp;
+    Logger::info("mm::compressor_v2 = %ld", tmp);
+
+    tmp = m_total[RecyclableType::RT_DATA_POINT].load() * sizeof(DataPoint);
+    total += tmp;
+    Logger::info("mm::data_point = %ld", tmp);
+
+    tmp = m_total[RecyclableType::RT_DOWNSAMPLER_AVG].load() * sizeof(DownsamplerAvg);
+    total += tmp;
+    Logger::info("mm::downsampler_avg = %ld", tmp);
+
+    tmp = m_total[RecyclableType::RT_DOWNSAMPLER_COUNT].load() * sizeof(DownsamplerCount);
+    total += tmp;
+    Logger::info("mm::downsampler_count = %ld", tmp);
+
+    tmp = m_total[RecyclableType::RT_DOWNSAMPLER_DEV].load() * sizeof(DownsamplerDev);
+    total += tmp;
+    Logger::info("mm::downsampler_dev = %ld", tmp);
+
+    tmp = m_total[RecyclableType::RT_DOWNSAMPLER_FIRST].load() * sizeof(DownsamplerFirst);
+    total += tmp;
+    Logger::info("mm::downsampler_first = %ld", tmp);
+
+    tmp = m_total[RecyclableType::RT_DOWNSAMPLER_LAST].load() * sizeof(DownsamplerLast);
+    total += tmp;
+    Logger::info("mm::downsampler_last = %ld", tmp);
+
+    tmp = m_total[RecyclableType::RT_DOWNSAMPLER_MAX].load() * sizeof(DownsamplerMax);
+    total += tmp;
+    Logger::info("mm::downsampler_max = %ld", tmp);
+
+    tmp = m_total[RecyclableType::RT_DOWNSAMPLER_MIN].load() * sizeof(DownsamplerMin);
+    total += tmp;
+    Logger::info("mm::downsampler_min = %ld", tmp);
+
+    tmp = m_total[RecyclableType::RT_DOWNSAMPLER_PT].load() * sizeof(DownsamplerPercentile);
+    total += tmp;
+    Logger::info("mm::downsampler_pt = %ld", tmp);
+
+    tmp = m_total[RecyclableType::RT_DOWNSAMPLER_SUM].load() * sizeof(DownsamplerSum);
+    total += tmp;
+    Logger::info("mm::downsampler_sum = %ld", tmp);
+
+    tmp = m_total[RecyclableType::RT_HTTP_CONNECTION].load() * sizeof(HttpConnection);
+    total += tmp;
+    Logger::info("mm::http_connection = %ld", tmp);
+
+    tmp = m_total[RecyclableType::RT_JSON_VALUE].load() * sizeof(JsonValue);
+    total += tmp;
+    Logger::info("mm::json_value = %ld", tmp);
+
+    tmp = m_total[RecyclableType::RT_KEY_VALUE_PAIR].load() * sizeof(KeyValuePair);
+    total += tmp;
+    Logger::info("mm::key_value_pair = %ld", tmp);
+
+    tmp = m_total[RecyclableType::RT_MAPPING].load() * sizeof(Mapping);
+    total += tmp;
+    Logger::info("mm::mapping = %ld", tmp);
+
+    tmp = m_total[RecyclableType::RT_PAGE_INFO].load() * sizeof(PageInfo);
+    total += tmp;
+    Logger::info("mm::page_info = %ld", tmp);
+
+    tmp = m_total[RecyclableType::RT_QUERY_RESULTS].load() * sizeof(QueryResults);
+    total += tmp;
+    Logger::info("mm::query_results = %ld", tmp);
+
+    tmp = m_total[RecyclableType::RT_QUERY_TASK].load() * sizeof(QueryTask);
+    total += tmp;
+    Logger::info("mm::query_task = %ld", tmp);
+
+    tmp = m_total[RecyclableType::RT_RATE_CALCULATOR].load() * sizeof(RateCalculator);
+    total += tmp;
+    Logger::info("mm::rate_calculator = %ld", tmp);
+
+    tmp = m_total[RecyclableType::RT_TCP_CONNECTION].load() * sizeof(TcpConnection);
+    total += tmp;
+    Logger::info("mm::tcp_connection = %ld", tmp);
+
+    tmp = m_total[RecyclableType::RT_TIME_SERIES].load() * sizeof(TimeSeries);
+    total += tmp;
+    Logger::info("mm::time_series = %ld", tmp);
+
+    tmp = m_total[RecyclableType::RT_COUNT].load() * g_page_size;
+    total += tmp;
+    Logger::info("mm::network_buffer = %ld", tmp);
+    Logger::info("mm::total_recyclable = %ld", total);
+}
+
 int
 MemoryManager::get_recyclable_total()
 {

@@ -149,6 +149,7 @@ Admin::cmd_debug(KeyValuePair *params, HttpResponse& response)
     // dump out all connections
     Logger::info("======== Begin Debug Info ========");
     TcpListener::dump_debug_info();
+    MemoryManager::dump_debug_info();
     Logger::info("======== End Debug Info ========");
 
     const char *msg = "Debug info written into log file.";
