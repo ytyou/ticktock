@@ -18,6 +18,7 @@
 
 #pragma once
 
+#include <atomic>
 #include <memory>
 #include <mutex>
 #include "range.h"
@@ -326,6 +327,7 @@ public:
 
     inline uint8_t *get_first_page() const { return static_cast<uint8_t*>(m_pages); }
     inline PageCount get_page_count() const { return *m_page_count; }
+    inline static int32_t get_mmap_file_count() { return m_total.load(); }
 
 private:
     bool open_mmap(PageCount page_count);
@@ -334,6 +336,7 @@ private:
     void init_headers();    // zero-out headers
     struct page_info_on_disk *get_page_info_on_disk(PageCount index);
     static PageCount calc_first_page_info_index(PageCount page_count);
+    static std::atomic<int32_t> m_total;    // total number of open mmap files
 
     std::mutex m_lock;
     int m_fd;       // file-descriptor of the mmapp'ed file

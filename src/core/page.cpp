@@ -40,6 +40,9 @@ namespace tt
 {
 
 
+std::atomic<int32_t> PageManager::m_total{0};
+
+
 PageInfo::PageInfo() :
     m_page_mgr(nullptr),
     m_compressor(nullptr),
@@ -580,6 +583,8 @@ PageManager::open_mmap(PageCount page_count)
         // TODO: verify time range in the header. It should agree with our m_time_range!
     }
 
+    m_total++;
+    ASSERT(m_total > 0);
     Logger::debug("page count = %d", *m_page_count);
     Logger::debug("page index = %d", *m_page_index);
     return is_new;
@@ -605,6 +610,8 @@ PageManager::close_mmap()
         m_page_index = nullptr;
         m_header_index = nullptr;
         m_page_info = nullptr;
+        m_total--;
+        ASSERT(m_total >= 0);
     }
 }
 
