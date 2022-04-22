@@ -25,11 +25,14 @@
 #include <unordered_map>
 #include "dp.h"
 #include "recycle.h"
+#include "task.h"
 
 
 namespace tt
 {
 
+
+#define MAX_USAGE_SIZE  12
 
 class QueryTask;
 
@@ -58,6 +61,7 @@ public:
     static void free_recyclable(Recyclable *r);
     static void free_recyclables(Recyclable *r);
     static void assert_recyclable(Recyclable *r);   // for debugging only
+    static bool collect_garbage(TaskData& data);
 
 private:
     MemoryManager();
@@ -78,6 +82,11 @@ private:
     // both free and in total
     static std::atomic<int> m_free[RecyclableType::RT_COUNT+1];
     static std::atomic<int> m_total[RecyclableType::RT_COUNT+1];
+
+    // garbage collector
+    static std::mutex m_garbage_lock;   // to prevent multi-invoke of collect_garbage()
+    static int m_max_usage[RecyclableType::RT_COUNT+1][MAX_USAGE_SIZE];
+    static int m_max_usage_idx;
 
 #ifdef _DEBUG
     // for debugging only

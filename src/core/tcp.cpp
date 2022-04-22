@@ -425,7 +425,7 @@ TcpServer::recv_tcp_data(TaskData& data)
     buff[len] = 0;
     bool again = (len >= buff_size);
 
-    if (len > 5)
+    if (len >= 5)
     {
         // find the last '\n'
         char *first = buff;

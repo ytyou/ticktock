@@ -40,6 +40,9 @@ namespace tt
 {
 
 
+std::atomic<int32_t> PageManager::m_total{0};
+
+
 PageInfo::PageInfo() :
     m_page_mgr(nullptr),
     m_compressor(nullptr),
@@ -389,7 +392,7 @@ PageManager::PageManager(TimeRange& range, PageCount id, bool temp) :
         // In the case of abnormal shutdown, there's a chance m_page_index was
         // persisted, but the latest page_info_on_disk was not. In that case,
         // we need to discard those pages to avoid corrupted data.
-        PageCount id = *m_header_index;
+        int id = *m_header_index;
         PageCount page_idx = *m_page_index;
 
         for (id--; id >= 0; id--)
@@ -580,6 +583,8 @@ PageManager::open_mmap(PageCount page_count)
         // TODO: verify time range in the header. It should agree with our m_time_range!
     }
 
+    m_total++;
+    ASSERT(m_total > 0);
     Logger::debug("page count = %d", *m_page_count);
     Logger::debug("page index = %d", *m_page_index);
     return is_new;
@@ -605,6 +610,8 @@ PageManager::close_mmap()
         m_page_index = nullptr;
         m_header_index = nullptr;
         m_page_info = nullptr;
+        m_total--;
+        ASSERT(m_total >= 0);
     }
 }
 

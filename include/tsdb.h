@@ -83,6 +83,7 @@ private:
 
     void init(const char *name, Tsdb* tsdb);
     void unload();
+    void unload_no_lock();
     void flush();
     bool recycle() override;
     void set_check_point();

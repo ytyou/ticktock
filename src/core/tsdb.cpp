@@ -23,6 +23,7 @@
 #include <dirent.h>
 #include <functional>
 #include <glob.h>
+#include "admin.h"
 #include "append.h"
 #include "config.h"
 #include "memmgr.h"
@@ -80,14 +81,19 @@ Mapping::~Mapping()
         m_metric = nullptr;
     }
 
-    unload();
+    unload_no_lock();
 }
 
 void
 Mapping::unload()
 {
     WriteLock guard(m_lock);
+    unload_no_lock();
+}
 
+void
+Mapping::unload_no_lock()
+{
     // More than one key could be mapped to the same
     // TimeSeries; so we need to dedup first to avoid
     // double free it.
@@ -907,12 +913,10 @@ Tsdb::shutdown()
 
     for (Tsdb *tsdb: m_tsdbs)
     {
-        WriteLock unload_guard(tsdb->m_load_lock);
-        std::lock_guard<std::mutex> tsdb_guard(tsdb->m_lock);
-
-        if (! tsdb->is_read_only())
         {
-            tsdb->flush(true);
+            WriteLock unload_guard(tsdb->m_load_lock);
+            std::lock_guard<std::mutex> tsdb_guard(tsdb->m_lock);
+            if (! tsdb->is_read_only()) tsdb->flush(true);
         }
 
         delete tsdb;
@@ -1277,13 +1281,27 @@ Tsdb::http_api_put_handler_plain(HttpRequest& request, HttpResponse& response)
     bool success = true;
 
     // is the the 'version' command?
-    if ((request.length == 8) && (strncmp(curr, "version\n", 8) == 0))
+    if (request.length <= 10)
     {
-        return HttpServer::http_get_api_version_handler(request, response);
-    }
-    else if ((request.length == 6) && (strncmp(curr, "stats\n", 6) == 0))
-    {
-        return HttpServer::http_get_api_stats_handler(request, response);
+        if ((request.length == 8) && (strncmp(curr, "version\n", 8) == 0))
+        {
+            return HttpServer::http_get_api_version_handler(request, response);
+        }
+        else if ((request.length == 6) && (strncmp(curr, "stats\n", 6) == 0))
+        {
+            return HttpServer::http_get_api_stats_handler(request, response);
+        }
+        else if ((request.length == 5) && (strncmp(curr, "help\n", 5) == 0))
+        {
+            return HttpServer::http_get_api_help_handler(request, response);
+        }
+        else if ((request.length == 10) && (strncmp(curr, "diediedie\n", 10) == 0))
+        {
+            char buff[10];
+            std::strcpy(buff, "cmd=stop");
+            request.params = buff;
+            return Admin::http_post_api_admin_handler(request, response);
+        }
     }
 
     response.content_length = 0;

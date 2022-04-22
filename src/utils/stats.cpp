@@ -119,6 +119,15 @@ Stats::inject_metrics(TaskData& data)
         }
         */
 
+        // ticktock.mmap_file.count
+        {
+            int32_t count = PageManager::get_mmap_file_count();
+            DataPoint dp(now, (double)count);
+            dp.set_metric("ticktock.mmap_file.count");
+            dp.add_tag(HOST_TAG_NAME, g_host_name.c_str());
+            tsdb->add(dp);
+        }
+
         // ticktock.time_series.count
         {
             int ts_count = Tsdb::get_ts_count();

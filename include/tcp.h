@@ -67,12 +67,12 @@ public:
     TcpListener *listener;
     bool forward;
 
-    int worker_id;
-    std::atomic<int> pending_tasks;     // # pending tasks working on this conn
-    std::atomic<unsigned int> state;    // TCS_xxx
+    int32_t worker_id;
+    std::atomic<int32_t> pending_tasks; // # pending tasks working on this conn
+    std::atomic<uint32_t> state;        // TCS_xxx
 
     char *buff;
-    int offset;
+    int32_t offset;
 
     // last time there was any activity on this connection,
     // used to decide if we should close the connection or not;

@@ -719,6 +719,14 @@ HttpServer::http_get_api_config_handler(HttpRequest& request, HttpResponse& resp
 }
 
 bool
+HttpServer::http_get_api_help_handler(HttpRequest& request, HttpResponse& response)
+{
+    const char *msg = "available commands: put stats version help diediedie";
+    response.init(200, HttpContentType::PLAIN, std::strlen(msg), msg);
+    return true;
+}
+
+bool
 HttpServer::http_get_api_stats_handler(HttpRequest& request, HttpResponse& response)
 {
     const int buf_size = 4096;

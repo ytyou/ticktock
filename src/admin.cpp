@@ -77,6 +77,10 @@ Admin::http_post_api_admin_handler(HttpRequest& request, HttpResponse& response)
         {
             status = cmd_compact(params, response);
         }
+        else if (strcmp(cmd, "gc") == 0)
+        {
+            status = cmd_gc(params, response);
+        }
         else if (strcmp(cmd, "log") == 0)
         {
             status = cmd_log(params, response);
@@ -114,6 +118,9 @@ Admin::http_post_api_admin_handler(HttpRequest& request, HttpResponse& response)
         Logger::error("Failed to execute cmd %s for unknown reasons", cmd);
     }
 
+    if (params != nullptr)
+        MemoryManager::free_recyclables(params);
+
     if (! status)
     {
         if (msg.empty())
@@ -130,11 +137,21 @@ Admin::cmd_compact(KeyValuePair *params, HttpResponse& response)
 {
     TaskData data;
 
-    data.integer = 1;   // indicates this is from interactive cmd (vs. scheduled task)
+    data.integer = 1;   // indicate this is from interactive cmd (vs. scheduled task)
     Tsdb::compact(data);
     char buff[32];
     int len = snprintf(buff, sizeof(buff), "1 tsdbs compacted");
     response.init(200, HttpContentType::PLAIN, len, buff);
+    return true;
+}
+
+bool
+Admin::cmd_gc(KeyValuePair *params, HttpResponse& response)
+{
+    TaskData data;
+    data.integer = 1;   // indicate this is from interactive cmd (vs. scheduled task)
+    MemoryManager::collect_garbage(data);
+    response.init(200);
     return true;
 }
 
@@ -201,7 +218,8 @@ Admin::cmd_stop(KeyValuePair *params, HttpResponse& response)
     task.doit = &Admin::shutdown;
     Timer::inst()->add_task(task, 1, "admin_stop");
 
-    response.init(200);
+    const char *msg = "Exiting now.";
+    response.init(200, HttpContentType::PLAIN, std::strlen(msg), msg);
     return true;
 }
 

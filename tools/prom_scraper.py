@@ -112,7 +112,7 @@ class Scraper(object):
         scheme = job.get_scheme()
         for target in job.get_targets():
             response = requests.get(scheme + "://" + target + path, timeout=10)
-            self._ticktock.send(round(now), response.text)
+            self._ticktock.send(round(now), target, response.text)
 
 
 class TickTock(object):
@@ -134,7 +134,8 @@ class TickTock(object):
         if self._sock:
             self._sock.close()
 
-    def send(self, ts, msgs):
+    def send(self, ts, target, msgs):
+        host = target.split(':')[0]
         puts = ""
         lines = msgs.splitlines()
         for line in lines:
@@ -184,11 +185,13 @@ class TickTock(object):
                 met = metric[:-7]
                 if met in self._histo_sum:
                     continue
-            dp = "put {} {} {}".format(metric, int(ts), value)
+            elif metric.endswith("_info"):
+                continue
+            dp = "put {} {} {} host={}".format(metric, int(ts), value, host)
             if not labels is None:
                 kvs = parse_key_value_pairs(labels[1:-1])
                 for k, v in kvs.iteritems():
-                    dp += " " + k + "=" + v.replace(' ', '_')
+                    dp += " " + k + "=" + v.replace(' ','_').replace('=','_').replace(';','_')
             puts += dp + "\n"
         if puts != "":
             if dry_run:
@@ -218,13 +221,14 @@ def get_time_in_seconds(time_str):
 
 def parse_key_value_pairs(kvs_str):
     pairs = {}
-    lexer = shlex.shlex(kvs_str, posix=True)
+    lexer = shlex.shlex(kvs_str.encode('utf-8'), posix=True)
     lexer.whitespace = ','
     lexer.wordchars += "+_="
     for kv in lexer:
-        pair = str(kv).split('=')
+        pair = str(kv).split('=', 1)
         assert(len(pair) == 2)
-        pairs[pair[0]] = pair[1]
+        if pair[1]:
+            pairs[pair[0]] = pair[1]
     return pairs
 
 
@@ -271,7 +275,7 @@ def get_defaults():
     defaults = {
         'config': 'conf/prom_config.yml',
         'dryrun': False,
-        'ticktock': 'centos0:6181'
+        'ticktock': '127.0.0.1:6181'
     }
 
     return defaults;

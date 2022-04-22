@@ -33,6 +33,7 @@
 #include "down.h"
 #include "query.h"
 #include "rate.h"
+#include "timer.h"
 
 
 namespace tt
@@ -53,6 +54,10 @@ Recyclable * MemoryManager::m_free_lists[RecyclableType::RT_COUNT];
 
 std::atomic<int> MemoryManager::m_free[RecyclableType::RT_COUNT+1];
 std::atomic<int> MemoryManager::m_total[RecyclableType::RT_COUNT+1];
+
+std::mutex MemoryManager::m_garbage_lock;
+int MemoryManager::m_max_usage[RecyclableType::RT_COUNT+1][MAX_USAGE_SIZE];
+int MemoryManager::m_max_usage_idx;
 
 #ifdef _DEBUG
 std::unordered_map<Recyclable*,bool> MemoryManager::m_maps[RecyclableType::RT_COUNT];
@@ -129,6 +134,23 @@ MemoryManager::init()
     for (int i = 0; i <= RecyclableType::RT_COUNT; i++)
         m_free[i] = m_total[i] = 0;
     m_initialized = true;
+
+    m_max_usage_idx = 0;
+    for (int i = 0; i <= RecyclableType::RT_COUNT; i++)
+    {
+        for (int j = 0; j < MAX_USAGE_SIZE; j++)
+            m_max_usage[i][j] = 0;
+    }
+
+    if (Config::exists(CFG_TSDB_GC_FREQUENCY))
+    {
+        int freq = (int)Config::get_time(CFG_TSDB_GC_FREQUENCY, TimeUnit::SEC);
+        Task task;
+        task.doit = &MemoryManager::collect_garbage;
+        task.data.integer = 0;  // indicates this is from scheduled task (vs. interactive cmd)
+        Timer::inst()->add_task(task, freq, "gc");
+        Logger::info("GC Freq: %d secs", freq);
+    }
 }
 
 void
@@ -796,6 +818,89 @@ MemoryManager::free_recyclables(Recyclable *rs)
 #endif
         }
     }
+}
+
+bool
+MemoryManager::collect_garbage(TaskData& data)
+{
+    std::lock_guard<std::mutex> guard(m_garbage_lock);
+    bool gc = (data.integer != 0);
+
+    // record usage stats
+    for (int i = 0; i <= RecyclableType::RT_COUNT; i++)
+    {
+        m_max_usage[i][m_max_usage_idx] =
+            m_total[i].load(std::memory_order_relaxed) - m_free[i].load(std::memory_order_relaxed);
+        ASSERT(m_max_usage[i][m_max_usage_idx] >= 0);
+    }
+
+    if (++m_max_usage_idx >= MAX_USAGE_SIZE)
+    {
+        gc = true;
+        m_max_usage_idx = 0;
+    }
+
+    if (gc)
+    {
+        // perform gc
+        for (int i = 0; i < RecyclableType::RT_COUNT; i++)
+        {
+            if (i == RecyclableType::RT_MAPPING)
+                continue;   // workaround issue of contention_free_shared_mutex
+
+            int max_usage = 0;
+
+            for (int j = 0; j < MAX_USAGE_SIZE; j++)
+                max_usage = std::max(max_usage, m_max_usage[i][j]);
+
+            if (max_usage < m_total[i].load(std::memory_order_relaxed))
+            {
+                Logger::debug("[gc] Trying to GC of type %d from %d to %d",
+                              i,  m_total[i].load(std::memory_order_relaxed), max_usage);
+
+                std::lock_guard<std::mutex> guard(m_locks[i]);
+
+                while (max_usage < m_total[i].load())
+                {
+                    Recyclable *r = m_free_lists[i];
+                    if (r == nullptr) break;
+                    m_free_lists[i] = r->next();
+                    delete r;
+                    m_free[i]--;
+                    m_total[i]--;
+                }
+            }
+        }
+
+        // collect network buffers
+        {
+            int max_usage = 0;
+
+            for (int j = 0; j < MAX_USAGE_SIZE; j++)
+                max_usage = std::max(max_usage, m_max_usage[RecyclableType::RT_COUNT][j]);
+
+            if (max_usage < m_total[RecyclableType::RT_COUNT].load(std::memory_order_relaxed))
+            {
+                Logger::debug("[gc] Trying to GC of network buffer from %d to %d",
+                              m_total[RecyclableType::RT_COUNT].load(std::memory_order_relaxed), max_usage);
+
+                std::lock_guard<std::mutex> guard(m_network_lock);
+
+                while (max_usage < m_total[RecyclableType::RT_COUNT].load())
+                {
+                    char *buff = m_network_buffer_free_list;
+                    if (buff == nullptr) break;
+                    m_network_buffer_free_list = *((char**)buff);
+                    ASSERT(((long)m_network_buffer_free_list % g_page_size) == 0);
+                    std::free(buff);
+                    m_free[RecyclableType::RT_COUNT]--;
+                    m_total[RecyclableType::RT_COUNT]--;
+                }
+            }
+        }
+    }
+
+    return false;
 }
 
 void

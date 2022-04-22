@@ -1,11 +1,11 @@
 #!/bin/bash
 #
-# shutdown ticktock server
+# start compaction
 
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 . $DIR/common.sh
 
-$CURL -XPOST "http://$HOST:$PORT/api/admin?cmd=stop"
+$CURL -XPOST "http://$HOST:$PORT/api/admin?cmd=gc"
 echo
 
 exit 0
