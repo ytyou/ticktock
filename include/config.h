@@ -67,6 +67,9 @@
 #define CFG_QUERY_EXECUTOR_QUEUE_SIZE_DEF       1024
 #define CFG_QUERY_EXECUTOR_THREAD_COUNT         "query.executor.thread.count"
 #define CFG_QUERY_EXECUTOR_THREAD_COUNT_DEF     8
+#define CFG_REPLICATION_MODE                    "replication.mode"
+#define CFG_REPLICATION_REPLICAS                "replication.replicas"
+#define CFG_REPLICATION_SERVER_ID               "replication.server.id"
 #define CFG_STATS_FREQUENCY                     "stats.frequency"
 #define CFG_STATS_FREQUENCY_DEF                 "30s"
 #define CFG_TCP_CONNECTION_IDLE_TIMEOUT         "tcp.connection.idle.timeout"

@@ -31,6 +31,7 @@
 #include "timer.h"
 #include "tsdb.h"
 #include "part.h"
+#include "replica.h"
 #include "logger.h"
 #include "json.h"
 #include "stats.h"
@@ -1280,6 +1281,18 @@ Tsdb::http_api_put_handler_plain(HttpRequest& request, HttpResponse& response)
     bool forward = request.forward;
     bool success = true;
 
+    // Are there any replicas?
+    if (forward && ReplicationManager::is_remote())
+        success &= ReplicationManager::forward(request, response);
+
+    // Shall we store data locally?
+    if (! ReplicationManager::is_local())
+    {
+        if (! ReplicationManager::is_remote())
+            response.init(200);
+        return success;
+    }
+
     // is the the 'version' command?
     if (request.length <= 10)
     {
@@ -1319,13 +1332,23 @@ Tsdb::http_api_put_handler_plain(HttpRequest& request, HttpResponse& response)
         DataPoint dp;
 
         if (std::isspace(*curr)) break;
-        if (std::strncmp(curr, "put ", 4) != 0)
+        if (UNLIKELY(std::strncmp(curr, "put ", 4) != 0))
         {
             if (std::strncmp(curr, "version\n", 8) == 0)
             {
                 curr += 8;
                 HttpServer::http_get_api_version_handler(request, response);
             }
+            else if (std::strncmp(curr, "rep ", 4) == 0)
+            {
+                forward = false;
+                curr += ReplicationManager::handshake(curr, response);
+            }
+            else if (std::strncmp(curr, "cp ", 3) == 0)
+            {
+                curr += ReplicationManager::checkpoint(curr, response);
+            }
+/*
             else if (std::strncmp(curr, DONT_FORWARD, std::strlen(DONT_FORWARD)) == 0)
             {
                 int len = std::strlen(DONT_FORWARD);
@@ -1333,6 +1356,7 @@ Tsdb::http_api_put_handler_plain(HttpRequest& request, HttpResponse& response)
                 forward = false;
                 response.init(200, HttpContentType::PLAIN, len, DONT_FORWARD);
             }
+*/
             else
             {
                 curr = strchr(curr, '\n');

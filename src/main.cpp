@@ -36,6 +36,7 @@
 #include "http.h"
 #include "udp.h"
 #include "query.h"
+#include "replica.h"
 #include "tsdb.h"
 #include "stats.h"
 #include "timer.h"
@@ -329,6 +330,7 @@ initialize()
     Logger::info("TickTock version: %d.%d.%d, on %s",
         TT_MAJOR_VERSION, TT_MINOR_VERSION, TT_PATCH_VERSION, g_host_name.c_str());
     MemoryManager::init();
+    ReplicationManager::init();
     Tsdb::init();
     AppendLog::init();
     Stats::init();
@@ -358,6 +360,7 @@ shutdown()
         Timer::inst()->stop();
         QueryExecutor::inst()->shutdown();
         Tsdb::shutdown();
+        ReplicationManager::shutdown(true);
         MemoryManager::log_stats();
         // MM are thread-local singletons, and can't be cleaned up from another thread
         //MemoryManager::cleanup();
