@@ -136,7 +136,7 @@ bool
 Config::exists(const std::string& name)
 {
     std::lock_guard<std::mutex> guard(m_lock);
-    return (get_property(name) != nullptr);
+    return ((get_property(name) != nullptr) || (get_override(name) != nullptr));
 }
 
 bool

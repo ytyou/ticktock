@@ -35,7 +35,8 @@ namespace tt
 
 
 bool AppendLog::m_enabled = false;
-static thread_local AppendLog *instance = nullptr;
+std::mutex AppendLog::m_lock;
+static AppendLog *instance = nullptr;
 
 
 AppendLog::AppendLog() :
@@ -56,9 +57,11 @@ AppendLog::init()
     m_enabled = Config::get_bool(CFG_APPEND_LOG_ENABLED, CFG_APPEND_LOG_ENABLED_DEF);
     if (! m_enabled) return;
 
+    instance = new AppendLog();
+
     // Schedule tasks to flush append logs.
     Task task;
-    task.doit = &AppendLog::flush_all;
+    task.doit = &AppendLog::flush;
     int freq_sec = Config::get_time(CFG_APPEND_LOG_FLUSH_FREQUENCY, TimeUnit::SEC, CFG_APPEND_LOG_FLUSH_FREQUENCY_DEF);
     ASSERT(freq_sec > 0);
     Timer::inst()->add_task(task, freq_sec, "append_log_flush");
@@ -76,15 +79,19 @@ AppendLog::init()
 AppendLog *
 AppendLog::inst()
 {
-    return (instance == nullptr) ? (instance = new AppendLog) : instance;
+    return instance;
+    //return (instance == nullptr) ? (instance = new AppendLog) : instance;
 }
 
 bool
 AppendLog::close(TaskData& data)
 {
     AppendLog *log = AppendLog::inst();
-    Logger::trace("Closing append log %p", log->m_file);
-    log->close();
+    if (log != nullptr)
+    {
+        Logger::trace("Closing append log %p", log->m_file);
+        log->close();
+    }
     return false;
 }
 
@@ -93,6 +100,7 @@ AppendLog::flush(TaskData& data)
 {
     AppendLog *log = AppendLog::inst();
     Logger::trace("Flushing append log %p", log->m_file);
+    std::lock_guard<std::mutex> guard(m_lock);
 
     if (log->m_file != nullptr)
     {
@@ -133,6 +141,8 @@ AppendLog::rotate(TaskData& data)
 
     std::string append_dir = Config::get_str(CFG_APPEND_LOG_DIR);
     std::string log_pattern = append_dir + "/append.*.log.zip";
+    Logger::debug("Rotating append logs: %s", log_pattern.c_str());
+    std::lock_guard<std::mutex> guard(m_lock);
 
     int cnt = rotate_files(log_pattern, retention_count * listener_count * responder_count);
 
@@ -197,12 +207,14 @@ AppendLog::reopen()
     {
         // zlib can't append to existing compressed files, so let's make sure
         // that we create a new file.
-        std::string log_file = append_dir + "/append." + std::to_string(time) + "." + g_thread_id + ".log.zip";
+        std::string log_file = append_dir + "/append." + std::to_string(time) + ".log.zip";
+        //std::string log_file = append_dir + "/append." + std::to_string(time) + "." + g_thread_id + ".log.zip";
 
         for (int i = 0; i < 1024; i++)  // should be able to find one within 1024 tries
         {
             if (! file_exists(log_file)) break;
-            log_file = append_dir + "/append." + std::to_string(time) + "." + g_thread_id + "." + std::to_string(i) + ".log.zip";
+            log_file = append_dir + "/append." + std::to_string(time) + "." + std::to_string(i) + ".log.zip";
+            //log_file = append_dir + "/append." + std::to_string(time) + "." + g_thread_id + "." + std::to_string(i) + ".log.zip";
         }
 
         //m_file = fopen(log_file.c_str(), "a+");
@@ -243,6 +255,8 @@ void
 AppendLog::append(char *data, size_t size)
 {
     if (! m_enabled) return;
+
+    std::lock_guard<std::mutex> guard(m_lock);
 
     if ((m_file != nullptr) && (data != nullptr) && (size >= 0))
     {
