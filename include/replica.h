@@ -18,7 +18,6 @@
 
 #pragma once
 
-#include <deque>
 #include <vector>
 #include <condition_variable>
 #include "http.h"
@@ -77,6 +76,7 @@ class ReplicationStream
 {
 public:
     ReplicationStream(int32_t id);
+    ~ReplicationStream();
 
     bool append(const char *data, size_t len);
     int32_t get_data(ReplicationCursor& cursor, const char* &buff);
@@ -88,7 +88,9 @@ private:
     std::mutex m_lock;
     std::atomic<uint64_t> m_check_point;
     std::condition_variable m_signal;
-    std::deque<ReplicationBuffer> m_buffers;
+
+    ReplicationBuffer *m_buffers;
+    ReplicationBuffer *m_buff_last;
 };
 
 

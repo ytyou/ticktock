@@ -38,6 +38,8 @@ namespace tt
 {
 
 
+#define MAX_CHECKPOINT_SIZE     32
+
 int32_t ReplicationManager::m_id;
 int64_t ReplicationManager::m_start;
 bool ReplicationManager::m_local;
@@ -50,7 +52,7 @@ std::vector<ReplicationServer*> ReplicationManager::m_replicas;
 ReplicationBuffer::ReplicationBuffer() :
     m_buff(nullptr),
     m_data_size(0),
-    m_buff_size(MemoryManager::get_network_buffer_size())
+    m_buff_size(MemoryManager::get_network_buffer_size() - MAX_CHECKPOINT_SIZE)
 {
     init();
 }
@@ -82,7 +84,35 @@ ReplicationBuffer::recycle()
 size_t
 ReplicationBuffer::append(const char *data, size_t len)
 {
-    return 0;
+    ASSERT(data != nullptr);
+    ASSERT(len > 0);
+    ASSERT(m_buff != nullptr);
+
+    if ((m_buff_size - m_data_size) <= len)
+    {
+        std::memcpy(m_buff + m_data_size, data, m_buff_size-m_data_size);
+        size_t i;
+        for (i = m_buff_size-1; i > m_data_size; i--)
+            if (m_buff[i] == '\n') break;
+        if (i == m_data_size)
+            len = 0;
+        else
+        {
+            i++;
+            len = i - m_data_size;
+            m_data_size = i;
+            m_buff[m_data_size] = 0;
+        }
+    }
+    else
+    {
+        std::memcpy(m_buff + m_data_size, data, len);
+        m_data_size += len;
+        m_buff[m_data_size] = 0;
+    }
+
+    ASSERT(m_buff[m_data_size-1] == '\n');
+    return len;
 }
 
 
@@ -226,6 +256,14 @@ ReplicationCheckPoint::ReplicationCheckPoint(uint64_t first) :
 ReplicationStream::ReplicationStream(int32_t id) :
     m_id(id)
 {
+    m_buffers = m_buff_last =
+        (ReplicationBuffer*)MemoryManager::alloc_recyclable(RecyclableType::RT_REPLICATION_BUFF);
+}
+
+ReplicationStream::~ReplicationStream()
+{
+    std::lock_guard<std::mutex> guard(m_lock);
+    if (m_buffers) MemoryManager::free_recyclables(m_buffers);
 }
 
 int32_t
@@ -237,20 +275,27 @@ ReplicationStream::get_rep(char *buff, size_t len)
 bool
 ReplicationStream::append(const char *data, size_t len)
 {
+    ASSERT(data != nullptr);
+    ASSERT(len > 0);
+    ASSERT(data[len-1] == '\n');
+    ASSERT(m_buff_last != nullptr);
+
     {
         std::lock_guard<std::mutex> guard(m_lock);
 
         for ( ; ; )
         {
-            ReplicationBuffer& buff = m_buffers.back();
-            size_t size = buff.append(data, len);
+            ReplicationBuffer *buff = m_buff_last;
+            size_t size = buff->append(data, len);
             ASSERT(size <= len);
             len -= size;
 
             if (len != 0)
             {
-                buff.set_check_point();
-                m_buffers.emplace_back();
+                buff->set_check_point();
+                buff = (ReplicationBuffer*)MemoryManager::alloc_recyclable(RecyclableType::RT_REPLICATION_BUFF);
+                m_buff_last->next() = buff;
+                m_buff_last = buff;
             }
             else
                 break;
@@ -403,6 +448,8 @@ ReplicationManager::shutdown(bool wait)
     if (wait)
     {
     }
+
+    Logger::info("ReplicationManager::shutdown complete");
 }
 
 

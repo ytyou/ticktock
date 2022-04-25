@@ -33,6 +33,7 @@
 #include "down.h"
 #include "query.h"
 #include "rate.h"
+#include "replica.h"
 #include "timer.h"
 
 
@@ -201,6 +202,7 @@ MemoryManager::collect_stats(Timestamp ts, std::vector<DataPoint> &dps)
     COLLECT_STATS_FOR(RT_QUERY_RESULTS, "query_results")
     COLLECT_STATS_FOR(RT_QUERY_TASK, "query_task")
     COLLECT_STATS_FOR(RT_RATE_CALCULATOR, "rate_calculator")
+    COLLECT_STATS_FOR(RT_REPLICATION_BUFF, "replication_buff")
     COLLECT_STATS_FOR(RT_TCP_CONNECTION, "tcp_connection")
     COLLECT_STATS_FOR(RT_TIME_SERIES, "time_series")
     COLLECT_STATS_FOR(RT_COUNT, "network_buffer")
@@ -235,6 +237,7 @@ MemoryManager::collect_stats(Timestamp ts, std::vector<DataPoint> &dps)
     total += m_total[RT_QUERY_RESULTS] * sizeof(QueryResults);
     total += m_total[RT_QUERY_TASK] * sizeof(QueryTask);
     total += m_total[RT_RATE_CALCULATOR] * sizeof(RateCalculator);
+    total += m_total[RT_REPLICATION_BUFF] * sizeof(ReplicationBuffer);
     total += m_total[RT_TCP_CONNECTION] * sizeof(TcpConnection);
     total += m_total[RT_TIME_SERIES] * sizeof(TimeSeries);
     total += m_total[RT_COUNT] * m_network_buffer_len;
@@ -281,6 +284,7 @@ MemoryManager::log_stats()
     Logger::debug("mm::query_results = %d", m_maps[RecyclableType::RT_QUERY_RESULTS].size());
     Logger::debug("mm::query_task = %d", m_maps[RecyclableType::RT_QUERY_TASK].size());
     Logger::debug("mm::rate_calculator = %d", m_maps[RecyclableType::RT_RATE_CALCULATOR].size());
+    Logger::debug("mm::replication_buff = %d", m_maps[RecyclableType::RT_REPLICATION_BUFF].size());
     Logger::debug("mm::tcp_connection = %d", m_maps[RecyclableType::RT_TCP_CONNECTION].size());
     Logger::debug("mm::time_series = %d", m_maps[RecyclableType::RT_TIME_SERIES].size());
 
@@ -544,6 +548,14 @@ MemoryManager::cleanup()
         delete static_cast<RateCalculator*>(r);
     }
 
+    while (m_free_lists[RecyclableType::RT_REPLICATION_BUFF] != nullptr)
+    {
+        Recyclable *r = m_free_lists[RecyclableType::RT_REPLICATION_BUFF];
+        m_free_lists[RecyclableType::RT_REPLICATION_BUFF] = r->next();
+        ASSERT(r->recyclable_type() == RecyclableType::RT_REPLICATION_BUFF);
+        delete static_cast<ReplicationBuffer*>(r);
+    }
+
     while (m_free_lists[RecyclableType::RT_TCP_CONNECTION] != nullptr)
     {
         Recyclable *r = m_free_lists[RecyclableType::RT_TCP_CONNECTION];
@@ -685,6 +697,10 @@ MemoryManager::alloc_recyclable(RecyclableType type)
 
                 case RecyclableType::RT_RATE_CALCULATOR:
                     r = new RateCalculator();
+                    break;
+
+                case RecyclableType::RT_REPLICATION_BUFF:
+                    r = new ReplicationBuffer();
                     break;
 
                 case RecyclableType::RT_TCP_CONNECTION:

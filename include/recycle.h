@@ -54,9 +54,10 @@ enum RecyclableType : unsigned char
     RT_QUERY_RESULTS     = RT_PAGE_INFO + 1,            // 26
     RT_QUERY_TASK        = RT_QUERY_RESULTS + 1,        // 27
     RT_RATE_CALCULATOR   = RT_QUERY_TASK + 1,           // 28
-    RT_TCP_CONNECTION    = RT_RATE_CALCULATOR + 1,      // 29
-    RT_TIME_SERIES       = RT_TCP_CONNECTION + 1,       // 30
-    RT_COUNT             = RT_TIME_SERIES + 1           // 31
+    RT_REPLICATION_BUFF  = RT_RATE_CALCULATOR + 1,      // 29
+    RT_TCP_CONNECTION    = RT_REPLICATION_BUFF + 1,     // 30
+    RT_TIME_SERIES       = RT_TCP_CONNECTION + 1,       // 31
+    RT_COUNT             = RT_TIME_SERIES + 1           // 32
 };
 
 
