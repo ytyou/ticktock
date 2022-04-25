@@ -26,6 +26,7 @@
 #include "global.h"
 #include "logger.h"
 #include "query.h"
+#include "replica.h"
 #include "stats.h"
 #include "timer.h"
 #include "tsdb.h"
@@ -124,6 +125,15 @@ Stats::inject_metrics(TaskData& data)
             int32_t count = PageManager::get_mmap_file_count();
             DataPoint dp(now, (double)count);
             dp.set_metric("ticktock.mmap_file.count");
+            dp.add_tag(HOST_TAG_NAME, g_host_name.c_str());
+            tsdb->add(dp);
+        }
+
+        // ticktock.replication.buffer.count
+        {
+            int32_t count = ReplicationManager::get_buffer_count(false);
+            DataPoint dp(now, (double)count);
+            dp.set_metric("ticktock.replication.buffer.count");
             dp.add_tag(HOST_TAG_NAME, g_host_name.c_str());
             tsdb->add(dp);
         }

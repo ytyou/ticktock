@@ -42,6 +42,7 @@ namespace tt
 
 int32_t ReplicationManager::m_id;
 int64_t ReplicationManager::m_start;
+int32_t ReplicationManager::m_max_buff;
 bool ReplicationManager::m_local;
 bool ReplicationManager::m_remote;
 
@@ -254,7 +255,9 @@ ReplicationCheckPoint::ReplicationCheckPoint(uint64_t first) :
 
 
 ReplicationStream::ReplicationStream(int32_t id) :
-    m_id(id)
+    m_id(id),
+    m_total_count(1),
+    m_in_mem_count(1)
 {
     m_buffers = m_buff_last =
         (ReplicationBuffer*)MemoryManager::alloc_recyclable(RecyclableType::RT_REPLICATION_BUFF);
@@ -291,12 +294,7 @@ ReplicationStream::append(const char *data, size_t len)
             len -= size;
 
             if (len != 0)
-            {
-                buff->set_check_point();
-                buff = (ReplicationBuffer*)MemoryManager::alloc_recyclable(RecyclableType::RT_REPLICATION_BUFF);
-                m_buff_last->next() = buff;
-                m_buff_last = buff;
-            }
+                alloc_buffer();
             else
                 break;
         }
@@ -304,6 +302,36 @@ ReplicationStream::append(const char *data, size_t len)
 
     m_signal.notify_all();
     return true;
+}
+
+void
+ReplicationStream::alloc_buffer()
+{
+    if (m_in_mem_count >= ReplicationManager::get_max_buffers())
+    {
+        // dump a buffer to disk
+        m_in_mem_count--;
+    }
+
+    ReplicationBuffer *buff =
+        (ReplicationBuffer*)MemoryManager::alloc_recyclable(RecyclableType::RT_REPLICATION_BUFF);
+
+    if (m_buff_last != nullptr)
+    {
+        m_buff_last->set_check_point();
+        m_buff_last->next() = buff;
+    }
+
+    m_total_count++;
+    m_in_mem_count++;
+    m_buff_last = buff;
+    Logger::info("ReplicationStream::alloc_buffer: m_total_count = %d", m_total_count);
+}
+
+int32_t
+ReplicationStream::get_buffer_count(bool in_mem)
+{
+    return (in_mem ? m_in_mem_count : m_total_count);
 }
 
 
@@ -315,6 +343,7 @@ ReplicationManager::init()
         Config::exists(CFG_REPLICATION_REPLICAS))
     {
         m_id = Config::get_int(CFG_REPLICATION_SERVER_ID);
+        m_max_buff = Config::get_int(CFG_REPLICATION_MAX_BUFFERS, CFG_REPLICATION_MAX_BUFFERS_DEF);
 
         // TODO: retrieve 'start' from ReplicationState file
         m_start = 0;
@@ -410,6 +439,8 @@ ReplicationManager::init()
     // create exactly 1 stream, for now
     if (m_streams.empty())
         m_streams.push_back(new ReplicationStream(0));
+
+    g_cluster_enabled = m_remote;
 }
 
 // return the length of the 'rep' line
@@ -450,6 +481,16 @@ ReplicationManager::shutdown(bool wait)
     }
 
     Logger::info("ReplicationManager::shutdown complete");
+}
+
+int32_t
+ReplicationManager::get_buffer_count(bool in_mem)
+{
+    int32_t count = 0;
+    for (auto s : m_streams)
+        count += s->get_buffer_count(in_mem);
+    Logger::info("ReplicationManager::get_buffer_count returned %d", count);
+    return count;
 }
 
 

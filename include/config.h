@@ -67,6 +67,8 @@
 #define CFG_QUERY_EXECUTOR_QUEUE_SIZE_DEF       1024
 #define CFG_QUERY_EXECUTOR_THREAD_COUNT         "query.executor.thread.count"
 #define CFG_QUERY_EXECUTOR_THREAD_COUNT_DEF     8
+#define CFG_REPLICATION_MAX_BUFFERS             "replication.max.buffers"
+#define CFG_REPLICATION_MAX_BUFFERS_DEF         64
 #define CFG_REPLICATION_MODE                    "replication.mode"
 #define CFG_REPLICATION_REPLICAS                "replication.replicas"
 #define CFG_REPLICATION_SERVER_ID               "replication.server.id"

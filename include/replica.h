@@ -61,6 +61,8 @@ private:
     size_t m_data_size;
     std::mutex m_lock;
     ReplicationCheckPoint m_check_point;
+
+    bool m_in_mem;
 };
 
 
@@ -83,11 +85,18 @@ public:
     void prune(ReplicationCheckPoint& check_point);
     int32_t get_rep(char *buff, size_t len);
 
+    int32_t get_buffer_count(bool in_mem);
+
 private:
+    void alloc_buffer();
+
     int32_t m_id;
     std::mutex m_lock;
     std::atomic<uint64_t> m_check_point;
     std::condition_variable m_signal;
+
+    int32_t m_in_mem_count;
+    int32_t m_total_count;
 
     ReplicationBuffer *m_buffers;
     ReplicationBuffer *m_buff_last;
@@ -129,6 +138,7 @@ public:
     static void init();
     static int32_t get_id() { return m_id; }
     static int64_t get_start() { return m_start; }
+    static int32_t get_max_buffers() { return m_max_buff; }
 
     static inline bool is_local() { return m_local; }
     static inline bool is_remote() { return m_remote; }
@@ -140,11 +150,14 @@ public:
     static int32_t checkpoint(char *cp, HttpResponse& response);    // leader -> replica
     static void shutdown(bool wait);
 
+    static int32_t get_buffer_count(bool in_mem);
+
 private:
     static bool m_local;    // store data locally?
     static bool m_remote;   // forward data to replicas?
     static int32_t m_id;    // our unique ID among all replicas/leaders
     static int64_t m_start; // number of restarts
+    static int32_t m_max_buff;  // max no. in-memory buffers allowed, per stream
 
     static std::vector<ReplicationStream*> m_streams;
     static std::vector<ReplicationServer*> m_replicas;
