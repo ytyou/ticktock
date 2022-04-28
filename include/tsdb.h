@@ -35,6 +35,7 @@
 #include "recycle.h"
 #include "rw.h"
 #include "serial.h"
+#include "sync.h"
 #include "type.h"
 #include "utils.h"
 #include "tsl/robin_map.h"
@@ -122,7 +123,7 @@ private:
 
 /* Each instance of Tsdb represents all data points in a specific time range.
  */
-class Tsdb : public Serializable
+class Tsdb : public Serializable, public Counter
 {
 public:
     // this must be called before anythng else
@@ -154,7 +155,7 @@ public:
     }
 
     void query_for_ts(const char *metric, Tag *tags, std::unordered_set<TimeSeries*>& ts);
-    void ensure_readable();
+    void ensure_readable(bool count = false);   // 'count' keep tsdb loaded until it's decremented
 
     void flush(bool sync);
     void set_check_point();

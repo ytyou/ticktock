@@ -830,7 +830,7 @@ Tsdb::query_for_ts(const char *metric, Tag *tags, std::unordered_set<TimeSeries*
 
 // prepare this Tsdb for query (AND writes too!)
 void
-Tsdb::ensure_readable()
+Tsdb::ensure_readable(bool count)
 {
     bool readable = true;
 
@@ -841,6 +841,9 @@ Tsdb::ensure_readable()
             readable = false;
         else
             m_load_time = ts_now_sec();
+
+        if (count)
+            inc_count();
     }
 
     if (! readable)
@@ -1812,6 +1815,7 @@ Tsdb::unload()
 void
 Tsdb::unload_no_lock()
 {
+    ASSERT(m_count.load() <= 0);
     m_meta_file.close();
 
     for (auto it = m_map.begin(); it != m_map.end(); it++)
@@ -1897,7 +1901,7 @@ Tsdb::rotate(TaskData& data)
 
         if ((now_sec - load_time) > thrashing_threshold)
         {
-            if (! (mode & TSDB_MODE_READ))
+            if (! (mode & TSDB_MODE_READ) && (tsdb->m_count <= 0))
             {
                 // archive it
                 Logger::info("[rotate] Archiving %T (lt=%" PRIu64 ", now=%" PRIu64 ")", tsdb, load_time, now_sec);
