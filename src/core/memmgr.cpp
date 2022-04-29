@@ -40,6 +40,8 @@ namespace tt
 {
 
 
+#define MIN_PAGE_SIZE   128
+
 bool MemoryManager::m_initialized = false;
 uint64_t MemoryManager::m_network_buffer_len = 0;
 
@@ -125,6 +127,31 @@ MemoryManager::free_network_buffer(char* buff)
 void
 MemoryManager::init()
 {
+    // init page size
+    if (Config::exists(CFG_TSDB_PAGE_SIZE))
+    {
+        uint64_t size = Config::get_bytes(CFG_TSDB_PAGE_SIZE);
+
+        if (! is_power_of_2(size))
+        {
+            uint64_t size2 = next_power_of_2(size);
+            Logger::info("The given tsdb.page.size (%" PRIu64 ") is not power of 2, using %" PRIu64 " instead",
+                size, size2);
+            size = size2;
+        }
+
+        if (size < MIN_PAGE_SIZE)
+        {
+            Logger::info("The given tsdb.page.size (%" PRIu64 ") is less than min of %d, using %d instead",
+                size, MIN_PAGE_SIZE, MIN_PAGE_SIZE);
+            size = MIN_PAGE_SIZE;
+        }
+
+        g_page_size = size;
+    }
+    else
+        g_page_size = sysconf(_SC_PAGE_SIZE);
+
     m_network_buffer_len = Config::get_bytes(CFG_TCP_BUFFER_SIZE, CFG_TCP_BUFFER_SIZE_DEF);
     // make sure it's multiple of g_page_size
     m_network_buffer_len = ((long)m_network_buffer_len / g_page_size) * g_page_size;

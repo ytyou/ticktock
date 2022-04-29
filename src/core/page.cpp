@@ -96,7 +96,7 @@ PageInfo::flush()
 
     // Skip this if m_offset != 0. madvise() can only be done when address is
     // aligned perfectly along 4K.
-    if (m_header->m_offset == 0)
+    if ((m_header->m_offset == 0) && is_aligned((uintptr_t)get_page(), 4096))
     {
         int rc = madvise(get_page(), g_page_size, MADV_DONTNEED);
         if (rc == -1)
