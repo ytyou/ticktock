@@ -76,6 +76,8 @@ struct tsdb_header
     Timestamp m_start_tstamp;   // 64-bit
     Timestamp m_end_tstamp;     // 64-bit
     PageCount m_actual_pg_cnt;  // 32-bit
+    PageSize m_page_size;       // 16-bit
+    uint16_t m_reserved;        // 16-bit (not used)
 
     inline int get_compressor_version() const
     {

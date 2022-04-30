@@ -343,6 +343,7 @@ initialize()
     Logger::info("sizeof(std::pair<Timestamp,double>) = %d", sizeof(std::pair<Timestamp,double>));
     Logger::info("sizeof(struct page_info_on_disk) = %d", sizeof(struct page_info_on_disk));
     Logger::info("page-size = %d", g_page_size);
+    Logger::info("sys-page-size = %d", g_sys_page_size);
     Logger::info("Using config file: %s", g_config_file.c_str());
     Logger::info("Timestamp resolution: %s", (g_tstamp_resolution_ms ? "millisecond" : "second"));
 }

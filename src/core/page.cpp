@@ -541,6 +541,7 @@ PageManager::open_mmap(PageCount page_count)
         header->set_compacted(m_compacted);
         header->set_compressor_version(m_compressor_version);
         header->set_millisecond(g_tstamp_resolution_ms);
+        header->m_page_size = g_page_size;
         *m_page_count = page_count;
         *m_page_index = calc_first_page_info_index(page_count);
         *m_header_index = 0;
