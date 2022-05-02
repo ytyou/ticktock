@@ -306,6 +306,12 @@ public:
         return *m_actual_pg_cnt - calc_first_page_info_index(*m_page_count);
     }
 
+    inline PageSize get_page_size() const
+    {
+        ASSERT(m_page_size != nullptr);
+        return *m_page_size;
+    }
+
     inline uint8_t get_compressor_version() const
     {
         return m_compressor_version;
@@ -377,6 +383,8 @@ private:
     // usually this is the same as m_page_count; after compaction
     // this could be different than m_page_count;
     PageCount *m_actual_pg_cnt;
+
+    PageSize *m_page_size;
 
     // total size of the data file, in bytes. this is usually
     // m_page_count * page_size, but after compaction, it should
