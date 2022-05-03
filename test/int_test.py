@@ -767,6 +767,7 @@ class Basic_Query_Tests(Test):
             # generate config
             config = TickTockConfig(self._options)
             #config.add_entry("tsdb.read_only.sec", "20");
+            config.add_entry("tsdb.page.size", "1024");
             config()    # generate config
 
             # start tt

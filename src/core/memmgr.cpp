@@ -40,6 +40,8 @@ namespace tt
 {
 
 
+#define MIN_PAGE_SIZE   128
+
 bool MemoryManager::m_initialized = false;
 uint64_t MemoryManager::m_network_buffer_len = 0;
 
@@ -83,7 +85,7 @@ MemoryManager::alloc_network_buffer()
         if (buff != nullptr)
         {
             m_network_buffer_free_list = *((char**)buff);
-            ASSERT(((long)m_network_buffer_free_list % g_page_size) == 0);
+            ASSERT(((long)m_network_buffer_free_list % g_sys_page_size) == 0);
             m_free[RecyclableType::RT_COUNT]--;
         }
     }
@@ -94,14 +96,14 @@ MemoryManager::alloc_network_buffer()
     {
         // TODO: check if we have enough memory
         buff =
-            static_cast<char*>(aligned_alloc(g_page_size, m_network_buffer_len));
+            static_cast<char*>(aligned_alloc(g_sys_page_size, m_network_buffer_len));
         if (buff == nullptr)
             throw std::runtime_error("Out of memory");
-        ASSERT(((long)buff % g_page_size) == 0);
+        ASSERT(((long)buff % g_sys_page_size) == 0);
         m_total[RecyclableType::RT_COUNT]++;
     }
 
-    ASSERT(((long)buff % g_page_size) == 0);
+    ASSERT(((long)buff % g_sys_page_size) == 0);
     return buff;
 }
 
@@ -114,8 +116,8 @@ MemoryManager::free_network_buffer(char* buff)
         return;
     }
 
-    ASSERT(((long)buff % g_page_size) == 0);
-    ASSERT(((long)m_network_buffer_free_list % g_page_size) == 0);
+    ASSERT(((long)buff % g_sys_page_size) == 0);
+    ASSERT(((long)m_network_buffer_free_list % g_sys_page_size) == 0);
     std::lock_guard<std::mutex> guard(m_network_lock);
     *((char**)buff) = m_network_buffer_free_list;
     m_network_buffer_free_list = buff;
@@ -125,9 +127,34 @@ MemoryManager::free_network_buffer(char* buff)
 void
 MemoryManager::init()
 {
+    // init page size
+    if (Config::exists(CFG_TSDB_PAGE_SIZE))
+    {
+        uint64_t size = Config::get_bytes(CFG_TSDB_PAGE_SIZE);
+
+        if (! is_power_of_2(size))
+        {
+            uint64_t size2 = next_power_of_2(size);
+            Logger::info("The given tsdb.page.size (%" PRIu64 ") is not power of 2, using %" PRIu64 " instead",
+                size, size2);
+            size = size2;
+        }
+
+        if (size < MIN_PAGE_SIZE)
+        {
+            Logger::info("The given tsdb.page.size (%" PRIu64 ") is less than min of %d, using %d instead",
+                size, MIN_PAGE_SIZE, MIN_PAGE_SIZE);
+            size = MIN_PAGE_SIZE;
+        }
+
+        g_page_size = size;
+    }
+    else
+        g_page_size = g_sys_page_size;
+
     m_network_buffer_len = Config::get_bytes(CFG_TCP_BUFFER_SIZE, CFG_TCP_BUFFER_SIZE_DEF);
-    // make sure it's multiple of g_page_size
-    m_network_buffer_len = ((long)m_network_buffer_len / g_page_size) * g_page_size;
+    // make sure it's multiple of g_sys_page_size
+    m_network_buffer_len = ((long)m_network_buffer_len / g_sys_page_size) * g_sys_page_size;
     Logger::info("mm::m_network_buffer_len = %d", m_network_buffer_len);
     for (int i = 0; i < RecyclableType::RT_COUNT; i++)
         m_free_lists[i] = nullptr;
@@ -891,7 +918,7 @@ MemoryManager::collect_garbage(TaskData& data)
                     char *buff = m_network_buffer_free_list;
                     if (buff == nullptr) break;
                     m_network_buffer_free_list = *((char**)buff);
-                    ASSERT(((long)m_network_buffer_free_list % g_page_size) == 0);
+                    ASSERT(((long)m_network_buffer_free_list % g_sys_page_size) == 0);
                     std::free(buff);
                     m_free[RecyclableType::RT_COUNT]--;
                     m_total[RecyclableType::RT_COUNT]--;
