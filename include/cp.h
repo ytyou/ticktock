@@ -37,6 +37,24 @@ typedef std::unordered_map<const char*,cp_map,hash_func,eq_func> cps_map;
 
 class CheckPoint
 {
+public:
+    CheckPoint(const char *cp)
+    {
+        set(cp);
+        m_received = ts_now_sec();
+    }
+
+    inline const char *get()
+    {
+        return &m_check_point[0];
+    }
+
+    void set(const char *cp)
+    {
+        std::strncpy(m_check_point, cp, MAX_CHECK_POINT);
+        m_check_point[MAX_CHECK_POINT-1] = 0;
+    }
+
 private:
     Timestamp m_received;
     char m_check_point[MAX_CHECK_POINT];
@@ -62,14 +80,14 @@ public:
     static void persist();
 
     // return last persisted snapshot, in json format
-    static int get_persisted(const char *leader, char *buff, size_t size);
+    static int get_persisted(const char *leader, char *buff, int size);
 
     // last chance to persist anything that's not yet persisted
     static void close();
 
 private:
     CheckPointManager() = default;
-    static int get_persisted_of(cp_map& map, char *buff, size_t size);
+    static int get_persisted_of(const char *leader, cp_map& map, char *buff, int size);
 
     static std::mutex m_lock;
     static cps_map m_cps;
