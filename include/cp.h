@@ -29,6 +29,11 @@ namespace tt
 
 #define MAX_CHECK_POINT     32
 
+class CheckPoint;
+
+typedef std::unordered_map<const char*,CheckPoint*,hash_func,eq_func> cp_map;
+typedef std::unordered_map<const char*,cp_map,hash_func,eq_func> cps_map;
+
 
 class CheckPoint
 {
@@ -44,7 +49,7 @@ public:
     // load snapshots from disk
     static void init();
 
-    // format of cp: <leader>:<connection>:<check-point>
+    // format of cp: <leader>:<channel>:<check-point>
     // no spaces allowed; max length of <check-point> is 30
 
     // add check-point received from client/leader
@@ -64,11 +69,12 @@ public:
 
 private:
     CheckPointManager() = default;
+    static int get_persisted_of(cp_map& map, char *buff, size_t size);
 
     static std::mutex m_lock;
-    static std::unordered_map<const char*,std::unordered_map<const char*,CheckPoint*,hash_func,eq_func>,hash_func,eq_func> m_cps;
-    static std::unordered_map<const char*,std::unordered_map<const char*,CheckPoint*,hash_func,eq_func>,hash_func,eq_func> m_snapshot;
-    static std::unordered_map<const char*,std::unordered_map<const char*,CheckPoint*,hash_func,eq_func>,hash_func,eq_func> m_persisted;
+    static cps_map m_cps;
+    static cps_map m_snapshot;
+    static cps_map m_persisted;
 };
 
 

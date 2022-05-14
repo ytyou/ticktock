@@ -24,9 +24,9 @@ namespace tt
 
 
 std::mutex CheckPointManager::m_lock;
-std::unordered_map<const char*,std::unordered_map<const char*,CheckPoint*,hash_func,eq_func>,hash_func,eq_func> CheckPointManager::m_cps;
-std::unordered_map<const char*,std::unordered_map<const char*,CheckPoint*,hash_func,eq_func>,hash_func,eq_func> CheckPointManager::m_snapshot;
-std::unordered_map<const char*,std::unordered_map<const char*,CheckPoint*,hash_func,eq_func>,hash_func,eq_func> CheckPointManager::m_persisted;
+cps_map CheckPointManager::m_cps;
+cps_map CheckPointManager::m_snapshot;
+cps_map CheckPointManager::m_persisted;
 
 
 void
@@ -46,12 +46,55 @@ CheckPointManager::take_snapshot()
 {
 }
 
+/* Return format:
+ *  [{"leader":"1","channels":[{"channel":"ch1","checkpoint":"cp1"},{"channel":"ch2","cp":"cp2"}]},{...}]
+ */
 int
 CheckPointManager::get_persisted(const char *leader, char *buff, size_t size)
 {
-    ASSERT(size > 0);
+    ASSERT(size > 3);
     ASSERT(buff != nullptr);
 
+    int idx = 1;
+    buff[0] = '[';
+    size -= 3;
+
+    std::lock_guard<std::mutex> guard(m_lock);
+
+    if (leader == nullptr)
+    {
+        for (auto it = m_persisted.begin(); it != m_persisted.end(); it++)
+        {
+            if (idx > 1)
+            {
+                buff[idx++] = ',';
+                size--;
+            }
+
+            int len;
+            len = get_persisted_of(it->second, &buff[idx], size);
+            ASSERT(len < size);
+            idx += len;
+            size -= len;
+            if (size <= 1) break;
+        }
+    }
+    else
+    {
+        auto search = m_persisted.find(leader);
+        if (search != m_persisted.end())
+            idx += get_persisted_of(search->second, &buff[idx], size);
+    }
+
+    buff[idx++] = ']';
+    buff[idx] = 0;
+
+    return idx;
+}
+
+int
+CheckPointManager::get_persisted_of(cp_map& map, char *buff, size_t size)
+{
     return 0;
 }
 

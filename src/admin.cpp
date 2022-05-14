@@ -154,19 +154,11 @@ bool
 Admin::cmd_cp(KeyValuePair *params, HttpResponse& response)
 {
     const char *leader = KeyValuePair::get_value(params, "leader");
-
-    if (leader == nullptr)
-    {
-        const char *msg = "leader missing";
-        response.init(400, HttpContentType::PLAIN, std::strlen(msg), msg);
-        return true;
-    }
-
     char *buff = MemoryManager::alloc_network_buffer();
     size_t size = MemoryManager::get_network_buffer_size();
     int len = CheckPointManager::get_persisted(leader, buff, size);
     ASSERT(len > 0);
-    response.init(200, HttpContentType::PLAIN, len, buff);
+    response.init(200, HttpContentType::JSON, len, buff);
     MemoryManager::free_network_buffer(buff);
     return true;
 }
