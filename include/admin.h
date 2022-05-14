@@ -42,6 +42,7 @@ private:
     Admin() = delete;
 
     static bool cmd_compact(KeyValuePair *params, HttpResponse& response);
+    static bool cmd_cp(KeyValuePair *params, HttpResponse& response);
     static bool cmd_gc(KeyValuePair *params, HttpResponse& response);
     static bool cmd_log(KeyValuePair *params, HttpResponse& response);
     static bool cmd_ping(KeyValuePair *params, HttpResponse& response);
