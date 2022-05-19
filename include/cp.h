@@ -27,38 +27,8 @@ namespace tt
 {
 
 
-#define MAX_CHECK_POINT     32
-
-class CheckPoint;
-
-typedef std::unordered_map<const char*,CheckPoint*,hash_func,eq_func> cp_map;
+typedef std::unordered_map<const char*,std::string,hash_func,eq_func> cp_map;
 typedef std::unordered_map<const char*,cp_map,hash_func,eq_func> cps_map;
-
-
-class CheckPoint
-{
-public:
-    CheckPoint(const char *cp)
-    {
-        set(cp);
-        m_received = ts_now_sec();
-    }
-
-    inline const char *get()
-    {
-        return &m_check_point[0];
-    }
-
-    void set(const char *cp)
-    {
-        std::strncpy(m_check_point, cp, MAX_CHECK_POINT);
-        m_check_point[MAX_CHECK_POINT-1] = 0;
-    }
-
-private:
-    Timestamp m_received;
-    char m_check_point[MAX_CHECK_POINT];
-};
 
 
 class CheckPointManager

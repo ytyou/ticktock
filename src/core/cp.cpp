@@ -63,13 +63,9 @@ CheckPointManager::add(char *cp)
 
     auto search2 = map.find(tokens[1]);
     if (search2 == map.end())
-        map.insert(std::make_pair(STRDUP(tokens[1]), new CheckPoint(tokens[2])));
+        map.insert(std::make_pair(STRDUP(tokens[1]), std::string(tokens[2])));
     else
-    {
-        CheckPoint *checkpoint = search2->second;
-        ASSERT(checkpoint != nullptr);
-        checkpoint->set(tokens[3]);
-    }
+        search2->second.assign(tokens[2]);
 
     return true;
 }
@@ -142,8 +138,8 @@ CheckPointManager::get_persisted_of(const char *leader, cp_map& map, char *buff,
     for (auto it = map.begin(); it != map.end(); it++)
     {
         if (size <= 1) break;
-        CheckPoint *cp = it->second;
-        int n = snprintf(&buff[len], size, "{\"channel\":\"%s\",\"checkpoint\":\"%s\"},", it->first, cp->get());
+        int n = snprintf(&buff[len], size, "{\"channel\":\"%s\",\"checkpoint\":\"%s\"},",
+            it->first, it->second.c_str());
         len += n;
         size -= n;
     }

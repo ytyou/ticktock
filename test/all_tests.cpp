@@ -20,6 +20,7 @@
 #include "bitset_test.h"
 #include "compact_test.h"
 #include "compress_test.h"
+#include "cp_test.h"
 #include "json_test.h"
 #include "max_subset_test.h"
 #include "misc_test.h"
@@ -33,6 +34,7 @@ using namespace tt_test;
 static TestCase *tests[] =
 {
     new BitSetTests(),
+    new CheckPointTests(),
     new CompactTests(),
     new CompressTests(),
     new JsonTests(),
