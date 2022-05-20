@@ -16,7 +16,12 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+#include <fcntl.h>
+#include <fstream>
+#include <unistd.h>
+#include "config.h"
 #include "cp.h"
+#include "fd.h"
 #include "leak.h"
 #include "logger.h"
 
@@ -35,6 +40,29 @@ void
 CheckPointManager::init()
 {
     // load from disk
+    std::string pattern = Config::get_str(CFG_TSDB_DATA_DIR,CFG_TSDB_DATA_DIR_DEF) + "/*.cp";
+    std::string file_name = last_file(pattern);
+    if (file_name.empty()) return;
+    std::ifstream is(file_name);
+
+    if (! is)
+    {
+        Logger::warn("Failed to open cp file: %s", file_name.c_str());
+        return;
+    }
+
+    Logger::debug("Loading check-points from %s", file_name.c_str());
+
+    std::string line;
+
+    while (std::getline(is, line))
+    {
+        char buff[1024];
+        std::strncpy(buff, line.c_str(), sizeof(buff));
+        CheckPointManager::add(buff);
+    }
+
+    is.close();
 }
 
 // format of cp: <leader>:<channel>:<check-point>
@@ -161,7 +189,48 @@ CheckPointManager::persist()
     std::lock_guard<std::mutex> guard(m_lock);
 
     // write m_snapshot to disk
-    m_persisted = m_snapshot;
+    if (persist_to_file())
+        m_persisted = m_snapshot;
+}
+
+// file name: <ts>.cp
+bool
+CheckPointManager::persist_to_file()
+{
+    Timestamp ts = ts_now_sec();
+    std::string file_name = Config::get_str(CFG_TSDB_DATA_DIR,CFG_TSDB_DATA_DIR_DEF) + "/" + std::to_string(ts) + ".cp";
+    int fd = ::open(file_name.c_str(), O_CREAT|O_WRONLY|O_TRUNC|O_NONBLOCK, S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH);
+
+    fd = FileDescriptorManager::dup_fd(fd, FileDescriptorType::FD_FILE);
+    if (fd == -1)
+    {
+        Logger::error("Failed to open file %s for write: %d", file_name.c_str(), errno);
+        return false;
+    }
+
+    std::FILE *fp = fdopen(fd, "a");
+    if (fp == nullptr)
+    {
+        Logger::error("Failed to convert fd %d to FILE: %d", fd, errno);
+        ::close(fd);
+        return false;
+    }
+
+    for (auto it1 = m_snapshot.begin(); it1 != m_snapshot.end(); it1++)
+    {
+        const char *leader = it1->first;
+        cp_map& map = it1->second;
+
+        for (auto it2 = map.begin(); it2 != map.end(); it2++)
+            fprintf(fp, "%s:%s:%s\n", leader, it2->first, it2->second.c_str());
+    }
+
+    std::fflush(fp);
+    std::fclose(fp);
+
+    std::string pattern = Config::get_str(CFG_TSDB_DATA_DIR,CFG_TSDB_DATA_DIR_DEF) + "/*.cp";
+    rotate_files(pattern, 10);
+    return true;
 }
 
 void

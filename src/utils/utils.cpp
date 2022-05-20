@@ -698,6 +698,28 @@ rotate_files(const std::string& pattern, int retain_count)
     return files.size() - retain_count;
 }
 
+std::string
+last_file(const std::string& pattern)
+{
+    glob_t glob_result;
+    glob(pattern.c_str(), GLOB_TILDE, nullptr, &glob_result);
+
+    std::vector<std::string> files;
+
+    for (unsigned int i=0; i < glob_result.gl_pathc; i++)
+        files.push_back(std::string(glob_result.gl_pathv[i]));
+
+    globfree(&glob_result);
+
+    if (files.empty())
+        return std::string();
+    else
+    {
+        std::sort(files.begin(), files.end());
+        return files.back();
+    }
+}
+
 uint64_t
 get_disk_block_size(const std::string& full_path)
 {

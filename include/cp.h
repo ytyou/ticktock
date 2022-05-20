@@ -57,6 +57,7 @@ public:
 
 private:
     CheckPointManager() = default;
+    static bool persist_to_file();
     static int get_persisted_of(const char *leader, cp_map& map, char *buff, int size);
 
     static std::mutex m_lock;

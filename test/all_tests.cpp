@@ -59,6 +59,7 @@ main(int argc, char *argv[])
     // update g_config_file to point to our test config
     tt::g_config_file = TestCase::str_join(TEST_ROOT, "test.conf");
     system(TestCase::str_join("mkdir -p ", TEST_ROOT, "data"));
+    system("rm -f /tmp/*.cp");
 
     // generate our own config file
     TestCase::create_config(CFG_LOG_FILE, TestCase::str_join(TEST_ROOT, "test.log"));
