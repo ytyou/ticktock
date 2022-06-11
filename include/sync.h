@@ -18,8 +18,10 @@
 
 #pragma once
 
+#include <atomic>
 #include <mutex>
 #include <condition_variable>
+#include "utils.h"
 
 
 namespace tt
@@ -43,6 +45,39 @@ private:
     std::mutex m_mutex;
     std::unique_lock<std::mutex> *m_lock;   // we own this
     std::condition_variable m_cv;
+};
+
+
+class Counter
+{
+public:
+    Counter() : m_count(0) {}
+    void dec_count() { m_count--; }
+    void inc_count() { m_count++; }
+    std::atomic<int32_t> m_count;
+};
+
+
+class CountKeeper
+{
+public:
+    CountKeeper(Counter& counter) :
+        m_count(counter.m_count)
+    {
+        ASSERT(m_count >= 0);
+        m_count++;
+        ASSERT(m_count >= 1);
+    }
+
+    ~CountKeeper()
+    {
+        ASSERT(m_count >= 1);
+        m_count--;
+        ASSERT(m_count >= 0);
+    }
+
+private:
+    std::atomic<int32_t>& m_count;
 };
 
 

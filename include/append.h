@@ -69,6 +69,7 @@ private:
     void reopen();
 
     static bool m_enabled;
+    static std::mutex m_lock;
 
     FILE *m_file;
     long m_time;    // for log rotation

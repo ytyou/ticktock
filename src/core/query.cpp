@@ -348,24 +348,29 @@ Query::add_data_point(DataPointPair& dp, DataPointVector& dps, Downsampler *down
 }
 
 void
-Query::get_query_tasks(std::vector<QueryTask*>& qtv)
+Query::get_query_tasks(std::vector<QueryTask*>& qtv, std::vector<Tsdb*>& tsdbs)
 {
     ASSERT(qtv.empty());
-    std::vector<Tsdb*> tsdbs;
+    std::vector<Tsdb*> targets;
 
-    Tsdb::insts(m_time_range, tsdbs);
-    Logger::debug("Found %d tsdbs within %T", tsdbs.size(), &m_time_range);
+    Tsdb::insts(m_time_range, targets);
+    Logger::debug("Found %d tsdbs within %T", targets.size(), &m_time_range);
 
     std::unordered_map<const char*,QueryTask*,hash_func,eq_func> map;
 
-    for (Tsdb *tsdb: tsdbs)
+    for (Tsdb *tsdb: targets)
     {
-        tsdb->ensure_readable();    // TODO: take ReadLock of tsdb to prevent from unload
+        tsdb->ensure_readable(true);    // will inc count
 
         std::unordered_set<TimeSeries*> v;  // TODO: will tsl::robin_set be faster?
         tsdb->query_for_ts(m_metric, m_tags, v);
 
         Logger::debug("there are %d ts in %T matching %s and tags", v.size(), tsdb, m_metric);
+
+        if (v.empty())
+            tsdb->dec_count();
+        else
+            tsdbs.push_back(tsdb);
 
         for (TimeSeries *ts: v)
         {
@@ -553,8 +558,9 @@ void
 Query::execute(std::vector<QueryResults*>& results, StringBuffer& strbuf)
 {
     std::vector<QueryTask*> qtv;
+    std::vector<Tsdb*> tsdbs;
 
-    get_query_tasks(qtv);
+    get_query_tasks(qtv, tsdbs);
 
     for (QueryTask *qt: qtv)
         qt->perform();
@@ -565,6 +571,9 @@ Query::execute(std::vector<QueryResults*>& results, StringBuffer& strbuf)
     // cleanup
     for (QueryTask *qt: qtv)
         MemoryManager::free_recyclable(qt);
+
+    for (Tsdb *tsdb: tsdbs)
+        tsdb->dec_count();
 
     // The following code are for debugging purposes only.
 #ifdef _DEBUG
@@ -585,9 +594,10 @@ void
 Query::execute_in_parallel(std::vector<QueryResults*>& results, StringBuffer& strbuf)
 {
     std::vector<QueryTask*> qtv;
+    std::vector<Tsdb*> tsdbs;
     QueryExecutor *executor = QueryExecutor::inst();
 
-    get_query_tasks(qtv);
+    get_query_tasks(qtv, tsdbs);
 
     if (qtv.size() > 1) // TODO: config?
     {
@@ -627,6 +637,9 @@ Query::execute_in_parallel(std::vector<QueryResults*>& results, StringBuffer& st
     Logger::trace("cleanup...");
     for (QueryTask *qt: qtv)
         MemoryManager::free_recyclable(qt);
+
+    for (Tsdb *tsdb: tsdbs)
+        tsdb->dec_count();
 
     // The following code are for debugging purposes only.
 #ifdef _DEBUG

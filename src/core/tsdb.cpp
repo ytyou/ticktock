@@ -830,7 +830,7 @@ Tsdb::query_for_ts(const char *metric, Tag *tags, std::unordered_set<TimeSeries*
 
 // prepare this Tsdb for query (AND writes too!)
 void
-Tsdb::ensure_readable()
+Tsdb::ensure_readable(bool count)
 {
     bool readable = true;
 
@@ -841,6 +841,9 @@ Tsdb::ensure_readable()
             readable = false;
         else
             m_load_time = ts_now_sec();
+
+        if (count)
+            inc_count();
     }
 
     if (! readable)
@@ -1812,6 +1815,7 @@ Tsdb::unload()
 void
 Tsdb::unload_no_lock()
 {
+    ASSERT(m_count.load() <= 0);
     m_meta_file.close();
 
     for (auto it = m_map.begin(); it != m_map.end(); it++)
@@ -1872,6 +1876,10 @@ Tsdb::rotate(TaskData& data)
         }
     }
 
+    uint64_t now_sec = to_sec(now);
+    uint64_t thrashing_threshold =
+        Config::get_time(CFG_TSDB_THRASHING_THRESHOLD, TimeUnit::SEC, CFG_TSDB_THRASHING_THRESHOLD_DEF);
+
     for (Tsdb *tsdb: tsdbs)
     {
         if (g_shutdown_requested) break;
@@ -1886,39 +1894,35 @@ Tsdb::rotate(TaskData& data)
         }
 
         uint32_t mode = tsdb->mode_of();
+        uint64_t load_time = tsdb->m_load_time;
 
         if (disk_avail < 100000000L)    // TODO: get it from config
             mode &= ~TSDB_MODE_WRITE;
 
-        if (! (mode & TSDB_MODE_READ))
+        if ((now_sec - load_time) > thrashing_threshold)
         {
-            uint64_t load_time = tsdb->m_load_time;
-            uint64_t now_sec = to_sec(now);
-            uint64_t thrashing_threshold =
-                Config::get_time(CFG_TSDB_THRASHING_THRESHOLD, TimeUnit::SEC, CFG_TSDB_THRASHING_THRESHOLD_DEF);
-
-            // archive it
-            if ((now_sec - load_time) > thrashing_threshold)
+            if (! (mode & TSDB_MODE_READ) && (tsdb->m_count <= 0))
             {
+                // archive it
                 Logger::info("[rotate] Archiving %T (lt=%" PRIu64 ", now=%" PRIu64 ")", tsdb, load_time, now_sec);
                 tsdb->flush(true);
                 tsdb->unload_no_lock();
+                continue;
             }
-            else
+            else if ((!(mode & TSDB_MODE_WRITE)) && (tsdb->m_mode & TSDB_MODE_WRITE))
             {
-                Logger::info("[rotate] Archiving %T SKIPPED to avoid thrashing (lt=%" PRIu64 ")", tsdb, load_time);
-                tsdb->m_meta_file.flush();
+                // make it read-only
+                Logger::debug("[rotate] Flushing tsdb: %T", tsdb);
+                tsdb->flush(true);
+                continue;
             }
-        }
-        else if ((!(mode & TSDB_MODE_WRITE)) && (tsdb->m_mode & TSDB_MODE_WRITE))
-        {
-            // make it read-only
-            Logger::info("[rotate] Flushing tsdb: %T", tsdb);
-            tsdb->flush(true);
         }
         else
+            Logger::debug("[rotate] %T SKIPPED to avoid thrashing (lt=%" PRIu64 ")", tsdb, load_time);
+
+        if (tsdb->m_mode & TSDB_MODE_WRITE)
         {
-            Logger::debug("[rotate] Active tsdb: %T, mode = %d, tsdb->mode = %d",
+            Logger::debug("[rotate] set_check_point for tsdb: %T, mode = %d, tsdb->mode = %d",
                 tsdb, mode, tsdb->m_mode);
             // TODO: do this only if there were writes since last check point
             tsdb->set_check_point();

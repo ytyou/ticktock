@@ -37,6 +37,7 @@ namespace tt
 
 class QueryTask;
 class TimeSeries;
+class Tsdb;
 
 
 class QueryResults : public TagOwner, public Recyclable
@@ -179,7 +180,7 @@ public:
     // return >0 if dp was too late, indicating the rest
     //           of the dps may be skipped;
     int add_data_point(DataPointPair& dp, DataPointVector& dps, Downsampler *downsampler);
-    void get_query_tasks(std::vector<QueryTask*>& qtv);
+    void get_query_tasks(std::vector<QueryTask*>& qtv, std::vector<Tsdb*>& tsdbs);
 
     void execute(std::vector<QueryResults*>& results, StringBuffer& strbuf);
     void execute_in_parallel(std::vector<QueryResults*>& results, StringBuffer& strbuf);
