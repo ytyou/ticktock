@@ -18,6 +18,7 @@
 
 #include "admin.h"
 #include "global.h"
+#include "cp.h"
 #include "kv.h"
 #include "logger.h"
 #include "stats.h"
@@ -76,6 +77,10 @@ Admin::http_post_api_admin_handler(HttpRequest& request, HttpResponse& response)
         if (strcmp(cmd, "compact") == 0)
         {
             status = cmd_compact(params, response);
+        }
+        else if (strcmp(cmd, "cp") == 0)
+        {
+            status = cmd_cp(params, response);
         }
         else if (strcmp(cmd, "gc") == 0)
         {
@@ -142,6 +147,19 @@ Admin::cmd_compact(KeyValuePair *params, HttpResponse& response)
     char buff[32];
     int len = snprintf(buff, sizeof(buff), "1 tsdbs compacted");
     response.init(200, HttpContentType::PLAIN, len, buff);
+    return true;
+}
+
+bool
+Admin::cmd_cp(KeyValuePair *params, HttpResponse& response)
+{
+    const char *leader = KeyValuePair::get_value(params, "leader");
+    char *buff = MemoryManager::alloc_network_buffer();
+    size_t size = MemoryManager::get_network_buffer_size();
+    int len = CheckPointManager::get_persisted(leader, buff, size);
+    ASSERT(len > 0);
+    response.init(200, HttpContentType::JSON, len, buff);
+    MemoryManager::free_network_buffer(buff);
     return true;
 }
 

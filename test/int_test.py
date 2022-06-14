@@ -274,6 +274,14 @@ class Test(object):
             print "connecting to {}:{}".format(self._options.ip, self._options.dataport)
             self._tcp_socket.connect(address)
 
+    def get_checkpoint(self, leader=None):
+        if leader:
+            response = requests.post("http://"+self._options.ip+":"+str(self._options.port)+"/api/admin?cmd=cp&leader="+leader)
+        else:
+            response = requests.post("http://"+self._options.ip+":"+str(self._options.port)+"/api/admin?cmd=cp")
+        response.raise_for_status()
+        return response.json()
+
     def metric_name(self, idx, prefix=None):
         if not prefix:
             prefix = self._prefix
@@ -361,6 +369,14 @@ class Test(object):
 
         # opentsdb needs time to get ready before query
         time.sleep(2)
+
+    def send_checkpoint(self, leader, channel, cp):
+        # send cp to ticktock
+        start = time.time()
+        if not self._tcp_socket:
+            self.connect_to_tcp()
+        self._tcp_socket.sendall("cp {}:{}:{}\n".format(leader, channel, cp))
+        self._ticktock_time += time.time() - start
 
     def query_ticktock(self, query):
         response = None
@@ -767,6 +783,7 @@ class Basic_Query_Tests(Test):
             # generate config
             config = TickTockConfig(self._options)
             #config.add_entry("tsdb.read_only.sec", "20");
+            config.add_entry("tsdb.page.size", "1024");
             config()    # generate config
 
             # start tt
@@ -1468,6 +1485,119 @@ class Partition_Tests(Test):
         self._failed = self._failed + rep1._failed
 
 
+class Check_Point_Tests(Test):
+
+    def __init__(self, options, prefix="cp"):
+        super(Check_Point_Tests, self).__init__(options, prefix)
+
+    def __call__(self):
+
+        # generate config
+        config = TickTockConfig(self._options)
+        config.add_entry("tsdb.flush.frequency", "1s");
+        config()
+
+        self.start_tt()
+
+        # insert some dps
+        dps = DataPoints(self._prefix, self._options.start, metric_count=16)
+        self.send_data_to_ticktock_tcp(dps)
+        cp = self.get_checkpoint()
+        j = []
+        if self.verify_json(cp, j):
+            self._passed = self._passed + 1
+        else:
+            self._failed = self._failed + 1
+
+        # send first cp
+        self.send_checkpoint("l1", "ch1", "cp1")
+        time.sleep(2)
+        cp = self.get_checkpoint()
+        j = [{"leader":"l1","channels":[{"channel":"ch1","checkpoint":"cp1"}]}]
+        if self.verify_json(cp, j):
+            self._passed = self._passed + 1
+        else:
+            self._failed = self._failed + 1
+
+        # insert some more dps
+        dps = DataPoints(self._prefix, self._options.start, metric_count=16)
+        self.send_data_to_ticktock_tcp(dps)
+        time.sleep(2)
+        cp = self.get_checkpoint()
+        if self.verify_json(cp, j):
+            self._passed = self._passed + 1
+        else:
+            self._failed = self._failed + 1
+
+        # send second cp
+        self.send_checkpoint("l1", "ch1", "cp2")
+        time.sleep(2)
+        cp = self.get_checkpoint("l1")
+        j = [{"leader":"l1","channels":[{"channel":"ch1","checkpoint":"cp2"}]}]
+        if self.verify_json(cp, j):
+            self._passed = self._passed + 1
+        else:
+            self._failed = self._failed + 1
+
+        # get non-existing cp
+        cp = self.get_checkpoint("l9")
+        j = []
+        if self.verify_json(cp, j):
+            self._passed = self._passed + 1
+        else:
+            self._failed = self._failed + 1
+
+        # send third cp
+        self.send_checkpoint("l2", "ch1", "cp1")
+        time.sleep(2)
+        cp = self.get_checkpoint("l2")
+        j = [{"leader":"l2","channels":[{"channel":"ch1","checkpoint":"cp1"}]}]
+        if self.verify_json(cp, j):
+            self._passed = self._passed + 1
+        else:
+            self._failed = self._failed + 1
+
+        # send fourth cp
+        self.send_checkpoint("l1", "ch2", "cp1")
+        time.sleep(2)
+        cp = self.get_checkpoint()
+        j = [{"leader":"l1","channels":[{"channel":"ch1","checkpoint":"cp2"},{"channel":"ch2","checkpoint":"cp1"}]},{"leader":"l2","channels":[{"channel":"ch1","checkpoint":"cp1"}]}]
+        if self.verify_json(cp, j):
+            self._passed = self._passed + 1
+        else:
+            self._failed = self._failed + 1
+
+        # send fifth cp
+        self.send_checkpoint("l1", "ch1", "cp3")
+        time.sleep(2)
+        cp = self.get_checkpoint()
+        j = [{"leader":"l1","channels":[{"channel":"ch1","checkpoint":"cp3"},{"channel":"ch2","checkpoint":"cp1"}]},{"leader":"l2","channels":[{"channel":"ch1","checkpoint":"cp1"}]}]
+        if self.verify_json(cp, j):
+            self._passed = self._passed + 1
+        else:
+            self._failed = self._failed + 1
+
+        # stop tt
+        self.stop_tt()
+        # make sure tt stopped
+        self.wait_for_tt(self._options.timeout)
+
+        # restart
+        self.start_tt()
+
+        cp = self.get_checkpoint()
+        j = [{"leader":"l1","channels":[{"channel":"ch1","checkpoint":"cp3"},{"channel":"ch2","checkpoint":"cp1"}]},{"leader":"l2","channels":[{"channel":"ch1","checkpoint":"cp1"}]}]
+        if self.verify_json(cp, j):
+            self._passed = self._passed + 1
+        else:
+            self._failed = self._failed + 1
+
+        # stop tt
+        self.stop_tt()
+        # make sure tt stopped
+        self.wait_for_tt(self._options.timeout)
+
+
 class Memory_Leak_Tests(Test):
 
     def __init__(self, options, prefix="ml"):
@@ -1619,6 +1749,7 @@ def main(argv):
         tests.append(Duplicate_Tests(options))
         tests.append(Replication_Tests(options))
         tests.append(Partition_Tests(options))
+        tests.append(Check_Point_Tests(options))
         tests.append(Query_Tests(options, metric_count=16, metric_cardinality=4, tag_cardinality=4))
         #tests.append(Long_Running_Tests(options))
 

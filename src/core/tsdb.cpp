@@ -26,6 +26,7 @@
 #include "admin.h"
 #include "append.h"
 #include "config.h"
+#include "cp.h"
 #include "memmgr.h"
 #include "meter.h"
 #include "timer.h"
@@ -926,6 +927,7 @@ Tsdb::shutdown()
     }
 
     m_tsdbs.clear();
+    CheckPointManager::close();
     Logger::info("Tsdb::shutdown complete");
 }
 
@@ -1322,12 +1324,23 @@ Tsdb::http_api_put_handler_plain(HttpRequest& request, HttpResponse& response)
         DataPoint dp;
 
         if (std::isspace(*curr)) break;
-        if (std::strncmp(curr, "put ", 4) != 0)
+        if (UNLIKELY(std::strncmp(curr, "put ", 4) != 0))
         {
             if (std::strncmp(curr, "version\n", 8) == 0)
             {
                 curr += 8;
                 HttpServer::http_get_api_version_handler(request, response);
+            }
+            else if (std::strncmp(curr, "cp ", 3) == 0)
+            {
+                curr += 3;
+                char *cp = curr;
+                curr = strchr(curr, '\n');
+                if (curr == nullptr) break;
+                *curr = 0;
+                curr++;
+
+                CheckPointManager::add(cp);
             }
             else if (std::strncmp(curr, DONT_FORWARD, std::strlen(DONT_FORWARD)) == 0)
             {
@@ -1557,6 +1570,7 @@ Tsdb::init()
 
     Logger::info("Loading data from %s", data_dir.c_str());
 
+    CheckPointManager::init();
     PartitionManager::init();
 
     tsdb_rotation_freq =
@@ -1876,6 +1890,8 @@ Tsdb::rotate(TaskData& data)
         }
     }
 
+    CheckPointManager::take_snapshot();
+
     uint64_t now_sec = to_sec(now);
     uint64_t thrashing_threshold =
         Config::get_time(CFG_TSDB_THRASHING_THRESHOLD, TimeUnit::SEC, CFG_TSDB_THRASHING_THRESHOLD_DEF);
@@ -1928,6 +1944,8 @@ Tsdb::rotate(TaskData& data)
             tsdb->set_check_point();
         }
     }
+
+    CheckPointManager::persist();
 
     if (Config::exists(CFG_TSDB_RETENTION_THRESHOLD))
         purge_oldest(Config::get_int(CFG_TSDB_RETENTION_THRESHOLD));

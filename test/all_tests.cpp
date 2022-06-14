@@ -20,6 +20,7 @@
 #include "bitset_test.h"
 #include "compact_test.h"
 #include "compress_test.h"
+#include "cp_test.h"
 #include "json_test.h"
 #include "max_subset_test.h"
 #include "misc_test.h"
@@ -33,6 +34,7 @@ using namespace tt_test;
 static TestCase *tests[] =
 {
     new BitSetTests(),
+    new CheckPointTests(),
     new CompactTests(),
     new CompressTests(),
     new JsonTests(),
@@ -57,6 +59,7 @@ main(int argc, char *argv[])
     // update g_config_file to point to our test config
     tt::g_config_file = TestCase::str_join(TEST_ROOT, "test.conf");
     system(TestCase::str_join("mkdir -p ", TEST_ROOT, "data"));
+    system("rm -f /tmp/*.cp");
 
     // generate our own config file
     TestCase::create_config(CFG_LOG_FILE, TestCase::str_join(TEST_ROOT, "test.log"));
