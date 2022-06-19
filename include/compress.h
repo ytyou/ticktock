@@ -86,7 +86,7 @@ class Compressor : public Recyclable
 public:
     static Compressor *create(int version);
 
-    virtual void init(Timestamp start, uint8_t *base, size_t size);
+    virtual void init(Timestamp start, uint8_t *base, struct page_info_on_disk *header);
     virtual void restore(DataPointVector& dps, CompressorPosition& position, uint8_t *base) = 0;
     virtual void save(CompressorPosition& position) = 0;    // save meta
     virtual void save(uint8_t *base) = 0;                   // save data
@@ -114,6 +114,7 @@ protected:
     Compressor();
 
     Timestamp m_start_tstamp;
+    struct page_info_on_disk *m_header;
 };
 
 
@@ -121,7 +122,7 @@ protected:
 class Compressor_v2 : public Compressor
 {
 public:
-    void init(Timestamp start, uint8_t *base, size_t size);
+    void init(Timestamp start, uint8_t *base, struct page_info_on_disk *header);
     void restore(DataPointVector& dps, CompressorPosition& position, uint8_t *base);
     void save(CompressorPosition& position);
     inline void rebase(uint8_t *base)
@@ -198,7 +199,7 @@ private:
 class Compressor_v1 : public Compressor
 {
 public:
-    void init(Timestamp start, uint8_t *base, size_t size);
+    void init(Timestamp start, uint8_t *base, struct page_info_on_disk *header);
     void restore(DataPointVector& dps, CompressorPosition& position, uint8_t *base);
     inline void rebase(uint8_t *base);
 
@@ -269,7 +270,6 @@ private:
     void uncompress(DataPointVector& dps, bool restore);
 
     uint8_t *m_base;
-    size_t m_size;
     uint8_t *m_cursor;
 
     Timestamp m_prev_delta;
@@ -284,7 +284,7 @@ private:
 class Compressor_v0 : public Compressor
 {
 public:
-    void init(Timestamp start, uint8_t *base, size_t size);
+    void init(Timestamp start, uint8_t *base, struct page_info_on_disk *header);
     void restore(DataPointVector& dps, CompressorPosition& position, uint8_t *base);
     void save(uint8_t *base);                       // save data
 

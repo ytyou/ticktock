@@ -59,9 +59,11 @@ Compressor::Compressor() :
 }
 
 void
-Compressor::init(Timestamp start, uint8_t *base, size_t size)
+Compressor::init(Timestamp start, uint8_t *base, struct page_info_on_disk *header)
 {
+    ASSERT(header != nullptr);
     m_start_tstamp = start;
+    m_header = header;
 }
 
 Compressor *
@@ -108,13 +110,13 @@ Compressor_v2::Compressor_v2()
 }
 
 void
-Compressor_v2::init(Timestamp start, uint8_t *base, size_t size)
+Compressor_v2::init(Timestamp start, uint8_t *base, struct page_info_on_disk *header)
 {
     ASSERT(base != nullptr);
 
-    Compressor::init(start, base, size);
+    Compressor::init(start, base, header);
 
-    m_bitset.init(base, size);
+    m_bitset.init(base, header->m_size);
 
     m_dp_count = 0;
     m_prev_delta = 0L;
@@ -476,7 +478,6 @@ Compressor_v2::recycle()
 Compressor_v1::Compressor_v1() :
     m_base(nullptr),
     m_cursor(nullptr),
-    m_size(0),
     m_dp_count(0),
     m_prev_delta(0L),
     m_prev_tstamp(0L),
@@ -486,13 +487,12 @@ Compressor_v1::Compressor_v1() :
 }
 
 void
-Compressor_v1::init(Timestamp start, uint8_t *base, size_t size)
+Compressor_v1::init(Timestamp start, uint8_t *base, struct page_info_on_disk *header)
 {
-    Compressor::init(start, base, size);
+    Compressor::init(start, base, header);
 
     m_base = base;
     m_cursor = base;
-    m_size = size;
     m_is_full = false;
 
     m_dp_count = 0;
@@ -633,11 +633,11 @@ Compressor_v1::compress(
     *control_ptr = control;
 
     size_t cnt = cursor - base;
-    if (cnt > (m_size - (m_cursor - m_base)))
+    if (cnt > (m_header->m_size - (m_cursor - m_base)))
     {
         // not enough space left
         Logger::trace("page full: (cursor-base)=%d, size=%d, cnt=%d, dp_cnt=%d",
-            (m_cursor - m_base), m_size, cnt, m_dp_count);
+            (m_cursor - m_base), m_header->m_size, cnt, m_dp_count);
         m_is_full = true;
         return false;
     }
@@ -770,14 +770,15 @@ Compressor_v1::recycle()
 // This compressor does not compress at all.
 
 void
-Compressor_v0::init(Timestamp start, uint8_t *base, size_t size)
+Compressor_v0::init(Timestamp start, uint8_t *base, struct page_info_on_disk *header)
 {
     ASSERT(base != nullptr);
+    ASSERT(header->m_size != 0);
 
-    Compressor::init(start, base, size);
+    Compressor::init(start, base, header);
     m_dps.clear();
     m_dps.reserve(g_page_size/sizeof(DataPointPair));
-    m_size = std::floor(size / sizeof(DataPointPair));
+    m_size = std::floor(header->m_size / sizeof(DataPointPair));
     m_data_points = reinterpret_cast<DataPointPair*>(base);
 }
 

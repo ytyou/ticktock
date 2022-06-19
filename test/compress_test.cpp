@@ -40,9 +40,11 @@ CompressTests::run_with(bool ms)
 {
     log("Running %s...", m_name);
 
-    uint8_t buff[131072];
+    uint8_t buff[65535];
+    struct page_info_on_disk header;
     Compressor *compressor;
 
+    header.m_size = (PageSize)sizeof(buff);
     g_tstamp_resolution_ms = ms;
 
     Timestamp ts = ts_now();
@@ -51,7 +53,7 @@ CompressTests::run_with(bool ms)
     {
         log("Testing compress/uncompress for Compressor_v%d...", v);
         compressor = Compressor::create(v);
-        compressor->init(ts, buff, sizeof(buff));
+        compressor->init(ts, buff, &header);
         compress_uncompress(compressor, ts);
         delete compressor;
     }
@@ -60,7 +62,7 @@ CompressTests::run_with(bool ms)
     {
         log("Testing save/restore for Compressor_v%d...", v);
         compressor = Compressor::create(v);
-        compressor->init(ts, buff, sizeof(buff));
+        compressor->init(ts, buff, &header);
         save_restore(compressor, ts);
         delete compressor;
     }
@@ -69,7 +71,7 @@ CompressTests::run_with(bool ms)
     {
         log("Testing save/restore again for Compressor_v%d...", v);
         compressor = Compressor::create(v);
-        compressor->init(ts, buff, sizeof(buff));
+        compressor->init(ts, buff, &header);
         save_restore2(compressor, ts);
         delete compressor;
     }
@@ -78,7 +80,7 @@ CompressTests::run_with(bool ms)
     {
         log("Stress testing for Compressor_v%d...", v);
         compressor = Compressor::create(v);
-        compressor->init(ts, buff, sizeof(buff));
+        compressor->init(ts, buff, &header);
         stress_test(compressor, ts);
         delete compressor;
     }
@@ -89,7 +91,7 @@ CompressTests::run_with(bool ms)
 void
 CompressTests::compress_uncompress(Compressor *compressor, Timestamp ts)
 {
-    int dp_cnt = 5000;
+    int dp_cnt = 4000;
     DataPointVector dps;
 
     generate_data_points(dps, dp_cnt, ts);
@@ -121,10 +123,12 @@ CompressTests::compress_uncompress(Compressor *compressor, Timestamp ts)
 void
 CompressTests::save_restore(Compressor *compressor, Timestamp ts)
 {
-    uint8_t buff2[131072], buff3[131072];
-    int dp_cnt = 5000;
+    uint8_t buff2[65535], buff3[65535];
+    struct page_info_on_disk header;
+    int dp_cnt = 4000;
     DataPointVector dps;
 
+    header.m_size = (PageSize)sizeof(buff3);
     generate_data_points(dps, dp_cnt, ts);
 
     for (DataPointPair& dp: dps)
@@ -140,7 +144,7 @@ CompressTests::save_restore(Compressor *compressor, Timestamp ts)
     compressor->save(buff2);
 
     std::vector<std::pair<Timestamp,double>> uncompressed;
-    compressor->init(ts, buff3, sizeof(buff3));
+    compressor->init(ts, buff3, &header);
     compressor->restore(uncompressed, position, buff2);
 
     std::vector<std::pair<Timestamp,double>> uncompressed2;
@@ -163,12 +167,14 @@ CompressTests::save_restore(Compressor *compressor, Timestamp ts)
 void
 CompressTests::save_restore2(Compressor *compressor, Timestamp ts)
 {
-    uint8_t buff2[131072], buff3[131072];
+    uint8_t buff2[65535], buff3[65535];
+    struct page_info_on_disk header;
     CompressorPosition position;
     DataPointVector dps;
     DataPointVector uncompressed, uncompressed2;
-    int dps_cnt = 5001;
+    int dps_cnt = 4001;
 
+    header.m_size = (PageSize)sizeof(buff3);
     generate_data_points(dps, dps_cnt, ts);
 
     for (int i = 0; i < 1000; i++)
@@ -182,7 +188,7 @@ CompressTests::save_restore2(Compressor *compressor, Timestamp ts)
     compressor->save(buff2);
 
     uncompressed.clear();
-    compressor->init(ts, buff3, sizeof(buff3));
+    compressor->init(ts, buff3, &header);
     compressor->restore(uncompressed, position, buff2);
 
     uncompressed2.clear();
@@ -210,7 +216,7 @@ CompressTests::save_restore2(Compressor *compressor, Timestamp ts)
     compressor->save(buff2);
 
     uncompressed.clear();
-    compressor->init(ts, buff3, sizeof(buff3));
+    compressor->init(ts, buff3, &header);
     compressor->restore(uncompressed, position, buff2);
 
     uncompressed2.clear();
@@ -238,7 +244,7 @@ CompressTests::save_restore2(Compressor *compressor, Timestamp ts)
     compressor->save(buff2);
 
     uncompressed.clear();
-    compressor->init(ts, buff3, sizeof(buff3));
+    compressor->init(ts, buff3, &header);
     compressor->restore(uncompressed, position, buff2);
 
     uncompressed2.clear();
@@ -263,8 +269,10 @@ CompressTests::stress_test(Compressor *compressor, Timestamp ts)
 {
     DataPointVector dps;
     uint8_t page[4096];
+    struct page_info_on_disk header;
     int n;
 
+    header.m_size = (PageSize)sizeof(page);
     generate_data_points(dps, 5000, ts);
 
     auto start = std::chrono::system_clock::now();
@@ -273,7 +281,7 @@ CompressTests::stress_test(Compressor *compressor, Timestamp ts)
     {
         n = 0;
 
-        compressor->init(ts, page, sizeof(page));
+        compressor->init(ts, page, &header);
 
         for (DataPointPair& dp: dps)
         {

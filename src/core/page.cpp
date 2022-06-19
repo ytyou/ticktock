@@ -209,7 +209,7 @@ PageInfo::setup_compressor(const TimeRange& range, int compressor_version)
         m_compressor = (Compressor*)MemoryManager::alloc_recyclable(type);
     }
 
-    m_compressor->init(range.get_from(), reinterpret_cast<uint8_t*>(get_page()), m_header->m_size);
+    m_compressor->init(range.get_from(), reinterpret_cast<uint8_t*>(get_page()), m_header);
 }
 
 void

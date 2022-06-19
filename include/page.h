@@ -64,18 +64,21 @@ class Tsdb;
  * m_end_tstamp:    timestamp of the latest data points in the file;
  * m_actual_pg_cnt: total number of pages in the file AFTER compaction;
  *                  it should be the same as m_page_count before compaction.
+ * m_page_size;     page size; should be 4K.
  */
 struct tsdb_header
 {
+    uint8_t m_flags;            //  8-bit
     uint8_t m_major_version;    //  8-bit
     uint16_t m_minor_version;   // 16-bit
-    uint8_t m_flags;            // 8-bit
     PageCount m_page_count;     // 32-bit
     PageCount m_header_index;   // 32-bit
     PageCount m_page_index;     // 32-bit
     Timestamp m_start_tstamp;   // 64-bit
     Timestamp m_end_tstamp;     // 64-bit
     PageCount m_actual_pg_cnt;  // 32-bit
+    uint16_t m_page_size;       // 16-bit
+    uint16_t m_reserved;        // 16-bit
 
     inline int get_compressor_version() const
     {
@@ -145,6 +148,8 @@ struct page_info_on_disk
     PageCount m_page_index;     // 32-bit
     uint32_t m_tstamp_from;     // 32-bit
     uint32_t m_tstamp_to;       // 32-bit
+
+    // compressor data
 
     void init(const TimeRange& range)
     {
