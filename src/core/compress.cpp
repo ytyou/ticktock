@@ -18,7 +18,6 @@
 
 #include <cstdint>
 #include <cstdlib>
-#include <cmath>
 #include <endian.h>
 #include <limits.h>
 #include <inttypes.h>
@@ -479,9 +478,9 @@ Compressor_v1::Compressor_v1() :
     m_base(nullptr),
     m_cursor(nullptr),
     m_dp_count(0),
-    m_prev_delta(0L),
-    m_prev_tstamp(0L),
-    m_prev_value(0.0),
+    //m_prev_delta(0L),
+    //m_prev_tstamp(0L),
+    //m_prev_value(0.0),
     m_is_full(false)
 {
 }
@@ -496,9 +495,9 @@ Compressor_v1::init(Timestamp start, uint8_t *base, struct page_info_on_disk *he
     m_is_full = false;
 
     m_dp_count = 0;
-    m_prev_delta = 0L;
-    m_prev_tstamp = start;
-    m_prev_value = 0.0;
+    m_header->m_prev_delta = 0L;
+    m_header->m_prev_tstamp = start;
+    m_header->m_prev_value = 0.0;
 }
 
 void
@@ -542,15 +541,15 @@ Compressor_v1::compress1(
 {
     ASSERT(m_dp_count == 0);
     ASSERT(m_start_tstamp <= timestamp);
-    m_prev_delta = timestamp - m_start_tstamp;
-    ASSERT(m_prev_delta <= INT_MAX);
-    (reinterpret_cast<aligned_type<uint32_t>*>(m_cursor))->value = (uint32_t)m_prev_delta;
+    m_header->m_prev_delta = timestamp - m_start_tstamp;
+    ASSERT(m_header->m_prev_delta <= INT_MAX);
+    (reinterpret_cast<aligned_type<uint32_t>*>(m_cursor))->value = (uint32_t)m_header->m_prev_delta;
     m_cursor += sizeof(uint32_t);
     (reinterpret_cast<aligned_type<double>*>(m_cursor))->value = value;
     m_cursor += sizeof(double);
 
-    m_prev_tstamp = timestamp;
-    m_prev_value = value;
+    m_header->m_prev_tstamp = timestamp;
+    m_header->m_prev_value = value;
     m_dp_count++;
 }
 
@@ -566,7 +565,7 @@ Compressor_v1::compress(
         return true;
     }
 
-    if (m_prev_tstamp > timestamp)
+    if (m_header->m_prev_tstamp > timestamp)
     {
         Logger::info("out-of-order dp dropped, timestamp = %" PRIu64, timestamp);
         return true;    // drop it
@@ -580,8 +579,8 @@ Compressor_v1::compress(
     uint8_t *cursor = &base[0];
 
     // Timestamp first
-    Timestamp delta = timestamp - m_prev_tstamp;
-    uint64_t delta_of_delta = (uint64_t)delta - (uint64_t)m_prev_delta;
+    Timestamp delta = timestamp - m_header->m_prev_tstamp;
+    uint64_t delta_of_delta = (uint64_t)delta - (uint64_t)m_header->m_prev_delta;
 
     if (g_tstamp_resolution_ms)
     {
@@ -615,7 +614,7 @@ Compressor_v1::compress(
     }
 
     // Value next
-    uint64_t x = (*reinterpret_cast<uint64_t*>(&value)) xor (*reinterpret_cast<uint64_t*>(&m_prev_value));
+    uint64_t x = (*reinterpret_cast<uint64_t*>(&value)) xor (*reinterpret_cast<uint64_t*>(&(m_header->m_prev_value)));
     uint8_t *control_ptr = cursor++;
     uint8_t control = 0;
 
@@ -648,9 +647,9 @@ Compressor_v1::compress(
     m_cursor += cnt;
     m_dp_count++;
 
-    m_prev_tstamp = timestamp;
-    m_prev_value = value;
-    m_prev_delta = delta;
+    m_header->m_prev_tstamp = timestamp;
+    m_header->m_prev_value = value;
+    m_header->m_prev_delta = delta;
 
     return true;
 }
@@ -745,9 +744,9 @@ Compressor_v1::uncompress(DataPointVector& dps, bool restore)
 
     if (restore)
     {
-        m_prev_delta = delta;
-        m_prev_value = value;
-        m_prev_tstamp = tstamp;
+        //m_header->m_prev_delta = delta;
+        //m_header->m_prev_value = value;
+        //m_header->m_prev_tstamp = tstamp;
         m_dp_count = dps.size();
     }
 }
@@ -757,9 +756,9 @@ Compressor_v1::recycle()
 {
     m_is_full = false;
     m_dp_count = 0;
-    m_prev_delta = 0L;
-    m_prev_tstamp = m_start_tstamp;
-    m_prev_value = 0.0;
+    //m_prev_delta = 0L;
+    //m_prev_tstamp = m_start_tstamp;
+    //m_prev_value = 0.0;
     m_cursor = m_base;
 
     return Compressor::recycle();
@@ -778,7 +777,6 @@ Compressor_v0::init(Timestamp start, uint8_t *base, struct page_info_on_disk *he
     Compressor::init(start, base, header);
     m_dps.clear();
     m_dps.reserve(g_page_size/sizeof(DataPointPair));
-    m_size = std::floor(header->m_size / sizeof(DataPointPair));
     m_data_points = reinterpret_cast<DataPointPair*>(base);
 }
 
@@ -786,7 +784,6 @@ void
 Compressor_v0::restore(DataPointVector& dpv, CompressorPosition& position, uint8_t *base)
 {
     ASSERT(position.m_start == 0);
-    //ASSERT(position.m_offset <= m_size);
 
     DataPointPair *dps = m_data_points;
 
@@ -819,7 +816,8 @@ Compressor_v0::save(uint8_t *base)
 bool
 Compressor_v0::compress(Timestamp timestamp, double value)
 {
-    if (m_dps.size() >= m_size) return false;
+    if (m_dps.size() >= std::floor(m_header->m_size / sizeof(DataPointPair)))
+        return false;
 
     Timestamp last_tstamp = get_last_tstamp();
 

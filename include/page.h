@@ -150,6 +150,9 @@ struct page_info_on_disk
     uint32_t m_tstamp_to;       // 32-bit
 
     // compressor data
+    Timestamp m_prev_delta;
+    Timestamp m_prev_tstamp;
+    double m_prev_value;
 
     void init(const TimeRange& range)
     {

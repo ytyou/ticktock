@@ -18,6 +18,7 @@
 
 #pragma once
 
+#include <cmath>
 #include <utility>
 #include <vector>
 #include "bitset.h"
@@ -249,7 +250,7 @@ public:
 
     inline Timestamp get_last_tstamp() const
     {
-        return m_prev_tstamp;
+        return m_header->m_prev_tstamp;
     }
 
     inline int get_version() const
@@ -272,9 +273,9 @@ private:
     uint8_t *m_base;
     uint8_t *m_cursor;
 
-    Timestamp m_prev_delta;
-    Timestamp m_prev_tstamp;
-    double m_prev_value;
+    //Timestamp m_prev_delta;
+    //Timestamp m_prev_tstamp;
+    //double m_prev_value;
     bool m_is_full;
     size_t m_dp_count;
 };
@@ -307,7 +308,8 @@ public:
 
     inline bool is_full() const
     {
-        return (m_dps.size() >= m_size);
+        ASSERT(m_header != nullptr);
+        return (m_dps.size() >= std::floor(m_header->m_size / sizeof(DataPointPair)));
     }
 
     inline bool is_empty() const
@@ -333,7 +335,6 @@ public:
     Timestamp get_last_tstamp() const;
 
 private:
-    size_t m_size;  // capacity of m_dps (number of dps)
     DataPointPair *m_data_points;
     DataPointVector m_dps;
 };
