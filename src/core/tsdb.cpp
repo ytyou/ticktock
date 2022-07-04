@@ -1349,6 +1349,16 @@ Tsdb::http_api_put_handler_plain(HttpRequest& request, HttpResponse& response)
                 forward = false;
                 response.init(200, HttpContentType::PLAIN, len, DONT_FORWARD);
             }
+            else if (std::strncmp(curr, "track ", 6) == 0)
+            {
+                curr += 6;
+                char *track = curr;
+                curr = strchr(curr, '\n');
+                if (curr == nullptr) break;
+                *curr = 0;
+                curr++;
+                Logger::info("Client %s", track);
+            }
             else
             {
                 curr = strchr(curr, '\n');
