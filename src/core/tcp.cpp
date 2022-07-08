@@ -1124,12 +1124,15 @@ TcpListener::listener1()
 			}
 			no_events_count = 0;
         }
-        else if (no_events_count++ != 100)
+        else if (no_events_count++ >= 100)
         {
+            Logger::info("no events from epoll_wait(%d) for too long. Read all connections anyway.", m_epoll_fd);
+
         	// loop all existing connections again.
         	for(auto iter = m_conn_map.begin(); iter != m_conn_map.end(); ++iter) {
         		this->listener1_read(iter->first, pipe_reader);
         	}
+        	no_events_count = 0;
         }
 
         if (UNLIKELY(m_resend))
@@ -1181,7 +1184,7 @@ TcpListener::listener1_read(int fd, PipeReader pipe_reader) {
 		 // new data on existing connections
 		 TcpConnection *conn = get_conn(fd);
 		 ASSERT(conn != nullptr);
-		 Logger::inf0("received data on fd:%d, conn %p", conn->fd, conn);
+		 Logger::info("received data on fd:%d, conn %p", conn->fd, conn);
 		 if (conn->pending_tasks < 2)
 		 {
 			 Task task = m_server->get_recv_data_task(conn);
