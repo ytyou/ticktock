@@ -189,6 +189,7 @@ private:
     bool init(int socket_fd);
     void listener0();   // level 0: handle tcp connections
     void listener1();   // level 1: handle http traffic
+    void listener1_read(int fd, PipeReader pipe_reader);
     bool register_with_epoll(int fd);
     bool deregister_with_epoll(int fd);
 

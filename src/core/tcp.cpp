@@ -378,7 +378,7 @@ TcpServer::recv_tcp_data(TaskData& data)
     size_t buff_size = MemoryManager::get_network_buffer_size() - 2;
     TcpConnection *conn = static_cast<TcpConnection*>(data.pointer);
 
-    Logger::trace("recv_tcp_data: conn=%p, fd=%d", conn, conn->fd);
+    Logger::info("recv_tcp_data: conn=%p, fd=%d", conn, conn->fd);
 
     int fd = conn->fd;
 
@@ -502,6 +502,7 @@ TcpServer::process_data(TcpConnection *conn, char *data, int len)
         request.length = len;
         request.forward = conn->forward;
 
+        Logger::info("Recved:%d", conn->fd);
         Logger::tcp("Recved:\n%s", conn->fd, data);
 
         Tsdb::http_api_put_handler_plain(request, response);
@@ -1077,6 +1078,7 @@ TcpListener::listener0()
 void
 TcpListener::listener1()
 {
+	int no_events_count = 0;
     int fd_cnt;
     struct epoll_event events[m_max_events];
     uint32_t err_flags = EPOLLERR | EPOLLHUP | EPOLLRDHUP;
@@ -1098,63 +1100,36 @@ TcpListener::listener1()
             continue;
         }
 
-        Logger::debug("received %d events from epoll_wait(%d)", fd_cnt, m_epoll_fd);
+        Logger::info("received %d events from epoll_wait(%d)", fd_cnt, m_epoll_fd);
 
-        // process fd_cnt of events, by handing them over to responders
-        for (int i = 0; i < fd_cnt; i++)
+        if (fd_cnt > 0) {
+			// process fd_cnt of events, by handing them over to responders
+			for (int i = 0; i < fd_cnt; i++)
+			{
+				int fd = events[i].data.fd;
+				//Logger::info("fd = %d", fd);
+
+				// TODO: in case of EPOLLRDHUP, we might need to read() until
+				//       nothing left before we can close the connection.
+				if ((events[i].events & err_flags) || (!(events[i].events & EPOLLIN)))
+				{
+					// socket errors
+					Logger::error("socket error on listener1, fd:%d, events: 0x%x, closing conn", fd, events[i].events);
+					close_conn(fd);
+				}
+				else
+				{
+					this->listener1_read(fd, pipe_reader);
+				}
+			}
+			no_events_count = 0;
+        }
+        else if (no_events_count++ != 100)
         {
-            int fd = events[i].data.fd;
-            //Logger::info("fd = %d", fd);
-
-            // TODO: in case of EPOLLRDHUP, we might need to read() until
-            //       nothing left before we can close the connection.
-            if ((events[i].events & err_flags) || (!(events[i].events & EPOLLIN)))
-            {
-                // socket errors
-                Logger::tcp("socket error on listener1, events: 0x%x, closing conn", fd, events[i].events);
-                close_conn(fd);
-            }
-            else if (fd == m_pipe_fds[0])
-            {
-                char *cmd;
-
-                while ((cmd = pipe_reader.read_pipe()) != nullptr)
-                {
-                    Logger::debug("cmd:%s; pipe_reader:%T;", cmd, &pipe_reader);
-
-                    switch (cmd[0])
-                    {
-                        case PIPE_CMD_REBALANCE_CONN[0]:    rebalance1(); break;
-                        case PIPE_CMD_NEW_CONN[0]:          new_conn2(std::atoi(cmd+2)); break;
-                        case PIPE_CMD_DISCONNECT_CONN[0]:   disconnect(); break;
-                        case PIPE_CMD_FLUSH_APPEND_LOG[0]:  flush_append_log(); break;
-                        case PIPE_CMD_CLOSE_APPEND_LOG[0]:  close_append_log(); break;
-                        case PIPE_CMD_SET_STOPPED[0]:       set_stopped(); break;
-                        default: break;
-                    }
-                }
-
-                Logger::debug("cmd:null; pipe_reader:%T;", &pipe_reader);
-            }
-            else
-            {
-                // new data on existing connections
-                TcpConnection *conn = get_conn(fd);
-                ASSERT(conn != nullptr);
-                Logger::tcp("received data on conn %p", conn->fd, conn);
-
-                if (conn->pending_tasks < 2)
-                {
-                    Task task = m_server->get_recv_data_task(conn);
-
-                    // if previous attempt was not able to read the complete
-                    // request, we want to assign this one to the same worker.
-                    if (1 == ++conn->pending_tasks)
-                        conn->worker_id = m_responders.submit_task(task);
-                    else
-                        m_responders.submit_task(task, conn->worker_id);
-                }
-            }
+        	// loop all existing connections again.
+        	for(auto iter = m_conn_map.begin(); iter != m_conn_map.end(); ++iter) {
+        		this->listener1_read(iter->first, pipe_reader);
+        	}
         }
 
         if (UNLIKELY(m_resend))
@@ -1176,6 +1151,48 @@ TcpListener::listener1()
 
     set_stopped();
     Logger::info("TCP listener %d stopped.", m_id);
+}
+
+void
+TcpListener::listener1_read(int fd, PipeReader pipe_reader) {
+	if (fd == m_pipe_fds[0])
+	{
+		char *cmd;
+
+	    while ((cmd = pipe_reader.read_pipe()) != nullptr)
+	    {
+	    	Logger::debug("cmd:%s; pipe_reader:%T;", cmd, &pipe_reader);
+	    	switch (cmd[0])
+	    	{
+	    		case PIPE_CMD_REBALANCE_CONN[0]:    rebalance1(); break;
+	    		case PIPE_CMD_NEW_CONN[0]:          new_conn2(std::atoi(cmd+2)); break;
+	    		case PIPE_CMD_DISCONNECT_CONN[0]:   disconnect(); break;
+	    		case PIPE_CMD_FLUSH_APPEND_LOG[0]:  flush_append_log(); break;
+	    		case PIPE_CMD_CLOSE_APPEND_LOG[0]:  close_append_log(); break;
+	            case PIPE_CMD_SET_STOPPED[0]:       set_stopped(); break;
+
+	            default: break;
+	        }
+	    }
+	    Logger::debug("cmd:null; pipe_reader:%T;", &pipe_reader);
+	 }
+	 else
+	 {
+		 // new data on existing connections
+		 TcpConnection *conn = get_conn(fd);
+		 ASSERT(conn != nullptr);
+		 Logger::inf0("received data on fd:%d, conn %p", conn->fd, conn);
+		 if (conn->pending_tasks < 2)
+		 {
+			 Task task = m_server->get_recv_data_task(conn);
+			 // if previous attempt was not able to read the complete
+			 // request, we want to assign this one to the same worker.
+			 if (1 == ++conn->pending_tasks)
+				 conn->worker_id = m_responders.submit_task(task);
+			 else
+				 m_responders.submit_task(task, conn->worker_id);
+		 }
+	 }
 }
 
 void
