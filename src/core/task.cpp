@@ -116,7 +116,7 @@ TaskScheduler::~TaskScheduler()
 }
 
 int
-TaskScheduler::submit_task(Task& task, int id)
+TaskScheduler::submit_task(Task& task, int id, int retries)
 {
     if (is_shutdown_requested())
     {
@@ -152,6 +152,8 @@ TaskScheduler::submit_task(Task& task, int id)
         if ((assignee >= 0) || is_shutdown_requested()) break;
 
         spin_yield(k);
+
+	if (retries > 0 && k > retries) break;
     }
 
     m_next_worker = (m_next_worker + 1) % m_thread_count;

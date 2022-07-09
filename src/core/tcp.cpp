@@ -459,7 +459,7 @@ TcpServer::recv_tcp_data(TaskData& data)
         task.data.pointer = conn;
         conn->listener->resubmit(task);
     }
-
+    
     if (len > 0)
     {
         conn_error = false;
@@ -473,7 +473,7 @@ TcpServer::recv_tcp_data(TaskData& data)
 
         MemoryManager::free_network_buffer(buff);
     }
-
+    
     // closing the fd will deregister it from epoll
     // since we never dup() or fork(); but let's
     // deregister it anyway, just in case.
@@ -502,7 +502,7 @@ TcpServer::process_data(TcpConnection *conn, char *data, int len)
         request.length = len;
         request.forward = conn->forward;
 
-        Logger::info("Recved:%d", conn->fd);
+        Logger::info("Process_data: Recved fd:%d", conn->fd);
         Logger::tcp("Recved:\n%s", conn->fd, data);
 
         Tsdb::http_api_put_handler_plain(request, response);
@@ -1003,7 +1003,7 @@ TcpListener::listener0()
 {
     int fd_cnt;
     struct epoll_event events[m_max_events];
-    uint32_t err_flags = EPOLLERR | EPOLLHUP | EPOLLRDHUP;
+    uint32_t err_flags = EPOLLERR | EPOLLHUP;// | EPOLLRDHUP;
     PipeReader pipe_reader(m_pipe_fds[0]);
 
     g_thread_id = "tcp_listener_0";
@@ -1078,10 +1078,10 @@ TcpListener::listener0()
 void
 TcpListener::listener1()
 {
-	int no_events_count = 0;
+    int no_events_count = 0;
     int fd_cnt;
     struct epoll_event events[m_max_events];
-    uint32_t err_flags = EPOLLERR | EPOLLHUP | EPOLLRDHUP;
+    uint32_t err_flags = EPOLLERR | EPOLLHUP;// | EPOLLRDHUP;
     PipeReader pipe_reader(m_pipe_fds[0]);
 
     g_thread_id = "tcp_listener_" + std::to_string(m_id);
@@ -1134,7 +1134,6 @@ TcpListener::listener1()
         	}
         	no_events_count = 0;
         }
-
         if (UNLIKELY(m_resend))
         {
             const std::lock_guard<std::mutex> lock(m_resend_mutex);
@@ -1142,11 +1141,16 @@ TcpListener::listener1()
             {
                 Task task = m_resend_queue.front();
                 TcpConnection *conn = (TcpConnection*)task.data.pointer;
+		int assignee = -1;
                 if (1 == ++conn->pending_tasks)
-                    conn->worker_id = m_responders.submit_task(task);
+                    conn->worker_id = assignee = m_responders.submit_task(task, -1, 10);
                 else
-                    m_responders.submit_task(task, conn->worker_id);
-                m_resend_queue.pop();
+                    assignee = m_responders.submit_task(task, conn->worker_id, 10);
+
+		if (assignee >=0) 
+			m_resend_queue.pop();
+		else
+			break;
             }
             m_resend = false;
         }

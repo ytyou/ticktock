@@ -70,7 +70,7 @@ public:
     void init(std::string id, size_t thread_count, size_t queue_size);
 
     // these are blocking calls, from a single thread
-    int submit_task(Task& task, int id = -1);
+    int submit_task(Task& task, int id = -1, int retries=-1);
     void submit_task_to_all(Task& task);
 
     void shutdown(ShutdownRequest request = ShutdownRequest::ASAP);
