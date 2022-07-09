@@ -454,10 +454,10 @@ TcpServer::recv_tcp_data(TaskData& data)
 
     if (again && (conn->pending_tasks <= 1))
     {
-        Task task;
-        task.doit = &TcpServer::recv_tcp_data;
-        task.data.pointer = conn;
-        conn->listener->resubmit(task);
+        //Task task;
+        //task.doit = &TcpServer::recv_tcp_data;
+        //task.data.pointer = conn;
+        conn->listener->resubmit('t', conn);
     }
 
     if (len > 0)
@@ -1129,6 +1129,7 @@ TcpListener::listener1()
                         case PIPE_CMD_DISCONNECT_CONN[0]:   disconnect(); break;
                         case PIPE_CMD_FLUSH_APPEND_LOG[0]:  flush_append_log(); break;
                         case PIPE_CMD_CLOSE_APPEND_LOG[0]:  close_append_log(); break;
+                        case PIPE_CMD_RESUBMIT[0]:          resubmit(cmd[2], std::atoi(cmd+4)); break; // r [h|t] <fd>
                         case PIPE_CMD_SET_STOPPED[0]:       set_stopped(); break;
                         default: break;
                     }
@@ -1157,6 +1158,7 @@ TcpListener::listener1()
             }
         }
 
+/*
         if (UNLIKELY(m_resend))
         {
             const std::lock_guard<std::mutex> lock(m_resend_mutex);
@@ -1172,6 +1174,7 @@ TcpListener::listener1()
             }
             m_resend = false;
         }
+*/
     }
 
     set_stopped();
@@ -1179,11 +1182,38 @@ TcpListener::listener1()
 }
 
 void
-TcpListener::resubmit(Task& task)
+TcpListener::resubmit(char c, TcpConnection *conn)
 {
-    const std::lock_guard<std::mutex> lock(m_resend_mutex);
-    m_resend_queue.push(task);
-    m_resend = true;
+    ASSERT((c == 'h') || (c == 't'));
+    char buff[32];
+    std::snprintf(buff, sizeof(buff), "%c %c %d\n", PIPE_CMD_RESUBMIT[0], c, conn->fd);
+    write_pipe(m_pipe_fds[1], buff);
+
+    //const std::lock_guard<std::mutex> lock(m_resend_mutex);
+    //m_resend_queue.push(task);
+    //m_resend = true;
+}
+
+void
+TcpListener::resubmit(char c, int fd)
+{
+    Task task;
+
+    if (c == 'h')
+        task.doit = &HttpServer::resend_response;
+    else
+    {
+        ASSERT(c == 't');
+        task.doit = &TcpServer::recv_tcp_data;
+    }
+
+    TcpConnection *conn = get_conn(fd);
+    task.data.pointer = conn;
+
+    if (1 == ++conn->pending_tasks)
+        conn->worker_id = m_responders.submit_task(task);
+    else
+        m_responders.submit_task(task, conn->worker_id);
 }
 
 // called by the level 0 listener;

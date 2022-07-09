@@ -43,6 +43,7 @@ namespace tt
 #define PIPE_CMD_DISCONNECT_CONN    "d\n"
 #define PIPE_CMD_FLUSH_APPEND_LOG   "f\n"
 #define PIPE_CMD_CLOSE_APPEND_LOG   "g\n"
+#define PIPE_CMD_RESUBMIT           "r\n"
 #define PIPE_CMD_SET_STOPPED        "s\n"
 
 #define DONT_FORWARD                "don't forward\n"
@@ -183,7 +184,8 @@ public:
         return m_socket_fd;
     }
 
-    void resubmit(Task& task);
+    void resubmit(char c, int fd);
+    void resubmit(char c, TcpConnection *conn);
 
 private:
     bool init(int socket_fd);
@@ -253,9 +255,9 @@ private:
     TaskScheduler m_responders; // threads to handle http requests
     std::thread m_listener;     // the thread that goes into the event loop
 
-    std::atomic<bool> m_resend; // true if m_resend_queue is not empty
-    std::mutex m_resend_mutex;  // to guard m_resend_queue
-    std::queue<Task> m_resend_queue;
+    //std::atomic<bool> m_resend; // true if m_resend_queue is not empty
+    //std::mutex m_resend_mutex;  // to guard m_resend_queue
+    //std::queue<Task> m_resend_queue;
 };
 
 
