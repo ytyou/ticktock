@@ -156,54 +156,54 @@ MemoryManager::init()
 void
 MemoryManager::collect_stats(Timestamp ts, std::vector<DataPoint> &dps)
 {
-#define COLLECT_STATS_FOR(RTYPE, RNAME)     \
+#define COLLECT_STATS_FOR(RTYPE, RNAME, SIZE_OF_RTYPE)     \
     {   \
         {   \
-            dps.emplace_back(ts, (double)m_total[RTYPE]);   \
+            dps.emplace_back(ts, (double)m_total[RTYPE] * SIZE_OF_RTYPE);   \
             auto& dp = dps.back();  \
             dp.set_metric("ticktock.mem.reusable.total");   \
             dp.add_tag(TYPE_TAG_NAME, RNAME);    \
         }   \
         {   \
-            dps.emplace_back(ts, (double)m_free[RTYPE]);    \
+            dps.emplace_back(ts, (double)m_free[RTYPE] * SIZE_OF_RTYPE);    \
             auto& dp = dps.back();  \
             dp.set_metric("ticktock.mem.reusable.free");    \
             dp.add_tag(TYPE_TAG_NAME, RNAME);    \
         }   \
     }
 
-    COLLECT_STATS_FOR(RT_AGGREGATOR_AVG, "aggregator_avg")
-    COLLECT_STATS_FOR(RT_AGGREGATOR_COUNT, "aggregator_count")
-    COLLECT_STATS_FOR(RT_AGGREGATOR_DEV, "aggregator_dev")
-    COLLECT_STATS_FOR(RT_AGGREGATOR_MAX, "aggregator_max")
-    COLLECT_STATS_FOR(RT_AGGREGATOR_MIN, "aggregator_min")
-    COLLECT_STATS_FOR(RT_AGGREGATOR_NONE, "aggregator_none")
-    COLLECT_STATS_FOR(RT_AGGREGATOR_PT, "aggregator_pt")
-    COLLECT_STATS_FOR(RT_AGGREGATOR_SUM, "aggregator_sum")
-    COLLECT_STATS_FOR(RT_COMPRESSOR_V0, "compressor_v0")
-    COLLECT_STATS_FOR(RT_COMPRESSOR_V1, "compressor_v1")
-    COLLECT_STATS_FOR(RT_COMPRESSOR_V2, "compressor_v2")
-    COLLECT_STATS_FOR(RT_DATA_POINT, "data_point")
-    COLLECT_STATS_FOR(RT_DOWNSAMPLER_AVG, "downsampler_avg")
-    COLLECT_STATS_FOR(RT_DOWNSAMPLER_COUNT, "downsampler_count")
-    COLLECT_STATS_FOR(RT_DOWNSAMPLER_DEV, "downsampler_dev")
-    COLLECT_STATS_FOR(RT_DOWNSAMPLER_FIRST, "downsampler_first")
-    COLLECT_STATS_FOR(RT_DOWNSAMPLER_LAST, "downsampler_last")
-    COLLECT_STATS_FOR(RT_DOWNSAMPLER_MAX, "downsampler_max")
-    COLLECT_STATS_FOR(RT_DOWNSAMPLER_MIN, "downsampler_min")
-    COLLECT_STATS_FOR(RT_DOWNSAMPLER_PT, "downsampler_pt")
-    COLLECT_STATS_FOR(RT_DOWNSAMPLER_SUM, "downsampler_sum")
-    COLLECT_STATS_FOR(RT_HTTP_CONNECTION, "http_connection")
-    COLLECT_STATS_FOR(RT_JSON_VALUE, "json_value")
-    COLLECT_STATS_FOR(RT_KEY_VALUE_PAIR, "key_value_pair")
-    COLLECT_STATS_FOR(RT_MAPPING, "mapping")
-    COLLECT_STATS_FOR(RT_PAGE_INFO, "page_info")
-    COLLECT_STATS_FOR(RT_QUERY_RESULTS, "query_results")
-    COLLECT_STATS_FOR(RT_QUERY_TASK, "query_task")
-    COLLECT_STATS_FOR(RT_RATE_CALCULATOR, "rate_calculator")
-    COLLECT_STATS_FOR(RT_TCP_CONNECTION, "tcp_connection")
-    COLLECT_STATS_FOR(RT_TIME_SERIES, "time_series")
-    COLLECT_STATS_FOR(RT_COUNT, "network_buffer")
+    COLLECT_STATS_FOR(RT_AGGREGATOR_AVG, "aggregator_avg", sizeof(AggregatorAvg))
+    COLLECT_STATS_FOR(RT_AGGREGATOR_COUNT, "aggregator_count", sizeof(AggregatorCount))
+    COLLECT_STATS_FOR(RT_AGGREGATOR_DEV, "aggregator_dev", sizeof(AggregatorDev))
+    COLLECT_STATS_FOR(RT_AGGREGATOR_MAX, "aggregator_max", sizeof(AggregatorMax))
+    COLLECT_STATS_FOR(RT_AGGREGATOR_MIN, "aggregator_min", sizeof(AggregatorMin))
+    COLLECT_STATS_FOR(RT_AGGREGATOR_NONE, "aggregator_none", sizeof(AggregatorNone))
+    COLLECT_STATS_FOR(RT_AGGREGATOR_PT, "aggregator_pt", sizeof(AggregatorPercentile))
+    COLLECT_STATS_FOR(RT_AGGREGATOR_SUM, "aggregator_sum", sizeof(AggregatorSum))
+    COLLECT_STATS_FOR(RT_COMPRESSOR_V0, "compressor_v0", sizeof(Compressor_v0))
+    COLLECT_STATS_FOR(RT_COMPRESSOR_V1, "compressor_v1", sizeof(Compressor_v1))
+    COLLECT_STATS_FOR(RT_COMPRESSOR_V2, "compressor_v2", sizeof(Compressor_v2))
+    COLLECT_STATS_FOR(RT_DATA_POINT, "data_point", sizeof(DataPoint))
+    COLLECT_STATS_FOR(RT_DOWNSAMPLER_AVG, "downsampler_avg", sizeof(DownsamplerAvg))
+    COLLECT_STATS_FOR(RT_DOWNSAMPLER_COUNT, "downsampler_count", sizeof(DownsamplerCount))
+    COLLECT_STATS_FOR(RT_DOWNSAMPLER_DEV, "downsampler_dev", sizeof(DownsamplerDev))
+    COLLECT_STATS_FOR(RT_DOWNSAMPLER_FIRST, "downsampler_first", sizeof(DownsamplerFirst))
+    COLLECT_STATS_FOR(RT_DOWNSAMPLER_LAST, "downsampler_last", sizeof(DownsamplerLast))
+    COLLECT_STATS_FOR(RT_DOWNSAMPLER_MAX, "downsampler_max", sizeof(DownsamplerMax))
+    COLLECT_STATS_FOR(RT_DOWNSAMPLER_MIN, "downsampler_min", sizeof(DownsamplerMin))
+    COLLECT_STATS_FOR(RT_DOWNSAMPLER_PT, "downsampler_pt", sizeof(DownsamplerPercentile))
+    COLLECT_STATS_FOR(RT_DOWNSAMPLER_SUM, "downsampler_sum", sizeof(DownsamplerSum))
+    COLLECT_STATS_FOR(RT_HTTP_CONNECTION, "http_connection", sizeof(HttpConnection))
+    COLLECT_STATS_FOR(RT_JSON_VALUE, "json_value", sizeof(JsonValue))
+    COLLECT_STATS_FOR(RT_KEY_VALUE_PAIR, "key_value_pair", sizeof(KeyValuePair))
+    COLLECT_STATS_FOR(RT_MAPPING, "mapping", sizeof(Mapping))
+    COLLECT_STATS_FOR(RT_PAGE_INFO, "page_info", sizeof(PageInfo))
+    COLLECT_STATS_FOR(RT_QUERY_RESULTS, "query_results", sizeof(QueryResults))
+    COLLECT_STATS_FOR(RT_QUERY_TASK, "query_task", sizeof(QueryTask))
+    COLLECT_STATS_FOR(RT_RATE_CALCULATOR, "rate_calculator", sizeof(RateCalculator))
+    COLLECT_STATS_FOR(RT_TCP_CONNECTION, "tcp_connection", sizeof(TcpConnection))
+    COLLECT_STATS_FOR(RT_TIME_SERIES, "time_series", sizeof(TimeSeries))
+    COLLECT_STATS_FOR(RT_COUNT, "network_buffer", m_network_buffer_len)
 
     float total = 0;
     total += m_total[RT_AGGREGATOR_AVG] * sizeof(AggregatorAvg);

@@ -390,7 +390,7 @@ Stats::write_proc_stat(Timestamp tstamp, Tsdb *tsdb)
         //dp.add_tag(METRIC_TAG_NAME, "ticktock.memory.rss");
         dp.add_tag(HOST_TAG_NAME, g_host_name.c_str());
         tsdb->add(dp);
-        Logger::debug("rss = %ld", g_proc_stats.rss);
+        Logger::debug("rss = %ld, page size = %ld", g_proc_stats.rss, g_page_size);
     }
 
     {
