@@ -84,6 +84,8 @@ public:
         init();
     }
 
+    void close();
+
 protected:
 
     void init() override
@@ -186,6 +188,7 @@ public:
 
     void resubmit(char c, int fd);
     void resubmit(char c, TcpConnection *conn);
+    void close_conn(int fd);
 
 private:
     bool init(int socket_fd);
@@ -202,7 +205,6 @@ private:
 
     void new_conn0();
     void new_conn2(int fd);
-    void close_conn(int fd);
 
     TcpConnection *get_conn(int fd);
     TcpConnection *get_or_create_conn(int fd);

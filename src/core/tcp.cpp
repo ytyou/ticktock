@@ -41,6 +41,14 @@ std::mutex TcpListener::m_lock;
 std::map<int,TcpConnection*> TcpListener::m_all_conn_map;
 
 
+void
+TcpConnection::close()
+{
+    if (listener != nullptr)
+        listener->close_conn(fd);
+}
+
+
 /* TcpServer Implementation
  */
 TcpServer::TcpServer() :
@@ -484,6 +492,10 @@ TcpServer::recv_tcp_data(TaskData& data)
 
     int n = --conn->pending_tasks;
     ASSERT(n >= 0);
+
+    if ((n <= 0) && (conn->state & TCS_CLOSED))
+        conn->close();
+
     return false;
 }
 
@@ -1143,6 +1155,9 @@ TcpListener::listener1()
                 TcpConnection *conn = get_conn(fd);
                 ASSERT(conn != nullptr);
                 Logger::tcp("received data on conn %p", conn->fd, conn);
+
+                if (events[i].events & EPOLLRDHUP)
+                    conn->state |= TCS_CLOSED;
 
                 if (conn->pending_tasks < 2)
                 {
