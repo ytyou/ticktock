@@ -953,7 +953,7 @@ TcpListener::register_with_epoll(int fd)
     struct epoll_event event;
 
     event.data.fd = fd;
-    event.events = EPOLLIN | EPOLLRDHUP;
+    event.events = EPOLLIN | EPOLLHUP | EPOLLRDHUP | EPOLLERR;
 
     if (fd != m_socket_fd)
     {
@@ -1079,7 +1079,7 @@ TcpListener::listener1()
 {
     int fd_cnt;
     struct epoll_event events[m_max_events];
-    uint32_t err_flags = EPOLLERR | EPOLLHUP | EPOLLRDHUP;
+    uint32_t err_flags = EPOLLERR | EPOLLHUP;
     PipeReader pipe_reader(m_pipe_fds[0]);
 
     g_thread_id = "tcp_listener_" + std::to_string(m_id);
