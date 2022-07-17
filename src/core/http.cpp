@@ -285,7 +285,7 @@ HttpServer::recv_http_data(TaskData& data)
     int n = --conn->pending_tasks;
     ASSERT(n >= 0);
 
-    if ((n <= 0) && (conn->state & TCS_CLOSED))
+    if ((n <= 0) && ((conn->state & (TCS_CLOSED|TCS_ERROR)) == (TCS_CLOSED|TCS_ERROR)))
         conn->close();
 
     return false;
@@ -422,7 +422,7 @@ HttpServer::recv_http_data_cont(HttpConnection *conn)
     int n = --conn->pending_tasks;
     ASSERT(n >= 0);
 
-    if ((n <= 0) && (conn->state & TCS_CLOSED))
+    if ((n <= 0) && ((conn->state & (TCS_CLOSED|TCS_ERROR)) == (TCS_CLOSED|TCS_ERROR)))
         conn->close();
 
     return false;
