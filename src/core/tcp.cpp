@@ -1155,17 +1155,22 @@ TcpListener::listener1()
                 TcpConnection *conn = get_conn(fd);
                 ASSERT(conn != nullptr);
                 Logger::tcp("received data on conn %p", conn->fd, conn);
+                bool rdhup = (events[i].events & EPOLLRDHUP);
 
-                if (events[i].events & EPOLLRDHUP)
-                    conn->state |= TCS_CLOSED;
-
-                if (conn->pending_tasks < 2)
+                if ((conn->pending_tasks < 2) || rdhup)
                 {
                     Task task = m_server->get_recv_data_task(conn);
+                    conn->pending_tasks += 1;
+
+                    if (rdhup)
+                    {
+                        conn->state |= TCS_CLOSED;
+                        Logger::debug("received EPOLLRDHUP on conn %d, will close it", fd);
+                    }
 
                     // if previous attempt was not able to read the complete
                     // request, we want to assign this one to the same worker.
-                    if (1 == ++conn->pending_tasks)
+                    if (1 == conn->pending_tasks)
                         conn->worker_id = m_responders.submit_task(task);
                     else
                         m_responders.submit_task(task, conn->worker_id);

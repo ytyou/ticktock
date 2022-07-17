@@ -421,6 +421,10 @@ HttpServer::recv_http_data_cont(HttpConnection *conn)
 
     int n = --conn->pending_tasks;
     ASSERT(n >= 0);
+
+    if ((n <= 0) && (conn->state & TCS_CLOSED))
+        conn->close();
+
     return false;
 }
 
