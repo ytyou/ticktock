@@ -12,10 +12,11 @@ DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 inputDir=$1
 totalDataPoints=0
+FILES=$(ls --ignore='*.cp' --ignore='*.meta' $1/)
 
-for f in $1/*;
+for f in $FILES
 do
-	numDataPoints=$($DIR/../bin/inspect -a $f | grep -v "dps\|Inspecting\|TSDB" | wc -l)
+	numDataPoints=$($DIR/../bin/inspect -a $1/$f | grep -v "dps\|Inspecting\|TSDB" | wc -l)
 	totalDataPoints=$(( $totalDataPoints + $numDataPoints ))
 	echo "$f: num=$numDataPoints, total=$totalDataPoints"
 done
