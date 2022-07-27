@@ -36,10 +36,11 @@ public:
 
 private:
     void run_with(bool ms);
-    void compress_uncompress(Compressor *compressor, Timestamp ts);
+    void compress_uncompress(Compressor *compressor, Timestamp ts, bool best);
     void save_restore(Compressor *compressor, Timestamp ts);
     void save_restore2(Compressor *compressor, Timestamp ts);
     void stress_test(Compressor *compressor, Timestamp ts);
+    void best_scenario(bool ms);
 };
 
 
