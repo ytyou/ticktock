@@ -45,6 +45,7 @@ namespace tt
 #define PIPE_CMD_CLOSE_APPEND_LOG   "g\n"
 #define PIPE_CMD_RESUBMIT           "r\n"
 #define PIPE_CMD_SET_STOPPED        "s\n"
+#define PIPE_CMD_CLOSE_CONN         "x\n"
 
 #define DONT_FORWARD                "don't forward\n"
 
@@ -186,9 +187,9 @@ public:
         return m_socket_fd;
     }
 
-    void resubmit(char c, int fd);
-    void resubmit(char c, TcpConnection *conn);
-    void close_conn(int fd);
+    // these are called by responder threads
+    void close_conn_by_responder(int fd);
+    void resubmit_by_responder(char c, TcpConnection *conn);
 
 private:
     bool init(int socket_fd);
@@ -205,6 +206,9 @@ private:
 
     void new_conn0();
     void new_conn2(int fd);
+
+    void close_conn(int fd);
+    void resubmit(char c, int fd);
 
     TcpConnection *get_conn(int fd);
     TcpConnection *get_or_create_conn(int fd);

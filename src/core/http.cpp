@@ -561,7 +561,7 @@ HttpServer::send_response(HttpConnection *conn)
         //Task task;
         //task.doit = &HttpServer::resend_response;
         //task.data.pointer = conn;
-        conn->listener->resubmit('h', conn);
+        conn->listener->resubmit_by_responder('h', conn);
     }
 
     return false;

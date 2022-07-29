@@ -158,6 +158,8 @@ AppendLog::rotate(TaskData& data)
 void
 AppendLog::close()
 {
+    std::lock_guard<std::mutex> guard(m_lock);
+
     if (m_file != nullptr)
     {
         // flush zlib

@@ -45,7 +45,7 @@ void
 TcpConnection::close()
 {
     if (listener != nullptr)
-        listener->close_conn(fd);
+        listener->close_conn_by_responder(fd);
 }
 
 
@@ -465,7 +465,7 @@ TcpServer::recv_tcp_data(TaskData& data)
         //Task task;
         //task.doit = &TcpServer::recv_tcp_data;
         //task.data.pointer = conn;
-        conn->listener->resubmit('t', conn);
+        conn->listener->resubmit_by_responder('t', conn);
     }
 
     if (len > 0)
@@ -1138,6 +1138,7 @@ TcpListener::listener1()
                     {
                         case PIPE_CMD_REBALANCE_CONN[0]:    rebalance1(); break;
                         case PIPE_CMD_NEW_CONN[0]:          new_conn2(std::atoi(cmd+2)); break;
+                        case PIPE_CMD_CLOSE_CONN[0]:        close_conn(std::atoi(cmd+2)); break;
                         case PIPE_CMD_DISCONNECT_CONN[0]:   disconnect(); break;
                         case PIPE_CMD_FLUSH_APPEND_LOG[0]:  flush_append_log(); break;
                         case PIPE_CMD_CLOSE_APPEND_LOG[0]:  close_append_log(); break;
@@ -1202,7 +1203,7 @@ TcpListener::listener1()
 }
 
 void
-TcpListener::resubmit(char c, TcpConnection *conn)
+TcpListener::resubmit_by_responder(char c, TcpConnection *conn)
 {
     ASSERT((c == 'h') || (c == 't'));
     char buff[32];
@@ -1313,6 +1314,14 @@ TcpListener::new_conn2(int fd)
         conn->state |= TCS_REGISTERED;
         Logger::trace("new connection: %d", fd);
     }
+}
+
+void
+TcpListener::close_conn_by_responder(int fd)
+{
+    char buff[32];
+    std::snprintf(buff, sizeof(buff), "%c %d\n", PIPE_CMD_CLOSE_CONN[0], fd);
+    write_pipe(m_pipe_fds[1], buff);
 }
 
 void
