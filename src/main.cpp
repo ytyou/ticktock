@@ -326,8 +326,8 @@ initialize()
     Config::init();
     FileDescriptorManager::init();
     Logger::init();
-    Logger::info("TickTock version: %d.%d.%d, on %s",
-        TT_MAJOR_VERSION, TT_MINOR_VERSION, TT_PATCH_VERSION, g_host_name.c_str());
+    Logger::info("TickTock version: %d.%d.%d, on %s, pid: %d",
+        TT_MAJOR_VERSION, TT_MINOR_VERSION, TT_PATCH_VERSION, g_host_name.c_str(), getpid());
     MemoryManager::init();
     Tsdb::init();
     AppendLog::init();
