@@ -204,7 +204,7 @@ Compressor_v2::compress(Timestamp timestamp, double value)
             uint8_t zero = 0x00;
             m_bitset.append(reinterpret_cast<uint8_t*>(&zero), 1, 0);
         }
-        else if ((-8192 <= delta_of_delta) && (delta_of_delta <= 8191))
+        else if ((-8192 <= (int64_t)delta_of_delta) && ((int64_t)delta_of_delta <= 8191))
         {
             // store '10' followed by value in 14 bits
             uint8_t one_zero = 0x80;
@@ -212,7 +212,7 @@ Compressor_v2::compress(Timestamp timestamp, double value)
             uint16_t dod_be = htobe16((uint16_t)delta_of_delta);
             m_bitset.append(reinterpret_cast<uint8_t*>(&dod_be), 14, 16-14);
         }
-        else if ((-65536 <= delta_of_delta) && (delta_of_delta <= 65535))
+        else if ((-65536 <= (int64_t)delta_of_delta) && ((int64_t)delta_of_delta <= 65535))
         {
             // store '110' followed by value in 17 bits
             uint8_t one_one_zero = 0xC0;
