@@ -51,7 +51,7 @@ CompressTests::run_with(bool ms)
 
     Timestamp ts = ts_now();
 
-    for (int v = 0; v <= 2; v++)
+    for (int v = 0; v <= 3; v++)
     {
         log("Testing compress/uncompress for Compressor_v%d...", v);
         compressor = Compressor::create(v);
@@ -60,7 +60,7 @@ CompressTests::run_with(bool ms)
         delete compressor;
     }
 
-    for (int v = 0; v <= 2; v++)
+    for (int v = 0; v <= 3; v++)
     {
         log("Testing save/restore for Compressor_v%d...", v);
         compressor = Compressor::create(v);
@@ -69,7 +69,7 @@ CompressTests::run_with(bool ms)
         delete compressor;
     }
 
-    for (int v = 0; v <= 2; v++)
+    for (int v = 0; v <= 3; v++)
     {
         log("Testing save/restore again for Compressor_v%d...", v);
         compressor = Compressor::create(v);
@@ -78,7 +78,7 @@ CompressTests::run_with(bool ms)
         delete compressor;
     }
 
-    for (int v = 0; v <= 2; v++)
+    for (int v = 0; v <= 3; v++)
     {
         log("Stress testing for Compressor_v%d...", v);
         compressor = Compressor::create(v);
@@ -326,7 +326,7 @@ CompressTests::best_scenario(bool ms)
 
     Timestamp ts = ts_now();
 
-    for (int v = 0; v <= 2; v++)
+    for (int v = 0; v <= 3; v++)
     {
         log("Testing compress/uncompress for Compressor_v%d...", v);
         compressor = Compressor::create(v);

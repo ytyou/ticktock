@@ -183,6 +183,7 @@ MemoryManager::collect_stats(Timestamp ts, std::vector<DataPoint> &dps)
     COLLECT_STATS_FOR(RT_COMPRESSOR_V0, "compressor_v0", sizeof(Compressor_v0))
     COLLECT_STATS_FOR(RT_COMPRESSOR_V1, "compressor_v1", sizeof(Compressor_v1))
     COLLECT_STATS_FOR(RT_COMPRESSOR_V2, "compressor_v2", sizeof(Compressor_v2))
+    COLLECT_STATS_FOR(RT_COMPRESSOR_V3, "compressor_v2", sizeof(Compressor_v3))
     COLLECT_STATS_FOR(RT_DATA_POINT, "data_point", sizeof(DataPoint))
     COLLECT_STATS_FOR(RT_DOWNSAMPLER_AVG, "downsampler_avg", sizeof(DownsamplerAvg))
     COLLECT_STATS_FOR(RT_DOWNSAMPLER_COUNT, "downsampler_count", sizeof(DownsamplerCount))
@@ -217,6 +218,7 @@ MemoryManager::collect_stats(Timestamp ts, std::vector<DataPoint> &dps)
     total += m_total[RT_COMPRESSOR_V0] * sizeof(Compressor_v0);
     total += m_total[RT_COMPRESSOR_V1] * sizeof(Compressor_v1);
     total += m_total[RT_COMPRESSOR_V2] * sizeof(Compressor_v2);
+    total += m_total[RT_COMPRESSOR_V3] * sizeof(Compressor_v3);
     total += m_total[RT_DATA_POINT] * sizeof(DataPoint);
     total += m_total[RT_DOWNSAMPLER_AVG] * sizeof(DownsamplerAvg);
     total += m_total[RT_DOWNSAMPLER_COUNT] * sizeof(DownsamplerCount);
@@ -263,6 +265,7 @@ MemoryManager::log_stats()
     Logger::debug("mm::compressor_v0 = %d", m_maps[RecyclableType::RT_COMPRESSOR_V0].size());
     Logger::debug("mm::compressor_v1 = %d", m_maps[RecyclableType::RT_COMPRESSOR_V1].size());
     Logger::debug("mm::compressor_v2 = %d", m_maps[RecyclableType::RT_COMPRESSOR_V2].size());
+    Logger::debug("mm::compressor_v3 = %d", m_maps[RecyclableType::RT_COMPRESSOR_V3].size());
     Logger::debug("mm::data_point = %d", m_maps[RecyclableType::RT_DATA_POINT].size());
     Logger::debug("mm::downsampler_avg = %d", m_maps[RecyclableType::RT_DOWNSAMPLER_AVG].size());
     Logger::debug("mm::downsampler_count = %d", m_maps[RecyclableType::RT_DOWNSAMPLER_COUNT].size());
@@ -398,6 +401,14 @@ MemoryManager::cleanup()
         m_free_lists[RecyclableType::RT_COMPRESSOR_V2] = r->next();
         ASSERT(r->recyclable_type() == RecyclableType::RT_COMPRESSOR_V2);
         delete static_cast<Compressor_v2*>(r);
+    }
+
+    while (m_free_lists[RecyclableType::RT_COMPRESSOR_V3] != nullptr)
+    {
+        Recyclable *r = m_free_lists[RecyclableType::RT_COMPRESSOR_V3];
+        m_free_lists[RecyclableType::RT_COMPRESSOR_V3] = r->next();
+        ASSERT(r->recyclable_type() == RecyclableType::RT_COMPRESSOR_V3);
+        delete static_cast<Compressor_v3*>(r);
     }
 
     while (m_free_lists[RecyclableType::RT_DATA_POINT] != nullptr)
@@ -612,6 +623,7 @@ MemoryManager::alloc_recyclable(RecyclableType type)
                 case RecyclableType::RT_COMPRESSOR_V0:
                 case RecyclableType::RT_COMPRESSOR_V1:
                 case RecyclableType::RT_COMPRESSOR_V2:
+                case RecyclableType::RT_COMPRESSOR_V3:
                     r = Compressor::create(type - RecyclableType::RT_COMPRESSOR_V0);
                     break;
 
