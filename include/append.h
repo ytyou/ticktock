@@ -66,6 +66,7 @@ private:
     AppendLog();
 
     void close();
+    void close_no_lock();
     void reopen();
 
     static bool m_enabled;

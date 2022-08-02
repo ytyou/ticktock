@@ -48,7 +48,7 @@ AppendLog::AppendLog() :
 
 AppendLog::~AppendLog()
 {
-    close();
+    close_no_lock();
 }
 
 void
@@ -159,7 +159,12 @@ void
 AppendLog::close()
 {
     std::lock_guard<std::mutex> guard(m_lock);
+    close_no_lock();
+}
 
+void
+AppendLog::close_no_lock()
+{
     if (m_file != nullptr)
     {
         // flush zlib
@@ -201,7 +206,7 @@ AppendLog::reopen()
     if (time == m_time) return;
     m_time = time;
 
-    close();    // close before open again
+    close_no_lock();    // close before open again
 
     std::string append_dir = Config::get_str(CFG_APPEND_LOG_DIR);
 
