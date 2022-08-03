@@ -10,6 +10,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <time.h>
 
 int main(void) {
   int pagecount = 1<<19;
@@ -74,7 +75,7 @@ int main(void) {
   if (rc != 0)
         printf("Failed to madvise(RANDOM), page = %p", region);
 
-  const int len = 64;
+  const int len = 64; //pagesize;
   char tmp_str[len];
   for(int i=0; i < len; i++) {
 	tmp_str[i]='1';
@@ -88,15 +89,20 @@ int main(void) {
   long str_per_page = pagesize / len;
   printf("str_count=%ld, str_per_page=%ld\n", str_count, str_per_page);
 
-  for (int i=0; i < str_per_page; i++) {
+  srand(time(0)); // seeding
+
+  //for (int i=0; i < str_per_page; i++) {
      // Loop each page, write a string into it at i-th len position.
      // Thus, we can avoid appending strings to the file.
-     for(int j=0; j < pagecount; j++) {
+     
+     for (int j=0; j < pagecount; j++) {
+         int curr_page_index = rand()% pagecount;
+
          //strcat(region, tmpStr); // strcat much slower than memcpy
          // Randomly write to different positions.
-         memcpy(region + j*pagesize + i*len, tmp_str, len);
+         memcpy(region + curr_page_index * pagesize, tmp_str, len);
 
-         if ( (i*pagecount + j) % 1000000 ==0 ) {
+         if ( j % 10000 ==0 ) {
              /*
              // Force flushing.
              if (msync(region, (unsigned)strlen(region), MS_SYNC) == -1) {
@@ -105,9 +111,9 @@ int main(void) {
              */
              printf("Len of region: %u\n", (unsigned)strlen(region));
          }    
-         sleep(0.001); // sleep for 1ms
+         //sleep(0.001); // sleep for 1ms
      }
-  }
+  //}
 
   int unmap_result = munmap(region, total_size);
   if (unmap_result != 0) {
