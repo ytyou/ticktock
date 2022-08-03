@@ -75,32 +75,38 @@ int main(void) {
         printf("Failed to madvise(RANDOM), page = %p", region);
 
   const int len = 64;
-  char tmpStr[len];
+  char tmp_str[len];
   for(int i=0; i < len; i++) {
-	tmpStr[i]='1';
+	tmp_str[i]='1';
   }
-  tmpStr[len] = '\0';
+  tmp_str[len] = '\0';
 
-  printf("len of tmpStr: %u\n", (unsigned)strlen(tmpStr));
-  printf("tmpStr: %s\n", tmpStr);
+  printf("len of tmp_str: %u\n", (unsigned)strlen(tmp_str));
+  printf("tmpStr: %s\n", tmp_str);
 
-  long count = total_size / len;
-  printf("count=%ld\n", count);
+  long str_count = total_size / len;
+  long str_per_page = pagesize / len;
+  printf("str_count=%ld, str_per_page=%ld\n", str_count, str_per_page);
 
-  for (int i=0; i < count; i++) {
-     //printf("i=%d\n", i);
-     //strcat(region, tmpStr); // strcat much slower than memcpy
-     memcpy(region + i*len, tmpStr, len);
-     if ( i % 1000000 ==0 ) {
-        /*
-        // Force flushing.
-        if (msync(region, (unsigned)strlen(region), MS_SYNC) == -1) {
-            perror("Could not sync the file to disk");
-        }
-        */
-        printf("Len of region: %u\n", (unsigned)strlen(region));
+  for (int i=0; i < str_per_page; i++) {
+     // Loop each page, write a string into it at i-th len position.
+     // Thus, we can avoid appending strings to the file.
+     for(int j=0; j < pagecount; j++) {
+         //strcat(region, tmpStr); // strcat much slower than memcpy
+         // Randomly write to different positions.
+         memcpy(region + j*pagesize + i*len, tmp_str, len);
+
+         if ( (i*pagecount + j) % 1000000 ==0 ) {
+             /*
+             // Force flushing.
+             if (msync(region, (unsigned)strlen(region), MS_SYNC) == -1) {
+                 perror("Could not sync the file to disk");
+             }
+             */
+             printf("Len of region: %u\n", (unsigned)strlen(region));
+         }    
+         sleep(0.001); // sleep for 1ms
      }
-     sleep(0.001); // sleep for 1ms
   }
 
   int unmap_result = munmap(region, total_size);
