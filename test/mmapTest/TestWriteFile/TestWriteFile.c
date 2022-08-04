@@ -5,6 +5,7 @@
  * The key metrics are iostat.disk.write_bytes, disk.util etc.
  */
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
@@ -12,10 +13,33 @@
 #include <fcntl.h>
 #include <time.h>
 
+void swap(size_t *a, size_t *b) {
+  size_t tmp = *a;
+  *a = *b;
+  *b = tmp;
+}
+
+void randomize(size_t* array, size_t size) {
+  srand(time(0)); // seeding
+  
+  for(size_t i=0; i < size; i++) {
+      size_t random_index = rand() % (size-i);
+      swap(array+i, array+i + random_index);
+  }
+}
+
 int main(void) {
-  int pagecount = 1<<19;
+  size_t pagecount = 1<<20;
   size_t pagesize = getpagesize();
   printf("System page size: %zu bytes\n", pagesize);
+  // initialize an array with in-order indexes
+  size_t* page_index = (size_t*)malloc( pagecount * sizeof(size_t));
+  for(size_t i=0; i < pagecount; i++) {
+      page_index[i] = i;
+  }
+  
+  // randomize it. Comment out if necessary
+  randomize(page_index, pagecount);
 
   const char* file_name="testWriteMapped.txt";
   int  fd = open(file_name, O_CREAT|O_RDWR, S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH);
@@ -75,7 +99,7 @@ int main(void) {
   if (rc != 0)
         printf("Failed to madvise(RANDOM), page = %p", region);
 
-  const int len = 64; //pagesize;
+  const int len = pagesize;
   char tmp_str[len];
   for(int i=0; i < len; i++) {
 	tmp_str[i]='1';
@@ -89,20 +113,19 @@ int main(void) {
   long str_per_page = pagesize / len;
   printf("str_count=%ld, str_per_page=%ld\n", str_count, str_per_page);
 
-  srand(time(0)); // seeding
-
+  int tmp_loop = 20;
   //for (int i=0; i < str_per_page; i++) {
      // Loop each page, write a string into it at i-th len position.
      // Thus, we can avoid appending strings to the file.
      
-     for (int j=0; j < pagecount; j++) {
-         int curr_page_index = rand()% pagecount;
+     for (int j=0; j < pagecount * tmp_loop; j++) {
+         int curr_page_index = page_index[j%pagecount];
 
          //strcat(region, tmpStr); // strcat much slower than memcpy
          // Randomly write to different positions.
          memcpy(region + curr_page_index * pagesize, tmp_str, len);
 
-         if ( j % 10000 ==0 ) {
+         if ( j % 100000 ==0 ) {
              /*
              // Force flushing.
              if (msync(region, (unsigned)strlen(region), MS_SYNC) == -1) {
@@ -111,7 +134,7 @@ int main(void) {
              */
              printf("Len of region: %u\n", (unsigned)strlen(region));
          }    
-         //sleep(0.001); // sleep for 1ms
+         sleep(0.01); // sleep for 1ms
      }
   //}
 
@@ -119,9 +142,12 @@ int main(void) {
   if (unmap_result != 0) {
     perror("Could not munmap");
     close(fd);
+    free(page_index);
+ 
     return 1;
   }
 
   close(fd);
+  free(page_index);
   return 0;
 }
