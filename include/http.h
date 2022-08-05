@@ -173,6 +173,8 @@ public:
     static bool http_get_api_stats_handler(HttpRequest& request, HttpResponse& response);
     static bool http_get_api_version_handler(HttpRequest& request, HttpResponse& response);
 
+    static bool resend_response(TaskData& data);
+
 protected:
     TcpConnection *create_conn() const override;
     Task get_recv_data_task(TcpConnection *conn) const override;
@@ -181,7 +183,6 @@ protected:
     // task func
     static bool recv_http_data(TaskData& data);
     static bool recv_http_data_cont(HttpConnection *conn);
-    static bool resend_response(TaskData& data);
 
 private:
     static bool parse_header(char *buff, int len, HttpRequest& request);

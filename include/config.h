@@ -76,7 +76,7 @@
 #define CFG_TCP_MAX_EPOLL_EVENTS                "tcp.max.epoll.events"
 #define CFG_TCP_MAX_EPOLL_EVENTS_DEF            128
 #define CFG_TCP_BUFFER_SIZE                     "tcp.buffer.size"
-#define CFG_TCP_BUFFER_SIZE_DEF                 "1mb"
+#define CFG_TCP_BUFFER_SIZE_DEF                 "512kb"
 #define CFG_TCP_MIN_FILE_DESCRIPTOR             "tcp.min.file.descriptor"
 #define CFG_TCP_MIN_FILE_DESCRIPTOR_DEF         30
 #define CFG_TCP_MIN_HTTP_STEP                   "tcp.min.http.step"

@@ -414,19 +414,63 @@ int
 Stats::collect_stats(char *buff, int size)
 {
     Timestamp now = ts_now();
+    std::vector<std::vector<size_t>> counts;
+    int len = 0;
+
+    if (tcp_server_ptr != nullptr)
+    {
+        tcp_server_ptr->get_pending_task_count(counts);
+
+        for (int i = 0; i < counts.size(); i++)
+        {
+            for (int j = 0; j < counts[i].size(); j++)
+            {
+                size_t cnt = counts[i][j];
+                int l = snprintf(buff+len, size-len,
+                    "ticktock.tcp.pending_task.count %" PRIu64 " %d listener=%d responder=%d %s=%s\n",
+                    now, (int)cnt, i, j, HOST_TAG_NAME, g_host_name.c_str());
+
+                if (size <= (len + l)) break;
+                len += l;
+            }
+        }
+    }
+
+    // HTTP server pending tasks
+    if (http_server_ptr != nullptr)
+    {
+        counts.clear();
+        http_server_ptr->get_pending_task_count(counts);
+
+        for (int i = 0; i < counts.size(); i++)
+        {
+            for (int j = 0; j < counts[i].size(); j++)
+            {
+                size_t cnt = counts[i][j];
+                int l = snprintf(buff+len, size-len,
+                    "ticktock.http.pending_task.count %" PRIu64 " %d listener=%d responder=%d %s=%s\n",
+                    now, (int)cnt, i, j, HOST_TAG_NAME, g_host_name.c_str());
+
+                if (size <= (len + l)) break;
+                len += l;
+            }
+        }
+    }
+
     Tsdb *tsdb = Tsdb::inst(now, false);
 
-    if (tsdb == nullptr) return 0;
+    if ((tsdb != nullptr) && (size > len))
+    {
+        std::vector<size_t> counts;
 
-    std::vector<size_t> counts;
-
-    int len = snprintf(buff, size,
-        "ticktock.connection.count %" PRIu64 " %d %s=%s\nticktock.time_series.count %" PRIu64 " %d %s=%s\nticktock.page.used.percent %" PRIu64 " %f %s=%s\nticktock.ooo_page.count %" PRIu64 " %d %s=%s\nticktock.timer.pending_task.count %" PRIu64 " %zu %s=%s\n",
-        now, TcpListener::get_active_conn_count(), HOST_TAG_NAME, g_host_name.c_str(),
-        now, Tsdb::get_ts_count(), HOST_TAG_NAME, g_host_name.c_str(),
-        now, tsdb->get_page_percent_used(), HOST_TAG_NAME, g_host_name.c_str(),
-        now, Tsdb::get_page_count(true), HOST_TAG_NAME, g_host_name.c_str(),
-        now, Timer::inst()->m_scheduler.get_pending_task_count(counts), HOST_TAG_NAME, g_host_name.c_str());
+        len += snprintf(buff+len, size-len,
+            "ticktock.connection.count %" PRIu64 " %d %s=%s\nticktock.time_series.count %" PRIu64 " %d %s=%s\nticktock.page.used.percent %" PRIu64 " %f %s=%s\nticktock.ooo_page.count %" PRIu64 " %d %s=%s\nticktock.timer.pending_task.count %" PRIu64 " %zu %s=%s\n",
+            now, TcpListener::get_active_conn_count(), HOST_TAG_NAME, g_host_name.c_str(),
+            now, Tsdb::get_ts_count(), HOST_TAG_NAME, g_host_name.c_str(),
+            now, tsdb->get_page_percent_used(), HOST_TAG_NAME, g_host_name.c_str(),
+            now, Tsdb::get_page_count(true), HOST_TAG_NAME, g_host_name.c_str(),
+            now, Timer::inst()->m_scheduler.get_pending_task_count(counts), HOST_TAG_NAME, g_host_name.c_str());
+    }
 
     if ((0 < len) && (len < size))
         buff[len] = 0;

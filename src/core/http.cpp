@@ -284,6 +284,10 @@ HttpServer::recv_http_data(TaskData& data)
 
     int n = --conn->pending_tasks;
     ASSERT(n >= 0);
+
+    if ((n <= 0) && (conn->state & TCS_CLOSED))
+        conn->close();
+
     return false;
 }
 
@@ -417,6 +421,10 @@ HttpServer::recv_http_data_cont(HttpConnection *conn)
 
     int n = --conn->pending_tasks;
     ASSERT(n >= 0);
+
+    if ((n <= 0) && (conn->state & TCS_CLOSED))
+        conn->close();
+
     return false;
 }
 
@@ -550,10 +558,10 @@ HttpServer::send_response(HttpConnection *conn)
     else if ((conn->state & TCS_ERROR) == 0)
     {
         // requeue it to try later
-        Task task;
-        task.doit = &HttpServer::resend_response;
-        task.data.pointer = conn;
-        conn->listener->resubmit(task);
+        //Task task;
+        //task.doit = &HttpServer::resend_response;
+        //task.data.pointer = conn;
+        conn->listener->resubmit_by_responder('h', conn);
     }
 
     return false;

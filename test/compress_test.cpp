@@ -33,6 +33,10 @@ CompressTests::run()
     run_with(true);
     log("Running compress tests with second resolution...");
     run_with(false);
+    log("Running best scenario case with millisecond resolution...");
+    best_scenario(true);
+    log("Running best scenario case with second resolution...");
+    best_scenario(false);
 }
 
 void
@@ -43,7 +47,7 @@ CompressTests::run_with(bool ms)
     uint8_t buff[131072];
     Compressor *compressor;
 
-    g_tstamp_resolution_ms = ms;
+    tt::g_tstamp_resolution_ms = ms;
 
     Timestamp ts = ts_now();
 
@@ -52,7 +56,7 @@ CompressTests::run_with(bool ms)
         log("Testing compress/uncompress for Compressor_v%d...", v);
         compressor = Compressor::create(v);
         compressor->init(ts, buff, sizeof(buff));
-        compress_uncompress(compressor, ts);
+        compress_uncompress(compressor, ts, false);
         delete compressor;
     }
 
@@ -87,12 +91,21 @@ CompressTests::run_with(bool ms)
 }
 
 void
-CompressTests::compress_uncompress(Compressor *compressor, Timestamp ts)
+CompressTests::compress_uncompress(Compressor *compressor, Timestamp ts, bool best)
 {
     int dp_cnt = 5000;
     DataPointVector dps;
+    double val = 123.456;
+    Timestamp interval = (tt::g_tstamp_resolution_ms) ? 30000 : 30;
 
-    generate_data_points(dps, dp_cnt, ts);
+    if (best)
+    {
+        dps.emplace_back(ts, val);
+        for (int i = 1; i < dp_cnt; i++)
+            dps.emplace_back(dps[i-1].first+interval, val);
+    }
+    else
+        generate_data_points(dps, dp_cnt, ts);
 
     for (int i = 0; i < dp_cnt; i++)
         CONFIRM(compressor->compress(dps[i].first, dps[i].second));
@@ -301,6 +314,26 @@ CompressTests::stress_test(Compressor *compressor, Timestamp ts)
     log("compress_stress_test(): %d dps in %lf ms", n, (double)ms);
 
     m_stats.add_passed(1);
+}
+
+void
+CompressTests::best_scenario(bool ms)
+{
+    uint8_t buff[131072];
+    Compressor *compressor;
+
+    tt::g_tstamp_resolution_ms = ms;
+
+    Timestamp ts = ts_now();
+
+    for (int v = 0; v <= 2; v++)
+    {
+        log("Testing compress/uncompress for Compressor_v%d...", v);
+        compressor = Compressor::create(v);
+        compressor->init(ts, buff, sizeof(buff));
+        compress_uncompress(compressor, ts, true);
+        delete compressor;
+    }
 }
 
 

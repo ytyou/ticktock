@@ -197,6 +197,9 @@ CheckPointManager::persist()
 bool
 CheckPointManager::persist_to_file()
 {
+    if (m_snapshot.empty())
+        return true;
+
     Timestamp ts = ts_now_sec();
     std::string file_name = Config::get_str(CFG_TSDB_DATA_DIR,CFG_TSDB_DATA_DIR_DEF) + "/" + std::to_string(ts) + ".cp";
     int fd = ::open(file_name.c_str(), O_CREAT|O_WRONLY|O_TRUNC|O_NONBLOCK, S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH);

@@ -41,6 +41,14 @@ std::mutex TcpListener::m_lock;
 std::map<int,TcpConnection*> TcpListener::m_all_conn_map;
 
 
+void
+TcpConnection::close()
+{
+    if (listener != nullptr)
+        listener->close_conn_by_responder(fd);
+}
+
+
 /* TcpServer Implementation
  */
 TcpServer::TcpServer() :
@@ -454,10 +462,10 @@ TcpServer::recv_tcp_data(TaskData& data)
 
     if (again && (conn->pending_tasks <= 1))
     {
-        Task task;
-        task.doit = &TcpServer::recv_tcp_data;
-        task.data.pointer = conn;
-        conn->listener->resubmit(task);
+        //Task task;
+        //task.doit = &TcpServer::recv_tcp_data;
+        //task.data.pointer = conn;
+        conn->listener->resubmit_by_responder('t', conn);
     }
 
     if (len > 0)
@@ -484,6 +492,10 @@ TcpServer::recv_tcp_data(TaskData& data)
 
     int n = --conn->pending_tasks;
     ASSERT(n >= 0);
+
+    if ((n <= 0) && (conn->state & TCS_CLOSED))
+        conn->close();
+
     return false;
 }
 
@@ -953,7 +965,7 @@ TcpListener::register_with_epoll(int fd)
     struct epoll_event event;
 
     event.data.fd = fd;
-    event.events = EPOLLIN | EPOLLRDHUP;
+    event.events = EPOLLIN | EPOLLHUP | EPOLLRDHUP | EPOLLERR;
 
     if (fd != m_socket_fd)
     {
@@ -1079,7 +1091,7 @@ TcpListener::listener1()
 {
     int fd_cnt;
     struct epoll_event events[m_max_events];
-    uint32_t err_flags = EPOLLERR | EPOLLHUP | EPOLLRDHUP;
+    uint32_t err_flags = EPOLLERR | EPOLLHUP;
     PipeReader pipe_reader(m_pipe_fds[0]);
 
     g_thread_id = "tcp_listener_" + std::to_string(m_id);
@@ -1126,9 +1138,11 @@ TcpListener::listener1()
                     {
                         case PIPE_CMD_REBALANCE_CONN[0]:    rebalance1(); break;
                         case PIPE_CMD_NEW_CONN[0]:          new_conn2(std::atoi(cmd+2)); break;
+                        case PIPE_CMD_CLOSE_CONN[0]:        close_conn(std::atoi(cmd+2)); break;
                         case PIPE_CMD_DISCONNECT_CONN[0]:   disconnect(); break;
                         case PIPE_CMD_FLUSH_APPEND_LOG[0]:  flush_append_log(); break;
                         case PIPE_CMD_CLOSE_APPEND_LOG[0]:  close_append_log(); break;
+                        case PIPE_CMD_RESUBMIT[0]:          resubmit(cmd[2], std::atoi(cmd+4)); break; // r [h|t] <fd>
                         case PIPE_CMD_SET_STOPPED[0]:       set_stopped(); break;
                         default: break;
                     }
@@ -1142,14 +1156,22 @@ TcpListener::listener1()
                 TcpConnection *conn = get_conn(fd);
                 ASSERT(conn != nullptr);
                 Logger::tcp("received data on conn %p", conn->fd, conn);
+                bool rdhup = (events[i].events & EPOLLRDHUP);
 
-                if (conn->pending_tasks < 2)
+                if ((conn->pending_tasks < 2) || rdhup)
                 {
                     Task task = m_server->get_recv_data_task(conn);
+                    conn->pending_tasks += 1;
+
+                    if (rdhup)
+                    {
+                        conn->state |= TCS_CLOSED;
+                        Logger::debug("received EPOLLRDHUP on conn %d, will close it", fd);
+                    }
 
                     // if previous attempt was not able to read the complete
                     // request, we want to assign this one to the same worker.
-                    if (1 == ++conn->pending_tasks)
+                    if (1 == conn->pending_tasks)
                         conn->worker_id = m_responders.submit_task(task);
                     else
                         m_responders.submit_task(task, conn->worker_id);
@@ -1157,6 +1179,7 @@ TcpListener::listener1()
             }
         }
 
+/*
         if (UNLIKELY(m_resend))
         {
             const std::lock_guard<std::mutex> lock(m_resend_mutex);
@@ -1172,6 +1195,7 @@ TcpListener::listener1()
             }
             m_resend = false;
         }
+*/
     }
 
     set_stopped();
@@ -1179,11 +1203,38 @@ TcpListener::listener1()
 }
 
 void
-TcpListener::resubmit(Task& task)
+TcpListener::resubmit_by_responder(char c, TcpConnection *conn)
 {
-    const std::lock_guard<std::mutex> lock(m_resend_mutex);
-    m_resend_queue.push(task);
-    m_resend = true;
+    ASSERT((c == 'h') || (c == 't'));
+    char buff[32];
+    std::snprintf(buff, sizeof(buff), "%c %c %d\n", PIPE_CMD_RESUBMIT[0], c, conn->fd);
+    write_pipe(m_pipe_fds[1], buff);
+
+    //const std::lock_guard<std::mutex> lock(m_resend_mutex);
+    //m_resend_queue.push(task);
+    //m_resend = true;
+}
+
+void
+TcpListener::resubmit(char c, int fd)
+{
+    Task task;
+
+    if (c == 'h')
+        task.doit = &HttpServer::resend_response;
+    else
+    {
+        ASSERT(c == 't');
+        task.doit = &TcpServer::recv_tcp_data;
+    }
+
+    TcpConnection *conn = get_conn(fd);
+    task.data.pointer = conn;
+
+    if (1 == ++conn->pending_tasks)
+        conn->worker_id = m_responders.submit_task(task);
+    else
+        m_responders.submit_task(task, conn->worker_id);
 }
 
 // called by the level 0 listener;
@@ -1263,6 +1314,14 @@ TcpListener::new_conn2(int fd)
         conn->state |= TCS_REGISTERED;
         Logger::trace("new connection: %d", fd);
     }
+}
+
+void
+TcpListener::close_conn_by_responder(int fd)
+{
+    char buff[32];
+    std::snprintf(buff, sizeof(buff), "%c %d\n", PIPE_CMD_CLOSE_CONN[0], fd);
+    write_pipe(m_pipe_fds[1], buff);
 }
 
 void
