@@ -51,12 +51,13 @@ enum RecyclableType : unsigned char
     RT_KEY_VALUE_PAIR    = RT_JSON_VALUE + 1,           // 23
     RT_MAPPING           = RT_KEY_VALUE_PAIR + 1,       // 24
     RT_PAGE_INFO         = RT_MAPPING + 1,              // 25
-    RT_QUERY_RESULTS     = RT_PAGE_INFO + 1,            // 26
-    RT_QUERY_TASK        = RT_QUERY_RESULTS + 1,        // 27
-    RT_RATE_CALCULATOR   = RT_QUERY_TASK + 1,           // 28
-    RT_TCP_CONNECTION    = RT_RATE_CALCULATOR + 1,      // 29
-    RT_TIME_SERIES       = RT_TCP_CONNECTION + 1,       // 30
-    RT_COUNT             = RT_TIME_SERIES + 1           // 31
+    RT_PAGE_INFO_IN_MEM  = RT_PAGE_INFO + 1,            // 26
+    RT_QUERY_RESULTS     = RT_PAGE_INFO_IN_MEM + 1,     // 27
+    RT_QUERY_TASK        = RT_QUERY_RESULTS + 1,        // 28
+    RT_RATE_CALCULATOR   = RT_QUERY_TASK + 1,           // 29
+    RT_TCP_CONNECTION    = RT_RATE_CALCULATOR + 1,      // 30
+    RT_TIME_SERIES       = RT_TCP_CONNECTION + 1,       // 31
+    RT_COUNT             = RT_TIME_SERIES + 1           // 32
 };
 
 

@@ -127,14 +127,37 @@ TimeSeries::flush(bool close)
 {
     std::lock_guard<std::mutex> guard(m_lock);
 
-    if (m_buff != nullptr) m_buff->flush();
-    if (m_ooo_buff != nullptr) m_ooo_buff->flush();
+    if (m_buff != nullptr)
+    {
+        PageInfo *info = m_buff->flush();
+
+        if (info != nullptr)
+        {
+            ASSERT(m_buff == m_pages.back());
+            m_pages.back() = info;
+            m_tsdb->append_meta(this, info);
+            MemoryManager::free_recyclable(m_buff);
+        }
+    }
+
+    if (m_ooo_buff != nullptr)
+    {
+        PageInfo *info = m_ooo_buff->flush();
+
+        if (info != nullptr)
+        {
+            ASSERT(m_ooo_buff == m_ooo_pages.back());
+            m_ooo_pages.back() = info;
+            m_tsdb->append_meta(this, info);
+            MemoryManager::free_recyclable(m_ooo_buff);
+        }
+    }
 }
 
 PageInfo *
 TimeSeries::get_free_page_on_disk(bool is_out_of_order)
 {
-    PageInfo *info = m_tsdb->get_free_page_on_disk(is_out_of_order);
+    PageInfo *info = m_tsdb->get_free_page(is_out_of_order);
 
     if (is_out_of_order)
         m_ooo_pages.push_back(info);
@@ -185,7 +208,14 @@ TimeSeries::add_data_point(DataPoint& dp)
     {
         ASSERT(m_buff->is_full());
 
-        m_buff->flush();
+        PageInfo * info = m_buff->flush();
+        if (info != nullptr)
+        {
+            ASSERT(m_buff == m_pages.back());
+            m_pages.back() = info;
+            m_tsdb->append_meta(this, info);
+            MemoryManager::free_recyclable(m_buff);
+        }
         m_buff = get_free_page_on_disk(false);
         ASSERT(m_buff->is_empty());
 

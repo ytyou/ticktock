@@ -78,10 +78,11 @@ PageInfo::is_empty() const
     }
 }
 
-void
+PageInfo *
 PageInfo::flush()
 {
-    if (m_compressor == nullptr) return;
+    if (m_compressor == nullptr)
+        return nullptr;
 
     persist();
 
@@ -105,6 +106,8 @@ PageInfo::flush()
 
     if (is_full())
         recycle();
+
+    return nullptr;
 }
 
 void
@@ -280,6 +283,36 @@ PageInfo::merge_after(PageInfo *dst)
 }
 
 void
+PageInfo::copy_from(PageInfo *src)
+{
+    ASSERT(m_compressor != nullptr);
+
+    // copy data
+    CompressorPosition position;
+    src->m_compressor->save(position);
+    src->m_compressor->save((uint8_t*)get_page());
+
+    // write header
+    Timestamp start = m_page_mgr->get_time_range().get_from();
+
+    m_header->init(position.m_offset,
+                   position.m_start,
+                   src->m_compressor->is_full(),
+                   src->m_time_range.get_from() - start,
+                   src->m_time_range.get_to() - start);
+
+    if (m_header->m_offset == 0)
+    {
+        int rc = madvise(get_page(), g_page_size, MADV_DONTNEED);
+        if (rc == -1)
+            Logger::info("Failed to madvise(DONTNEED), page = %p, errno = %d", get_page(), errno);
+    }
+
+    if (is_full())
+        recycle();
+}
+
+void
 PageInfo::copy_to(PageCount dst_id)
 {
     //ASSERT(m_id > dst_id);
@@ -358,6 +391,40 @@ PageInfo::c_str(char *buff) const
     std::snprintf(buff, c_size(), "idx=%d is_ooo=%d comp=%p",
         m_header->m_page_index, m_header->is_out_of_order(), m_compressor);
     return buff;
+}
+
+
+// initialize a PageInfo that represent a page on disk;
+// this is a new page, so we will not read page_info_on_disk;
+void
+PageInfoInMem::init_for_memory(PageManager *pm, Tsdb *tsdb, PageSize size, bool is_ooo)
+{
+    ASSERT(pm != nullptr);
+    ASSERT(tsdb != nullptr);
+    ASSERT(size > 1);
+
+    m_tsdb = tsdb;
+    m_header = &m_page_header;
+    const TimeRange& range = pm->get_time_range();
+    m_time_range.init(range.get_to(), range.get_from());    // empty range
+    m_header->init(range);
+    m_header->set_out_of_order(is_ooo);
+    m_header->m_offset = 0;
+    m_header->m_size = size;
+    ASSERT(m_header->m_size != 0);
+    m_page_mgr = pm;
+    m_compressor = nullptr;
+    m_page = malloc(size);
+    ASSERT(m_page != nullptr);
+}
+
+PageInfo *
+PageInfoInMem::flush()
+{
+    PageInfo *info = m_tsdb->get_free_page_on_disk(m_header->is_out_of_order());
+    info->copy_from(this);
+    if (m_page != nullptr) free(m_page);
+    return info;
 }
 
 
@@ -517,7 +584,10 @@ PageManager::open_mmap(PageCount page_count)
         return false;
     }
 
-    rc = madvise(m_pages, m_total_size, MADV_RANDOM);
+    // TODO: use either MADV_RANDOM or MADV_SEQUENTIAL,
+    //       based on the same settings in the config that
+    //       determines whether we use in-memory buffer or not.
+    rc = madvise(m_pages, m_total_size, MADV_SEQUENTIAL);
 
     if (rc != 0)
         Logger::info("Failed to madvise(RANDOM), page = %p, errno = %d", m_pages, errno);
@@ -624,6 +694,14 @@ PageManager::get_page_info_on_disk(PageCount index)
 }
 
 PageInfo *
+PageManager::get_free_page(Tsdb *tsdb, bool ooo)
+{
+    // TODO: return either get_free_page_in_mem() or get_free_page_on_disk(),
+    //       based on settings in the config
+    return get_free_page_in_mem(tsdb, ooo);
+}
+
+PageInfo *
 PageManager::get_free_page_on_disk(Tsdb *tsdb, bool ooo)
 {
     PageInfo *info =
@@ -660,6 +738,25 @@ PageManager::get_free_page_on_disk(Tsdb *tsdb, bool ooo)
     }
 
     ASSERT(*m_page_index <= *m_actual_pg_cnt);
+    return info;
+}
+
+PageInfoInMem *
+PageManager::get_free_page_in_mem(Tsdb *tsdb, bool ooo)
+{
+    PageInfoInMem *info =
+        (PageInfoInMem*)MemoryManager::alloc_recyclable(RecyclableType::RT_PAGE_INFO_IN_MEM);
+
+    if (info == nullptr)
+    {
+        // TODO: handle OOM
+        Logger::fatal("Running out of memory!");
+        return nullptr;
+    }
+
+    info->init_for_memory(this, tsdb, g_page_size, ooo);
+    info->setup_compressor(m_time_range, (ooo ? 0 : m_compressor_version));
+
     return info;
 }
 

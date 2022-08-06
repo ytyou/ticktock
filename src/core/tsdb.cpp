@@ -944,6 +944,23 @@ Tsdb::create_page_manager(int id)
 }
 
 PageInfo *
+Tsdb::get_free_page(bool out_of_order)
+{
+    std::lock_guard<std::mutex> guard(m_pm_lock);
+    PageManager *pm;
+
+    if (m_page_mgrs.empty())
+        pm = create_page_manager();
+    else
+        pm = m_page_mgrs.back();
+
+    ASSERT(pm->is_open());
+    PageInfo *pi = pm->get_free_page(this, out_of_order);
+    ASSERT(pi != nullptr);
+    return pi;
+}
+
+PageInfo *
 Tsdb::get_free_page_on_disk(bool out_of_order)
 {
     std::lock_guard<std::mutex> guard(m_pm_lock);

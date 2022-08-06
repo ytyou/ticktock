@@ -170,6 +170,7 @@ public:
 
     std::string get_partition_defs() const;
 
+    PageInfo *get_free_page(bool out_of_order);
     PageInfo *get_free_page_on_disk(bool out_of_order);
     PageInfo *get_free_page_for_compaction();   // used during compaction
     // Caller should acquire m_pm_lock before calling this method

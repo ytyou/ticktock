@@ -198,6 +198,7 @@ MemoryManager::collect_stats(Timestamp ts, std::vector<DataPoint> &dps)
     COLLECT_STATS_FOR(RT_KEY_VALUE_PAIR, "key_value_pair", sizeof(KeyValuePair))
     COLLECT_STATS_FOR(RT_MAPPING, "mapping", sizeof(Mapping))
     COLLECT_STATS_FOR(RT_PAGE_INFO, "page_info", sizeof(PageInfo))
+    COLLECT_STATS_FOR(RT_PAGE_INFO_IN_MEM, "page_info_in_mem", sizeof(PageInfoInMem))
     COLLECT_STATS_FOR(RT_QUERY_RESULTS, "query_results", sizeof(QueryResults))
     COLLECT_STATS_FOR(RT_QUERY_TASK, "query_task", sizeof(QueryTask))
     COLLECT_STATS_FOR(RT_RATE_CALCULATOR, "rate_calculator", sizeof(RateCalculator))
@@ -232,6 +233,7 @@ MemoryManager::collect_stats(Timestamp ts, std::vector<DataPoint> &dps)
     total += m_total[RT_KEY_VALUE_PAIR] * sizeof(KeyValuePair);
     total += m_total[RT_MAPPING] * sizeof(Mapping);
     total += m_total[RT_PAGE_INFO] * sizeof(PageInfo);
+    total += m_total[RT_PAGE_INFO_IN_MEM] * sizeof(PageInfoInMem);
     total += m_total[RT_QUERY_RESULTS] * sizeof(QueryResults);
     total += m_total[RT_QUERY_TASK] * sizeof(QueryTask);
     total += m_total[RT_RATE_CALCULATOR] * sizeof(RateCalculator);
@@ -278,6 +280,7 @@ MemoryManager::log_stats()
     Logger::debug("mm::key_value_pair = %d", m_maps[RecyclableType::RT_KEY_VALUE_PAIR].size());
     Logger::debug("mm::mapping = %d", m_maps[RecyclableType::RT_MAPPING].size());
     Logger::debug("mm::page_info = %d", m_maps[RecyclableType::RT_PAGE_INFO].size());
+    Logger::debug("mm::page_info_in_mem = %d", m_maps[RecyclableType::RT_PAGE_INFO_IN_MEM].size());
     Logger::debug("mm::query_results = %d", m_maps[RecyclableType::RT_QUERY_RESULTS].size());
     Logger::debug("mm::query_task = %d", m_maps[RecyclableType::RT_QUERY_TASK].size());
     Logger::debug("mm::rate_calculator = %d", m_maps[RecyclableType::RT_RATE_CALCULATOR].size());
@@ -520,6 +523,14 @@ MemoryManager::cleanup()
         delete static_cast<PageInfo*>(r);
     }
 
+    while (m_free_lists[RecyclableType::RT_PAGE_INFO_IN_MEM] != nullptr)
+    {
+        Recyclable *r = m_free_lists[RecyclableType::RT_PAGE_INFO_IN_MEM];
+        m_free_lists[RecyclableType::RT_PAGE_INFO_IN_MEM] = r->next();
+        ASSERT(r->recyclable_type() == RecyclableType::RT_PAGE_INFO_IN_MEM);
+        delete static_cast<PageInfoInMem*>(r);
+    }
+
     while (m_free_lists[RecyclableType::RT_QUERY_RESULTS] != nullptr)
     {
         Recyclable *r = m_free_lists[RecyclableType::RT_QUERY_RESULTS];
@@ -673,6 +684,10 @@ MemoryManager::alloc_recyclable(RecyclableType type)
 
                 case RecyclableType::RT_PAGE_INFO:
                     r = new PageInfo();
+                    break;
+
+                case RecyclableType::RT_PAGE_INFO_IN_MEM:
+                    r = new PageInfoInMem();
                     break;
 
                 case RecyclableType::RT_QUERY_RESULTS:

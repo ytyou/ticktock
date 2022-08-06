@@ -203,7 +203,7 @@ public:
     inline void set_ooo(bool ooo) { m_header->set_out_of_order(ooo); }
 
     // prepare to be used to represent a different page
-    void flush();
+    virtual PageInfo *flush();
     void reset();
     void shrink_to_fit();
     bool is_full() const;
@@ -220,7 +220,7 @@ public:
     }
 
     int get_dp_count() const;
-    PageCount get_id() const;
+    virtual PageCount get_id() const;
     PageCount get_file_id() const;
     int get_page_order() const;
 
@@ -238,9 +238,10 @@ public:
 
     // existing compressor, if any, will be destroyed, and new one created
     void setup_compressor(const TimeRange& range, int compressor_version);
-    void persist(bool copy_data = false);   // persist page to disk
+    virtual void persist(bool copy_data = false);   // persist page to disk
     void merge_after(PageInfo *dst);        // share page with 'dst' (compaction)
     void copy_to(PageCount dst_id);
+    void copy_from(PageInfo *src);
 
     inline size_t c_size() const override { return 64; }
     const char *c_str(char *buff) const override;
@@ -251,8 +252,9 @@ private:
     friend class SanityChecker;
     friend class page_info_index_less;
 
-    void *get_page();
+    virtual void *get_page();
 
+protected:
     TimeRange m_time_range;     // range of actual data points in this page
     PageManager *m_page_mgr;    // this is null for in-memory page
     Compressor *m_compressor;   // this is null except for in-memory page
@@ -260,6 +262,25 @@ private:
     struct page_info_on_disk *m_header;
 
 };  // class PageInfo
+
+
+class PageInfoInMem : public PageInfo
+{
+public:
+    void init_for_memory(PageManager *pm,
+                         Tsdb *tsdb,
+                         PageSize size,
+                         bool is_ooo);
+    PageInfo *flush() override;
+    void persist(bool copy_data = false) override {}
+    void *get_page() override { return m_page; }
+    PageCount get_id() const override { return 0; }
+
+private:
+    struct page_info_on_disk m_page_header;
+    void *m_page;
+    Tsdb *m_tsdb;
+};
 
 
 class page_info_index_less
@@ -283,7 +304,7 @@ public:
     PageManager(const PageManager& copy) = delete;
     virtual ~PageManager();
 
-    PageInfo *get_free_page_on_disk(Tsdb *tsdb, bool ooo);
+    PageInfo *get_free_page(Tsdb *tsdb, bool ooo);
     PageInfo *get_free_page_for_compaction(Tsdb *tsdb); // used during compaction
     PageInfo *get_the_page_on_disk(PageCount header_index);
     PageCount calc_page_info_index(struct page_info_on_disk *piod) const;
@@ -329,13 +350,17 @@ public:
     inline PageCount get_page_count() const { return *m_page_count; }
     inline static int32_t get_mmap_file_count() { return m_total.load(); }
 
+    PageInfo *get_free_page_on_disk(Tsdb *tsdb, bool ooo);
+
 private:
     bool open_mmap(PageCount page_count);
     void persist_compacted_flag(bool compacted);
     bool resize(TsdbSize old_size);     // resize (shrink) the data file
     void init_headers();    // zero-out headers
+    PageInfoInMem *get_free_page_in_mem(Tsdb *tsdb, bool ooo);
     struct page_info_on_disk *get_page_info_on_disk(PageCount index);
     static PageCount calc_first_page_info_index(PageCount page_count);
+
     static std::atomic<int32_t> m_total;    // total number of open mmap files
 
     std::mutex m_lock;
