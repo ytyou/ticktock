@@ -261,6 +261,10 @@ PageInfo::persist(bool copy_data)
                    m_compressor->is_full(),
                    m_time_range.get_from() - start,
                    m_time_range.get_to() - start);
+
+    Logger::info("Writing to page #%d in file %s",
+        (int)get_page_index(),
+        m_page_mgr->get_file_name().c_str());
 }
 
 // Append this page after 'dst' inside the same physical page;
@@ -423,7 +427,14 @@ PageInfoInMem::flush()
 {
     PageInfo *info = m_tsdb->get_free_page_on_disk(m_header->is_out_of_order());
     info->copy_from(this);
-    if (m_page != nullptr) free(m_page);
+    if (m_page != nullptr)
+    {
+        free(m_page);
+        m_page = nullptr;
+    }
+    Logger::info("Writing to page #%d in file %s",
+        (int)info->get_page_index(),
+        m_page_mgr->get_file_name().c_str());
     return info;
 }
 

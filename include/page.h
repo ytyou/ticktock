@@ -319,6 +319,11 @@ public:
         return m_id;
     }
 
+    std::string get_file_name() const
+    {
+        return m_file_name;
+    }
+
     inline PageCount get_data_page_count() const    // no. data pages currently in use
     {
         ASSERT(m_actual_pg_cnt != nullptr);
