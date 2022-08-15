@@ -48,7 +48,6 @@ do
         fi
     done
     wait
-    echo "Reading outputs..."
     for (( T=0; T<${#FIL[@]}; T++ ));
     do
         FILE="$TMP_FILE$T"
