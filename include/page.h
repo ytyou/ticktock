@@ -257,6 +257,8 @@ private:
     PageManager *m_page_mgr;    // this is null for in-memory page
     Compressor *m_compressor;   // this is null except for in-memory page
 
+    uint8_t *m_base;            // in-memory buffer
+
     struct page_info_on_disk *m_header;
 
 };  // class PageInfo

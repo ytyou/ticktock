@@ -124,6 +124,7 @@ Compressor_v2::init(Timestamp start, uint8_t *base, size_t size)
     m_prev_trailing_zeros = 65;
     m_prev_none_zeros = 64;
     m_is_full = false;
+    m_persisted = 0;
 
     ASSERT(m_start_tstamp <= m_prev_tstamp);
 }
@@ -494,6 +495,7 @@ Compressor_v1::init(Timestamp start, uint8_t *base, size_t size)
     m_cursor = base;
     m_size = size;
     m_is_full = false;
+    m_persisted = base;
 
     m_dp_count = 0;
     m_prev_delta = 0L;

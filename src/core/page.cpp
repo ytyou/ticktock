@@ -46,7 +46,8 @@ std::atomic<int32_t> PageManager::m_total{0};
 PageInfo::PageInfo() :
     m_page_mgr(nullptr),
     m_compressor(nullptr),
-    m_header(nullptr)
+    m_header(nullptr),
+    m_base(nullptr)
 {
 }
 
@@ -83,7 +84,7 @@ PageInfo::flush()
 {
     if (m_compressor == nullptr) return;
 
-    persist();
+    persist(m_base != nullptr);
 
     /* TODO: Is this needed?
     int rc = msync(m_pages, size, (sync?MS_SYNC:MS_ASYNC));
@@ -141,6 +142,12 @@ PageInfo::recycle()
         m_compressor = nullptr;
     }
 
+    if (m_base != nullptr)
+    {
+        free(m_base);
+        m_base = nullptr;
+    }
+
     return true;
 }
 
@@ -165,6 +172,7 @@ PageInfo::init_for_disk(PageManager *pm, struct page_info_on_disk *header, PageC
     m_page_mgr = pm;
     //set_page();
     m_compressor = nullptr;
+    m_base = (uint8_t*)malloc(size);
 }
 
 // initialize a PageInfo that represent a page on disk
@@ -181,6 +189,7 @@ PageInfo::init_from_disk(PageManager *pm, struct page_info_on_disk *header)
     m_compressor = nullptr;
     Timestamp start = pm->get_time_range().get_from();
     m_time_range.init(m_header->m_tstamp_from + start, m_header->m_tstamp_to + start);
+    m_base = nullptr;
     ASSERT(pm->get_time_range().contains(m_time_range));
 }
 
@@ -209,7 +218,8 @@ PageInfo::setup_compressor(const TimeRange& range, int compressor_version)
         m_compressor = (Compressor*)MemoryManager::alloc_recyclable(type);
     }
 
-    m_compressor->init(range.get_from(), reinterpret_cast<uint8_t*>(get_page()), m_header->m_size);
+    uint8_t *page = (m_base == nullptr) ? reinterpret_cast<uint8_t*>(get_page()) : m_base;
+    m_compressor->init(range.get_from(), page, m_header->m_size);
 }
 
 void

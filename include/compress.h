@@ -132,7 +132,7 @@ public:
     inline void save(uint8_t *base)
     {
         ASSERT(base != nullptr);
-        m_bitset.copy_to(base);
+        m_persisted = m_bitset.copy_to(base, m_persisted);
     }
 
     bool compress(Timestamp timestamp, double value);
@@ -191,6 +191,7 @@ private:
     uint8_t m_prev_trailing_zeros;
     uint8_t m_prev_none_zeros;
     bool m_is_full;
+    size_t m_persisted;
 };
 
 
@@ -212,7 +213,11 @@ public:
     {
         ASSERT(base != nullptr);
         ASSERT(m_base != nullptr);
-        if (base != m_base) memcpy(base, m_base, (m_cursor-m_base));
+        if (base != m_base)
+        {
+            memcpy(base+(m_persisted-m_base), m_persisted, (m_cursor-m_persisted));
+            m_persisted = m_cursor;
+        }
     }
 
     // return true if sucessfully added the dp;
@@ -271,6 +276,7 @@ private:
     uint8_t *m_base;
     size_t m_size;
     uint8_t *m_cursor;
+    uint8_t *m_persisted;
 
     Timestamp m_prev_delta;
     Timestamp m_prev_tstamp;

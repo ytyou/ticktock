@@ -181,12 +181,22 @@ BitSet::append(uint8_t bits, uint8_t& len, uint8_t& start)
     }
 }
 
-void
-BitSet::copy_to(uint8_t *base) const
+size_t
+BitSet::copy_to(uint8_t *base, size_t offset) const
 {
     ASSERT(base != nullptr);
-    if (base != m_bits)
-        memcpy(base, m_bits, size_in_bytes());
+    size_t size = size_in_bytes();
+
+    if ((base != m_bits) && (size > 0))
+    {
+        ASSERT(size >= offset);
+        memcpy(base+offset, m_bits+offset, size-offset);
+        size--;
+    }
+    else
+        size = offset;
+
+    return size;
 }
 
 void

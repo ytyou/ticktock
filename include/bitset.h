@@ -79,7 +79,7 @@ public:
         m_start = m_cp_start;
     }
 
-    void copy_to(uint8_t *base) const;
+    size_t copy_to(uint8_t *base, size_t offset) const;
     void copy_from(uint8_t *base, int bytes, uint8_t start);
 
     inline size_t size_in_bits() const
