@@ -377,7 +377,8 @@ PageManager::PageManager(TimeRange& range, PageCount id, bool temp) :
     m_compacted(false),
     m_time_range(range),
     m_id(id),
-    m_fd(-1)
+    m_fd(-1),
+    m_pages(nullptr)
 {
     m_file_name = Tsdb::get_file_name(range, std::to_string(m_id), temp);
     m_compressor_version =
