@@ -566,7 +566,7 @@ PageManager::open_mmap(PageCount page_count)
     m_pages = mmap64(nullptr,
                      m_total_size,
                      PROT_READ | PROT_WRITE,
-                     MAP_PRIVATE,
+                     MAP_SHARED,
                      m_fd,
                      0);
 
@@ -628,6 +628,15 @@ PageManager::open_mmap(PageCount page_count)
         *m_header_index = 0;
         *m_actual_pg_cnt = page_count;
         ASSERT(*m_page_index <= *m_actual_pg_cnt);
+
+        
+        // We need to move file cursor to the beginning of the first data page.
+        // So we can start to append data page when data pages are full.
+        PageCount header_bytes = (*m_page_index) * g_page_size;
+        if (lseek(m_fd, header_bytes, SEEK_SET) == -1)
+        {
+            perror("Error calling lseek() to go to the first data page in the file");
+        }
     }
     else
     {
