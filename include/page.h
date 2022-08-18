@@ -324,6 +324,11 @@ public:
         return m_file_name;
     }
 
+    int get_file_id() const
+    {
+    	return m_fd;
+    }
+
     inline PageCount get_data_page_count() const    // no. data pages currently in use
     {
         ASSERT(m_actual_pg_cnt != nullptr);

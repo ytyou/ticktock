@@ -294,7 +294,8 @@ PageInfo::copy_from(PageInfo *src)
     // copy data
     CompressorPosition position;
     src->m_compressor->save(position);
-    src->m_compressor->save((uint8_t*)get_page());
+    // src->m_compressor->save((uint8_t*)get_page()); // Don't copy to mmap.
+    src->m_compressor->save(m_page_mgr->get_file_id());
 
     // write header
     Timestamp start = m_page_mgr->get_time_range().get_from();
@@ -565,7 +566,7 @@ PageManager::open_mmap(PageCount page_count)
     m_pages = mmap64(nullptr,
                      m_total_size,
                      PROT_READ | PROT_WRITE,
-                     MAP_SHARED,
+                     MAP_PRIVATE,
                      m_fd,
                      0);
 

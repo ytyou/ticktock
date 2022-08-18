@@ -20,6 +20,10 @@
 
 #include <utility>
 #include <vector>
+
+#include <stdio.h>
+#include <fcntl.h>
+
 #include "bitset.h"
 #include "page.h"
 #include "recycle.h"
@@ -90,6 +94,7 @@ public:
     virtual void restore(DataPointVector& dps, CompressorPosition& position, uint8_t *base) = 0;
     virtual void save(CompressorPosition& position) = 0;    // save meta
     virtual void save(uint8_t *base) = 0;                   // save data
+    virtual void save(int fd) {} // do nothing        // save data to file
     virtual bool recycle() { return true; }
     virtual void rebase(uint8_t *base) = 0;
 
@@ -213,6 +218,11 @@ public:
         ASSERT(base != nullptr);
         ASSERT(m_base != nullptr);
         if (base != m_base) memcpy(base, m_base, (m_cursor-m_base));
+    }
+
+    inline void save(int fd) {
+        ASSERT(m_base != nullptr);
+        write(fd, m_base, m_cursor-m_base);
     }
 
     // return true if sucessfully added the dp;
