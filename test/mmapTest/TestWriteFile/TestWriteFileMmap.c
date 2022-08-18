@@ -29,7 +29,7 @@ void randomize(size_t* array, size_t size) {
 }
 
 int main(void) {
-  size_t pagecount = 1<<23;
+  size_t pagecount = 1<<20;
   size_t pagesize = getpagesize();
   printf("System page size: %zu bytes\n", pagesize);
   // initialize an array with in-order indexes
@@ -41,7 +41,7 @@ int main(void) {
   // randomize it. Comment out if necessary
   //randomize(page_index, pagecount);
 
-  const char* file_name="testWriteMapped.txt";
+  const char* file_name="testWriteMapped.txt.append";
   int  fd = open(file_name, O_CREAT|O_RDWR, S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH);
 
   if (fd == -1){
@@ -114,7 +114,7 @@ int main(void) {
   long str_per_page = pagesize / len;
   printf("str_count=%ld, str_per_page=%ld\n", str_count, str_per_page);
 
-  int tmp_loop = 1;
+  int tmp_loop = 20;
   //for (int i=0; i < str_per_page; i++) {
      // Loop each page, write a string into it at i-th len position.
      // Thus, we can avoid appending strings to the file.

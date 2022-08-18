@@ -17,16 +17,16 @@
 #include <malloc.h>
 
 int main(void) {
-  size_t pagecount = 1<<23;
+  size_t pagecount = 1<<21;
   size_t pagesize = getpagesize();
   printf("System page size: %zu bytes\n", pagesize);
-  
+
   const char* file_name="testWriteIO.txt";
   // Direct IO. Memory not affected.
-  int  fd = open(file_name, O_CREAT|O_RDWR|O_DIRECT, S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH);
+  //int  fd = open(file_name, O_CREAT|O_RDWR|O_DIRECT, S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH);
   
   // normal writes. Mem.cached will go up, mem.free down.
-  //int  fd = open(file_name, O_CREAT|O_RDWR, S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH);
+  int  fd = open(file_name, O_CREAT|O_RDWR, S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH);
 
   if (fd == -1){
         printf("Failed to open file %s", file_name);
@@ -37,16 +37,26 @@ int main(void) {
   printf("total_size=%ld\n", total_size);
  
   const int len = pagesize;
-  char *tmp_str = valloc(len);
-  //char tmp_str[len];
+  // For DirectIO, align mem address
+  //char *tmp_str = valloc(len);
+  
+  // For normal IO
+  char *tmp_str = (char*)malloc(len);
   for(int i=0; i < len; i++) {
 	tmp_str[i]='1';
   }
   tmp_str[len] = '\0';
 
-
   printf("len of tmp_str: %u\n", (unsigned)strlen(tmp_str));
   printf("tmpStr: %s\n", tmp_str);
+
+  // allocate a large chunk of memory to simulate a system with memory pressure
+  size_t tmp_str_page_count = pagecount /2;
+  char* tmp_str_unused = (char*)calloc(pagesize, tmp_str_page_count);
+  for(int i=0; i < tmp_str_page_count; i++) {
+       memcpy(tmp_str_unused + i * pagesize, tmp_str, pagesize);
+  }  
+  tmp_str_unused[pagesize*tmp_str_page_count -1] = '\0';
 
      for (int j=0; j < pagecount; j++) {
          //int curr_page_index = page_index[j];
@@ -68,5 +78,6 @@ int main(void) {
      }
   close(fd);
   free(tmp_str);
+  free(tmp_str_unused);
   return 0;
 }
