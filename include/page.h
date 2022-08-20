@@ -416,6 +416,9 @@ private:
     // be m_actual_pg_cnt * page_size;
     TsdbSize m_total_size;
 
+    // total size of the header in the data file, in bytes.
+    TsdbSize m_header_size;
+
     // time range in which all data points in this data file should
     // fall into. time unit used in it should be the same as specified
     // in the config file.

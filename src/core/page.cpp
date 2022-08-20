@@ -455,6 +455,7 @@ PageManager::PageManager(TimeRange& range, PageCount id, bool temp) :
     PageCount page_count =
         Config::get_int(CFG_TSDB_PAGE_COUNT, CFG_TSDB_PAGE_COUNT_DEF);
     m_total_size = (TsdbSize)page_count * (TsdbSize)g_page_size;
+    m_header_size = (TsdbSize)calc_first_page_info_index(page_count) * (TsdbSize)g_page_size;
 
     bool is_new = open_mmap(page_count);
 
@@ -564,7 +565,7 @@ PageManager::open_mmap(PageCount page_count)
     }
 
     m_pages = mmap64(nullptr,
-                     m_total_size,
+                     m_header_size, // only mmap header since data pages are appended using file IO,
                      PROT_READ | PROT_WRITE,
                      MAP_PRIVATE,
                      m_fd,
@@ -599,7 +600,7 @@ PageManager::open_mmap(PageCount page_count)
     // TODO: use either MADV_RANDOM or MADV_SEQUENTIAL,
     //       based on the same settings in the config that
     //       determines whether we use in-memory buffer or not.
-    rc = madvise(m_pages, m_total_size, MADV_SEQUENTIAL);
+    rc = madvise(m_pages, m_header_size, MADV_SEQUENTIAL);
 
     if (rc != 0)
         Logger::info("Failed to madvise(RANDOM), page = %p, errno = %d", m_pages, errno);
@@ -628,6 +629,14 @@ PageManager::open_mmap(PageCount page_count)
         *m_header_index = 0;
         *m_actual_pg_cnt = page_count;
         ASSERT(*m_page_index <= *m_actual_pg_cnt);
+
+        // We need to move file cursor to the beginning of the first data page.
+        // So we can start to append data page when data pages are full.
+        PageCount header_bytes = (*m_page_index) * g_page_size;
+        if (lseek(m_fd, header_bytes, SEEK_SET) == -1)
+        {
+            perror("Error calling lseek() to go to the first data page in the file");
+        }
     }
     else
     {
@@ -678,7 +687,7 @@ PageManager::close_mmap()
     if (m_pages != nullptr)
     {
         // TODO: Do we need to do a flush first?
-        munmap(m_pages, m_total_size);
+        munmap(m_pages, m_header_size);
         m_pages = nullptr;
 
         if (m_fd > 0)
@@ -869,19 +878,18 @@ PageManager::flush(bool sync)
     if (m_pages == nullptr) return;
 
     ASSERT(m_page_index != nullptr);
-    TsdbSize size = *m_page_index * g_page_size;
-    if (size > m_total_size) size = m_total_size;   // could happen after compaction
+    TsdbSize size = m_header_size;
     int rc = msync(m_pages, size, (sync?MS_SYNC:MS_ASYNC));
 
     if (rc == -1)
         Logger::info("Failed to flush file %s, errno = %d", m_file_name.c_str(), errno);
 
-    rc = madvise(m_pages, m_total_size, MADV_DONTNEED);
+    rc = madvise(m_pages, size, MADV_DONTNEED);
 
     if (rc == -1)
     {
         Logger::info("Failed to madvise(DONTNEED), page = %p, size = %" PRIu64 ", errno = %d",
-            m_pages, m_total_size, errno);
+            m_pages, size, errno);
     }
 }
 
@@ -891,7 +899,7 @@ PageManager::persist()
     if (m_pages == nullptr) return;
 
     ASSERT(m_page_index != nullptr);
-    TsdbSize size = *m_page_index * g_page_size;
+    TsdbSize size = m_header_size;
     ASSERT(size <= m_total_size);
     msync(m_pages, size, MS_SYNC);
 }
@@ -910,7 +918,9 @@ PageManager::resize(TsdbSize old_size)
         Logger::error("Failed to resize data file, errno = %d", errno);
         return false;
     }
-
+/**
+ *  Don't need to resize mmap since we always mmap the header.
+ *
     void *pages = mremap(m_pages, old_size, m_total_size, 0);
 
     if (pages != m_pages)
@@ -918,7 +928,7 @@ PageManager::resize(TsdbSize old_size)
         Logger::error("Failed to resize data file, errno = %d, pages = %p", errno, pages);
         return false;
     }
-
+*/
     return true;
 }
 
