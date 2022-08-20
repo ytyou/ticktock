@@ -567,7 +567,7 @@ PageManager::open_mmap(PageCount page_count)
     m_pages = mmap64(nullptr,
                      m_header_size, // only mmap header since data pages are appended using file IO,
                      PROT_READ | PROT_WRITE,
-                     MAP_PRIVATE,
+                     MAP_SHARED,
                      m_fd,
                      0);
 

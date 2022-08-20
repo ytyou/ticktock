@@ -22,13 +22,14 @@
 #include <vector>
 
 #include <stdio.h>
-#include <fcntl.h>
+#include <unistd.h>
 
 #include "bitset.h"
 #include "page.h"
 #include "recycle.h"
 #include "type.h"
 
+#include "logger.h"
 
 // Timestamp compression:
 //
@@ -222,7 +223,8 @@ public:
 
     inline void save(int fd) {
         ASSERT(m_base != nullptr);
-        write(fd, m_base, m_cursor-m_base);
+        int n = write(fd, m_base, g_page_size); //m_cursor-m_base);
+        Logger::info("Write %d bytes successfully. real data bytes:%d, dp_count=%d, \n", n, (m_cursor-m_base), m_dp_count);
     }
 
     // return true if sucessfully added the dp;
