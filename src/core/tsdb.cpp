@@ -1925,7 +1925,7 @@ Tsdb::rotate(TaskData& data)
                 tsdb->unload_no_lock();
                 continue;
             }
-            else if ((!(mode & TSDB_MODE_WRITE)) && (tsdb->m_mode & TSDB_MODE_WRITE))
+            else if (((mode & TSDB_MODE_READ_WRITE) == TSDB_MODE_READ) && (tsdb->m_mode & TSDB_MODE_WRITE))
             {
                 // make it read-only
                 Logger::debug("[rotate] Flushing tsdb: %T", tsdb);
