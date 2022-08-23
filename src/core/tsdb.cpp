@@ -879,7 +879,7 @@ Tsdb::flush(bool sync)
         pm->flush(sync);
     }
 
-    m_mode &= ~TSDB_MODE_WRITE;
+    m_mode &= ~TSDB_MODE_WRITE_CHECKPOINT;
 }
 
 void
