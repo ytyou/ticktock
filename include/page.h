@@ -251,6 +251,7 @@ private:
     friend class MemoryManager;
     friend class SanityChecker;
     friend class page_info_index_less;
+    friend class PageInfoInMem;
 
     virtual void *get_page();
 

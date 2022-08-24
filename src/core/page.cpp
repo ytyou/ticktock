@@ -434,7 +434,7 @@ PageInfoInMem::flush()
     }
     Logger::info("Writing to page #%d in file %s",
         (int)info->get_page_index(),
-        m_page_mgr->get_file_name().c_str());
+        info->m_page_mgr->get_file_name().c_str());
     return info;
 }
 
