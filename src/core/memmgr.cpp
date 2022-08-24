@@ -159,13 +159,13 @@ MemoryManager::collect_stats(Timestamp ts, std::vector<DataPoint> &dps)
 #define COLLECT_STATS_FOR(RTYPE, RNAME, SIZE_OF_RTYPE)     \
     {   \
         {   \
-            dps.emplace_back(ts, (double)m_total[RTYPE] * SIZE_OF_RTYPE);   \
+            dps.emplace_back(ts, (double)m_total[RTYPE] * (SIZE_OF_RTYPE));   \
             auto& dp = dps.back();  \
             dp.set_metric("ticktock.mem.reusable.total");   \
             dp.add_tag(TYPE_TAG_NAME, RNAME);    \
         }   \
         {   \
-            dps.emplace_back(ts, (double)m_free[RTYPE] * SIZE_OF_RTYPE);    \
+            dps.emplace_back(ts, (double)m_free[RTYPE] * (SIZE_OF_RTYPE));    \
             auto& dp = dps.back();  \
             dp.set_metric("ticktock.mem.reusable.free");    \
             dp.add_tag(TYPE_TAG_NAME, RNAME);    \
@@ -198,7 +198,7 @@ MemoryManager::collect_stats(Timestamp ts, std::vector<DataPoint> &dps)
     COLLECT_STATS_FOR(RT_KEY_VALUE_PAIR, "key_value_pair", sizeof(KeyValuePair))
     COLLECT_STATS_FOR(RT_MAPPING, "mapping", sizeof(Mapping))
     COLLECT_STATS_FOR(RT_PAGE_INFO, "page_info", sizeof(PageInfo))
-    COLLECT_STATS_FOR(RT_PAGE_INFO_IN_MEM, "page_info_in_mem", sizeof(PageInfoInMem)+g_page_size)
+    COLLECT_STATS_FOR(RT_PAGE_INFO_IN_MEM, "page_info_in_mem", (sizeof(PageInfoInMem)+g_page_size))
     COLLECT_STATS_FOR(RT_QUERY_RESULTS, "query_results", sizeof(QueryResults))
     COLLECT_STATS_FOR(RT_QUERY_TASK, "query_task", sizeof(QueryTask))
     COLLECT_STATS_FOR(RT_RATE_CALCULATOR, "rate_calculator", sizeof(RateCalculator))
