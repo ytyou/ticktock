@@ -198,7 +198,7 @@ MemoryManager::collect_stats(Timestamp ts, std::vector<DataPoint> &dps)
     COLLECT_STATS_FOR(RT_KEY_VALUE_PAIR, "key_value_pair", sizeof(KeyValuePair))
     COLLECT_STATS_FOR(RT_MAPPING, "mapping", sizeof(Mapping))
     COLLECT_STATS_FOR(RT_PAGE_INFO, "page_info", sizeof(PageInfo))
-    COLLECT_STATS_FOR(RT_PAGE_INFO_IN_MEM, "page_info_in_mem", sizeof(PageInfoInMem))
+    COLLECT_STATS_FOR(RT_PAGE_INFO_IN_MEM, "page_info_in_mem", sizeof(PageInfoInMem)+g_page_size)
     COLLECT_STATS_FOR(RT_QUERY_RESULTS, "query_results", sizeof(QueryResults))
     COLLECT_STATS_FOR(RT_QUERY_TASK, "query_task", sizeof(QueryTask))
     COLLECT_STATS_FOR(RT_RATE_CALCULATOR, "rate_calculator", sizeof(RateCalculator))
@@ -233,7 +233,7 @@ MemoryManager::collect_stats(Timestamp ts, std::vector<DataPoint> &dps)
     total += m_total[RT_KEY_VALUE_PAIR] * sizeof(KeyValuePair);
     total += m_total[RT_MAPPING] * sizeof(Mapping);
     total += m_total[RT_PAGE_INFO] * sizeof(PageInfo);
-    total += m_total[RT_PAGE_INFO_IN_MEM] * sizeof(PageInfoInMem);
+    total += m_total[RT_PAGE_INFO_IN_MEM] * (sizeof(PageInfoInMem) + g_page_size);
     total += m_total[RT_QUERY_RESULTS] * sizeof(QueryResults);
     total += m_total[RT_QUERY_TASK] * sizeof(QueryTask);
     total += m_total[RT_RATE_CALCULATOR] * sizeof(RateCalculator);
