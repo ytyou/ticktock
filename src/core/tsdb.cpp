@@ -879,7 +879,7 @@ Tsdb::flush(bool sync)
         pm->flush(sync);
     }
 
-    m_mode &= ~TSDB_MODE_WRITE;
+    m_mode &= ~TSDB_MODE_WRITE_CHECKPOINT;
 }
 
 void
@@ -901,6 +901,8 @@ Tsdb::set_check_point()
         if (g_shutdown_requested) break;
         pm->persist();
     }
+
+    m_mode &= ~TSDB_MODE_CHECKPOINT;
 }
 
 //bool
@@ -1188,6 +1190,8 @@ Tsdb::http_api_put_handler(HttpRequest& request, HttpResponse& response)
 
         if ((tsdb == nullptr) || !(tsdb->in_range(dp.get_timestamp())))
         {
+            if (tsdb != nullptr)
+                tsdb->m_mode |= TSDB_MODE_CHECKPOINT;
             if (guard != nullptr) delete guard;
             tsdb = Tsdb::inst(dp.get_timestamp());
             guard = new ReadLock(tsdb->m_load_lock);    // prevent from unloading
@@ -1198,11 +1202,11 @@ Tsdb::http_api_put_handler(HttpRequest& request, HttpResponse& response)
                     success = false;
                     break;
                 }
-                tsdb->m_mode |= TSDB_MODE_READ_WRITE;
+                tsdb->m_mode |= (TSDB_MODE_READ_WRITE | TSDB_MODE_CHECKPOINT);
             }
             else
             {
-                tsdb->m_mode |= TSDB_MODE_WRITE;
+                tsdb->m_mode |= TSDB_MODE_WRITE_CHECKPOINT;
                 tsdb->m_load_time = ts_now_sec();
                 ASSERT(tsdb->m_meta_file.is_open());
             }
@@ -1211,6 +1215,8 @@ Tsdb::http_api_put_handler(HttpRequest& request, HttpResponse& response)
         success = tsdb->add(dp) && success;
     }
 
+    if (tsdb != nullptr)
+        tsdb->m_mode |= TSDB_MODE_CHECKPOINT;
     if (guard != nullptr) delete guard;
     response.status_code = (success ? 200 : 500);
     response.content_length = 0;
@@ -1247,6 +1253,8 @@ Tsdb::http_api_put_handler_json(HttpRequest& request, HttpResponse& response)
 
         if ((tsdb == nullptr) || !(tsdb->in_range(dp.get_timestamp())))
         {
+            if (tsdb != nullptr)
+                tsdb->m_mode |= TSDB_MODE_CHECKPOINT;
             if (guard != nullptr) delete guard;
             tsdb = Tsdb::inst(dp.get_timestamp());
             guard = new ReadLock(tsdb->m_load_lock);    // prevent from unloading
@@ -1257,11 +1265,11 @@ Tsdb::http_api_put_handler_json(HttpRequest& request, HttpResponse& response)
                     success = false;
                     break;
                 }
-                tsdb->m_mode |= TSDB_MODE_READ_WRITE;
+                tsdb->m_mode |= (TSDB_MODE_READ_WRITE | TSDB_MODE_CHECKPOINT);
             }
             else
             {
-                tsdb->m_mode |= TSDB_MODE_WRITE;
+                tsdb->m_mode |= TSDB_MODE_WRITE_CHECKPOINT;
                 tsdb->m_load_time = ts_now_sec();
             }
         }
@@ -1270,6 +1278,8 @@ Tsdb::http_api_put_handler_json(HttpRequest& request, HttpResponse& response)
         while (isspace(*curr)) curr++;
     }
 
+    if (tsdb != nullptr)
+        tsdb->m_mode |= TSDB_MODE_CHECKPOINT;
     if (guard != nullptr) delete guard;
     response.init((success ? 200 : 500), HttpContentType::PLAIN);
     return success;
@@ -1368,6 +1378,7 @@ Tsdb::http_api_put_handler_plain(HttpRequest& request, HttpResponse& response)
         {
             if (tsdb != nullptr)
             {
+                tsdb->m_mode |= TSDB_MODE_CHECKPOINT;
                 if ((curr - request.content) > request.length)
                 {
                     // most likely the last line was cut off half way
@@ -1387,11 +1398,11 @@ Tsdb::http_api_put_handler_plain(HttpRequest& request, HttpResponse& response)
                     success = false;
                     break;
                 }
-                tsdb->m_mode |= TSDB_MODE_READ_WRITE;
+                tsdb->m_mode |= (TSDB_MODE_READ_WRITE | TSDB_MODE_CHECKPOINT);
             }
             else
             {
-                tsdb->m_mode |= TSDB_MODE_WRITE;
+                tsdb->m_mode |= TSDB_MODE_WRITE_CHECKPOINT;
                 tsdb->m_load_time = ts_now_sec();
                 ASSERT(tsdb->m_meta_file.is_open());
             }
@@ -1410,6 +1421,8 @@ Tsdb::http_api_put_handler_plain(HttpRequest& request, HttpResponse& response)
 
     if (forward && (tsdb != nullptr))
         success = tsdb->submit_data_points() && success; // flush
+    if (tsdb != nullptr)
+        tsdb->m_mode |= TSDB_MODE_CHECKPOINT;
     if (guard != nullptr) delete guard;
     response.init((success ? 200 : 500), HttpContentType::PLAIN);
 
@@ -1925,7 +1938,7 @@ Tsdb::rotate(TaskData& data)
                 tsdb->unload_no_lock();
                 continue;
             }
-            else if ((!(mode & TSDB_MODE_WRITE)) && (tsdb->m_mode & TSDB_MODE_WRITE))
+            else if (((mode & TSDB_MODE_READ_WRITE) == TSDB_MODE_READ) && (tsdb->m_mode & TSDB_MODE_WRITE))
             {
                 // make it read-only
                 Logger::debug("[rotate] Flushing tsdb: %T", tsdb);
@@ -1936,7 +1949,7 @@ Tsdb::rotate(TaskData& data)
         else
             Logger::debug("[rotate] %T SKIPPED to avoid thrashing (lt=%" PRIu64 ")", tsdb, load_time);
 
-        if (tsdb->m_mode & TSDB_MODE_WRITE)
+        if (tsdb->m_mode & TSDB_MODE_CHECKPOINT)
         {
             Logger::debug("[rotate] set_check_point for tsdb: %T, mode = %d, tsdb->mode = %d",
                 tsdb, mode, tsdb->m_mode);
