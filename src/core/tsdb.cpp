@@ -1945,7 +1945,7 @@ Tsdb::rotate(TaskData& data)
         if (disk_avail < 100000000L)    // TODO: get it from config
             mode &= ~TSDB_MODE_WRITE;
 
-        if ((now_sec - load_time) > thrashing_threshold)
+        if (((int64_t)now_sec - (int64_t)load_time) > (int64_t)thrashing_threshold)
         {
             if (! (mode & TSDB_MODE_READ) && (tsdb->m_count <= 0))
             {

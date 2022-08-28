@@ -137,6 +137,7 @@ TimeSeries::flush(bool close)
             m_pages.back() = info;
             m_tsdb->append_meta(this, info);
             MemoryManager::free_recyclable(m_buff);
+            m_buff = info;
         }
     }
 
@@ -150,6 +151,7 @@ TimeSeries::flush(bool close)
             m_ooo_pages.back() = info;
             m_tsdb->append_meta(this, info);
             MemoryManager::free_recyclable(m_ooo_buff);
+            m_ooo_buff = info;
         }
     }
 }
