@@ -306,12 +306,14 @@ PageInfo::copy_from(PageInfo *src)
                    src->m_time_range.get_from() - start,
                    src->m_time_range.get_to() - start);
 
+/*
     if (m_header->m_offset == 0)
     {
         int rc = madvise(get_page(), g_page_size, MADV_DONTNEED);
         if (rc == -1)
             Logger::info("Failed to madvise(DONTNEED), page = %p, errno = %d", get_page(), errno);
     }
+*/
 
     if (is_full())
         recycle();
