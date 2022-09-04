@@ -79,9 +79,15 @@ PageInfo::is_empty() const
 }
 
 PageInfo *
-PageInfo::flush()
+PageInfo::flush(bool accessed)
 {
     if (m_compressor == nullptr)
+        return nullptr;
+
+    if (! m_page_mgr->is_open())
+        return nullptr;
+
+    if (accessed && m_page_mgr->is_accessed())
         return nullptr;
 
     persist();
@@ -119,7 +125,7 @@ PageInfo::shrink_to_fit()
     if (m_header->m_start != 0) m_header->m_size++;
     if (m_page_mgr->get_compressor_version() == 0) m_header->m_size *= 16;
     m_header->set_full(true);
-    flush();
+    flush(false);
 }
 
 void
@@ -239,6 +245,13 @@ PageInfo::ensure_dp_available(DataPointVector *dps)
 }
 
 void
+PageInfo::ensure_page_open()
+{
+    if (! m_page_mgr->is_open())
+        m_page_mgr->reopen();
+}
+
+void
 PageInfo::persist(bool copy_data)
 {
     if (m_compressor == nullptr) return;
@@ -262,7 +275,7 @@ PageInfo::persist(bool copy_data)
                    m_time_range.get_from() - start,
                    m_time_range.get_to() - start);
 
-    Logger::info("Writing to page #%d in file %s",
+    Logger::debug("Writing to page #%d in file %s",
         (int)get_page_index(),
         m_page_mgr->get_file_name().c_str());
 }
@@ -312,8 +325,7 @@ PageInfo::copy_from(PageInfo *src)
             Logger::info("Failed to madvise(DONTNEED), page = %p, errno = %d", get_page(), errno);
     }
 
-    if (is_full())
-        recycle();
+    recycle();  // remove compressor
 }
 
 void
@@ -373,7 +385,11 @@ PageInfo::add_data_point(Timestamp tstamp, double value)
     if (m_compressor == nullptr) return false;
     //ASSERT(m_page_mgr->get_time_range().in_range(tstamp));
     bool success = m_compressor->compress(tstamp, value);
-    if (success) m_time_range.add_time(tstamp);
+    if (success)
+    {
+        m_page_mgr->mark_accessed();
+        m_time_range.add_time(tstamp);
+    }
     return success;
 }
 
@@ -423,8 +439,11 @@ PageInfoInMem::init_for_memory(PageManager *pm, Tsdb *tsdb, PageSize size, bool 
 }
 
 PageInfo *
-PageInfoInMem::flush()
+PageInfoInMem::flush(bool accessed)
 {
+    if (accessed && m_page_mgr->is_accessed())
+        return nullptr;
+
     PageInfo *info = m_tsdb->get_free_page_on_disk(m_header->is_out_of_order());
     info->copy_from(this);
     if (m_page != nullptr)
@@ -432,7 +451,7 @@ PageInfoInMem::flush()
         free(m_page);
         m_page = nullptr;
     }
-    Logger::info("Writing to page #%d in file %s",
+    Logger::debug("Writing to page #%d in file %s",
         (int)info->get_page_index(),
         info->m_page_mgr->get_file_name().c_str());
     return info;
@@ -445,7 +464,8 @@ PageManager::PageManager(TimeRange& range, PageCount id, bool temp) :
     m_compacted(false),
     m_time_range(range),
     m_id(id),
-    m_fd(-1)
+    m_fd(-1),
+    m_accessed(true)
 {
     m_file_name = Tsdb::get_file_name(range, std::to_string(m_id), temp);
     m_compressor_version =
@@ -516,6 +536,7 @@ PageManager::reopen()
 {
     if (m_pages == nullptr)
         open_mmap(0);   // the parameter is unused since this file exists
+    m_accessed = true;
     return (m_pages != nullptr);
 }
 
@@ -951,6 +972,19 @@ PageManager::get_page_percent_used() const
     if ((m_page_index == nullptr) || (m_actual_pg_cnt == nullptr)) return 0.0;
     if (*m_actual_pg_cnt == 0) return 0.0;
     return ((double)*m_page_index / (double)*m_actual_pg_cnt) * 100.0;
+}
+
+void
+PageManager::try_unload()
+{
+    if (m_accessed)
+        m_accessed = false;
+    else
+    {
+        flush(true);
+        close_mmap();
+        Logger::debug("Unloading PM %p, id=%d", this, get_id());
+    }
 }
 
 

@@ -44,7 +44,7 @@ public:
     ~TimeSeries();
 
     void init(const char *metric, const char *key, Tag *tags, Tsdb *tsdb, bool read_only);
-    void flush(bool close);
+    void flush(bool accessed = false);
     bool recycle();
     bool compact(MetaFile& meta_file);
     void append_meta_all(MetaFile &meta);

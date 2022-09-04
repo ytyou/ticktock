@@ -203,7 +203,7 @@ public:
     inline void set_ooo(bool ooo) { m_header->set_out_of_order(ooo); }
 
     // prepare to be used to represent a different page
-    virtual PageInfo *flush();
+    virtual PageInfo *flush(bool accessed);
     void reset();
     void shrink_to_fit();
     bool is_full() const;
@@ -211,6 +211,7 @@ public:
     inline bool is_on_disk() const { return true; }
     inline bool is_out_of_order() const { return m_header->is_out_of_order(); }
     void ensure_dp_available(DataPointVector *dps = nullptr);
+    void ensure_page_open();
 
     Timestamp get_last_tstamp() const;
 
@@ -272,7 +273,7 @@ public:
                          Tsdb *tsdb,
                          PageSize size,
                          bool is_ooo);
-    PageInfo *flush() override;
+    PageInfo *flush(bool accessed) override;
     void persist(bool copy_data = false) override {}
     void *get_page() override { return m_page; }
     PageCount get_id() const override { return 0; }
@@ -358,6 +359,10 @@ public:
 
     PageInfo *get_free_page_on_disk(Tsdb *tsdb, bool ooo);
 
+    void try_unload();
+    inline bool is_accessed() { return m_accessed; }
+    inline void mark_accessed() { m_accessed = true; }
+
 private:
     bool open_mmap(PageCount page_count);
     void persist_compacted_flag(bool compacted);
@@ -418,6 +423,8 @@ private:
     TimeRange m_time_range;
 
     struct page_info_on_disk *m_page_info;
+
+    std::atomic<bool> m_accessed;
 
 };  // class PageManager
 

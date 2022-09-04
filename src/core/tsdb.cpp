@@ -114,7 +114,7 @@ Mapping::unload_no_lock()
 }
 
 void
-Mapping::flush()
+Mapping::flush(bool accessed)
 {
     ReadLock guard(m_lock);
 
@@ -127,7 +127,7 @@ Mapping::flush()
         if (it->first == ts->get_key())
         {
             Logger::trace("Flushing ts: %T", ts);
-            ts->flush(true);
+            ts->flush(accessed);
         }
     }
 }
@@ -866,7 +866,7 @@ Tsdb::flush(bool sync)
     for (auto it = m_map.begin(); it != m_map.end(); it++)
     {
         Mapping *mapping = it->second;
-        mapping->flush();
+        mapping->flush(false);
         ASSERT(it->first == mapping->m_metric);
     }
 
@@ -1963,8 +1963,20 @@ Tsdb::rotate(TaskData& data)
                 continue;
             }
         }
-        else
-            Logger::debug("[rotate] %T SKIPPED to avoid thrashing (lt=%" PRIu64 ")", tsdb, load_time);
+        else if (! (mode & TSDB_MODE_READ))
+        {
+            //Logger::debug("[rotate] %T SKIPPED to avoid thrashing (lt=%" PRIu64 ")", tsdb, load_time);
+            // try to archive individual PageManager.
+            for (auto it = tsdb->m_map.begin(); it != tsdb->m_map.end(); it++)
+            {
+                Mapping *mapping = it->second;
+                mapping->flush(true);
+                ASSERT(it->first == mapping->m_metric);
+            }
+
+            for (PageManager* pm: tsdb->m_page_mgrs)
+                pm->try_unload();
+        }
 
         if (tsdb->m_mode & TSDB_MODE_CHECKPOINT)
         {

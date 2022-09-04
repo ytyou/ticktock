@@ -123,13 +123,13 @@ TimeSeries::recycle()
 }
 
 void
-TimeSeries::flush(bool close)
+TimeSeries::flush(bool accessed)
 {
     std::lock_guard<std::mutex> guard(m_lock);
 
     if (m_buff != nullptr)
     {
-        PageInfo *info = m_buff->flush();
+        PageInfo *info = m_buff->flush(accessed);
 
         if (info != nullptr)
         {
@@ -137,13 +137,14 @@ TimeSeries::flush(bool close)
             m_pages.back() = info;
             m_tsdb->append_meta(this, info);
             MemoryManager::free_recyclable(m_buff);
-            m_buff = info;
+            //m_buff = info;
+            m_buff = nullptr;
         }
     }
 
     if (m_ooo_buff != nullptr)
     {
-        PageInfo *info = m_ooo_buff->flush();
+        PageInfo *info = m_ooo_buff->flush(accessed);
 
         if (info != nullptr)
         {
@@ -151,7 +152,8 @@ TimeSeries::flush(bool close)
             m_ooo_pages.back() = info;
             m_tsdb->append_meta(this, info);
             MemoryManager::free_recyclable(m_ooo_buff);
-            m_ooo_buff = info;
+            //m_ooo_buff = info;
+            m_ooo_buff = nullptr;
         }
     }
 }
@@ -197,6 +199,8 @@ TimeSeries::add_data_point(DataPoint& dp)
         }
     }
 
+    m_buff->ensure_page_open();
+
     Timestamp last_tstamp = m_buff->get_last_tstamp();
 
     if ((dp.get_timestamp() <= last_tstamp) && (! m_buff->is_empty()))
@@ -210,7 +214,7 @@ TimeSeries::add_data_point(DataPoint& dp)
     {
         ASSERT(m_buff->is_full());
 
-        PageInfo * info = m_buff->flush();
+        PageInfo * info = m_buff->flush(false);
         if (info != nullptr)
         {
             ASSERT(m_buff == m_pages.back());
@@ -265,7 +269,7 @@ TimeSeries::add_batch(DataPointSet& dps)
         {
             ASSERT(m_buff->is_full());
 
-            m_buff->flush();
+            m_buff->flush(false);
             m_buff = get_free_page_on_disk(false);
             ASSERT(m_buff->is_empty());
             ASSERT(m_buff->get_last_tstamp() == m_tsdb->get_time_range().get_from());
@@ -296,13 +300,15 @@ TimeSeries::add_ooo_data_point(DataPoint& dp)
         }
     }
 
+    m_ooo_buff->ensure_page_open();
+
     bool ok = m_ooo_buff->add_data_point(dp.get_timestamp(), dp.get_value());
 
     if (! ok)
     {
         ASSERT(m_ooo_buff->is_full());
 
-        m_ooo_buff->flush();
+        m_ooo_buff->flush(false);
         m_ooo_buff = get_free_page_on_disk(true);
         ASSERT(m_ooo_buff->is_empty());
 
@@ -546,7 +552,7 @@ TimeSeries::compact(MetaFile& meta_file)
         if (! ok)
         {
             ASSERT(info->is_full());
-            info->flush();
+            info->flush(false);
             MemoryManager::free_recyclable(info);
 
             info = m_tsdb->get_free_page_for_compaction();
