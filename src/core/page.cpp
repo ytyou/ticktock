@@ -46,7 +46,8 @@ std::atomic<int32_t> PageManager::m_total{0};
 PageInfo::PageInfo() :
     m_page_mgr(nullptr),
     m_compressor(nullptr),
-    m_header(nullptr)
+    m_header(nullptr),
+    m_header_index(0)
 {
 }
 
@@ -156,7 +157,7 @@ PageInfo::recycle()
 // initialize a PageInfo that represent a page on disk;
 // this is a new page, so we will not read page_info_on_disk;
 void
-PageInfo::init_for_disk(PageManager *pm, struct page_info_on_disk *header, PageCount page_idx, PageSize size, bool is_ooo)
+PageInfo::init_for_disk(PageManager *pm, struct page_info_on_disk *header, PageCount header_idx, PageCount page_idx, PageSize size, bool is_ooo)
 {
     ASSERT(pm != nullptr);
     ASSERT(header != nullptr);
@@ -174,12 +175,13 @@ PageInfo::init_for_disk(PageManager *pm, struct page_info_on_disk *header, PageC
     m_page_mgr = pm;
     //set_page();
     m_compressor = nullptr;
+    m_header_index = header_idx;
 }
 
 // initialize a PageInfo that represent a page on disk
 // 'id': global id
 void
-PageInfo::init_from_disk(PageManager *pm, struct page_info_on_disk *header)
+PageInfo::init_from_disk(PageManager *pm, struct page_info_on_disk *header, PageCount header_idx)
 {
     ASSERT(pm != nullptr);
     ASSERT(header != nullptr);
@@ -191,6 +193,7 @@ PageInfo::init_from_disk(PageManager *pm, struct page_info_on_disk *header)
     Timestamp start = pm->get_time_range().get_from();
     m_time_range.init(m_header->m_tstamp_from + start, m_header->m_tstamp_to + start);
     ASSERT(pm->get_time_range().contains(m_time_range));
+    m_header_index = header_idx;
 }
 
 /* 'range' should be the time range of the Tsdb.
@@ -226,7 +229,9 @@ PageInfo::ensure_dp_available(DataPointVector *dps)
 {
     if (m_compressor != nullptr) return;
 
-    ASSERT(m_page_mgr->is_open());
+    m_page_mgr->reopen_with_lock();
+    m_header = m_page_mgr->get_page_info_on_disk(m_header_index);
+
     Meter meter(METRIC_TICKTOCK_PAGE_RESTORE_TOTAL_MS);
 
     CompressorPosition position(m_header);
@@ -247,8 +252,8 @@ PageInfo::ensure_dp_available(DataPointVector *dps)
 void
 PageInfo::ensure_page_open()
 {
-    if (! m_page_mgr->is_open())
-        m_page_mgr->reopen();
+    m_page_mgr->reopen_with_lock();
+    m_header = m_page_mgr->get_page_info_on_disk(m_header_index);
 }
 
 void
@@ -325,6 +330,7 @@ PageInfo::copy_from(PageInfo *src)
             Logger::info("Failed to madvise(DONTNEED), page = %p, errno = %d", get_page(), errno);
     }
 
+    m_time_range.init(src->get_time_range());
     recycle();  // remove compressor
 }
 
@@ -538,6 +544,13 @@ PageManager::reopen()
         open_mmap(0);   // the parameter is unused since this file exists
     m_accessed = true;
     return (m_pages != nullptr);
+}
+
+bool
+PageManager::reopen_with_lock()
+{
+    std::lock_guard<std::mutex> guard(m_lock);
+    return reopen();
 }
 
 PageCount
@@ -754,7 +767,7 @@ PageManager::get_free_page_on_disk(Tsdb *tsdb, bool ooo)
         PageCount id = *m_header_index;
         PageCount page_idx = *m_page_index;
         struct page_info_on_disk *header = get_page_info_on_disk(id);
-        info->init_for_disk(this, header, page_idx, g_page_size, ooo);
+        info->init_for_disk(this, header, id, page_idx, g_page_size, ooo);
         info->setup_compressor(m_time_range, (ooo ? 0 : m_compressor_version));
         ASSERT(info->is_out_of_order() == ooo);
 
@@ -814,7 +827,7 @@ PageManager::get_free_page_for_compaction(Tsdb *tsdb)
         PageCount page_idx = *m_page_index;
 
         struct page_info_on_disk *header = get_page_info_on_disk(id);
-        info->init_for_disk(this, header, page_idx, g_page_size, false);
+        info->init_for_disk(this, header, id, page_idx, g_page_size, false);
 
         (*m_header_index)++;
 
@@ -869,7 +882,7 @@ PageManager::get_the_page_on_disk(PageCount header_index)
     ASSERT(info != nullptr);
     struct page_info_on_disk *header = get_page_info_on_disk(header_index);
     ASSERT(header != nullptr);
-    info->init_from_disk(this, header);
+    info->init_from_disk(this, header, header_index);
     return info;
 }
 
