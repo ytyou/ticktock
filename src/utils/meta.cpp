@@ -110,13 +110,8 @@ MetaFile::append(TimeSeries *ts, PageInfo *info)
     ASSERT(info != nullptr);
     ASSERT(m_file != nullptr);
 
-    PageCount id = info->get_id();
-
-    if (id >= 0)
-    {
-        std::lock_guard<std::mutex> guard(m_lock);
-        fprintf(m_file, "%s %s %u %u\n", ts->get_metric(), ts->get_key(), info->get_file_id(), info->get_id());
-    }
+    std::lock_guard<std::mutex> guard(m_lock);
+    fprintf(m_file, "%s %s %u %u\n", ts->get_metric(), ts->get_key(), info->get_file_id(), info->get_id());
 }
 
 void
