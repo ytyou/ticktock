@@ -1859,7 +1859,7 @@ Tsdb::unload()
 void
 Tsdb::unload_no_lock()
 {
-    ASSERT(m_count.load() <= 0);
+    ASSERT(count_is_zero());
     m_meta_file.close();
 
     for (auto it = m_map.begin(); it != m_map.end(); it++)
@@ -1947,7 +1947,7 @@ Tsdb::rotate(TaskData& data)
 
         if (((int64_t)now_sec - (int64_t)load_time) > (int64_t)thrashing_threshold)
         {
-            if (! (mode & TSDB_MODE_READ) && (tsdb->m_count <= 0))
+            if (! (mode & TSDB_MODE_READ) && tsdb->count_is_zero())
             {
                 // archive it
                 Logger::info("[rotate] Archiving %T (lt=%" PRIu64 ", now=%" PRIu64 ")", tsdb, load_time, now_sec);
@@ -1963,7 +1963,7 @@ Tsdb::rotate(TaskData& data)
                 continue;
             }
         }
-        else if (! (mode & TSDB_MODE_READ))
+        else if (! (mode & TSDB_MODE_READ) && tsdb->count_is_zero())
         {
             //Logger::debug("[rotate] %T SKIPPED to avoid thrashing (lt=%" PRIu64 ")", tsdb, load_time);
             // try to archive individual PageManager.

@@ -55,7 +55,7 @@ find_matching_files(std::string& pattern, std::vector<std::string>& files)
 }
 
 char *
-open_mmap(std::string& file_name, int& fd, int& size)
+open_mmap(std::string& file_name, int& fd, size_t& size)
 {
     struct stat sb;
 
@@ -84,7 +84,7 @@ open_mmap(std::string& file_name, int& fd, int& size)
     char *base = (char*) mmap64(nullptr,
                                 size,
                                 PROT_READ,
-                                MAP_SHARED,
+                                MAP_PRIVATE,
                                 fd,
                                 0);
 
@@ -98,7 +98,7 @@ open_mmap(std::string& file_name, int& fd, int& size)
 }
 
 void
-close_mmap(int fd, char *base, int size)
+close_mmap(int fd, char *base, size_t size)
 {
     if (base != nullptr) munmap(base, size);
     if (fd != -1) close(fd);
@@ -147,7 +147,8 @@ dump_data(struct tsdb_header *tsdb_header, int header_index)
 
     struct page_info_on_disk *info = &page_infos[header_index];
     int page_idx = info->m_page_index;
-    Compressor *compressor = Compressor::create(tsdb_header->get_compressor_version());
+    int version = info->is_out_of_order() ? 0 : tsdb_header->get_compressor_version();
+    Compressor *compressor = Compressor::create(version);
     uint8_t *base = ((uint8_t*)tsdb_header) + page_idx*g_page_size + info->m_offset;
     compressor->init(tsdb_header->m_start_tstamp, base, info->m_size);
     CompressorPosition position(info);
@@ -266,10 +267,13 @@ main(int argc, char *argv[])
             continue;
 
         printf("Inspecting %s...\n", file.c_str());
-        int fd, size;
+
+        int fd;
+        size_t size;
         char *base = open_mmap(file, fd, size);
 
-        inspect(base);
+        if (base != nullptr)
+            inspect(base);
 
         close_mmap(fd, base, size);
     }

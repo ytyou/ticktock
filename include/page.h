@@ -211,8 +211,8 @@ public:
     bool is_empty() const;
     inline bool is_on_disk() const { return true; }
     inline bool is_out_of_order() const { return m_header->is_out_of_order(); }
-    void ensure_dp_available(DataPointVector *dps = nullptr);
-    virtual void ensure_page_open();
+    virtual void ensure_dp_available(DataPointVector *dps = nullptr);
+    //virtual void ensure_page_open();
 
     Timestamp get_last_tstamp() const;
 
@@ -261,6 +261,7 @@ protected:
     TimeRange m_time_range;     // range of actual data points in this page
     PageManager *m_page_mgr;    // this is null for in-memory page
     Compressor *m_compressor;   // this is null except for in-memory page
+    void *m_version;            // version of PM
 
     PageCount m_header_index;
     struct page_info_on_disk *m_header;
@@ -279,7 +280,7 @@ public:
     void persist(bool copy_data = false) override {}
     void *get_page() override { return m_page; }
     PageCount get_id() const override { return 0; }
-    void ensure_page_open() override {}
+    void ensure_dp_available(DataPointVector *dps = nullptr) override {}
 
 private:
     struct page_info_on_disk m_page_header;
@@ -333,6 +334,11 @@ public:
     {
         ASSERT(m_actual_pg_cnt != nullptr);
         return *m_actual_pg_cnt - calc_first_page_info_index(*m_page_count);
+    }
+
+    inline void *get_version() const
+    {
+        return m_pages;
     }
 
     inline uint8_t get_compressor_version() const

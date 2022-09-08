@@ -167,7 +167,7 @@ TimeSeries::get_free_page_on_disk(bool is_out_of_order)
         m_ooo_pages.push_back(info);
     else
         m_pages.push_back(info);
-    m_tsdb->append_meta(this, info);
+    //m_tsdb->append_meta(this, info);
 
     return info;
 }
@@ -198,8 +198,8 @@ TimeSeries::add_data_point(DataPoint& dp)
             m_buff->ensure_dp_available();
         }
     }
-
-    m_buff->ensure_page_open();
+    else
+        m_buff->ensure_dp_available();
 
     Timestamp last_tstamp = m_buff->get_last_tstamp();
 
@@ -214,7 +214,7 @@ TimeSeries::add_data_point(DataPoint& dp)
     {
         ASSERT(m_buff->is_full());
 
-        PageInfo * info = m_buff->flush(false);
+        PageInfo *info = m_buff->flush(false);
         if (info != nullptr)
         {
             ASSERT(m_buff == m_pages.back());
@@ -299,8 +299,8 @@ TimeSeries::add_ooo_data_point(DataPoint& dp)
             m_ooo_buff->ensure_dp_available();
         }
     }
-
-    m_ooo_buff->ensure_page_open();
+    else
+        m_ooo_buff->ensure_dp_available();
 
     bool ok = m_ooo_buff->add_data_point(dp.get_timestamp(), dp.get_value());
 
@@ -308,7 +308,14 @@ TimeSeries::add_ooo_data_point(DataPoint& dp)
     {
         ASSERT(m_ooo_buff->is_full());
 
-        m_ooo_buff->flush(false);
+        PageInfo *info = m_ooo_buff->flush(false);
+        if (info != nullptr)
+        {
+            ASSERT(m_ooo_buff == m_ooo_pages.back());
+            m_ooo_pages.back() = info;
+            m_tsdb->append_meta(this, info);
+            MemoryManager::free_recyclable(m_ooo_buff);
+        }
         m_ooo_buff = get_free_page_on_disk(true);
         ASSERT(m_ooo_buff->is_empty());
 

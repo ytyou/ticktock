@@ -21,6 +21,7 @@
 #include <cstdint>
 #include <cstring>
 #include <fcntl.h>
+#include <limits>
 #include <string>
 #include <stdexcept>
 #include <unistd.h>
@@ -176,6 +177,7 @@ PageInfo::init_for_disk(PageManager *pm, struct page_info_on_disk *header, PageC
     //set_page();
     m_compressor = nullptr;
     m_header_index = header_idx;
+    m_version = pm->get_version();
 }
 
 // initialize a PageInfo that represent a page on disk
@@ -194,6 +196,7 @@ PageInfo::init_from_disk(PageManager *pm, struct page_info_on_disk *header, Page
     m_time_range.init(m_header->m_tstamp_from + start, m_header->m_tstamp_to + start);
     ASSERT(pm->get_time_range().contains(m_time_range));
     m_header_index = header_idx;
+    m_version = pm->get_version();
 }
 
 /* 'range' should be the time range of the Tsdb.
@@ -224,13 +227,12 @@ PageInfo::setup_compressor(const TimeRange& range, int compressor_version)
     m_compressor->init(range.get_from(), reinterpret_cast<uint8_t*>(get_page()), m_header->m_size);
 }
 
+/*
 void
 PageInfo::ensure_dp_available(DataPointVector *dps)
 {
+    ensure_page_open();
     if (m_compressor != nullptr) return;
-
-    m_page_mgr->reopen_with_lock();
-    m_header = m_page_mgr->get_page_info_on_disk(m_header_index);
 
     Meter meter(METRIC_TICKTOCK_PAGE_RESTORE_TOTAL_MS);
 
@@ -248,12 +250,37 @@ PageInfo::ensure_dp_available(DataPointVector *dps)
     }
     ASSERT(m_page_mgr->get_time_range().contains(m_time_range));
 }
+*/
 
 void
-PageInfo::ensure_page_open()
+PageInfo::ensure_dp_available(DataPointVector *dps)
 {
     m_page_mgr->reopen_with_lock();
-    m_header = m_page_mgr->get_page_info_on_disk(m_header_index);
+    void *version = m_page_mgr->get_version();
+    if (version != m_version)
+    {
+        recycle();
+        m_header = m_page_mgr->get_page_info_on_disk(m_header_index);
+        m_version = version;
+    }
+    if (m_compressor == nullptr)
+    {
+        Meter meter(METRIC_TICKTOCK_PAGE_RESTORE_TOTAL_MS);
+
+        CompressorPosition position(m_header);
+        setup_compressor(m_page_mgr->get_time_range(), m_page_mgr->get_compressor_version());
+        if (dps == nullptr)
+        {
+            DataPointVector v;
+            v.reserve(700);
+            m_compressor->restore(v, position, nullptr);
+        }
+        else
+        {
+            m_compressor->restore(*dps, position, nullptr);
+        }
+        ASSERT(m_page_mgr->get_time_range().contains(m_time_range));
+    }
 }
 
 void
@@ -437,6 +464,7 @@ PageInfoInMem::init_for_memory(PageManager *pm, Tsdb *tsdb, PageSize size, bool 
     m_header->set_out_of_order(is_ooo);
     m_header->m_offset = 0;
     m_header->m_size = size;
+    m_header->m_page_index = std::numeric_limits<uint32_t>::max();
     ASSERT(m_header->m_size != 0);
     m_page_mgr = pm;
     m_compressor = nullptr;
@@ -452,6 +480,7 @@ PageInfoInMem::flush(bool accessed)
 
     PageInfo *info = m_tsdb->get_free_page_on_disk(m_header->is_out_of_order());
     info->copy_from(this);
+    //info->flush(false);
     if (m_page != nullptr)
     {
         free(m_page);
@@ -542,6 +571,9 @@ PageManager::reopen()
 {
     if (m_pages == nullptr)
         open_mmap(0);   // the parameter is unused since this file exists
+    ASSERT(m_pages != nullptr);
+    if (UNLIKELY(m_pages == nullptr))
+        throw std::runtime_error("Filed to reopen mmap file.");
     m_accessed = true;
     return (m_pages != nullptr);
 }
