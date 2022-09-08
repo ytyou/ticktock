@@ -268,7 +268,8 @@ PageInfo::ensure_dp_available(DataPointVector *dps)
         Meter meter(METRIC_TICKTOCK_PAGE_RESTORE_TOTAL_MS);
 
         CompressorPosition position(m_header);
-        setup_compressor(m_page_mgr->get_time_range(), m_page_mgr->get_compressor_version());
+        int version = m_header->is_out_of_order() ? 0 : m_page_mgr->get_compressor_version();
+        setup_compressor(m_page_mgr->get_time_range(), version);
         if (dps == nullptr)
         {
             DataPointVector v;
