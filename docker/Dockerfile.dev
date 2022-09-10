@@ -1,0 +1,47 @@
+# To start the container:
+#   docker run -td --name tt-dev -h tt-dev -p 6181-6182:6181-6182 -p 6181:6181/udp ytyou/tt-dev:latest
+#
+# To attach to a running container:
+#   docker exec -it tt-dev /bin/bash
+#
+# To stop a running container:
+#   docker stop tt-dev
+#
+# To restart the container:
+#   docker start tt-dev
+
+FROM ubuntu
+
+ARG BUILD_DATE
+ARG GIT_COMMIT
+ARG VERSION
+
+LABEL name="tt-dev" version="$VERSION"
+LABEL build-date="$BUILD_DATE" git-commit="$GIT_COMMIT"
+LABEL maintainer="yongtao.you@gmail.com"
+LABEL url="https://github.com/ytyou/ticktock"
+LABEL description="The development environment for the TickTock TSDB."
+LABEL docker.cmd="docker run -td --name tt-dev -h tt-dev -p 6181-6182:6181-6182 -p 6181:6181/udp ytyou/tt-dev:latest"
+
+RUN apt-get update && apt-get install -y \
+  build-essential \
+  curl \
+  git \
+  vim \
+  zlib1g-dev
+
+RUN mkdir -p /home
+RUN useradd --base-dir /home -m -U ticktock
+RUN cd /home/ticktock && \
+  git clone https://github.com/ytyou/ticktock.git
+RUN cd /home/ticktock/ticktock && \
+  ln -s Makefile.ubuntu Makefile
+RUN cd /home/ticktock && \
+  chown -R ticktock.ticktock *
+
+EXPOSE 6181/tcp
+EXPOSE 6181/udp
+EXPOSE 6182/tcp
+
+USER ticktock
+WORKDIR /home/ticktock
