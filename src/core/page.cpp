@@ -48,7 +48,8 @@ PageInfo::PageInfo() :
     m_page_mgr(nullptr),
     m_compressor(nullptr),
     m_header(nullptr),
-    m_header_index(0)
+    m_header_index(0),
+    m_version(nullptr)
 {
 }
 
@@ -81,7 +82,7 @@ PageInfo::is_empty() const
 }
 
 PageInfo *
-PageInfo::flush(bool accessed)
+PageInfo::flush(bool accessed, Tsdb *tsdb)
 {
     if (m_compressor == nullptr)
         return nullptr;
@@ -451,13 +452,12 @@ PageInfo::c_str(char *buff) const
 // initialize a PageInfo that represent a page on disk;
 // this is a new page, so we will not read page_info_on_disk;
 void
-PageInfoInMem::init_for_memory(PageManager *pm, Tsdb *tsdb, PageSize size, bool is_ooo)
+PageInfoInMem::init_for_memory(PageManager *pm, PageSize size, bool is_ooo)
 {
     ASSERT(pm != nullptr);
     ASSERT(tsdb != nullptr);
     ASSERT(size > 1);
 
-    m_tsdb = tsdb;
     m_header = &m_page_header;
     const TimeRange& range = pm->get_time_range();
     m_time_range.init(range.get_to(), range.get_from());    // empty range
@@ -469,23 +469,24 @@ PageInfoInMem::init_for_memory(PageManager *pm, Tsdb *tsdb, PageSize size, bool 
     ASSERT(m_header->m_size != 0);
     m_page_mgr = pm;
     m_compressor = nullptr;
-    m_page = malloc(size);
+    m_version = malloc(size);
     ASSERT(m_page != nullptr);
 }
 
 PageInfo *
-PageInfoInMem::flush(bool accessed)
+PageInfoInMem::flush(bool accessed, Tsdb *tsdb)
 {
     if (accessed && m_page_mgr->is_accessed())
         return nullptr;
 
-    PageInfo *info = m_tsdb->get_free_page_on_disk(m_header->is_out_of_order());
+    ASSERT(tsdb != nullptr);
+    PageInfo *info = tsdb->get_free_page_on_disk(m_header->is_out_of_order());
     info->copy_from(this);
     //info->flush(false);
-    if (m_page != nullptr)
+    if (m_version != nullptr)
     {
-        free(m_page);
-        m_page = nullptr;
+        free(m_version);
+        m_version = nullptr;
     }
     Logger::debug("Writing to page #%d in file %s",
         (int)info->get_page_index(),
@@ -832,7 +833,7 @@ PageManager::get_free_page_in_mem(Tsdb *tsdb, bool ooo)
         return nullptr;
     }
 
-    info->init_for_memory(this, tsdb, g_page_size, ooo);
+    info->init_for_memory(this, g_page_size, ooo);
     info->setup_compressor(m_time_range, (ooo ? 0 : m_compressor_version));
 
     return info;

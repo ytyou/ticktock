@@ -129,7 +129,7 @@ TimeSeries::flush(bool accessed)
 
     if (m_buff != nullptr)
     {
-        PageInfo *info = m_buff->flush(accessed);
+        PageInfo *info = m_buff->flush(accessed, m_tsdb);
 
         if (info != nullptr)
         {
@@ -144,7 +144,7 @@ TimeSeries::flush(bool accessed)
 
     if (m_ooo_buff != nullptr)
     {
-        PageInfo *info = m_ooo_buff->flush(accessed);
+        PageInfo *info = m_ooo_buff->flush(accessed, m_tsdb);
 
         if (info != nullptr)
         {
@@ -214,7 +214,7 @@ TimeSeries::add_data_point(DataPoint& dp)
     {
         ASSERT(m_buff->is_full());
 
-        PageInfo *info = m_buff->flush(false);
+        PageInfo *info = m_buff->flush(false, m_tsdb);
         if (info != nullptr)
         {
             ASSERT(m_buff == m_pages.back());
@@ -269,7 +269,7 @@ TimeSeries::add_batch(DataPointSet& dps)
         {
             ASSERT(m_buff->is_full());
 
-            m_buff->flush(false);
+            m_buff->flush(false, m_tsdb);
             m_buff = get_free_page_on_disk(false);
             ASSERT(m_buff->is_empty());
             ASSERT(m_buff->get_last_tstamp() == m_tsdb->get_time_range().get_from());
@@ -308,7 +308,7 @@ TimeSeries::add_ooo_data_point(DataPoint& dp)
     {
         ASSERT(m_ooo_buff->is_full());
 
-        PageInfo *info = m_ooo_buff->flush(false);
+        PageInfo *info = m_ooo_buff->flush(false, m_tsdb);
         if (info != nullptr)
         {
             ASSERT(m_ooo_buff == m_ooo_pages.back());
@@ -559,7 +559,7 @@ TimeSeries::compact(MetaFile& meta_file)
         if (! ok)
         {
             ASSERT(info->is_full());
-            info->flush(false);
+            info->flush(false, m_tsdb);
             MemoryManager::free_recyclable(info);
 
             info = m_tsdb->get_free_page_for_compaction();

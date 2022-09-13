@@ -204,7 +204,7 @@ public:
     inline void set_ooo(bool ooo) { m_header->set_out_of_order(ooo); }
 
     // prepare to be used to represent a different page
-    virtual PageInfo *flush(bool accessed);
+    virtual PageInfo *flush(bool accessed, Tsdb *tsdb = nullptr);
     void reset();
     void shrink_to_fit();
     bool is_full() const;
@@ -273,19 +273,16 @@ class PageInfoInMem : public PageInfo
 {
 public:
     void init_for_memory(PageManager *pm,
-                         Tsdb *tsdb,
                          PageSize size,
                          bool is_ooo);
-    PageInfo *flush(bool accessed) override;
+    PageInfo *flush(bool accessed, Tsdb *tsdb = nullptr) override;
     void persist(bool copy_data = false) override {}
-    void *get_page() override { return m_page; }
+    void *get_page() override { return m_version; }
     PageCount get_id() const override { return 0; }
     void ensure_dp_available(DataPointVector *dps = nullptr) override {}
 
 private:
     struct page_info_on_disk m_page_header;
-    void *m_page;
-    Tsdb *m_tsdb;
 };
 
 
