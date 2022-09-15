@@ -193,17 +193,18 @@ public:
     // this one initialize PageInfo to represent a new page on disk
     void init_for_disk(PageManager *pm,
                        struct page_info_on_disk *header,
+                       PageCount header_idx,
                        PageCount page_idx,
                        PageSize size,
                        bool is_ooo);
 
     // init a page info representing an existing page on disk
-    void init_from_disk(PageManager *pm, struct page_info_on_disk *header);
+    void init_from_disk(PageManager *pm, struct page_info_on_disk *header, PageCount header_idx);
 
     inline void set_ooo(bool ooo) { m_header->set_out_of_order(ooo); }
 
     // prepare to be used to represent a different page
-    void flush();
+    void flush(bool accessed);
     void reset();
     void shrink_to_fit();
     bool is_full() const;
@@ -256,6 +257,8 @@ private:
     TimeRange m_time_range;     // range of actual data points in this page
     PageManager *m_page_mgr;    // this is null for in-memory page
     Compressor *m_compressor;   // this is null except for in-memory page
+    void *m_version;            // version of PM
+    PageCount m_header_index;
 
     uint8_t *m_base;            // in-memory buffer
 
@@ -300,10 +303,20 @@ public:
         return m_id;
     }
 
+    inline std::string get_file_name() const
+    {
+        return m_file_name;
+    }
+
     inline PageCount get_data_page_count() const    // no. data pages currently in use
     {
         ASSERT(m_actual_pg_cnt != nullptr);
         return *m_actual_pg_cnt - calc_first_page_info_index(*m_page_count);
+    }
+
+    inline void *get_version() const
+    {
+        return m_pages;
     }
 
     inline uint8_t get_compressor_version() const
@@ -314,6 +327,7 @@ public:
     void flush(bool sync);
     void close_mmap();
     bool reopen();  // return false if reopen() failed
+    bool reopen_with_lock();
     void persist();
     void shrink_to_fit();
 
@@ -331,12 +345,16 @@ public:
     inline PageCount get_page_count() const { return *m_page_count; }
     inline static int32_t get_mmap_file_count() { return m_total.load(); }
 
+    void try_unload();
+    inline bool is_accessed() const { return m_accessed; }
+    inline void mark_accessed() { m_accessed = true; }
+    struct page_info_on_disk *get_page_info_on_disk(PageCount index);
+
 private:
     bool open_mmap(PageCount page_count);
     void persist_compacted_flag(bool compacted);
     bool resize(TsdbSize old_size);     // resize (shrink) the data file
     void init_headers();    // zero-out headers
-    struct page_info_on_disk *get_page_info_on_disk(PageCount index);
     static PageCount calc_first_page_info_index(PageCount page_count);
     static std::atomic<int32_t> m_total;    // total number of open mmap files
 
@@ -389,6 +407,7 @@ private:
     TimeRange m_time_range;
 
     struct page_info_on_disk *m_page_info;
+    std::atomic<bool> m_accessed;
 
 };  // class PageManager
 

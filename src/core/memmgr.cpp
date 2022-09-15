@@ -159,13 +159,13 @@ MemoryManager::collect_stats(Timestamp ts, std::vector<DataPoint> &dps)
 #define COLLECT_STATS_FOR(RTYPE, RNAME, SIZE_OF_RTYPE)     \
     {   \
         {   \
-            dps.emplace_back(ts, (double)m_total[RTYPE] * SIZE_OF_RTYPE);   \
+            dps.emplace_back(ts, (double)m_total[RTYPE] * (SIZE_OF_RTYPE));   \
             auto& dp = dps.back();  \
             dp.set_metric("ticktock.mem.reusable.total");   \
             dp.add_tag(TYPE_TAG_NAME, RNAME);    \
         }   \
         {   \
-            dps.emplace_back(ts, (double)m_free[RTYPE] * SIZE_OF_RTYPE);    \
+            dps.emplace_back(ts, (double)m_free[RTYPE] * (SIZE_OF_RTYPE));    \
             auto& dp = dps.back();  \
             dp.set_metric("ticktock.mem.reusable.free");    \
             dp.add_tag(TYPE_TAG_NAME, RNAME);    \

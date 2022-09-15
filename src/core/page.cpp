@@ -47,6 +47,8 @@ PageInfo::PageInfo() :
     m_page_mgr(nullptr),
     m_compressor(nullptr),
     m_header(nullptr),
+    m_header_index(0),
+    m_version(nullptr),
     m_base(nullptr)
 {
 }
@@ -80,9 +82,11 @@ PageInfo::is_empty() const
 }
 
 void
-PageInfo::flush()
+PageInfo::flush(bool accessed)
 {
     if (m_compressor == nullptr) return;
+    if (! m_page_mgr->is_open()) return;
+    if (accessed && m_page_mgr->is_accessed()) return;
 
     persist(m_base != nullptr);
 
@@ -117,7 +121,7 @@ PageInfo::shrink_to_fit()
     if (m_header->m_start != 0) m_header->m_size++;
     if (m_page_mgr->get_compressor_version() == 0) m_header->m_size *= 16;
     m_header->set_full(true);
-    flush();
+    flush(false);
 }
 
 void
@@ -154,7 +158,7 @@ PageInfo::recycle()
 // initialize a PageInfo that represent a page on disk;
 // this is a new page, so we will not read page_info_on_disk;
 void
-PageInfo::init_for_disk(PageManager *pm, struct page_info_on_disk *header, PageCount page_idx, PageSize size, bool is_ooo)
+PageInfo::init_for_disk(PageManager *pm, struct page_info_on_disk *header, PageCount header_idx, PageCount page_idx, PageSize size, bool is_ooo)
 {
     ASSERT(pm != nullptr);
     ASSERT(header != nullptr);
@@ -172,13 +176,15 @@ PageInfo::init_for_disk(PageManager *pm, struct page_info_on_disk *header, PageC
     m_page_mgr = pm;
     //set_page();
     m_compressor = nullptr;
+    m_header_index = header_idx;
+    m_version = pm->get_version();
     m_base = (uint8_t*)malloc(size);
 }
 
 // initialize a PageInfo that represent a page on disk
 // 'id': global id
 void
-PageInfo::init_from_disk(PageManager *pm, struct page_info_on_disk *header)
+PageInfo::init_from_disk(PageManager *pm, struct page_info_on_disk *header, PageCount header_idx)
 {
     ASSERT(pm != nullptr);
     ASSERT(header != nullptr);
@@ -191,6 +197,8 @@ PageInfo::init_from_disk(PageManager *pm, struct page_info_on_disk *header)
     m_time_range.init(m_header->m_tstamp_from + start, m_header->m_tstamp_to + start);
     m_base = nullptr;
     ASSERT(pm->get_time_range().contains(m_time_range));
+    m_header_index = header_idx;
+    m_version = pm->get_version();
 }
 
 /* 'range' should be the time range of the Tsdb.
@@ -225,24 +233,34 @@ PageInfo::setup_compressor(const TimeRange& range, int compressor_version)
 void
 PageInfo::ensure_dp_available(DataPointVector *dps)
 {
-    if (m_compressor != nullptr) return;
-
-    ASSERT(m_page_mgr->is_open());
-    Meter meter(METRIC_TICKTOCK_PAGE_RESTORE_TOTAL_MS);
-
-    CompressorPosition position(m_header);
-    setup_compressor(m_page_mgr->get_time_range(), m_page_mgr->get_compressor_version());
-    if (dps == nullptr)
+    m_page_mgr->reopen_with_lock();
+    void *page_version = m_page_mgr->get_version();
+    if (page_version != m_version)
     {
-        DataPointVector v;
-        v.reserve(700);
-        m_compressor->restore(v, position, nullptr);
+        recycle();
+        m_header = m_page_mgr->get_page_info_on_disk(m_header_index);
+        m_version = page_version;
     }
-    else
+
+    if (m_compressor == nullptr)
     {
-        m_compressor->restore(*dps, position, nullptr);
+        Meter meter(METRIC_TICKTOCK_PAGE_RESTORE_TOTAL_MS);
+
+        CompressorPosition position(m_header);
+        int version = m_header->is_out_of_order() ? 0 : m_page_mgr->get_compressor_version();
+        setup_compressor(m_page_mgr->get_time_range(), version);
+        if (dps == nullptr)
+        {
+            DataPointVector v;
+            v.reserve(700);
+            m_compressor->restore(v, position, nullptr);
+        }
+        else
+        {
+            m_compressor->restore(*dps, position, nullptr);
+        }
+        ASSERT(m_page_mgr->get_time_range().contains(m_time_range));
     }
-    ASSERT(m_page_mgr->get_time_range().contains(m_time_range));
 }
 
 void
@@ -346,7 +364,11 @@ PageInfo::add_data_point(Timestamp tstamp, double value)
     if (m_compressor == nullptr) return false;
     //ASSERT(m_page_mgr->get_time_range().in_range(tstamp));
     bool success = m_compressor->compress(tstamp, value);
-    if (success) m_time_range.add_time(tstamp);
+    if (success)
+    {
+        m_page_mgr->mark_accessed();
+        m_time_range.add_time(tstamp);
+    }
     return success;
 }
 
@@ -378,6 +400,7 @@ PageManager::PageManager(TimeRange& range, PageCount id, bool temp) :
     m_time_range(range),
     m_id(id),
     m_fd(-1),
+    m_accessed(true),
     m_pages(nullptr)
 {
     m_file_name = Tsdb::get_file_name(range, std::to_string(m_id), temp);
@@ -449,7 +472,18 @@ PageManager::reopen()
 {
     if (m_pages == nullptr)
         open_mmap(0);   // the parameter is unused since this file exists
+    ASSERT(m_pages != nullptr);
+    if (UNLIKELY(m_pages == nullptr))
+        throw std::runtime_error("Filed to reopen mmap file.");
+    m_accessed = true;
     return (m_pages != nullptr);
+}
+
+bool
+PageManager::reopen_with_lock()
+{
+    std::lock_guard<std::mutex> guard(m_lock);
+    return reopen();
 }
 
 PageCount
@@ -655,7 +689,7 @@ PageManager::get_free_page_on_disk(Tsdb *tsdb, bool ooo)
         PageCount id = *m_header_index;
         PageCount page_idx = *m_page_index;
         struct page_info_on_disk *header = get_page_info_on_disk(id);
-        info->init_for_disk(this, header, page_idx, g_page_size, ooo);
+        info->init_for_disk(this, header, id, page_idx, g_page_size, ooo);
         info->setup_compressor(m_time_range, (ooo ? 0 : m_compressor_version));
         ASSERT(info->is_out_of_order() == ooo);
 
@@ -696,7 +730,7 @@ PageManager::get_free_page_for_compaction(Tsdb *tsdb)
         PageCount page_idx = *m_page_index;
 
         struct page_info_on_disk *header = get_page_info_on_disk(id);
-        info->init_for_disk(this, header, page_idx, g_page_size, false);
+        info->init_for_disk(this, header, id, page_idx, g_page_size, false);
 
         (*m_header_index)++;
 
@@ -751,7 +785,7 @@ PageManager::get_the_page_on_disk(PageCount header_index)
     ASSERT(info != nullptr);
     struct page_info_on_disk *header = get_page_info_on_disk(header_index);
     ASSERT(header != nullptr);
-    info->init_from_disk(this, header);
+    info->init_from_disk(this, header, header_index);
     return info;
 }
 
@@ -854,6 +888,19 @@ PageManager::get_page_percent_used() const
     if ((m_page_index == nullptr) || (m_actual_pg_cnt == nullptr)) return 0.0;
     if (*m_actual_pg_cnt == 0) return 0.0;
     return ((double)*m_page_index / (double)*m_actual_pg_cnt) * 100.0;
+}
+
+void
+PageManager::try_unload()
+{
+    if (m_accessed)
+        m_accessed = false;
+    else
+    {
+        flush(true);
+        close_mmap();
+        Logger::debug("Unloading PM %p, id=%d", this, get_id());
+    }
 }
 
 

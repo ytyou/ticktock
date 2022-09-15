@@ -123,12 +123,12 @@ TimeSeries::recycle()
 }
 
 void
-TimeSeries::flush(bool close)
+TimeSeries::flush(bool accessed)
 {
     std::lock_guard<std::mutex> guard(m_lock);
 
-    if (m_buff != nullptr) m_buff->flush();
-    if (m_ooo_buff != nullptr) m_ooo_buff->flush();
+    if (m_buff != nullptr) m_buff->flush(accessed);
+    if (m_ooo_buff != nullptr) m_ooo_buff->flush(accessed);
 }
 
 PageInfo *
@@ -171,6 +171,8 @@ TimeSeries::add_data_point(DataPoint& dp)
             m_buff->ensure_dp_available();
         }
     }
+    else
+        m_buff->ensure_dp_available();
 
     Timestamp last_tstamp = m_buff->get_last_tstamp();
 
@@ -185,7 +187,7 @@ TimeSeries::add_data_point(DataPoint& dp)
     {
         ASSERT(m_buff->is_full());
 
-        m_buff->flush();
+        m_buff->flush(false);
         m_buff = get_free_page_on_disk(false);
         ASSERT(m_buff->is_empty());
 
@@ -213,6 +215,8 @@ TimeSeries::add_batch(DataPointSet& dps)
             m_buff->ensure_dp_available();
         }
     }
+    else
+        m_buff->ensure_dp_available();
 
     for (int i = 0; i < dps.get_dp_count(); i++)
     {
@@ -233,7 +237,7 @@ TimeSeries::add_batch(DataPointSet& dps)
         {
             ASSERT(m_buff->is_full());
 
-            m_buff->flush();
+            m_buff->flush(false);
             m_buff = get_free_page_on_disk(false);
             ASSERT(m_buff->is_empty());
             ASSERT(m_buff->get_last_tstamp() == m_tsdb->get_time_range().get_from());
@@ -263,6 +267,8 @@ TimeSeries::add_ooo_data_point(DataPoint& dp)
             m_ooo_buff->ensure_dp_available();
         }
     }
+    else
+        m_ooo_buff->ensure_dp_available();
 
     bool ok = m_ooo_buff->add_data_point(dp.get_timestamp(), dp.get_value());
 
@@ -270,7 +276,7 @@ TimeSeries::add_ooo_data_point(DataPoint& dp)
     {
         ASSERT(m_ooo_buff->is_full());
 
-        m_ooo_buff->flush();
+        m_ooo_buff->flush(false);
         m_ooo_buff = get_free_page_on_disk(true);
         ASSERT(m_ooo_buff->is_empty());
 
@@ -514,7 +520,7 @@ TimeSeries::compact(MetaFile& meta_file)
         if (! ok)
         {
             ASSERT(info->is_full());
-            info->flush();
+            info->flush(false);
             MemoryManager::free_recyclable(info);
 
             info = m_tsdb->get_free_page_for_compaction();
