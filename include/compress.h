@@ -86,7 +86,7 @@ class Compressor : public Recyclable
 public:
     static Compressor *create(int version);
 
-    virtual void init(Timestamp start, uint8_t *base, size_t size);
+    virtual void init(Timestamp start, uint8_t *base, size_t size, bool buffered);
     virtual void restore(DataPointVector& dps, CompressorPosition& position, uint8_t *base) = 0;
     virtual void save(CompressorPosition& position) = 0;    // save meta
     virtual void save(uint8_t *base) = 0;                   // save data
@@ -121,7 +121,7 @@ protected:
 class Compressor_v2 : public Compressor
 {
 public:
-    void init(Timestamp start, uint8_t *base, size_t size);
+    void init(Timestamp start, uint8_t *base, size_t size, bool buffered) override;
     void restore(DataPointVector& dps, CompressorPosition& position, uint8_t *base);
     void save(CompressorPosition& position);
     inline void rebase(uint8_t *base)
@@ -132,7 +132,7 @@ public:
     inline void save(uint8_t *base)
     {
         ASSERT(base != nullptr);
-        m_persisted = m_bitset.copy_to(base, m_persisted);
+        m_bitset.copy_to(base);
     }
 
     bool compress(Timestamp timestamp, double value);
@@ -191,7 +191,6 @@ private:
     uint8_t m_prev_trailing_zeros;
     uint8_t m_prev_none_zeros;
     bool m_is_full;
-    size_t m_persisted;
 };
 
 
@@ -199,7 +198,7 @@ private:
 class Compressor_v1 : public Compressor
 {
 public:
-    void init(Timestamp start, uint8_t *base, size_t size);
+    void init(Timestamp start, uint8_t *base, size_t size, bool buffered) override;
     void restore(DataPointVector& dps, CompressorPosition& position, uint8_t *base);
     inline void rebase(uint8_t *base);
 
@@ -213,11 +212,7 @@ public:
     {
         ASSERT(base != nullptr);
         ASSERT(m_base != nullptr);
-        if (base != m_base)
-        {
-            memcpy(base+(m_persisted-m_base), m_persisted, (m_cursor-m_persisted));
-            m_persisted = m_cursor;
-        }
+        if (base != m_base) memcpy(base, m_base, (m_cursor-m_base));
     }
 
     // return true if sucessfully added the dp;
@@ -276,7 +271,6 @@ private:
     uint8_t *m_base;
     size_t m_size;
     uint8_t *m_cursor;
-    uint8_t *m_persisted;
 
     Timestamp m_prev_delta;
     Timestamp m_prev_tstamp;
@@ -290,7 +284,7 @@ private:
 class Compressor_v0 : public Compressor
 {
 public:
-    void init(Timestamp start, uint8_t *base, size_t size);
+    void init(Timestamp start, uint8_t *base, size_t size, bool buffered) override;
     void restore(DataPointVector& dps, CompressorPosition& position, uint8_t *base);
     void save(uint8_t *base);                       // save data
 

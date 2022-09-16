@@ -131,11 +131,13 @@ class DataPointContainer : public Recyclable
 public:
     void init(PageInfo *info)
     {
-        info->ensure_dp_available();
+        m_dps.clear();
+        m_dps.reserve(700);
+        info->ensure_dp_available(false, &m_dps);
         m_out_of_order = info->is_out_of_order();
         m_page_index = info->get_page_order();
-        m_dps.reserve(700);
-        info->get_all_data_points(m_dps);
+        if (m_dps.empty())
+            info->get_all_data_points(m_dps);
     }
 
     inline size_t size() const { return m_dps.size(); }

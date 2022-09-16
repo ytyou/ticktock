@@ -98,6 +98,8 @@
 #define CFG_TIMER_THREAD_COUNT_DEF              1
 #define CFG_TSDB_ARCHIVE_THRESHOLD              "tsdb.archive.threshold"
 #define CFG_TSDB_ARCHIVE_THRESHOLD_DEF          "1w"
+#define CFG_TSDB_BUFFER_SIZE                    "tsdb.buffer.size"
+#define CFG_TSDB_BUFFER_SIZE_DEF                "512b"
 #define CFG_TSDB_COMPACT_FREQUENCY              "tsdb.compact.frequency"
 #define CFG_TSDB_COMPACT_FREQUENCY_DEF          "2h"
 #define CFG_TSDB_COMPRESSOR_VERSION             "tsdb.compressor.version"

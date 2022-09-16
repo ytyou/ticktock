@@ -211,7 +211,7 @@ public:
     bool is_empty() const;
     inline bool is_on_disk() const { return true; }
     inline bool is_out_of_order() const { return m_header->is_out_of_order(); }
-    void ensure_dp_available(DataPointVector *dps = nullptr);
+    void ensure_dp_available(bool for_write, DataPointVector *dps = nullptr);
 
     Timestamp get_last_tstamp() const;
 
@@ -238,7 +238,7 @@ public:
     void get_all_data_points(DataPointVector& dps);
 
     // existing compressor, if any, will be destroyed, and new one created
-    void setup_compressor(const TimeRange& range, int compressor_version);
+    void setup_compressor(const TimeRange& range, int compressor_version, bool for_write);
     void persist(bool copy_data = false);   // persist page to disk
     void merge_after(PageInfo *dst);        // share page with 'dst' (compaction)
     void copy_to(PageCount dst_id);
@@ -259,8 +259,6 @@ private:
     Compressor *m_compressor;   // this is null except for in-memory page
     void *m_version;            // version of PM
     PageCount m_header_index;
-
-    uint8_t *m_base;            // in-memory buffer
 
     struct page_info_on_disk *m_header;
 

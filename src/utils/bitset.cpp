@@ -16,6 +16,7 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <stdexcept>
@@ -38,24 +39,37 @@ BitSet::BitSet() :
     m_end(nullptr),
     m_start(0),
     m_cp_cursor(nullptr),
-    m_cp_start(0)
+    m_cp_start(0),
+    m_buffer(nullptr),
+    m_bound(nullptr)
 {
 }
 
 void
-BitSet::init(uint8_t *base, size_t capacity_in_bytes)
+BitSet::init(uint8_t *base, size_t capacity_in_bytes, size_t buff_size)
 {
     ASSERT(base != nullptr);
 
     m_bits = base;
-    m_cursor = base;
     m_capacity_in_bytes = capacity_in_bytes;
-    m_start = 0;
 
+    if (buff_size == 0)
+    {
+        m_buffer = nullptr;
+        m_cursor = base;
+        m_end = m_bound = m_bits + capacity_in_bytes;
+    }
+    else
+    {
+        m_buffer = (uint8_t*)malloc(buff_size);
+        m_bound = base;
+        m_cursor = m_buffer;
+        m_end = m_buffer + buff_size;
+    }
+
+    m_start = 0;
     m_cp_cursor = nullptr;
     m_cp_start = 0;
-
-    m_end = m_bits + capacity_in_bytes;
 }
 
 void
@@ -65,6 +79,13 @@ BitSet::recycle()
     m_start = 0;
     m_cp_cursor = nullptr;
     m_cp_start = 0;
+
+    if (m_buffer != nullptr)
+    {
+        free(m_buffer);
+        m_buffer = nullptr;
+        m_bound = nullptr;
+    }
 }
 
 void
@@ -75,9 +96,16 @@ BitSet::rebase(uint8_t *base)
 
     if (m_bits != nullptr)
     {
-        if (m_cursor != nullptr) m_cursor = base + (m_cursor - m_bits);
-        if (m_cp_cursor != nullptr) m_cp_cursor = base + (m_cp_cursor - m_bits);
-        if (m_end != nullptr) m_end = base + (m_end - m_bits);
+        if (m_buffer == nullptr)
+        {
+            if (m_cursor != nullptr) m_cursor = base + (m_cursor - m_bits);
+            if (m_cp_cursor != nullptr) m_cp_cursor = base + (m_cp_cursor - m_bits);
+            if (m_end != nullptr) m_end = m_bound = base + (m_end - m_bits);
+        }
+        else if (m_bound != nullptr)
+        {
+            m_bound = base + (m_bound - m_bits);
+        }
     }
 
     m_bits = base;
@@ -99,9 +127,10 @@ BitSet::append(uint8_t *bits, uint8_t len, uint8_t start)
     while (len > 0)
     {
         if (m_cursor == m_end)
-        {
+            flush();
+
+        if (m_cursor == m_end)
             throw std::out_of_range("bitset is full");
-        }
 
         append(*bits, len, start);
         if (start == 0) bits++;
@@ -181,22 +210,32 @@ BitSet::append(uint8_t bits, uint8_t& len, uint8_t& start)
     }
 }
 
-size_t
-BitSet::copy_to(uint8_t *base, size_t offset) const
+void
+BitSet::flush()
+{
+    if (m_buffer != nullptr)
+    {
+        // copy
+        size_t size = m_cursor - m_buffer;
+        size_t size1 = (m_start == 0) ? size : (size + 1);
+        memcpy(m_bound, m_buffer, size1);
+        m_bound += size;
+
+        // re-initialize m_buffer
+        size_t left = m_capacity_in_bytes - (m_bound - m_bits);
+        m_end = m_buffer + std::min(size1, left);
+        m_cursor = m_buffer;
+        if (m_start != 0) m_buffer[0] = *m_bound;
+    }
+}
+
+void
+BitSet::copy_to(uint8_t *base)
 {
     ASSERT(base != nullptr);
-    size_t size = size_in_bytes();
-
-    if ((base != m_bits) && (size > 0))
-    {
-        ASSERT(size >= offset);
-        memcpy(base+offset, m_bits+offset, size-offset);
-        size--;
-    }
-    else
-        size = offset;
-
-    return size;
+    flush();
+    if (base != m_bits)
+        memcpy(base, m_bits, size_in_bytes());
 }
 
 void
@@ -205,13 +244,55 @@ BitSet::copy_from(uint8_t *base, int bytes, uint8_t start)
     ASSERT(bytes > 0);
     ASSERT(base != m_bits);
 
-    m_cursor = m_bits + bytes;
+    int bytes1 = (start == 0) ? bytes : (bytes + 1);
     m_start = start;
 
-    if (base != nullptr)
+    if ((base != nullptr) && (base != m_bits))
+        memcpy(m_bits, base, bytes1);
+
+    if (m_buffer != nullptr)
     {
-        if (start != 0) bytes++;
-        memcpy(m_bits, base, bytes);
+        m_bound = m_bits + bytes;
+        m_cursor = m_buffer;
+
+        if (start != 0)
+            m_buffer[0] = *m_bound;
+    }
+    else
+    {
+        m_cursor = m_bits + bytes;
+    }
+}
+
+bool
+BitSet::end_reached(BitSetCursor *cursor) const
+{
+    if (m_buffer != nullptr)
+    {
+        if (cursor->m_in_buffer)
+        {
+            return ((cursor->m_cursor > m_cursor) ||
+                ((cursor->m_cursor == m_cursor) && (cursor->m_start >= m_start)));
+        }
+        else
+        {
+            if (cursor->m_cursor >= m_bound)
+            {
+                // switch to m_buffer
+                ASSERT(cursor->m_cursor == m_bound);
+                cursor->m_cursor = m_buffer;
+                cursor->m_in_buffer = true;
+                return ((cursor->m_cursor > m_cursor) ||
+                    ((cursor->m_cursor == m_cursor) && (cursor->m_start >= m_start)));
+            }
+            else
+                return false;
+        }
+    }
+    else
+    {
+        return ((cursor->m_cursor > m_cursor) ||
+            ((cursor->m_cursor == m_cursor) && (cursor->m_start >= m_start)));
     }
 }
 
@@ -221,15 +302,10 @@ BitSet::retrieve(BitSetCursor *cursor, uint8_t *bits, uint8_t len, uint8_t start
     ASSERT(cursor != nullptr);
     ASSERT(bits != nullptr);
     ASSERT(len > 0);
-    ASSERT(m_bits <= cursor->m_cursor);
-    ASSERT(cursor->m_cursor <= m_end);
     ASSERT(cursor->m_start < 8);
 
-    if ((cursor->m_cursor > m_cursor) ||
-        ((cursor->m_cursor == m_cursor) && (cursor->m_start >= m_start)))
-    {
+    if (end_reached(cursor))
         throw std::out_of_range("end of bitset reached");
-    }
 
     while (start >= 8)
     {
@@ -239,10 +315,8 @@ BitSet::retrieve(BitSetCursor *cursor, uint8_t *bits, uint8_t len, uint8_t start
 
     while (len > 0)
     {
-        if (cursor->m_cursor == m_end)
-        {
+        if (end_reached(cursor))
             throw std::out_of_range("end of bitset reached");
-        }
 
         retrieve(cursor, *bits, len, start);
         if (start == 0) bits++;
@@ -335,7 +409,8 @@ BitSet::c_str(char *buff) const
 
 BitSetCursor::BitSetCursor(BitSet *bitset) :
     m_cursor(bitset->m_bits),
-    m_start(0)
+    m_start(0),
+    m_in_buffer(false)
 {
 }
 

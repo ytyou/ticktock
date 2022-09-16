@@ -158,6 +158,7 @@ process_cmdline_opts(int argc, char *argv[])
         { CFG_TIMER_QUEUE_SIZE,                     required_argument,  0,  0 },
         { CFG_TIMER_THREAD_COUNT,                   required_argument,  0,  0 },
         { CFG_TSDB_ARCHIVE_THRESHOLD,               required_argument,  0,  0 },
+        { CFG_TSDB_BUFFER_SIZE,                     required_argument,  0,  0 },
         { CFG_TSDB_COMPACT_FREQUENCY,               required_argument,  0,  0 },
         { CFG_TSDB_COMPRESSOR_VERSION,              required_argument,  0,  0 },
         { CFG_TSDB_DATA_DIR,                        required_argument,  0,  0 },

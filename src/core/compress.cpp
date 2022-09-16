@@ -24,6 +24,7 @@
 #include <inttypes.h>
 #include <stdexcept>
 #include "compress.h"
+#include "config.h"
 #include "logger.h"
 #include "utils.h"
 
@@ -59,7 +60,7 @@ Compressor::Compressor() :
 }
 
 void
-Compressor::init(Timestamp start, uint8_t *base, size_t size)
+Compressor::init(Timestamp start, uint8_t *base, size_t size, bool buffered)
 {
     m_start_tstamp = start;
 }
@@ -108,13 +109,18 @@ Compressor_v2::Compressor_v2()
 }
 
 void
-Compressor_v2::init(Timestamp start, uint8_t *base, size_t size)
+Compressor_v2::init(Timestamp start, uint8_t *base, size_t size, bool buffered)
 {
     ASSERT(base != nullptr);
 
-    Compressor::init(start, base, size);
+    Compressor::init(start, base, size, buffered);
 
-    m_bitset.init(base, size);
+    size_t buff_size = 0;
+
+    if (buffered)
+        buff_size = Config::get_bytes(CFG_TSDB_BUFFER_SIZE, CFG_TSDB_BUFFER_SIZE_DEF);
+
+    m_bitset.init(base, size, buff_size);
 
     m_dp_count = 0;
     m_prev_delta = 0L;
@@ -124,7 +130,6 @@ Compressor_v2::init(Timestamp start, uint8_t *base, size_t size)
     m_prev_trailing_zeros = 65;
     m_prev_none_zeros = 64;
     m_is_full = false;
-    m_persisted = 0;
 
     ASSERT(m_start_tstamp <= m_prev_tstamp);
 }
@@ -487,15 +492,14 @@ Compressor_v1::Compressor_v1() :
 }
 
 void
-Compressor_v1::init(Timestamp start, uint8_t *base, size_t size)
+Compressor_v1::init(Timestamp start, uint8_t *base, size_t size, bool buffered)
 {
-    Compressor::init(start, base, size);
+    Compressor::init(start, base, size, buffered);
 
     m_base = base;
     m_cursor = base;
     m_size = size;
     m_is_full = false;
-    m_persisted = base;
 
     m_dp_count = 0;
     m_prev_delta = 0L;
@@ -772,11 +776,11 @@ Compressor_v1::recycle()
 // This compressor does not compress at all.
 
 void
-Compressor_v0::init(Timestamp start, uint8_t *base, size_t size)
+Compressor_v0::init(Timestamp start, uint8_t *base, size_t size, bool buffered)
 {
     ASSERT(base != nullptr);
 
-    Compressor::init(start, base, size);
+    Compressor::init(start, base, size, buffered);
     m_dps.clear();
     m_dps.reserve(g_page_size/sizeof(DataPointPair));
     m_size = std::floor(size / sizeof(DataPointPair));

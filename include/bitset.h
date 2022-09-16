@@ -36,6 +36,7 @@ private:
 
     uint8_t *m_cursor;
     uint8_t m_start;
+    bool m_in_buffer;
 };
 
 
@@ -47,9 +48,10 @@ class BitSet : public Serializable
 public:
     BitSet();
 
-    void init(uint8_t *base, size_t capacity_in_bytes);
+    void init(uint8_t *base, size_t capacity_in_bytes, size_t buff_size);
     void recycle();
     void rebase(uint8_t *base);
+    void flush();   // flush buffer
 
     inline BitSetCursor *new_cursor()
     {
@@ -69,7 +71,10 @@ public:
 
     inline void save_check_point()
     {
-        m_cp_cursor = m_cursor;
+        if (m_buffer != nullptr)
+            m_cp_cursor = m_bound + (m_cursor - m_buffer);
+        else
+            m_cp_cursor = m_cursor;
         m_cp_start = m_start;
     }
 
@@ -77,19 +82,33 @@ public:
     {
         m_cursor = m_cp_cursor;
         m_start = m_cp_start;
+
+        if (m_buffer != nullptr)
+        {
+            free(m_buffer);
+            m_buffer = nullptr;
+        }
     }
 
-    size_t copy_to(uint8_t *base, size_t offset) const;
+    void copy_to(uint8_t *base);
     void copy_from(uint8_t *base, int bytes, uint8_t start);
 
     inline size_t size_in_bits() const
     {
-        return 8 * (m_cursor - m_bits) + m_start;
+        if (m_buffer != nullptr)
+            return 8 * ((m_bound - m_bits) + (m_cursor - m_buffer)) + m_start;
+        else
+            return 8 * (m_cursor - m_bits) + m_start;
     }
 
     inline size_t size_in_bytes() const
     {
-        size_t size = (m_cursor - m_bits);
+        size_t size;
+
+        if (m_buffer != nullptr)
+            size = (m_bound - m_bits) + (m_cursor - m_buffer);
+        else
+            size = m_cursor - m_bits;
         if (m_start != 0) size++;
         return size;
     }
@@ -111,6 +130,8 @@ private:
     // and copy them into 'byte' starting at 'start';
     void retrieve(BitSetCursor *cursor, uint8_t& byte, uint8_t& len, uint8_t& start);
 
+    bool end_reached(BitSetCursor *cursor) const;
+
     uint8_t *m_bits;        // beginning of this bitset
     size_t m_capacity_in_bytes;
 
@@ -121,6 +142,9 @@ private:
 
     uint8_t *m_cp_cursor;   // for saving check point so we can roll back to it
     uint8_t m_cp_start;     // for saving check point so we can roll back to it
+
+    uint8_t *m_buffer;      // in-memory buffer
+    uint8_t *m_bound;       // boundary between mmaped and in-memory buffer
 };
 
 

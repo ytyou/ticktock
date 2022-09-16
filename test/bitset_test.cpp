@@ -42,7 +42,7 @@ BitSetTests::test1()
 {
     uint8_t page[4096];
     BitSet bits;
-    bits.init(page, sizeof(page));
+    bits.init(page, sizeof(page), 8);
 
     int m1 = std::rand();
     uint8_t m2 = std::rand() % 256;
@@ -110,7 +110,7 @@ BitSetTests::test2()
 {
     uint8_t page[4096];
     BitSet bits;
-    bits.init(page, sizeof(page));
+    bits.init(page, sizeof(page), 4);
 
     uint32_t m1 = std::rand();
     double m2 = random(0.0, 1000.0);

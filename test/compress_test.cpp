@@ -55,7 +55,7 @@ CompressTests::run_with(bool ms)
     {
         log("Testing compress/uncompress for Compressor_v%d...", v);
         compressor = Compressor::create(v);
-        compressor->init(ts, buff, sizeof(buff));
+        compressor->init(ts, buff, sizeof(buff), false);
         compress_uncompress(compressor, ts, false);
         delete compressor;
     }
@@ -64,7 +64,7 @@ CompressTests::run_with(bool ms)
     {
         log("Testing save/restore for Compressor_v%d...", v);
         compressor = Compressor::create(v);
-        compressor->init(ts, buff, sizeof(buff));
+        compressor->init(ts, buff, sizeof(buff), true);
         save_restore(compressor, ts);
         delete compressor;
     }
@@ -73,7 +73,7 @@ CompressTests::run_with(bool ms)
     {
         log("Testing save/restore again for Compressor_v%d...", v);
         compressor = Compressor::create(v);
-        compressor->init(ts, buff, sizeof(buff));
+        compressor->init(ts, buff, sizeof(buff), false);
         save_restore2(compressor, ts);
         delete compressor;
     }
@@ -82,7 +82,7 @@ CompressTests::run_with(bool ms)
     {
         log("Stress testing for Compressor_v%d...", v);
         compressor = Compressor::create(v);
-        compressor->init(ts, buff, sizeof(buff));
+        compressor->init(ts, buff, sizeof(buff), true);
         stress_test(compressor, ts);
         delete compressor;
     }
@@ -153,7 +153,7 @@ CompressTests::save_restore(Compressor *compressor, Timestamp ts)
     compressor->save(buff2);
 
     std::vector<std::pair<Timestamp,double>> uncompressed;
-    compressor->init(ts, buff3, sizeof(buff3));
+    compressor->init(ts, buff3, sizeof(buff3), false);
     compressor->restore(uncompressed, position, buff2);
 
     std::vector<std::pair<Timestamp,double>> uncompressed2;
@@ -195,7 +195,7 @@ CompressTests::save_restore2(Compressor *compressor, Timestamp ts)
     compressor->save(buff2);
 
     uncompressed.clear();
-    compressor->init(ts, buff3, sizeof(buff3));
+    compressor->init(ts, buff3, sizeof(buff3), true);
     compressor->restore(uncompressed, position, buff2);
 
     uncompressed2.clear();
@@ -223,7 +223,7 @@ CompressTests::save_restore2(Compressor *compressor, Timestamp ts)
     compressor->save(buff2);
 
     uncompressed.clear();
-    compressor->init(ts, buff3, sizeof(buff3));
+    compressor->init(ts, buff3, sizeof(buff3), false);
     compressor->restore(uncompressed, position, buff2);
 
     uncompressed2.clear();
@@ -251,7 +251,7 @@ CompressTests::save_restore2(Compressor *compressor, Timestamp ts)
     compressor->save(buff2);
 
     uncompressed.clear();
-    compressor->init(ts, buff3, sizeof(buff3));
+    compressor->init(ts, buff3, sizeof(buff3), true);
     compressor->restore(uncompressed, position, buff2);
 
     uncompressed2.clear();
@@ -286,7 +286,7 @@ CompressTests::stress_test(Compressor *compressor, Timestamp ts)
     {
         n = 0;
 
-        compressor->init(ts, page, sizeof(page));
+        compressor->init(ts, page, sizeof(page), false);
 
         for (DataPointPair& dp: dps)
         {
@@ -330,7 +330,7 @@ CompressTests::best_scenario(bool ms)
     {
         log("Testing compress/uncompress for Compressor_v%d...", v);
         compressor = Compressor::create(v);
-        compressor->init(ts, buff, sizeof(buff));
+        compressor->init(ts, buff, sizeof(buff), true);
         compress_uncompress(compressor, ts, true);
         delete compressor;
     }

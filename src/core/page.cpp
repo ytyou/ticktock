@@ -48,8 +48,7 @@ PageInfo::PageInfo() :
     m_compressor(nullptr),
     m_header(nullptr),
     m_header_index(0),
-    m_version(nullptr),
-    m_base(nullptr)
+    m_version(nullptr)
 {
 }
 
@@ -88,7 +87,7 @@ PageInfo::flush(bool accessed)
     if (! m_page_mgr->is_open()) return;
     if (accessed && m_page_mgr->is_accessed()) return;
 
-    persist(m_base != nullptr);
+    persist();
 
     /* TODO: Is this needed?
     int rc = msync(m_pages, size, (sync?MS_SYNC:MS_ASYNC));
@@ -146,12 +145,6 @@ PageInfo::recycle()
         m_compressor = nullptr;
     }
 
-    if (m_base != nullptr)
-    {
-        free(m_base);
-        m_base = nullptr;
-    }
-
     return true;
 }
 
@@ -178,7 +171,6 @@ PageInfo::init_for_disk(PageManager *pm, struct page_info_on_disk *header, PageC
     m_compressor = nullptr;
     m_header_index = header_idx;
     m_version = pm->get_version();
-    m_base = (uint8_t*)malloc(size);
 }
 
 // initialize a PageInfo that represent a page on disk
@@ -195,7 +187,6 @@ PageInfo::init_from_disk(PageManager *pm, struct page_info_on_disk *header, Page
     m_compressor = nullptr;
     Timestamp start = pm->get_time_range().get_from();
     m_time_range.init(m_header->m_tstamp_from + start, m_header->m_tstamp_to + start);
-    m_base = nullptr;
     ASSERT(pm->get_time_range().contains(m_time_range));
     m_header_index = header_idx;
     m_version = pm->get_version();
@@ -204,7 +195,7 @@ PageInfo::init_from_disk(PageManager *pm, struct page_info_on_disk *header, Page
 /* 'range' should be the time range of the Tsdb.
  */
 void
-PageInfo::setup_compressor(const TimeRange& range, int compressor_version)
+PageInfo::setup_compressor(const TimeRange& range, int compressor_version, bool for_write)
 {
     if (m_compressor != nullptr)
     {
@@ -226,12 +217,11 @@ PageInfo::setup_compressor(const TimeRange& range, int compressor_version)
         m_compressor = (Compressor*)MemoryManager::alloc_recyclable(type);
     }
 
-    uint8_t *page = (m_base == nullptr) ? reinterpret_cast<uint8_t*>(get_page()) : m_base;
-    m_compressor->init(range.get_from(), page, m_header->m_size);
+    m_compressor->init(range.get_from(), reinterpret_cast<uint8_t*>(get_page()), m_header->m_size, for_write);
 }
 
 void
-PageInfo::ensure_dp_available(DataPointVector *dps)
+PageInfo::ensure_dp_available(bool for_write, DataPointVector *dps)
 {
     m_page_mgr->reopen_with_lock();
     void *page_version = m_page_mgr->get_version();
@@ -248,7 +238,7 @@ PageInfo::ensure_dp_available(DataPointVector *dps)
 
         CompressorPosition position(m_header);
         int version = m_header->is_out_of_order() ? 0 : m_page_mgr->get_compressor_version();
-        setup_compressor(m_page_mgr->get_time_range(), version);
+        setup_compressor(m_page_mgr->get_time_range(), version, for_write);
         if (dps == nullptr)
         {
             DataPointVector v;
@@ -267,6 +257,7 @@ void
 PageInfo::persist(bool copy_data)
 {
     if (m_compressor == nullptr) return;
+    copy_data = true;
 
     // write data
     CompressorPosition position;
@@ -690,7 +681,7 @@ PageManager::get_free_page_on_disk(Tsdb *tsdb, bool ooo)
         PageCount page_idx = *m_page_index;
         struct page_info_on_disk *header = get_page_info_on_disk(id);
         info->init_for_disk(this, header, id, page_idx, g_page_size, ooo);
-        info->setup_compressor(m_time_range, (ooo ? 0 : m_compressor_version));
+        info->setup_compressor(m_time_range, (ooo ? 0 : m_compressor_version), true);
         ASSERT(info->is_out_of_order() == ooo);
 
         (*m_page_index)++;
@@ -754,7 +745,7 @@ PageManager::get_free_page_for_compaction(Tsdb *tsdb)
             }
         }
 
-        info->setup_compressor(m_time_range, m_compressor_version);
+        info->setup_compressor(m_time_range, m_compressor_version, true);
     }
     else
     {
