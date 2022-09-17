@@ -98,7 +98,7 @@ private:
 
     // garbage collector
     static std::mutex m_garbage_lock;   // to prevent multi-invoke of collect_garbage()
-    static int m_max_usage[RecyclableType::RT_COUNT+1][MAX_USAGE_SIZE];
+    static int m_max_usage[RecyclableType::RT_COUNT+2][MAX_USAGE_SIZE];
     static int m_max_usage_idx;
 
 #ifdef _DEBUG

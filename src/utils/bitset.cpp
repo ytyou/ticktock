@@ -399,6 +399,15 @@ BitSet::retrieve(BitSetCursor *cursor, uint8_t& bits, uint8_t& len, uint8_t& sta
     }
 }
 
+BitSetCursor *
+BitSet::new_cursor()
+{
+    BitSetCursor *cursor =
+        (BitSetCursor*)MemoryManager::alloc_recyclable(RecyclableType::RT_BITSET_CURSOR);
+    cursor->init(this);
+    return cursor;
+}
+
 const char *
 BitSet::c_str(char *buff) const
 {
@@ -408,11 +417,20 @@ BitSet::c_str(char *buff) const
 }
 
 
-BitSetCursor::BitSetCursor(BitSet *bitset) :
-    m_cursor(bitset->m_bits),
-    m_start(0),
-    m_in_buffer(false)
+void
+BitSetCursor::init()
 {
+    m_cursor = nullptr;
+    m_start = 0;
+    m_in_buffer = false;
+}
+
+void
+BitSetCursor::init(BitSet *bitset)
+{
+    m_cursor = bitset->m_bits;
+    m_start = 0;
+    m_in_buffer = false;
 }
 
 

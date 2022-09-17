@@ -22,6 +22,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include "admin.h"
+#include "bitset.h"
 #include "compress.h"
 #include "config.h"
 #include "memmgr.h"
@@ -60,7 +61,7 @@ std::atomic<int> MemoryManager::m_free[RecyclableType::RT_COUNT+2];
 std::atomic<int> MemoryManager::m_total[RecyclableType::RT_COUNT+2];
 
 std::mutex MemoryManager::m_garbage_lock;
-int MemoryManager::m_max_usage[RecyclableType::RT_COUNT+1][MAX_USAGE_SIZE];
+int MemoryManager::m_max_usage[RecyclableType::RT_COUNT+2][MAX_USAGE_SIZE];
 int MemoryManager::m_max_usage_idx;
 
 #ifdef _DEBUG
@@ -233,6 +234,7 @@ MemoryManager::collect_stats(Timestamp ts, std::vector<DataPoint> &dps)
     COLLECT_STATS_FOR(RT_COMPRESSOR_V0, "compressor_v0", sizeof(Compressor_v0))
     COLLECT_STATS_FOR(RT_COMPRESSOR_V1, "compressor_v1", sizeof(Compressor_v1))
     COLLECT_STATS_FOR(RT_COMPRESSOR_V2, "compressor_v2", sizeof(Compressor_v2))
+    COLLECT_STATS_FOR(RT_BITSET_CURSOR, "bitset_cursor", sizeof(BitSetCursor))
     COLLECT_STATS_FOR(RT_DATA_POINT, "data_point", sizeof(DataPoint))
     COLLECT_STATS_FOR(RT_DOWNSAMPLER_AVG, "downsampler_avg", sizeof(DownsamplerAvg))
     COLLECT_STATS_FOR(RT_DOWNSAMPLER_COUNT, "downsampler_count", sizeof(DownsamplerCount))
@@ -267,6 +269,7 @@ MemoryManager::collect_stats(Timestamp ts, std::vector<DataPoint> &dps)
     total += m_total[RT_COMPRESSOR_V0] * sizeof(Compressor_v0);
     total += m_total[RT_COMPRESSOR_V1] * sizeof(Compressor_v1);
     total += m_total[RT_COMPRESSOR_V2] * sizeof(Compressor_v2);
+    total += m_total[RT_BITSET_CURSOR] * sizeof(BitSetCursor);
     total += m_total[RT_DATA_POINT] * sizeof(DataPoint);
     total += m_total[RT_DOWNSAMPLER_AVG] * sizeof(DownsamplerAvg);
     total += m_total[RT_DOWNSAMPLER_COUNT] * sizeof(DownsamplerCount);
@@ -310,6 +313,7 @@ MemoryManager::log_stats()
     Logger::debug("mm::aggregator_none = %d", m_maps[RecyclableType::RT_AGGREGATOR_NONE].size());
     Logger::debug("mm::aggregator_pt = %d", m_maps[RecyclableType::RT_AGGREGATOR_PT].size());
     Logger::debug("mm::aggregator_sum = %d", m_maps[RecyclableType::RT_AGGREGATOR_SUM].size());
+    Logger::debug("mm::bitset_cursor = %d", m_maps[RecyclableType::RT_BITSET_CURSOR].size());
     Logger::debug("mm::compressor_v0 = %d", m_maps[RecyclableType::RT_COMPRESSOR_V0].size());
     Logger::debug("mm::compressor_v1 = %d", m_maps[RecyclableType::RT_COMPRESSOR_V1].size());
     Logger::debug("mm::compressor_v2 = %d", m_maps[RecyclableType::RT_COMPRESSOR_V2].size());
@@ -424,6 +428,14 @@ MemoryManager::cleanup()
         m_free_lists[RecyclableType::RT_AGGREGATOR_SUM] = r->next();
         ASSERT(r->recyclable_type() == RecyclableType::RT_AGGREGATOR_SUM);
         delete static_cast<AggregatorSum*>(r);
+    }
+
+    while (m_free_lists[RecyclableType::RT_BITSET_CURSOR] != nullptr)
+    {
+        Recyclable *r = m_free_lists[RecyclableType::RT_BITSET_CURSOR];
+        m_free_lists[RecyclableType::RT_BITSET_CURSOR] = r->next();
+        ASSERT(r->recyclable_type() == RecyclableType::RT_BITSET_CURSOR);
+        delete static_cast<BitSetCursor*>(r);
     }
 
     while (m_free_lists[RecyclableType::RT_COMPRESSOR_V0] != nullptr)
@@ -657,6 +669,10 @@ MemoryManager::alloc_recyclable(RecyclableType type)
 
                 case RecyclableType::RT_AGGREGATOR_SUM:
                     r = new AggregatorSum();
+                    break;
+
+                case RecyclableType::RT_BITSET_CURSOR:
+                    r = new BitSetCursor();
                     break;
 
                 case RecyclableType::RT_COMPRESSOR_V0:

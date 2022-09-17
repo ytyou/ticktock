@@ -18,6 +18,7 @@
 
 #pragma once
 
+#include "recycle.h"
 #include "serial.h"
 
 
@@ -27,12 +28,13 @@ namespace tt
 
 class BitSet;
 
-class BitSetCursor
+class BitSetCursor : public Recyclable
 {
 private:
     friend class BitSet;
 
-    BitSetCursor(BitSet *bitset);
+    void init() override;
+    void init(BitSet *bitset);
 
     uint8_t *m_cursor;
     uint8_t m_start;
@@ -52,11 +54,7 @@ public:
     void recycle();
     void rebase(uint8_t *base);
     void flush();   // flush buffer
-
-    inline BitSetCursor *new_cursor()
-    {
-        return new BitSetCursor(this);
-    }
+    BitSetCursor *new_cursor();
 
     // append 'len' of bits stored in 'bits', starting at
     // offset 'start'; return true if successful, return
