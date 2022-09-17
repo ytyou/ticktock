@@ -21,6 +21,7 @@
 #include <cstdio>
 #include <stdexcept>
 #include "bitset.h"
+#include "memmgr.h"
 #include "utils.h"
 
 
@@ -46,25 +47,25 @@ BitSet::BitSet() :
 }
 
 void
-BitSet::init(uint8_t *base, size_t capacity_in_bytes, size_t buff_size)
+BitSet::init(uint8_t *base, size_t capacity_in_bytes, bool buffered)
 {
     ASSERT(base != nullptr);
 
     m_bits = base;
     m_capacity_in_bytes = capacity_in_bytes;
 
-    if (buff_size == 0)
+    if (buffered)
+    {
+        m_buffer = MemoryManager::alloc_tsdb_buffer();
+        m_bound = base;
+        m_cursor = m_buffer;
+        m_end = m_buffer + MemoryManager::get_tsdb_buffer_size();
+    }
+    else
     {
         m_buffer = nullptr;
         m_cursor = base;
         m_end = m_bound = m_bits + capacity_in_bytes;
-    }
-    else
-    {
-        m_buffer = (uint8_t*)malloc(buff_size);
-        m_bound = base;
-        m_cursor = m_buffer;
-        m_end = m_buffer + buff_size;
     }
 
     m_start = 0;
@@ -82,7 +83,7 @@ BitSet::recycle()
 
     if (m_buffer != nullptr)
     {
-        free(m_buffer);
+        MemoryManager::free_tsdb_buffer(m_buffer);
         m_buffer = nullptr;
         m_bound = nullptr;
     }

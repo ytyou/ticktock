@@ -24,7 +24,6 @@
 #include <inttypes.h>
 #include <stdexcept>
 #include "compress.h"
-#include "config.h"
 #include "logger.h"
 #include "utils.h"
 
@@ -114,13 +113,7 @@ Compressor_v2::init(Timestamp start, uint8_t *base, size_t size, bool buffered)
     ASSERT(base != nullptr);
 
     Compressor::init(start, base, size, buffered);
-
-    size_t buff_size = 0;
-
-    if (buffered)
-        buff_size = Config::get_bytes(CFG_TSDB_BUFFER_SIZE, CFG_TSDB_BUFFER_SIZE_DEF);
-
-    m_bitset.init(base, size, buff_size);
+    m_bitset.init(base, size, buffered);
 
     m_dp_count = 0;
     m_prev_delta = 0L;

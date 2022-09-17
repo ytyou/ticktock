@@ -42,6 +42,7 @@ namespace tt
 
 bool MemoryManager::m_initialized = false;
 uint64_t MemoryManager::m_network_buffer_len = 0;
+uint64_t MemoryManager::m_tsdb_buffer_len = 0;
 
 std::mutex MemoryManager::m_page_lock;
 void *MemoryManager::m_page_free_list = nullptr;
@@ -49,11 +50,14 @@ void *MemoryManager::m_page_free_list = nullptr;
 std::mutex MemoryManager::m_network_lock;
 char *MemoryManager::m_network_buffer_free_list = nullptr;
 
+std::mutex MemoryManager::m_tsdb_lock;
+uint8_t *MemoryManager::m_tsdb_buffer_free_list = nullptr;
+
 std::mutex MemoryManager::m_locks[RecyclableType::RT_COUNT];
 Recyclable * MemoryManager::m_free_lists[RecyclableType::RT_COUNT];
 
-std::atomic<int> MemoryManager::m_free[RecyclableType::RT_COUNT+1];
-std::atomic<int> MemoryManager::m_total[RecyclableType::RT_COUNT+1];
+std::atomic<int> MemoryManager::m_free[RecyclableType::RT_COUNT+2];
+std::atomic<int> MemoryManager::m_total[RecyclableType::RT_COUNT+2];
 
 std::mutex MemoryManager::m_garbage_lock;
 int MemoryManager::m_max_usage[RecyclableType::RT_COUNT+1][MAX_USAGE_SIZE];
@@ -122,13 +126,59 @@ MemoryManager::free_network_buffer(char* buff)
     m_free[RecyclableType::RT_COUNT]++;
 }
 
+uint8_t *
+MemoryManager::alloc_tsdb_buffer()
+{
+    uint8_t* buff = nullptr;
+
+    {
+        std::lock_guard<std::mutex> guard(m_tsdb_lock);
+        buff = m_tsdb_buffer_free_list;
+        if (buff != nullptr)
+        {
+            m_tsdb_buffer_free_list = *((uint8_t**)buff);
+            m_free[RecyclableType::RT_COUNT+1]--;
+        }
+    }
+
+    ASSERT(m_initialized);
+
+    if (buff == nullptr)
+    {
+        // TODO: check if we have enough memory
+        buff = (uint8_t*) malloc(m_tsdb_buffer_len);
+        if (buff == nullptr)
+            throw std::runtime_error("Out of memory");
+        m_total[RecyclableType::RT_COUNT+1]++;
+    }
+
+    return buff;
+}
+
+void
+MemoryManager::free_tsdb_buffer(uint8_t* buff)
+{
+    if (UNLIKELY(buff == nullptr))
+    {
+        Logger::error("Passing nullptr to MemoryManager::free_network_buffer()");
+        return;
+    }
+
+    std::lock_guard<std::mutex> guard(m_tsdb_lock);
+    *((uint8_t**)buff) = m_tsdb_buffer_free_list;
+    m_tsdb_buffer_free_list = buff;
+    m_free[RecyclableType::RT_COUNT+1]++;
+}
+
 void
 MemoryManager::init()
 {
     m_network_buffer_len = Config::get_bytes(CFG_TCP_BUFFER_SIZE, CFG_TCP_BUFFER_SIZE_DEF);
+    m_tsdb_buffer_len = Config::get_bytes(CFG_TSDB_BUFFER_SIZE, CFG_TSDB_BUFFER_SIZE_DEF);
     // make sure it's multiple of g_page_size
     m_network_buffer_len = ((long)m_network_buffer_len / g_page_size) * g_page_size;
     Logger::info("mm::m_network_buffer_len = %d", m_network_buffer_len);
+    Logger::info("mm::m_tsdb_buffer_len = %d", m_tsdb_buffer_len);
     for (int i = 0; i < RecyclableType::RT_COUNT; i++)
         m_free_lists[i] = nullptr;
     for (int i = 0; i <= RecyclableType::RT_COUNT; i++)
@@ -895,6 +945,32 @@ MemoryManager::collect_garbage(TaskData& data)
                     std::free(buff);
                     m_free[RecyclableType::RT_COUNT]--;
                     m_total[RecyclableType::RT_COUNT]--;
+                }
+            }
+        }
+
+        // collect tsdb buffers
+        {
+            int max_usage = 0;
+
+            for (int j = 0; j < MAX_USAGE_SIZE; j++)
+                max_usage = std::max(max_usage, m_max_usage[RecyclableType::RT_COUNT+1][j]);
+
+            if (max_usage < m_total[RecyclableType::RT_COUNT+1].load(std::memory_order_relaxed))
+            {
+                Logger::debug("[gc] Trying to GC of tsdb buffer from %d to %d",
+                              m_total[RecyclableType::RT_COUNT+1].load(std::memory_order_relaxed), max_usage);
+
+                std::lock_guard<std::mutex> guard(m_tsdb_lock);
+
+                while (max_usage < m_total[RecyclableType::RT_COUNT+1].load())
+                {
+                    uint8_t *buff = m_tsdb_buffer_free_list;
+                    if (buff == nullptr) break;
+                    m_tsdb_buffer_free_list = *((uint8_t**)buff);
+                    std::free(buff);
+                    m_free[RecyclableType::RT_COUNT+1]--;
+                    m_total[RecyclableType::RT_COUNT+1]--;
                 }
             }
         }

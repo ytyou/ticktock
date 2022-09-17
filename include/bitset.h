@@ -48,7 +48,7 @@ class BitSet : public Serializable
 public:
     BitSet();
 
-    void init(uint8_t *base, size_t capacity_in_bytes, size_t buff_size);
+    void init(uint8_t *base, size_t capacity_in_bytes, bool buffered);
     void recycle();
     void rebase(uint8_t *base);
     void flush();   // flush buffer

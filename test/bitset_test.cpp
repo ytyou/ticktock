@@ -31,6 +31,7 @@ BitSetTests::run()
 {
     log("Running %s...", m_name);
 
+    MemoryManager::init();
     test1();
     test2();
 

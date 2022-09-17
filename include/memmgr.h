@@ -49,12 +49,21 @@ public:
     static int get_recyclable_total();
 
     // network buffer
-    static char* alloc_network_buffer();
+    static char *alloc_network_buffer();
     static void free_network_buffer(char *buff);
 
     inline static uint64_t get_network_buffer_size()
     {
         return m_network_buffer_len;
+    }
+
+    // tsdb buffer
+    static uint8_t *alloc_tsdb_buffer();
+    static void free_tsdb_buffer(uint8_t *buff);
+
+    inline static uint64_t get_tsdb_buffer_size()
+    {
+        return m_tsdb_buffer_len;
     }
 
     static Recyclable *alloc_recyclable(RecyclableType type);
@@ -68,9 +77,13 @@ private:
 
     static bool m_initialized;      // must initialize before using
     static uint64_t m_network_buffer_len;
+    static uint64_t m_tsdb_buffer_len;
 
     static std::mutex m_network_lock;
     static char *m_network_buffer_free_list;
+
+    static std::mutex m_tsdb_lock;
+    static uint8_t *m_tsdb_buffer_free_list;
 
     static std::mutex m_page_lock;
     static void *m_page_free_list;
@@ -80,8 +93,8 @@ private:
 
     // keep track of number of reusable objects,
     // both free and in total
-    static std::atomic<int> m_free[RecyclableType::RT_COUNT+1];
-    static std::atomic<int> m_total[RecyclableType::RT_COUNT+1];
+    static std::atomic<int> m_free[RecyclableType::RT_COUNT+2];
+    static std::atomic<int> m_total[RecyclableType::RT_COUNT+2];
 
     // garbage collector
     static std::mutex m_garbage_lock;   // to prevent multi-invoke of collect_garbage()
