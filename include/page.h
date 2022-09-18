@@ -215,11 +215,7 @@ public:
     //virtual void ensure_page_open();
 
     Timestamp get_last_tstamp() const;
-
-    inline const TimeRange& get_time_range()
-    {
-        return m_time_range;
-    }
+    TimeRange get_time_range() const;
 
     int get_dp_count() const;
     virtual PageCount get_id() const;
@@ -258,7 +254,9 @@ private:
     virtual void *get_page();
 
 protected:
-    TimeRange m_time_range;     // range of actual data points in this page
+    //TimeRange m_time_range;     // range of actual data points in this page
+    uint32_t m_from;            // relative to PM's start
+    uint32_t m_to;              // relative to PM's start
     PageManager *m_page_mgr;    // this is null for in-memory page
     Compressor *m_compressor;   // this is null except for in-memory page
     void *m_version;            // version of PM

@@ -144,6 +144,16 @@ PageInfo::reset()
     m_compressor->recycle();
 }
 
+TimeRange
+PageInfo::get_time_range() const
+{
+    ASSERT(m_page_mgr != nullptr);
+    TimeRange range(m_page_mgr->get_time_range());
+    Timestamp start = range.get_from();
+    range.init(m_from + start, m_to + start);
+    return range;
+}
+
 bool
 PageInfo::recycle()
 {
@@ -167,7 +177,9 @@ PageInfo::init_for_disk(PageManager *pm, struct page_info_on_disk *header, PageC
 
     m_header = header;
     const TimeRange& range = pm->get_time_range();
-    m_time_range.init(range.get_to(), range.get_from());    // empty range
+    //m_time_range.init(range.get_to(), range.get_from());    // empty range
+    m_from = (uint32_t)range.get_duration();
+    m_to = 0;
     m_header->init(range);
     m_header->set_out_of_order(is_ooo);
     m_header->m_page_index = page_idx;
@@ -193,9 +205,11 @@ PageInfo::init_from_disk(PageManager *pm, struct page_info_on_disk *header, Page
     m_page_mgr = pm;
     m_header = header;
     m_compressor = nullptr;
-    Timestamp start = pm->get_time_range().get_from();
-    m_time_range.init(m_header->m_tstamp_from + start, m_header->m_tstamp_to + start);
-    ASSERT(pm->get_time_range().contains(m_time_range));
+    //Timestamp start = pm->get_time_range().get_from();
+    //m_time_range.init(m_header->m_tstamp_from + start, m_header->m_tstamp_to + start);
+    m_from = m_header->m_tstamp_from;
+    m_to = m_header->m_tstamp_to;
+    //ASSERT(pm->get_time_range().contains(m_time_range));
     m_header_index = header_idx;
     m_version = pm->get_version();
 }
@@ -300,14 +314,16 @@ PageInfo::persist(bool copy_data)
     // write header
     //struct page_info_on_disk *piod = m_page_mgr->get_page_info_on_disk(m_id);
     ASSERT(m_header != nullptr);
-    Timestamp start = m_page_mgr->get_time_range().get_from();
-    ASSERT(start <= m_time_range.get_from());
+    //Timestamp start = m_page_mgr->get_time_range().get_from();
+    //ASSERT(start <= m_time_range.get_from());
 
     m_header->init(position.m_offset,
                    position.m_start,
                    m_compressor->is_full(),
-                   m_time_range.get_from() - start,
-                   m_time_range.get_to() - start);
+                   m_from,
+                   m_to);
+                   //m_time_range.get_from() - start,
+                   //m_time_range.get_to() - start);
 
     Logger::debug("Writing to page #%d in file %s",
         (int)get_page_index(),
@@ -349,8 +365,10 @@ PageInfo::copy_from(PageInfo *src)
     m_header->init(position.m_offset,
                    position.m_start,
                    src->m_compressor->is_full(),
-                   src->m_time_range.get_from() - start,
-                   src->m_time_range.get_to() - start);
+                   m_from,
+                   m_to);
+                   //src->m_time_range.get_from() - start,
+                   //src->m_time_range.get_to() - start);
 
     if (m_header->m_offset == 0)
     {
@@ -359,7 +377,9 @@ PageInfo::copy_from(PageInfo *src)
             Logger::info("Failed to madvise(DONTNEED), page = %p, errno = %d", get_page(), errno);
     }
 
-    m_time_range.init(src->get_time_range());
+    m_from = src->m_from;
+    m_to = src->m_to;
+    //m_time_range.init(src->get_time_range());
     recycle();  // remove compressor
 }
 
@@ -423,7 +443,12 @@ PageInfo::add_data_point(Timestamp tstamp, double value)
     if (success)
     {
         m_page_mgr->mark_accessed();
-        m_time_range.add_time(tstamp);
+        Timestamp start = m_page_mgr->get_time_range().get_from();
+        ASSERT(start <= tstamp);
+        uint32_t ts = tstamp - start;
+        if (ts < m_from) m_from = ts;
+        if (m_to < ts) m_to = ts;
+        //m_time_range.add_time(tstamp);
     }
     return success;
 }
@@ -460,7 +485,9 @@ PageInfoInMem::init_for_memory(PageManager *pm, PageSize size, bool is_ooo)
 
     m_header = &m_page_header;
     const TimeRange& range = pm->get_time_range();
-    m_time_range.init(range.get_to(), range.get_from());    // empty range
+    //m_time_range.init(range.get_to(), range.get_from());    // empty range
+    m_from = (uint32_t)range.get_duration();
+    m_to = 0;
     m_header->init(range);
     m_header->set_out_of_order(is_ooo);
     m_header->m_offset = 0;
