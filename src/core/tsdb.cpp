@@ -1121,6 +1121,7 @@ Tsdb::load_from_disk_no_lock()
     m_mode |= TSDB_MODE_READ;
     if (compacted) m_mode |= TSDB_MODE_COMPACTED;
     m_load_time = ts_now_sec();
+    Logger::info("Loaded %T (lt=%" PRIu64 ")", this, m_load_time.load());
     return true;
 }
 
