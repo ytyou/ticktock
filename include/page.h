@@ -201,7 +201,7 @@ public:
     // init a page info representing an existing page on disk
     void init_from_disk(PageManager *pm, struct page_info_on_disk *header, PageCount header_idx);
 
-    inline void set_ooo(bool ooo) { m_header->set_out_of_order(ooo); }
+    inline void set_ooo(bool ooo) { get_header()->set_out_of_order(ooo); }
 
     // prepare to be used to represent a different page
     virtual PageInfo *flush(bool accessed, Tsdb *tsdb = nullptr);
@@ -210,21 +210,23 @@ public:
     bool is_full() const;
     bool is_empty() const;
     inline bool is_on_disk() const { return true; }
-    inline bool is_out_of_order() const { return m_header->is_out_of_order(); }
+    inline bool is_out_of_order() const { return get_header_const()->is_out_of_order(); }
     virtual void ensure_dp_available(DataPointVector *dps = nullptr);
     //virtual void ensure_page_open();
+    virtual struct page_info_on_disk *get_header();
+    virtual struct page_info_on_disk *get_header_const() const;
 
     Timestamp get_last_tstamp() const;
     TimeRange get_time_range() const;
 
     int get_dp_count() const;
-    virtual PageCount get_id() const;
+    inline virtual PageCount get_id() const { return m_header_index; }
     PageCount get_file_id() const;
     int get_page_order() const;
 
-    inline PageCount get_page_index() const
+    inline PageCount get_page_index()
     {
-        return m_header->m_page_index;
+        return get_header()->m_page_index;
     }
 
     // return true if dp is added; false if page is full;
@@ -262,7 +264,7 @@ protected:
     void *m_version;            // version of PM
 
     PageCount m_header_index;
-    struct page_info_on_disk *m_header;
+    //struct page_info_on_disk *m_header;
 
 };  // class PageInfo
 
@@ -278,6 +280,10 @@ public:
     void *get_page() override { return m_version; }
     PageCount get_id() const override { return 0; }
     void ensure_dp_available(DataPointVector *dps = nullptr) override {}
+    inline struct page_info_on_disk *get_header() override
+    {
+        return &m_page_header;
+    }
 
 private:
     struct page_info_on_disk m_page_header;
@@ -287,9 +293,9 @@ private:
 class page_info_index_less
 {
 public:
-    bool operator()(PageInfo *info1, PageInfo *info2) const
+    bool operator()(PageInfo *info1, PageInfo *info2)
     {
-        return info1->m_header->m_page_index < info2->m_header->m_page_index;
+        return info1->get_header()->m_page_index < info2->get_header()->m_page_index;
     }
 };
 
