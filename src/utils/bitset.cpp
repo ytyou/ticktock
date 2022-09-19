@@ -20,6 +20,7 @@
 #include <cstdio>
 #include <stdexcept>
 #include "bitset.h"
+#include "memmgr.h"
 #include "utils.h"
 
 
@@ -81,6 +82,15 @@ BitSet::rebase(uint8_t *base)
     }
 
     m_bits = base;
+}
+
+BitSetCursor *
+BitSet::new_cursor()
+{
+    BitSetCursor *cursor =
+        (BitSetCursor*)MemoryManager::alloc_recyclable(RecyclableType::RT_BITSET_CURSOR);
+    cursor->init(this);
+    return cursor;
 }
 
 void
@@ -323,10 +333,18 @@ BitSet::c_str(char *buff) const
 }
 
 
-BitSetCursor::BitSetCursor(BitSet *bitset) :
-    m_cursor(bitset->m_bits),
-    m_start(0)
+void
+BitSetCursor::init()
 {
+    m_cursor = nullptr;
+    m_start = 0;
+}
+
+void
+BitSetCursor::init(BitSet *bitset)
+{
+    m_cursor = bitset->m_bits;
+    m_start = 0;
 }
 
 

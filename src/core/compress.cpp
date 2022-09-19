@@ -25,6 +25,7 @@
 #include <stdexcept>
 #include "compress.h"
 #include "logger.h"
+#include "memmgr.h"
 #include "utils.h"
 
 
@@ -437,7 +438,7 @@ Compressor_v2::uncompress(DataPointVector& dps, bool restore)
         dps.emplace_back(timestamp, value);
     }
 
-    delete cursor;
+    MemoryManager::free_recyclable(cursor);
 
     if (restore)
     {
