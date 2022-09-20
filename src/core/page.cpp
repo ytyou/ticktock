@@ -530,7 +530,7 @@ PageInfoInMem::init_for_memory(PageManager *pm, PageSize size, bool is_ooo)
     header->m_page_index = std::numeric_limits<uint32_t>::max();
     ASSERT(header->m_size != 0);
     m_page_mgr = pm;
-    m_version = malloc(size);
+    m_version = MemoryManager::alloc_memory_page();
     ASSERT(m_page != nullptr);
     get_compressor() = nullptr;
 }
@@ -547,7 +547,7 @@ PageInfoInMem::flush(bool accessed, Tsdb *tsdb)
     //info->flush(false);
     if (m_version != nullptr)
     {
-        free(m_version);
+        MemoryManager::free_memory_page(m_version);
         m_version = nullptr;
     }
     Logger::debug("Writing to page #%d in file %s",
