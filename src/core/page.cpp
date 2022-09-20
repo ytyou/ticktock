@@ -46,18 +46,18 @@ std::atomic<int32_t> PageManager::m_total{0};
 
 PageInfo::PageInfo() :
     m_page_mgr(nullptr),
-    m_compressor(nullptr),
     m_header_index(0),
     m_version(nullptr)
 {
+    get_compressor() = nullptr;
 }
 
 bool
 PageInfo::is_full() const
 {
-    if (m_compressor != nullptr)
+    if (get_compressor_const() != nullptr)
     {
-        return m_compressor->is_full();
+        return get_compressor_const()->is_full();
     }
     else
     {
@@ -68,9 +68,9 @@ PageInfo::is_full() const
 bool
 PageInfo::is_empty() const
 {
-    if (m_compressor != nullptr)
+    if (get_compressor_const() != nullptr)
     {
-        return m_compressor->is_empty();
+        return get_compressor_const()->is_empty();
     }
     else
     {
@@ -81,7 +81,7 @@ PageInfo::is_empty() const
 PageInfo *
 PageInfo::flush(bool accessed, Tsdb *tsdb)
 {
-    if (m_compressor == nullptr)
+    if (get_compressor_const() == nullptr)
         return nullptr;
 
     if (! m_page_mgr->is_open())
@@ -132,14 +132,14 @@ PageInfo::shrink_to_fit()
 void
 PageInfo::reset()
 {
-    ASSERT(m_compressor != nullptr);
+    ASSERT(get_compressor_const() != nullptr);
     //ASSERT(m_page_mgr == nullptr);
 
     //m_id = 0;
     //m_page_index = 0;
     //m_compressor->init(range.get_from(), reinterpret_cast<uint8_t*>(m_page), m_size);
     // TODO: should call m_compressor->reset() or m_compressor->init()
-    m_compressor->recycle();
+    get_compressor()->recycle();
 }
 
 struct page_info_on_disk *
@@ -167,10 +167,10 @@ PageInfo::get_time_range() const
 bool
 PageInfo::recycle()
 {
-    if (m_compressor != nullptr)
+    if (get_compressor() != nullptr)
     {
-        MemoryManager::free_recyclable(m_compressor);
-        m_compressor = nullptr;
+        MemoryManager::free_recyclable(get_compressor());
+        get_compressor() = nullptr;
     }
 
     return true;
@@ -197,7 +197,7 @@ PageInfo::init_for_disk(PageManager *pm, struct page_info_on_disk *header, PageC
     ASSERT(header->m_size != 0);
     m_page_mgr = pm;
     //set_page();
-    m_compressor = nullptr;
+    get_compressor() = nullptr;
     m_header_index = header_idx;
     m_version = pm->get_version();
 }
@@ -212,7 +212,7 @@ PageInfo::init_from_disk(PageManager *pm, struct page_info_on_disk *header, Page
     ASSERT(pm->is_open());
 
     m_page_mgr = pm;
-    m_compressor = nullptr;
+    get_compressor() = nullptr;
     //Timestamp start = pm->get_time_range().get_from();
     //m_time_range.init(m_header->m_tstamp_from + start, m_header->m_tstamp_to + start);
     m_from = header->m_tstamp_from;
@@ -227,27 +227,29 @@ PageInfo::init_from_disk(PageManager *pm, struct page_info_on_disk *header, Page
 void
 PageInfo::setup_compressor(const TimeRange& range, int compressor_version)
 {
-    if (m_compressor != nullptr)
+    Compressor*& compressor = get_compressor();
+
+    if (compressor != nullptr)
     {
-        MemoryManager::free_recyclable(m_compressor);
-        m_compressor = nullptr;
+        MemoryManager::free_recyclable(compressor);
+        compressor = nullptr;
     }
 
     struct page_info_on_disk *header = get_header();
 
     if (header->is_out_of_order())
     {
-        m_compressor =
+        compressor =
             (Compressor*)MemoryManager::alloc_recyclable(RecyclableType::RT_COMPRESSOR_V0);
     }
     else
     {
         RecyclableType type =
             (RecyclableType)(compressor_version + RecyclableType::RT_COMPRESSOR_V0);
-        m_compressor = (Compressor*)MemoryManager::alloc_recyclable(type);
+        compressor = (Compressor*)MemoryManager::alloc_recyclable(type);
     }
 
-    m_compressor->init(range.get_from(), reinterpret_cast<uint8_t*>(get_page()), header->m_size);
+    compressor->init(range.get_from(), reinterpret_cast<uint8_t*>(get_page()), header->m_size);
 }
 
 /*
@@ -255,7 +257,9 @@ void
 PageInfo::ensure_dp_available(DataPointVector *dps)
 {
     ensure_page_open();
-    if (m_compressor != nullptr) return;
+    Compressor*& compressor = get_compressor();
+
+    if (compressor != nullptr) return;
 
     Meter meter(METRIC_TICKTOCK_PAGE_RESTORE_TOTAL_MS);
 
@@ -265,11 +269,11 @@ PageInfo::ensure_dp_available(DataPointVector *dps)
     {
         DataPointVector v;
         v.reserve(700);
-        m_compressor->restore(v, position, nullptr);
+        compressor->restore(v, position, nullptr);
     }
     else
     {
-        m_compressor->restore(*dps, position, nullptr);
+        compressor->restore(*dps, position, nullptr);
     }
     ASSERT(m_page_mgr->get_time_range().contains(m_time_range));
 }
@@ -280,12 +284,15 @@ PageInfo::ensure_dp_available(DataPointVector *dps)
 {
     m_page_mgr->reopen_with_lock();
     void *version = m_page_mgr->get_version();
+    Compressor*& compressor = get_compressor();
+
     if (version != m_version)
     {
         recycle();
         m_version = version;
     }
-    if (m_compressor == nullptr)
+
+    if (compressor == nullptr)
     {
         Meter meter(METRIC_TICKTOCK_PAGE_RESTORE_TOTAL_MS);
 
@@ -297,11 +304,11 @@ PageInfo::ensure_dp_available(DataPointVector *dps)
         {
             DataPointVector v;
             v.reserve(700);
-            m_compressor->restore(v, position, nullptr);
+            compressor->restore(v, position, nullptr);
         }
         else
         {
-            m_compressor->restore(*dps, position, nullptr);
+            compressor->restore(*dps, position, nullptr);
         }
         ASSERT(m_page_mgr->get_time_range().contains(m_time_range));
     }
@@ -310,14 +317,16 @@ PageInfo::ensure_dp_available(DataPointVector *dps)
 void
 PageInfo::persist(bool copy_data)
 {
-    if (m_compressor == nullptr) return;
+    Compressor*& compressor = get_compressor();
+
+    if (compressor == nullptr) return;
 
     // write data
     CompressorPosition position;
-    m_compressor->save(position);
+    compressor->save(position);
     // only version 0 compressor needs saving
-    if ((m_compressor->get_version() == 0) || copy_data)
-        m_compressor->save((uint8_t*)get_page()); // copy content to mmap file
+    if ((compressor->get_version() == 0) || copy_data)
+        compressor->save((uint8_t*)get_page()); // copy content to mmap file
 
     // write header
     //struct page_info_on_disk *piod = m_page_mgr->get_page_info_on_disk(m_id);
@@ -326,7 +335,7 @@ PageInfo::persist(bool copy_data)
 
     get_header()->init(position.m_offset,
                    position.m_start,
-                   m_compressor->is_full(),
+                   compressor->is_full(),
                    m_from,
                    m_to);
                    //m_time_range.get_from() - start,
@@ -342,32 +351,34 @@ PageInfo::persist(bool copy_data)
 void
 PageInfo::merge_after(PageInfo *dst)
 {
+    Compressor*& compressor = get_compressor();
+
     ASSERT(dst != nullptr);
     //ASSERT(m_page_mgr == dst->m_page_mgr);
     //ASSERT(m_id > dst->m_id);
-    ASSERT(m_compressor != nullptr);
-    ASSERT(dst->m_compressor != nullptr);
+    ASSERT(compressor != nullptr);
 
     struct page_info_on_disk *src_header = get_header();
     struct page_info_on_disk *dst_header = dst->get_header();
 
     src_header->m_page_index = dst_header->m_page_index;
     src_header->m_offset = dst_header->m_offset + dst_header->m_size;
-    src_header->m_size = m_compressor->size();
+    src_header->m_size = compressor->size();
     //set_page();
     persist(true);
-    m_compressor->rebase(static_cast<uint8_t*>(get_page()));
+    compressor->rebase(static_cast<uint8_t*>(get_page()));
 }
 
 void
 PageInfo::copy_from(PageInfo *src)
 {
-    ASSERT(m_compressor != nullptr);
+    Compressor*& compressor = get_compressor();
+    ASSERT(compressor != nullptr);
 
     // copy data
     CompressorPosition position;
-    src->m_compressor->save(position);
-    src->m_compressor->save((uint8_t*)get_page());
+    src->get_compressor()->save(position);
+    src->get_compressor()->save((uint8_t*)get_page());
 
     // write header
     Timestamp start = m_page_mgr->get_time_range().get_from();
@@ -375,7 +386,7 @@ PageInfo::copy_from(PageInfo *src)
 
     header->init(position.m_offset,
                    position.m_start,
-                   src->m_compressor->is_full(),
+                   src->get_compressor_const()->is_full(),
                    m_from,
                    m_to);
                    //src->m_time_range.get_from() - start,
@@ -397,17 +408,18 @@ PageInfo::copy_from(PageInfo *src)
 void
 PageInfo::copy_to(PageCount dst_id)
 {
+    Compressor*& compressor = get_compressor();
     //ASSERT(m_id > dst_id);
-    ASSERT(m_compressor != nullptr);
+    ASSERT(compressor != nullptr);
 
     struct page_info_on_disk *header = get_header();
 
     header->m_page_index = dst_id;
     header->m_offset = 0;
-    header->m_size = m_compressor->size();
+    header->m_size = compressor->size();
     //set_page();
     persist(true);
-    m_compressor->rebase(static_cast<uint8_t*>(get_page()));
+    compressor->rebase(static_cast<uint8_t*>(get_page()));
 }
 
 /*
@@ -445,17 +457,19 @@ PageInfo::get_page()
 Timestamp
 PageInfo::get_last_tstamp() const
 {
-    ASSERT(m_compressor != nullptr);
-    //ASSERT(m_page_mgr->get_time_range().in_range(m_compressor->get_last_tstamp()));
-    return m_compressor->get_last_tstamp();
+    Compressor *compressor = get_compressor_const();
+    ASSERT(compressor != nullptr);
+    //ASSERT(m_page_mgr->get_time_range().in_range(compressor->get_last_tstamp()));
+    return compressor->get_last_tstamp();
 }
 
 bool
 PageInfo::add_data_point(Timestamp tstamp, double value)
 {
-    if (m_compressor == nullptr) return false;
+    Compressor*& compressor = get_compressor();
+    if (compressor == nullptr) return false;
     //ASSERT(m_page_mgr->get_time_range().in_range(tstamp));
-    bool success = m_compressor->compress(tstamp, value);
+    bool success = compressor->compress(tstamp, value);
     if (success)
     {
         m_page_mgr->mark_accessed();
@@ -472,13 +486,15 @@ PageInfo::add_data_point(Timestamp tstamp, double value)
 void
 PageInfo::get_all_data_points(DataPointVector& dps)
 {
-    if (m_compressor != nullptr) m_compressor->uncompress(dps);
+    Compressor*& compressor = get_compressor();
+    if (compressor != nullptr) compressor->uncompress(dps);
 }
 
 int
 PageInfo::get_dp_count() const
 {
-    return (m_compressor == nullptr) ? 0 : m_compressor->get_dp_count();
+    Compressor *compressor = get_compressor_const();
+    return (compressor == nullptr) ? 0 : compressor->get_dp_count();
 }
 
 const char *
@@ -486,7 +502,7 @@ PageInfo::c_str(char *buff) const
 {
     struct page_info_on_disk *header = get_header_const();
     std::snprintf(buff, c_size(), "idx=%d is_ooo=%d comp=%p",
-        header->m_page_index, header->is_out_of_order(), m_compressor);
+        header->m_page_index, header->is_out_of_order(), get_compressor_const());
     return buff;
 }
 
@@ -512,9 +528,9 @@ PageInfoInMem::init_for_memory(PageManager *pm, PageSize size, bool is_ooo)
     header->m_page_index = std::numeric_limits<uint32_t>::max();
     ASSERT(header->m_size != 0);
     m_page_mgr = pm;
-    m_compressor = nullptr;
     m_version = malloc(size);
     ASSERT(m_page != nullptr);
+    get_compressor() = nullptr;
 }
 
 PageInfo *

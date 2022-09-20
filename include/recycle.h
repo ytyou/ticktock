@@ -77,6 +77,11 @@ public:
         return m_recyclable_next;
     }
 
+    inline Recyclable *next_const() const
+    {
+        return m_recyclable_next;
+    }
+
     inline RecyclableType& recyclable_type()
     {
         return m_recyclable_type;

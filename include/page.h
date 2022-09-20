@@ -215,6 +215,8 @@ public:
     //virtual void ensure_page_open();
     virtual struct page_info_on_disk *get_header();
     virtual struct page_info_on_disk *get_header_const() const;
+    inline Compressor*& get_compressor() { return (Compressor*&)Recyclable::next(); }
+    inline Compressor *get_compressor_const() const { return (Compressor*)Recyclable::next_const(); }
 
     Timestamp get_last_tstamp() const;
     TimeRange get_time_range() const;
@@ -260,7 +262,7 @@ protected:
     uint32_t m_from;            // relative to PM's start
     uint32_t m_to;              // relative to PM's start
     PageManager *m_page_mgr;    // this is null for in-memory page
-    Compressor *m_compressor;   // this is null except for in-memory page
+    //Compressor *m_compressor;   // this is null except for in-memory page
     void *m_version;            // version of PM
 
     PageCount m_header_index;
