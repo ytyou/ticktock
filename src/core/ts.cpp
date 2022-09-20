@@ -37,7 +37,6 @@ namespace tt
 TimeSeries::TimeSeries() :
     m_metric(nullptr),
     m_key(nullptr),
-    m_tsdb(nullptr),
     m_buff(nullptr),
     m_ooo_buff(nullptr),
     TagOwner(true)
@@ -60,12 +59,12 @@ TimeSeries::init(const char *metric, const char *key, Tag *tags, Tsdb *tsdb, boo
     m_metric = STRDUP(metric);
     m_key = STRDUP(key);
     m_tags = tags;
-    m_tsdb = tsdb;
+    get_tsdb() = tsdb;
     m_pages.clear();
     m_buff = nullptr;
     m_ooo_buff = nullptr;
 
-    ASSERT(m_tsdb != nullptr);
+    ASSERT(tsdb != nullptr);
     Logger::debug("ts of %T is loaded in read-only mode", tsdb);
 }
 
@@ -89,7 +88,7 @@ TimeSeries::recycle()
 {
     std::lock_guard<std::mutex> guard(m_lock);
 
-    m_tsdb = nullptr;
+    get_tsdb() = nullptr;
 
     for (PageInfo *info: m_pages)
     {
@@ -126,16 +125,17 @@ void
 TimeSeries::flush(bool accessed)
 {
     std::lock_guard<std::mutex> guard(m_lock);
+    Tsdb *tsdb = get_tsdb();
 
     if (m_buff != nullptr)
     {
-        PageInfo *info = m_buff->flush(accessed, m_tsdb);
+        PageInfo *info = m_buff->flush(accessed, tsdb);
 
         if (info != nullptr)
         {
             ASSERT(m_buff == m_pages.back());
             m_pages.back() = info;
-            m_tsdb->append_meta(this, info);
+            tsdb->append_meta(this, info);
             MemoryManager::free_recyclable(m_buff);
             //m_buff = info;
             m_buff = nullptr;
@@ -144,13 +144,13 @@ TimeSeries::flush(bool accessed)
 
     if (m_ooo_buff != nullptr)
     {
-        PageInfo *info = m_ooo_buff->flush(accessed, m_tsdb);
+        PageInfo *info = m_ooo_buff->flush(accessed, tsdb);
 
         if (info != nullptr)
         {
             ASSERT(m_ooo_buff == m_ooo_pages.back());
             m_ooo_pages.back() = info;
-            m_tsdb->append_meta(this, info);
+            tsdb->append_meta(this, info);
             MemoryManager::free_recyclable(m_ooo_buff);
             //m_ooo_buff = info;
             m_ooo_buff = nullptr;
@@ -161,7 +161,7 @@ TimeSeries::flush(bool accessed)
 PageInfo *
 TimeSeries::get_free_page_on_disk(bool is_out_of_order)
 {
-    PageInfo *info = m_tsdb->get_free_page(is_out_of_order);
+    PageInfo *info = get_tsdb_const()->get_free_page(is_out_of_order);
 
     if (is_out_of_order)
         m_ooo_pages.push_back(info);
@@ -214,12 +214,13 @@ TimeSeries::add_data_point(DataPoint& dp)
     {
         ASSERT(m_buff->is_full());
 
-        PageInfo *info = m_buff->flush(false, m_tsdb);
+        Tsdb *tsdb = get_tsdb();
+        PageInfo *info = m_buff->flush(false, tsdb);
         if (info != nullptr)
         {
             ASSERT(m_buff == m_pages.back());
             m_pages.back() = info;
-            m_tsdb->append_meta(this, info);
+            tsdb->append_meta(this, info);
             MemoryManager::free_recyclable(m_buff);
         }
         m_buff = get_free_page_on_disk(false);
@@ -269,10 +270,10 @@ TimeSeries::add_batch(DataPointSet& dps)
         {
             ASSERT(m_buff->is_full());
 
-            m_buff->flush(false, m_tsdb);
+            m_buff->flush(false, get_tsdb());
             m_buff = get_free_page_on_disk(false);
             ASSERT(m_buff->is_empty());
-            ASSERT(m_buff->get_last_tstamp() == m_tsdb->get_time_range().get_from());
+            ASSERT(m_buff->get_last_tstamp() == get_tsdb()->get_time_range().get_from());
 
             // try again
             ok = m_buff->add_data_point(tstamp, value);
@@ -308,12 +309,13 @@ TimeSeries::add_ooo_data_point(DataPoint& dp)
     {
         ASSERT(m_ooo_buff->is_full());
 
-        PageInfo *info = m_ooo_buff->flush(false, m_tsdb);
+        Tsdb *tsdb = get_tsdb();
+        PageInfo *info = m_ooo_buff->flush(false, tsdb);
         if (info != nullptr)
         {
             ASSERT(m_ooo_buff == m_ooo_pages.back());
             m_ooo_pages.back() = info;
-            m_tsdb->append_meta(this, info);
+            tsdb->append_meta(this, info);
             MemoryManager::free_recyclable(m_ooo_buff);
         }
         m_ooo_buff = get_free_page_on_disk(true);
@@ -465,7 +467,7 @@ TimeSeries::query_without_ooo(TimeRange& range, Downsampler *downsampler, DataPo
 {
     ASSERT(page_info != nullptr);
 
-    if (m_tsdb == nullptr) return;
+    if (get_tsdb_const() == nullptr) return;
 
     if (! range.has_intersection(page_info->get_time_range())) return;
 
@@ -533,7 +535,8 @@ TimeSeries::compact(MetaFile& meta_file)
 {
     DataPointVector dps;
     PageInfo *info = nullptr;
-    TimeRange range = m_tsdb->get_time_range();
+    Tsdb *tsdb = get_tsdb();
+    TimeRange range = tsdb->get_time_range();
     int id_from, id_to, file_id;
 
     // get all data points
@@ -548,7 +551,7 @@ TimeSeries::compact(MetaFile& meta_file)
 
         if (info == nullptr)
         {
-            info = m_tsdb->get_free_page_for_compaction();
+            info = tsdb->get_free_page_for_compaction();
             //meta_file.append(this, info);
             file_id = info->get_file_id();
             id_from = id_to = info->get_id();
@@ -559,10 +562,10 @@ TimeSeries::compact(MetaFile& meta_file)
         if (! ok)
         {
             ASSERT(info->is_full());
-            info->flush(false, m_tsdb);
+            info->flush(false, tsdb);
             MemoryManager::free_recyclable(info);
 
-            info = m_tsdb->get_free_page_for_compaction();
+            info = tsdb->get_free_page_for_compaction();
             //meta_file.append(this, info);
             ok = info->add_data_point(dp.first, dp.second);
             ASSERT(ok);

@@ -58,6 +58,9 @@ public:
     // collect all pages to be compacted
     void get_all_pages(std::vector<PageInfo*>& pages);
 
+    inline Tsdb*& get_tsdb() { return (Tsdb*&)Recyclable::next(); }
+    inline Tsdb *get_tsdb_const() const { return (Tsdb*)Recyclable::next_const(); }
+
     inline const char* get_key() const
     {
         return m_key;
@@ -78,7 +81,7 @@ public:
     inline void set_tsdb(Tsdb *tsdb)
     {
         ASSERT(tsdb != nullptr);
-        m_tsdb = tsdb;
+        get_tsdb() = tsdb;
     }
 
     inline const char *get_metric() const
@@ -122,7 +125,7 @@ private:
     std::vector<PageInfo*> m_ooo_pages; // out-of-order pages
 
     char *m_metric;
-    Tsdb *m_tsdb;
+    //Tsdb *m_tsdb;
 };
 
 

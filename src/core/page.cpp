@@ -497,6 +497,7 @@ PageInfo::get_dp_count() const
     return (compressor == nullptr) ? 0 : compressor->get_dp_count();
 }
 
+/*
 const char *
 PageInfo::c_str(char *buff) const
 {
@@ -505,6 +506,7 @@ PageInfo::c_str(char *buff) const
         header->m_page_index, header->is_out_of_order(), get_compressor_const());
     return buff;
 }
+*/
 
 
 // initialize a PageInfo that represent a page on disk;

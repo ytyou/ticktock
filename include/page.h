@@ -183,7 +183,7 @@ struct page_info_on_disk
 // these are what we keep in memory for a page;
 // part of it (see struct page_info_on_disk) will be
 // persisted on disk;
-class PageInfo : public Serializable, public Recyclable
+class PageInfo : public Recyclable
 {
 public:
     PageInfo();
@@ -245,8 +245,8 @@ public:
     void copy_to(PageCount dst_id);
     void copy_from(PageInfo *src);
 
-    inline size_t c_size() const override { return 64; }
-    const char *c_str(char *buff) const override;
+    //inline size_t c_size() const override { return 64; }
+    //const char *c_str(char *buff) const override;
 
 private:
     friend class PageManager;
