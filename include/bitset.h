@@ -44,7 +44,7 @@ private:
 /* This class enables us to store data as series of bits. It is used by
  * the Gorilla compression algorithm.
  */
-class BitSet : public Serializable
+class BitSet
 {
 public:
     BitSet();
@@ -92,8 +92,8 @@ public:
         return size;
     }
 
-    inline size_t c_size() const override { return 128; }
-    const char *c_str(char *buff) const override;
+    //inline size_t c_size() const override { return 128; }
+    //const char *c_str(char *buff) const override;
 
 private:
     friend class BitSetCursor;
@@ -115,10 +115,11 @@ private:
     uint8_t *m_cursor;      // the byte to store next new bit
     uint8_t *m_end;         // the byte after the last byte in this bitset;
                             // when m_cursor == m_end, the bitset is full;
-    uint8_t m_start;        // offset within a byte where next new bit should go
 
     uint8_t *m_cp_cursor;   // for saving check point so we can roll back to it
     uint8_t m_cp_start;     // for saving check point so we can roll back to it
+
+    uint8_t m_start;        // offset within a byte where next new bit should go
 };
 
 

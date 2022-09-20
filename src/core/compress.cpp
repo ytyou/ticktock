@@ -54,15 +54,15 @@ static uint64_t TRAILING_ZEROS[64] =
 };
 
 
-Compressor::Compressor() :
-    m_start_tstamp(0L)
+Compressor::Compressor()
 {
+    get_start_tstamp() = 0L;
 }
 
 void
 Compressor::init(Timestamp start, uint8_t *base, size_t size)
 {
-    m_start_tstamp = start;
+    get_start_tstamp() = start;
 }
 
 Compressor *
@@ -90,6 +90,26 @@ Compressor::create(int version)
     }
 
     return compressor;
+}
+
+Timestamp &
+Compressor::get_start_tstamp()
+{
+#ifdef __x86_64__
+    return (Timestamp&)Recyclable::next();
+#else
+    return m_start_tstamp;
+#endif
+}
+
+Timestamp
+Compressor::get_start_tstamp_const() const
+{
+#ifdef __x86_64__
+    return (Timestamp)Recyclable::next_const();
+#else
+    return m_start_tstamp;
+#endif
 }
 
 
@@ -160,7 +180,7 @@ Compressor_v2::compress1(Timestamp timestamp, double value)
     ASSERT(m_start_tstamp <= timestamp);
     ASSERT((timestamp - m_start_tstamp) <= INT_MAX);
 
-    uint32_t delta = timestamp - m_start_tstamp;
+    uint32_t delta = timestamp - get_start_tstamp();
 
     // TODO: make these lengths constants
     m_bitset.append(reinterpret_cast<uint8_t*>(&delta), 8*sizeof(uint32_t), 0);
@@ -308,7 +328,7 @@ Compressor_v2::uncompress(DataPointVector& dps, bool restore)
     // 1st data-point
     uint32_t delta32 = 0;
     m_bitset.retrieve(cursor, reinterpret_cast<uint8_t*>(&delta32), 32, 0);
-    timestamp = m_start_tstamp + delta32;
+    timestamp = get_start_tstamp() + delta32;
     uint64_t delta = delta32;
     m_bitset.retrieve(cursor, reinterpret_cast<uint8_t*>(&value), 8*sizeof(double), 0);
     ASSERT(m_start_tstamp <= timestamp);
@@ -459,7 +479,7 @@ Compressor_v2::recycle()
 {
     m_dp_count = 0;
     m_prev_delta = 0L;
-    m_prev_tstamp = m_start_tstamp;
+    m_prev_tstamp = get_start_tstamp();
     m_prev_value = 0.0;
     m_prev_leading_zeros = 65;
     m_prev_trailing_zeros = 65;
@@ -543,7 +563,7 @@ Compressor_v1::compress1(
 {
     ASSERT(m_dp_count == 0);
     ASSERT(m_start_tstamp <= timestamp);
-    m_prev_delta = timestamp - m_start_tstamp;
+    m_prev_delta = timestamp - get_start_tstamp();
     ASSERT(m_prev_delta <= INT_MAX);
     (reinterpret_cast<aligned_type<uint32_t>*>(m_cursor))->value = (uint32_t)m_prev_delta;
     m_cursor += sizeof(uint32_t);
@@ -673,7 +693,7 @@ Compressor_v1::uncompress(DataPointVector& dps, bool restore)
 
     // first dp
     delta = (reinterpret_cast<aligned_type<uint32_t>*>(b))->value;
-    tstamp = m_start_tstamp + delta;
+    tstamp = get_start_tstamp() + delta;
     dp.first = tstamp;
     b += sizeof(uint32_t);
     value = (reinterpret_cast<aligned_type<double>*>(b))->value;
@@ -759,7 +779,7 @@ Compressor_v1::recycle()
     m_is_full = false;
     m_dp_count = 0;
     m_prev_delta = 0L;
-    m_prev_tstamp = m_start_tstamp;
+    m_prev_tstamp = get_start_tstamp();
     m_prev_value = 0.0;
     m_cursor = m_base;
 
@@ -864,7 +884,7 @@ Compressor_v0::get_last_tstamp() const
     }
     else
     {
-        return m_start_tstamp;
+        return get_start_tstamp_const();
     }
 }
 

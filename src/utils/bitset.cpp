@@ -324,6 +324,7 @@ BitSet::retrieve(BitSetCursor *cursor, uint8_t& bits, uint8_t& len, uint8_t& sta
     }
 }
 
+/*
 const char *
 BitSet::c_str(char *buff) const
 {
@@ -331,6 +332,7 @@ BitSet::c_str(char *buff) const
         m_bits, (int)m_capacity_in_bytes, m_cursor, m_end, (int)m_start);
     return buff;
 }
+*/
 
 
 void

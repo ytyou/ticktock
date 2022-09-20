@@ -107,13 +107,17 @@ public:
     virtual size_t get_dp_count() const = 0;
     virtual Timestamp get_last_tstamp() const = 0;
     virtual int get_version() const = 0;
+    Timestamp& get_start_tstamp();
+    Timestamp get_start_tstamp_const() const;
 
 protected:
     friend class SanityChecker;
 
     Compressor();
 
+#ifndef __x86_64__
     Timestamp m_start_tstamp;
+#endif
 };
 
 
@@ -241,10 +245,12 @@ public:
         return m_cursor - m_base;
     }
 
+/*
     inline Timestamp get_start_tstamp() const
     {
         return m_start_tstamp;
     }
+*/
 
     inline Timestamp get_last_tstamp() const
     {
