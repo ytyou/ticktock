@@ -310,7 +310,7 @@ PageInfo::ensure_dp_available(DataPointVector *dps)
         {
             compressor->restore(*dps, position, nullptr);
         }
-        ASSERT(m_page_mgr->get_time_range().contains(m_time_range));
+        ASSERT(m_page_mgr->get_time_range().contains(get_time_range()));
     }
 }
 
@@ -477,6 +477,7 @@ PageInfo::add_data_point(Timestamp tstamp, double value)
         ASSERT(start <= tstamp);
         uint32_t ts = tstamp - start;
         if (ts < m_from) m_from = ts;
+        ts++;
         if (m_to < ts) m_to = ts;
         //m_time_range.add_time(tstamp);
     }
@@ -515,7 +516,6 @@ void
 PageInfoInMem::init_for_memory(PageManager *pm, PageSize size, bool is_ooo)
 {
     ASSERT(pm != nullptr);
-    ASSERT(tsdb != nullptr);
     ASSERT(size > 1);
 
     struct page_info_on_disk *header = get_header();
@@ -531,7 +531,7 @@ PageInfoInMem::init_for_memory(PageManager *pm, PageSize size, bool is_ooo)
     ASSERT(header->m_size != 0);
     m_page_mgr = pm;
     m_version = MemoryManager::alloc_memory_page();
-    ASSERT(m_page != nullptr);
+    ASSERT(m_version != nullptr);
     get_compressor() = nullptr;
 }
 
@@ -839,7 +839,10 @@ PageManager::get_free_page(Tsdb *tsdb, bool ooo)
 {
     // TODO: return either get_free_page_in_mem() or get_free_page_on_disk(),
     //       based on settings in the config
-    return get_free_page_in_mem(tsdb, ooo);
+    if (ooo)
+        return get_free_page_on_disk(tsdb, ooo);
+    else
+        return get_free_page_in_mem(tsdb, ooo);
 }
 
 PageInfo *

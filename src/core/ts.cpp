@@ -164,10 +164,12 @@ TimeSeries::get_free_page_on_disk(bool is_out_of_order)
     PageInfo *info = get_tsdb_const()->get_free_page(is_out_of_order);
 
     if (is_out_of_order)
+    {
         m_ooo_pages.push_back(info);
+        get_tsdb()->append_meta(this, info);
+    }
     else
         m_pages.push_back(info);
-    //m_tsdb->append_meta(this, info);
 
     return info;
 }
@@ -320,6 +322,7 @@ TimeSeries::add_ooo_data_point(DataPoint& dp)
         }
         m_ooo_buff = get_free_page_on_disk(true);
         ASSERT(m_ooo_buff->is_empty());
+        ASSERT(m_ooo_buff->is_out_of_order());
 
         // try again
         ok = m_ooo_buff->add_data_point(dp.get_timestamp(), dp.get_value());

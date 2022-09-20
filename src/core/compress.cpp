@@ -125,7 +125,7 @@ Compressor_v2::Compressor_v2()
     m_prev_none_zeros = 64;
     m_is_full = false;
 
-    ASSERT(m_start_tstamp <= m_prev_tstamp);
+    ASSERT(get_start_tstamp() <= m_prev_tstamp);
 }
 
 void
@@ -146,7 +146,7 @@ Compressor_v2::init(Timestamp start, uint8_t *base, size_t size)
     m_prev_none_zeros = 64;
     m_is_full = false;
 
-    ASSERT(m_start_tstamp <= m_prev_tstamp);
+    ASSERT(get_start_tstamp() <= m_prev_tstamp);
 }
 
 void
@@ -177,8 +177,8 @@ void
 Compressor_v2::compress1(Timestamp timestamp, double value)
 {
     ASSERT(m_dp_count == 0);
-    ASSERT(m_start_tstamp <= timestamp);
-    ASSERT((timestamp - m_start_tstamp) <= INT_MAX);
+    ASSERT(get_start_tstamp() <= timestamp);
+    ASSERT((timestamp - get_start_tstamp()) <= INT_MAX);
 
     uint32_t delta = timestamp - get_start_tstamp();
 
@@ -195,7 +195,7 @@ Compressor_v2::compress1(Timestamp timestamp, double value)
 bool
 Compressor_v2::compress(Timestamp timestamp, double value)
 {
-    ASSERT(m_start_tstamp <= timestamp);
+    ASSERT(get_start_tstamp() <= timestamp);
 
     m_bitset.save_check_point();
 
@@ -331,7 +331,7 @@ Compressor_v2::uncompress(DataPointVector& dps, bool restore)
     timestamp = get_start_tstamp() + delta32;
     uint64_t delta = delta32;
     m_bitset.retrieve(cursor, reinterpret_cast<uint8_t*>(&value), 8*sizeof(double), 0);
-    ASSERT(m_start_tstamp <= timestamp);
+    ASSERT(get_start_tstamp() <= timestamp);
     dps.emplace_back(timestamp, value);
 
     value_be = htobe64(*reinterpret_cast<uint64_t*>(&value));
@@ -471,7 +471,7 @@ Compressor_v2::uncompress(DataPointVector& dps, bool restore)
         m_prev_none_zeros = none_zeros;
     }
 
-    ASSERT(m_start_tstamp <= m_prev_tstamp);
+    ASSERT(get_start_tstamp() <= m_prev_tstamp);
 }
 
 bool
@@ -562,7 +562,7 @@ Compressor_v1::compress1(
     double value)               // v_1: value of the new dp
 {
     ASSERT(m_dp_count == 0);
-    ASSERT(m_start_tstamp <= timestamp);
+    ASSERT(get_start_tstamp() <= timestamp);
     m_prev_delta = timestamp - get_start_tstamp();
     ASSERT(m_prev_delta <= INT_MAX);
     (reinterpret_cast<aligned_type<uint32_t>*>(m_cursor))->value = (uint32_t)m_prev_delta;
