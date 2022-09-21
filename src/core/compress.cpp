@@ -84,6 +84,10 @@ Compressor::create(int version)
             compressor = new Compressor_v2();
             break;
 
+        case 3:
+            compressor = new Compressor_v3();
+            break;
+
         default:
             Logger::warn("Unknown compressor version %d", version);
             break;
@@ -110,6 +114,374 @@ Compressor::get_start_tstamp_const() const
 #else
     return m_start_tstamp;
 #endif
+}
+
+
+// Implementation of Gorilla compression algorithm.
+Compressor_v3::Compressor_v3()
+{
+    m_dp_count = 0;
+    m_prev_delta = 0L;
+    m_prev_tstamp = 0L;
+    m_prev_value = 0.0;
+    m_is_full = false;
+
+    ASSERT(get_start_tstamp() <= m_prev_tstamp);
+}
+
+void
+Compressor_v3::init(Timestamp start, uint8_t *base, size_t size)
+{
+    ASSERT(base != nullptr);
+
+    Compressor::init(start, base, size);
+
+    m_bitset.init(base, size);
+
+    m_dp_count = 0;
+    m_prev_delta = 0L;
+    m_prev_tstamp = start;
+    m_prev_value = 0.0;
+    m_is_full = false;
+
+    ASSERT(get_start_tstamp() <= m_prev_tstamp);
+}
+
+void
+Compressor_v3::restore(DataPointVector& dps, CompressorPosition& position, uint8_t *base)
+{
+    Logger::debug("cv3: restoring from position: offset=%d, start=%d",
+        position.m_offset, position.m_start);
+
+    m_bitset.copy_from(base, position.m_offset, position.m_start);
+    uncompress(dps, true);
+
+    Logger::debug("cv3: restored %d data-points", m_dp_count);
+}
+
+void
+Compressor_v3::save(CompressorPosition& position)
+{
+    size_t bit_cnt = m_bitset.size_in_bits();
+
+    position.m_offset = bit_cnt / 8;
+    position.m_start = bit_cnt % 8;
+
+    Logger::debug("cv3: saved position: offset=%d, start=%d, #dp=%d",
+        position.m_offset, position.m_start, m_dp_count);
+}
+
+void
+Compressor_v3::compress1(Timestamp timestamp, double value)
+{
+    ASSERT(m_dp_count == 0);
+    ASSERT(get_start_tstamp() <= timestamp);
+    ASSERT((timestamp - get_start_tstamp()) <= INT_MAX);
+
+    uint32_t delta = timestamp - get_start_tstamp();
+
+    // TODO: make these lengths constants
+    m_bitset.append(reinterpret_cast<uint8_t*>(&delta), 8*sizeof(uint32_t), 0);
+    m_bitset.append(reinterpret_cast<uint8_t*>(&value), 8*sizeof(double), 0);
+
+    m_prev_tstamp = timestamp;
+    m_prev_value = value;
+    m_prev_delta = delta;
+    m_dp_count++;
+}
+
+bool
+Compressor_v3::compress(Timestamp timestamp, double value)
+{
+    ASSERT(get_start_tstamp() <= timestamp);
+    ASSERT(m_is_full == false);
+
+    m_bitset.save_check_point();
+
+    try
+    {
+        if (m_dp_count == 0)
+        {
+            compress1(timestamp, value);
+            return true;
+        }
+
+        if (UNLIKELY(m_prev_tstamp > timestamp))
+        {
+            Logger::debug("out-of-order dp dropped, timestamp = %" PRIu64, timestamp);
+            return true;    // drop it
+        }
+
+        ASSERT(m_dp_count > 0);
+
+        // Timestamp first
+        Timestamp delta = timestamp - m_prev_tstamp;
+        int64_t delta_of_delta = (uint64_t)delta - (uint64_t)m_prev_delta;
+        compress(delta_of_delta);
+
+        m_prev_tstamp = timestamp;
+        m_prev_delta = delta;
+
+        // Value next
+        double v = value - m_prev_value;
+        compress(v);
+
+        m_dp_count++;
+        m_prev_value = value;
+    }
+    catch (const std::out_of_range& ex)
+    {
+        m_bitset.restore_from_check_point();
+        m_is_full = true;
+        return false;
+    }
+
+    return true;
+}
+
+void
+Compressor_v3::compress(double v)
+{
+    double i, f;
+
+    f = std::modf(v, &i);
+
+    if (std::abs(f) < 0.001)
+    {
+        uint8_t one_zero = 0x00;
+        m_bitset.append(reinterpret_cast<uint8_t*>(&one_zero), 1, 0);
+        compress((int64_t)v);
+    }
+    else
+    {
+        uint8_t one_zero = 0x80;
+        m_bitset.append(reinterpret_cast<uint8_t*>(&one_zero), 1, 0);
+        compress((int64_t)std::lround(v * 1000.0));
+    }
+}
+
+void
+Compressor_v3::compress(int64_t n)
+{
+    if (n == 0)
+    {
+        // store a single '0' bit
+        uint8_t zero = 0x00;
+        m_bitset.append(reinterpret_cast<uint8_t*>(&zero), 1, 0);
+    }
+/*
+    else if ((-32 <= n) && (n <= 31))
+    {
+        // store '10' followed by value in 6 bits
+        uint8_t one_zero = 0x80;
+        m_bitset.append(reinterpret_cast<uint8_t*>(&one_zero), 2, 0);
+        uint8_t dod_be = htobe16((uint8_t)n);
+        m_bitset.append(&dod_be, 6, 8-6);
+    }
+    else if ((-8192 <= n) && (n <= 8191))
+    {
+        // store '10' followed by value in 14 bits
+        uint8_t one_zero = 0x80;
+        m_bitset.append(reinterpret_cast<uint8_t*>(&one_zero), 2, 0);
+        uint16_t dod_be = htobe16((uint16_t)n);
+        m_bitset.append(reinterpret_cast<uint8_t*>(&dod_be), 14, 16-14);
+    }
+    else if ((-4096 <= n) && (n <= 4095))
+    {
+        // store '10' followed by value in 13 bits
+        uint8_t one_zero = 0x80;
+        m_bitset.append(reinterpret_cast<uint8_t*>(&one_zero), 2, 0);
+        uint16_t dod_be = htobe16((uint16_t)n);
+        m_bitset.append(reinterpret_cast<uint8_t*>(&dod_be), 13, 16-13);
+    }
+*/
+    else if ((-2048 <= n) && (n <= 2047))
+    {
+        // store '10' followed by value in 12 bits
+        uint8_t one_zero = 0x80;
+        m_bitset.append(reinterpret_cast<uint8_t*>(&one_zero), 2, 0);
+        uint16_t dod_be = htobe16((uint16_t)n);
+        m_bitset.append(reinterpret_cast<uint8_t*>(&dod_be), 12, 16-12);
+    }
+    else if ((-65536 <= n) && (n <= 65535))
+    {
+        // store '110' followed by value in 17 bits
+        uint8_t one_one_zero = 0xC0;
+        m_bitset.append(reinterpret_cast<uint8_t*>(&one_one_zero), 3, 0);
+        uint32_t dod_be = htobe32((uint32_t)n);
+        m_bitset.append(reinterpret_cast<uint8_t*>(&dod_be), 17, 32-17);
+    }
+    else
+    {
+        // store '111' followed by value in 64 bits
+        uint8_t one_one_one = 0xE0;
+        m_bitset.append(reinterpret_cast<uint8_t*>(&one_one_one), 3, 0);
+        uint64_t dod_be = htobe64((uint64_t)n);
+        m_bitset.append(reinterpret_cast<uint8_t*>(&dod_be), 64, 0);
+    }
+}
+
+void
+Compressor_v3::uncompress(DataPointVector& dps, bool restore)
+{
+    Timestamp timestamp;
+    double value = 0.0;
+
+    uint64_t value_be;
+
+    uint8_t leading_zeros = 0;
+    uint8_t trailing_zeros = 0;
+    uint8_t none_zeros = 0;
+
+    BitSetCursor *cursor = m_bitset.new_cursor();
+
+    // TODO: check for m_bitset being empty
+    // 1st data-point
+    uint32_t delta32 = 0;
+    m_bitset.retrieve(cursor, reinterpret_cast<uint8_t*>(&delta32), 32, 0);
+    timestamp = get_start_tstamp() + delta32;
+    uint64_t delta = delta32;
+    m_bitset.retrieve(cursor, reinterpret_cast<uint8_t*>(&value), 8*sizeof(double), 0);
+    ASSERT(get_start_tstamp() <= timestamp);
+    dps.emplace_back(timestamp, value);
+
+    value_be = htobe64(*reinterpret_cast<uint64_t*>(&value));
+
+    uint64_t y = *reinterpret_cast<uint64_t*>(&value);
+
+    while (true)
+    {
+        try
+        {
+            // timestamp
+            int64_t delta_of_delta;
+
+            delta_of_delta = uncompress_i(cursor);
+            delta += delta_of_delta;
+            timestamp += delta;
+
+            // value
+            delta_of_delta = uncompress_f(cursor);
+            value += delta_of_delta;
+            dps.emplace_back(timestamp, value);
+        }
+        catch (const std::out_of_range& ex)
+        {
+            break;
+        }
+    }
+
+    MemoryManager::free_recyclable(cursor);
+
+    if (restore)
+    {
+        m_dp_count = dps.size();
+        m_prev_delta = delta;
+        m_prev_tstamp = timestamp;
+        m_prev_value = value;
+    }
+
+    ASSERT(get_start_tstamp() <= m_prev_tstamp);
+}
+
+double
+Compressor_v3::uncompress_f(BitSetCursor *cursor)
+{
+    uint8_t byte = 0;
+
+    m_bitset.retrieve(cursor, &byte, 1, 0);
+
+    if ((byte & 0x80) == 0)
+    {
+        return (double)uncompress_i(cursor);
+    }
+    else
+    {
+        int64_t v = uncompress_i(cursor);
+        return ((double)v) / 1000.0;
+    }
+}
+
+int64_t
+Compressor_v3::uncompress_i(BitSetCursor *cursor)
+{
+    uint8_t byte = 0;
+    int64_t result;
+
+    m_bitset.retrieve(cursor, &byte, 1, 0);
+
+    if ((byte & 0x80) == 0)
+    {
+        result = 0;
+    }
+    else
+    {
+        uint64_t delta_of_delta = 0;
+
+        m_bitset.retrieve(cursor, &byte, 1, 0);
+
+        if ((byte & 0x80) == 0)
+        {
+            // 12-bit
+            uint16_t dod_be;
+            m_bitset.retrieve(cursor, reinterpret_cast<uint8_t*>(&dod_be), 12, 16-12);
+
+            if ((*reinterpret_cast<uint16_t*>(&dod_be) & 0x0008) != 0)
+            {
+                dod_be |= 0x00F0;
+            }
+            else
+            {
+                dod_be &= 0xFF07;
+            }
+
+            result = (int16_t)htobe16(dod_be);
+        }
+        else
+        {
+            m_bitset.retrieve(cursor, &byte, 1, 0);
+
+            if ((byte & 0x80) == 0)
+            {
+                // 17-bit
+                uint32_t dod_be;
+                m_bitset.retrieve(cursor, reinterpret_cast<uint8_t*>(&dod_be), 17, 32-17);
+
+                if ((*reinterpret_cast<uint32_t*>(&dod_be) & 0x00000100) != 0)
+                {
+                    dod_be |= 0x0000FEFF;
+                }
+                else
+                {
+                    dod_be &= 0xFFFF0000;
+                }
+
+                result = (int32_t)htobe32(dod_be);
+            }
+            else
+            {
+                // 64-bit
+                uint64_t dod_be;
+                m_bitset.retrieve(cursor, reinterpret_cast<uint8_t*>(&dod_be), 64, 0);
+                result = (int64_t)htobe64(dod_be);
+            }
+        }
+    }
+
+    return result;
+}
+
+bool
+Compressor_v3::recycle()
+{
+    m_dp_count = 0;
+    m_prev_delta = 0L;
+    m_prev_tstamp = get_start_tstamp();
+    m_prev_value = 0.0;
+    m_is_full = false;
+
+    m_bitset.recycle();
+    return Compressor::recycle();
 }
 
 
@@ -207,7 +579,7 @@ Compressor_v2::compress(Timestamp timestamp, double value)
             return true;
         }
 
-        if (m_prev_tstamp > timestamp)
+        if (UNLIKELY(m_prev_tstamp > timestamp))
         {
             Logger::debug("out-of-order dp dropped, timestamp = %" PRIu64, timestamp);
             return true;    // drop it
