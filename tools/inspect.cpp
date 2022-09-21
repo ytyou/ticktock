@@ -154,8 +154,9 @@ dump_data(struct tsdb_header *tsdb_header, int header_index)
     CompressorPosition position(info);
     DataPointVector dps;
     compressor->restore(dps, position, nullptr);
-    printf("dps.size() == %d, pos.offset = %d, pos.start = %d\n",
-        (int)dps.size(), position.m_offset, position.m_start);
+    printf("dps.size() == %d, pos.offset = %d, pos.start = %d, index = %d, ooo = %s, range = (%u, %u)\n",
+        (int)dps.size(), position.m_offset, position.m_start, header_index, info->is_out_of_order()?"true":"false",
+        info->m_tstamp_from, info->m_tstamp_to);
     for (auto& dp: dps) printf("ts = %" PRIu64 ", value = %.2f\n", dp.first, dp.second);
     delete compressor;
 }

@@ -387,8 +387,8 @@ PageInfo::copy_from(PageInfo *src)
     header->init(position.m_offset,
                    position.m_start,
                    src->get_compressor_const()->is_full(),
-                   m_from,
-                   m_to);
+                   src->m_from,
+                   src->m_to);
                    //src->m_time_range.get_from() - start,
                    //src->m_time_range.get_to() - start);
 

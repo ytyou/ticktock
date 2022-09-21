@@ -555,7 +555,7 @@ TimeSeries::compact(MetaFile& meta_file)
         if (info == nullptr)
         {
             info = tsdb->get_free_page_for_compaction();
-            //meta_file.append(this, info);
+            meta_file.append(this, info);
             file_id = info->get_file_id();
             id_from = id_to = info->get_id();
         }
