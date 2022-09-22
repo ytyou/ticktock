@@ -197,11 +197,11 @@ TimeSeries::add_data_point(DataPoint& dp)
         else
         {
             m_buff = m_pages.back();
-            m_buff->ensure_dp_available();
+            m_buff->ensure_dp_available(false);
         }
     }
     else
-        m_buff->ensure_dp_available();
+        m_buff->ensure_dp_available(false);
 
     Timestamp last_tstamp = m_buff->get_last_tstamp();
 
@@ -249,7 +249,7 @@ TimeSeries::add_batch(DataPointSet& dps)
         else
         {
             m_buff = m_pages.back();
-            m_buff->ensure_dp_available();
+            m_buff->ensure_dp_available(false);
         }
     }
 
@@ -299,11 +299,11 @@ TimeSeries::add_ooo_data_point(DataPoint& dp)
         else
         {
             m_ooo_buff = m_ooo_pages.back();
-            m_ooo_buff->ensure_dp_available();
+            m_ooo_buff->ensure_dp_available(false);
         }
     }
     else
-        m_ooo_buff->ensure_dp_available();
+        m_ooo_buff->ensure_dp_available(false);
 
     bool ok = m_ooo_buff->add_data_point(dp.get_timestamp(), dp.get_value());
 

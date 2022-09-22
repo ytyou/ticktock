@@ -18,6 +18,7 @@
 
 #include <fstream>
 #include <cctype>
+#include <cstdio>
 #include <algorithm>
 #include <cassert>
 #include <dirent.h>
@@ -840,8 +841,8 @@ Tsdb::ensure_readable(bool count)
 
         if ((m_mode & TSDB_MODE_READ) == 0)
             readable = false;
-        else
-            m_load_time = ts_now_sec();
+//        else
+//            m_load_time = ts_now_sec();
 
         if (count)
             inc_count();
@@ -1956,15 +1957,17 @@ Tsdb::rotate(TaskData& data)
                 tsdb->unload_no_lock();
                 continue;
             }
-            else if (((mode & TSDB_MODE_READ_WRITE) == TSDB_MODE_READ) && (tsdb->m_mode & TSDB_MODE_WRITE))
+            //else if (((mode & TSDB_MODE_READ_WRITE) == TSDB_MODE_READ) && (tsdb->m_mode & TSDB_MODE_WRITE))
+            else if (! (mode & TSDB_MODE_WRITE) && (tsdb->m_mode & TSDB_MODE_WRITE))
             {
                 // make it read-only
-                Logger::debug("[rotate] Flushing tsdb: %T", tsdb);
+                Logger::info("[rotate] Flushing tsdb (making it read-only): %T", tsdb);
                 tsdb->flush(true);
                 continue;
             }
         }
-        else if (! (mode & TSDB_MODE_READ) && tsdb->count_is_zero())
+
+        if (! (mode & TSDB_MODE_READ) && tsdb->count_is_zero())
         {
             //Logger::debug("[rotate] %T SKIPPED to avoid thrashing (lt=%" PRIu64 ")", tsdb, load_time);
             // try to archive individual PageManager.
@@ -2259,8 +2262,9 @@ Tsdb::compact2()
 const char *
 Tsdb::c_str(char *buff) const
 {
-    strcpy(buff, "tsdb");
-    m_time_range.c_str(&buff[4]);
+    char tmp[m_time_range.c_size()];
+    m_time_range.c_str(tmp);
+    sprintf(buff, "tsdb%s[mode=%x]", tmp, m_mode);
     return buff;
 }
 

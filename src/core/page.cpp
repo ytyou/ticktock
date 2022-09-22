@@ -46,8 +46,7 @@ std::atomic<int32_t> PageManager::m_total{0};
 
 PageInfo::PageInfo() :
     m_page_mgr(nullptr),
-    m_header_index(0),
-    m_version(nullptr)
+    m_header_index(0)
 {
     get_compressor() = nullptr;
 }
@@ -110,8 +109,8 @@ PageInfo::flush(bool accessed, Tsdb *tsdb)
             Logger::info("Failed to madvise(DONTNEED), page = %p, errno = %d", get_page(), errno);
     }
 
-    if (is_full())
-        recycle();
+    if (is_full() || accessed)
+        recycle();  // just delete the compressor
 
     return nullptr;
 }
@@ -199,7 +198,7 @@ PageInfo::init_for_disk(PageManager *pm, struct page_info_on_disk *header, PageC
     //set_page();
     get_compressor() = nullptr;
     m_header_index = header_idx;
-    m_version = pm->get_version();
+    //m_version = pm->get_version();
 }
 
 // initialize a PageInfo that represent a page on disk
@@ -219,7 +218,7 @@ PageInfo::init_from_disk(PageManager *pm, struct page_info_on_disk *header, Page
     m_to = header->m_tstamp_to;
     //ASSERT(pm->get_time_range().contains(m_time_range));
     m_header_index = header_idx;
-    m_version = pm->get_version();
+    //m_version = pm->get_version();
 }
 
 /* 'range' should be the time range of the Tsdb.
@@ -280,17 +279,20 @@ PageInfo::ensure_dp_available(DataPointVector *dps)
 */
 
 void
-PageInfo::ensure_dp_available(DataPointVector *dps)
+PageInfo::ensure_dp_available(bool read_only, DataPointVector *dps)
 {
     m_page_mgr->reopen_with_lock();
-    void *version = m_page_mgr->get_version();
+    //void *version = m_page_mgr->get_version();
     Compressor*& compressor = get_compressor();
 
+/*
     if (version != m_version)
     {
+        Logger::warn("VERSION MISMATCH!!!\n");
         recycle();
         m_version = version;
     }
+*/
 
     if (compressor == nullptr)
     {
@@ -311,7 +313,15 @@ PageInfo::ensure_dp_available(DataPointVector *dps)
             compressor->restore(*dps, position, nullptr);
         }
         ASSERT(m_page_mgr->get_time_range().contains(get_time_range()));
+
+        if (read_only)
+        {
+            MemoryManager::free_recyclable(get_compressor());
+            get_compressor() = nullptr;
+        }
     }
+    else if (dps != nullptr)
+        get_all_data_points(*dps);
 }
 
 void
@@ -372,8 +382,8 @@ PageInfo::merge_after(PageInfo *dst)
 void
 PageInfo::copy_from(PageInfo *src)
 {
-    Compressor*& compressor = get_compressor();
-    ASSERT(compressor != nullptr);
+    //Compressor*& compressor = get_compressor();
+    //ASSERT(compressor != nullptr);
 
     // copy data
     CompressorPosition position;
@@ -530,8 +540,8 @@ PageInfoInMem::init_for_memory(PageManager *pm, PageSize size, bool is_ooo)
     header->m_page_index = std::numeric_limits<uint32_t>::max();
     ASSERT(header->m_size != 0);
     m_page_mgr = pm;
-    m_version = MemoryManager::alloc_memory_page();
-    ASSERT(m_version != nullptr);
+    m_page = MemoryManager::alloc_memory_page();
+    ASSERT(m_page != nullptr);
     get_compressor() = nullptr;
 }
 
@@ -545,10 +555,10 @@ PageInfoInMem::flush(bool accessed, Tsdb *tsdb)
     PageInfo *info = tsdb->get_free_page_on_disk(get_header()->is_out_of_order());
     info->copy_from(this);
     //info->flush(false);
-    if (m_version != nullptr)
+    if (m_page != nullptr)
     {
-        MemoryManager::free_memory_page(m_version);
-        m_version = nullptr;
+        MemoryManager::free_memory_page(m_page);
+        m_page = nullptr;
     }
     Logger::debug("Writing to page #%d in file %s",
         (int)info->get_page_index(),
@@ -1096,7 +1106,7 @@ PageManager::try_unload()
     {
         flush(true);
         close_mmap();
-        Logger::debug("Unloading PM %p, id=%d", this, get_id());
+        Logger::info("Unloading PM %p, id=%d", this, get_id());
     }
 }
 

@@ -161,6 +161,7 @@ process_cmdline_opts(int argc, char *argv[])
         { CFG_TSDB_COMPACT_FREQUENCY,               required_argument,  0,  0 },
         { CFG_TSDB_COMPRESSOR_VERSION,              required_argument,  0,  0 },
         { CFG_TSDB_DATA_DIR,                        required_argument,  0,  0 },
+        { CFG_TSDB_GC_FREQUENCY,                    required_argument,  0,  0 },
         { CFG_TSDB_OFF_HOUR_BEGIN,                  required_argument,  0,  0 },
         { CFG_TSDB_OFF_HOUR_END,                    required_argument,  0,  0 },
         { CFG_TSDB_PAGE_COUNT,                      required_argument,  0,  0 },

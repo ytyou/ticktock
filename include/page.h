@@ -211,7 +211,7 @@ public:
     bool is_empty() const;
     inline bool is_on_disk() const { return true; }
     inline bool is_out_of_order() const { return get_header_const()->is_out_of_order(); }
-    virtual void ensure_dp_available(DataPointVector *dps = nullptr);
+    virtual void ensure_dp_available(bool read_only, DataPointVector *dps = nullptr);
     //virtual void ensure_page_open();
     virtual struct page_info_on_disk *get_header();
     virtual struct page_info_on_disk *get_header_const() const;
@@ -263,7 +263,7 @@ protected:
     uint32_t m_to;              // relative to PM's start
     PageManager *m_page_mgr;    // this is null for in-memory page
     //Compressor *m_compressor;   // this is null except for in-memory page
-    void *m_version;            // version of PM
+    //void *m_version;            // version of PM
 
     PageCount m_header_index;
     //struct page_info_on_disk *m_header;
@@ -279,15 +279,16 @@ public:
                          bool is_ooo);
     PageInfo *flush(bool accessed, Tsdb *tsdb = nullptr) override;
     void persist(bool copy_data = false) override {}
-    void *get_page() override { return m_version; }
+    void *get_page() override { return m_page; }
     PageCount get_id() const override { return 0; }
-    void ensure_dp_available(DataPointVector *dps = nullptr) override {}
+    void ensure_dp_available(bool read_only, DataPointVector *dps = nullptr) override {}
     inline struct page_info_on_disk *get_header() override
     {
         return &m_page_header;
     }
 
 private:
+    void *m_page;
     struct page_info_on_disk m_page_header;
 };
 
@@ -339,10 +340,12 @@ public:
         return *m_actual_pg_cnt - calc_first_page_info_index(*m_page_count);
     }
 
+/*
     inline void *get_version() const
     {
         return m_pages;
     }
+*/
 
     inline uint8_t get_compressor_version() const
     {
