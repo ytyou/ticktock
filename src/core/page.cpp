@@ -486,7 +486,7 @@ bool
 PageInfo::add_data_point(Timestamp tstamp, double value)
 {
     Compressor*& compressor = get_compressor();
-    if (compressor == nullptr) return false;
+    if (compressor == nullptr) ensure_dp_available(false);
     //ASSERT(m_page_mgr->get_time_range().in_range(tstamp));
     bool success = compressor->compress(tstamp, value);
     if (success)
