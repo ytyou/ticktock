@@ -53,7 +53,7 @@ static thread_local tsl::robin_map<const char*, Mapping*, hash_func, eq_func> th
 
 Mapping::Mapping() :
     m_metric(nullptr),
-    m_tsdb(nullptr),
+    //m_tsdb(nullptr),
     m_partition(nullptr),
     m_ref_count(0)
 {
@@ -67,7 +67,7 @@ Mapping::init(const char *name, Tsdb *tsdb)
 
     m_metric = STRDUP(name);
     ASSERT(m_metric != nullptr);
-    m_tsdb = tsdb;
+    get_tsdb() = tsdb;
     m_partition = tsdb->get_partition(name);
     m_ref_count = 1;
 
@@ -111,7 +111,7 @@ Mapping::unload_no_lock()
     }
 
     m_map.clear();
-    m_tsdb = nullptr;
+    get_tsdb() = nullptr;
 }
 
 void
@@ -119,7 +119,7 @@ Mapping::flush(bool accessed)
 {
     ReadLock guard(m_lock);
 
-    if (m_tsdb == nullptr) return;
+    if (get_tsdb_const() == nullptr) return;
 
     for (auto it = m_map.begin(); it != m_map.end(); it++)
     {
@@ -144,7 +144,7 @@ Mapping::recycle()
 
     ASSERT(m_map.size() == 0);
     m_map.clear();
-    m_tsdb = nullptr;
+    get_tsdb() = nullptr;
 
     return true;
 }
@@ -205,7 +205,7 @@ Mapping::get_ts(TagOwner& to)
         if (ts == nullptr)
         {
             ts = (TimeSeries*)MemoryManager::alloc_recyclable(RecyclableType::RT_TIME_SERIES);
-            ts->init(m_metric, buff, to.get_cloned_tags(), m_tsdb, false);
+            ts->init(m_metric, buff, to.get_cloned_tags(), get_tsdb(), false);
             m_map[ts->get_key()] = ts;
         }
     }
@@ -259,7 +259,7 @@ Mapping::get_ts2(DataPoint& dp)
         if (ts == nullptr)
         {
             ts = (TimeSeries*)MemoryManager::alloc_recyclable(RecyclableType::RT_TIME_SERIES);
-            ts->init(m_metric, buff, dp.get_cloned_tags(), m_tsdb, false);
+            ts->init(m_metric, buff, dp.get_cloned_tags(), get_tsdb(), false);
             m_map[ts->get_key()] = ts;
         }
 
@@ -631,7 +631,7 @@ Tsdb::get_or_add_mapping(TagOwner& dp)
     {
         Mapping *m = result->second;
 
-        if (m->m_tsdb == this)
+        if (m->get_tsdb_const() == this)
         {
             return m;
         }
@@ -687,7 +687,7 @@ Tsdb::get_or_add_mapping2(DataPoint& dp)
         Mapping *m = result->second;
         ASSERT(m->m_metric != nullptr);
         ASSERT(std::strcmp(metric, m->m_metric) == 0);
-        if (m->m_tsdb == this) return m;
+        if (m->get_tsdb_const() == this) return m;
         thread_local_cache.erase(m->m_metric);
         ASSERT(thread_local_cache.find(m->m_metric) == thread_local_cache.end());
         m->dec_ref_count();
@@ -721,11 +721,11 @@ Tsdb::get_or_add_mapping2(DataPoint& dp)
         }
 
         mapping->inc_ref_count();
-        ASSERT(mapping->m_tsdb == this);
+        ASSERT(mapping->get_tsdb_const() == this);
         ASSERT(mapping->m_ref_count >= 2);
     }
 
-    ASSERT(mapping->m_tsdb == this);
+    ASSERT(mapping->get_tsdb_const() == this);
     ASSERT(mapping->m_metric != nullptr);
     ASSERT(strcmp(mapping->m_metric, metric) == 0);
     thread_local_cache[mapping->m_metric] = mapping;

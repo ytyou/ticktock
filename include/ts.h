@@ -116,12 +116,12 @@ private:
     std::mutex m_lock;
 
     // this will be null unless Tsdb is in read-write mode
-    PageInfo *m_buff;   // in-memory buffer; if m_id is 0, it's contents are
+    //PageInfo *m_buff;   // in-memory buffer; if m_id is 0, it's contents are
                         // not on disk; otherwise it's contents are at least
                         // partially on the page indexed by m_id
     std::vector<PageInfo*> m_pages; // set of on disk pages
 
-    PageInfo *m_ooo_buff;
+    //PageInfo *m_ooo_buff;
     std::vector<PageInfo*> m_ooo_pages; // out-of-order pages
 
     char *m_metric;

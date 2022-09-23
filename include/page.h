@@ -281,7 +281,7 @@ public:
     void persist(bool copy_data = false) override {}
     void *get_page() override { return m_page; }
     PageCount get_id() const override { return 0; }
-    void ensure_dp_available(bool read_only, DataPointVector *dps = nullptr) override {}
+    void ensure_dp_available(bool read_only, DataPointVector *dps = nullptr) override;
     inline struct page_info_on_disk *get_header() override
     {
         return &m_page_header;
@@ -391,8 +391,8 @@ private:
     static std::atomic<int32_t> m_total;    // total number of open mmap files
 
     std::mutex m_lock;
-    int m_fd;       // file-descriptor of the mmapp'ed file
     void *m_pages;  // points to the beginning of the mmapp'ed file
+    int m_fd;       // file-descriptor of the mmapp'ed file
 
     // If one mmapp'ed file is not big enough to hold all the dps for
     // this Tsdb, we will create multiple of them, and m_id is a
@@ -405,6 +405,7 @@ private:
     uint16_t m_minor_version;
     uint8_t m_compressor_version;
     bool m_compacted;
+    std::atomic<bool> m_accessed;
 
     // number of pages in the file when it is newly created;
     // after compaction, the actual page count could change,
@@ -439,8 +440,6 @@ private:
     TimeRange m_time_range;
 
     struct page_info_on_disk *m_page_info;
-
-    std::atomic<bool> m_accessed;
 
 };  // class PageManager
 

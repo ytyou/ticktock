@@ -321,7 +321,10 @@ PageInfo::ensure_dp_available(bool read_only, DataPointVector *dps)
         }
     }
     else if (dps != nullptr)
+    {
+        ASSERT(dps->empty());
         get_all_data_points(*dps);
+    }
 }
 
 void
@@ -564,6 +567,45 @@ PageInfoInMem::flush(bool accessed, Tsdb *tsdb)
         (int)info->get_page_index(),
         info->m_page_mgr->get_file_name().c_str());
     return info;
+}
+
+void
+PageInfoInMem::ensure_dp_available(bool read_only, DataPointVector *dps)
+{
+    if (! read_only || (dps == nullptr)) return;
+    ASSERT(dps->empty());
+
+    Compressor*& compressor = get_compressor();
+
+    if (compressor == nullptr)
+    {
+        Meter meter(METRIC_TICKTOCK_PAGE_RESTORE_TOTAL_MS);
+
+        struct page_info_on_disk *header = get_header();
+        CompressorPosition position(header);
+        int version = header->is_out_of_order() ? 0 : m_page_mgr->get_compressor_version();
+        setup_compressor(m_page_mgr->get_time_range(), version);
+        if (dps == nullptr)
+        {
+            DataPointVector v;
+            v.reserve(700);
+            compressor->restore(v, position, nullptr);
+        }
+        else
+        {
+            compressor->restore(*dps, position, nullptr);
+        }
+        ASSERT(m_page_mgr->get_time_range().contains(get_time_range()));
+        ASSERT(dps->size() > 0);
+
+        if (read_only)
+        {
+            MemoryManager::free_recyclable(get_compressor());
+            get_compressor() = nullptr;
+        }
+    }
+    else if (read_only)
+        get_all_data_points(*dps);
 }
 
 

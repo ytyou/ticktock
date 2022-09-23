@@ -101,6 +101,9 @@ private:
     void query_for_ts(Tag *tags, std::unordered_set<TimeSeries*>& tsv);
     void add_ts(Tsdb *tsdb, std::string& metric, std::string& key, PageInfo *page_info);
 
+    inline Tsdb*& get_tsdb() { return (Tsdb*&)Recyclable::next(); }
+    inline Tsdb *get_tsdb_const() const { return (Tsdb*)Recyclable::next_const(); }
+
     int get_dp_count();
     int get_ts_count();
     int get_page_count(bool ooo);   // for testing only
@@ -111,7 +114,7 @@ private:
     //std::unordered_map<const char*,TimeSeries*,hash_func,eq_func> m_map;
     //std::map<const char*,TimeSeries*,cstr_less> m_map;
 
-    Tsdb *m_tsdb;
+    //Tsdb *m_tsdb;
     Partition *m_partition;
 
     std::atomic<int> m_ref_count;
