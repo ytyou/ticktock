@@ -26,6 +26,7 @@ namespace tt
 
 
 /* Recyclable buffer for strings. NOT thread-safe.
+ * Can't handle string longer than g_page_size-1.
  */
 class StringBuffer
 {

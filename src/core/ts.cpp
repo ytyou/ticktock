@@ -37,9 +37,6 @@ namespace tt
 TimeSeries::TimeSeries() :
     m_metric(nullptr),
     m_key(nullptr),
-    m_tsdb(nullptr),
-    m_buff(nullptr),
-    m_ooo_buff(nullptr),
     TagOwner(true)
 {
 }
@@ -60,12 +57,10 @@ TimeSeries::init(const char *metric, const char *key, Tag *tags, Tsdb *tsdb, boo
     m_metric = STRDUP(metric);
     m_key = STRDUP(key);
     m_tags = tags;
-    m_tsdb = tsdb;
+    get_tsdb() = tsdb;
     m_pages.clear();
-    m_buff = nullptr;
-    m_ooo_buff = nullptr;
 
-    ASSERT(m_tsdb != nullptr);
+    ASSERT(tsdb != nullptr);
     Logger::debug("ts of %T is loaded in read-only mode", tsdb);
 }
 
@@ -89,7 +84,7 @@ TimeSeries::recycle()
 {
     std::lock_guard<std::mutex> guard(m_lock);
 
-    m_tsdb = nullptr;
+    get_tsdb() = nullptr;
 
     for (PageInfo *info: m_pages)
     {
@@ -123,24 +118,56 @@ TimeSeries::recycle()
 }
 
 void
-TimeSeries::flush(bool close)
+TimeSeries::flush(bool accessed)
 {
     std::lock_guard<std::mutex> guard(m_lock);
+    Tsdb *tsdb = get_tsdb();
 
-    if (m_buff != nullptr) m_buff->flush();
-    if (m_ooo_buff != nullptr) m_ooo_buff->flush();
+    if (! m_pages.empty())
+    {
+        PageInfo *info = m_pages.back();
+        PageInfo *replace = info->flush(accessed, tsdb);
+
+        if (replace != nullptr)
+        {
+            ASSERT(info == m_pages.back());
+            m_pages.back() = replace;
+            tsdb->append_meta(this, replace);
+            MemoryManager::free_recyclable(info);
+        }
+
+        m_pages.shrink_to_fit();
+    }
+
+    if (! m_ooo_pages.empty())
+    {
+        PageInfo *info = m_ooo_pages.back();
+        PageInfo *replace = info->flush(accessed, tsdb);
+
+        if (replace != nullptr)
+        {
+            ASSERT(info == m_ooo_pages.back());
+            m_ooo_pages.back() = replace;
+            tsdb->append_meta(this, replace);
+            MemoryManager::free_recyclable(info);
+        }
+
+        m_ooo_pages.shrink_to_fit();
+    }
 }
 
 PageInfo *
 TimeSeries::get_free_page_on_disk(bool is_out_of_order)
 {
-    PageInfo *info = m_tsdb->get_free_page_on_disk(is_out_of_order);
+    PageInfo *info = get_tsdb_const()->get_free_page(is_out_of_order);
 
     if (is_out_of_order)
+    {
         m_ooo_pages.push_back(info);
+        get_tsdb()->append_meta(this, info);
+    }
     else
         m_pages.push_back(info);
-    m_tsdb->append_meta(this, info);
 
     return info;
 }
@@ -160,37 +187,44 @@ bool
 TimeSeries::add_data_point(DataPoint& dp)
 {
     std::lock_guard<std::mutex> guard(m_lock);
+    PageInfo *info;
 
-    if (m_buff == nullptr)
+    if (m_pages.empty())
+        info = get_free_page_on_disk(false);
+    else
     {
-        if (m_pages.empty())
-            m_buff = get_free_page_on_disk(false);
-        else
-        {
-            m_buff = m_pages.back();
-            m_buff->ensure_dp_available();
-        }
+        info = m_pages.back();
+        info->ensure_dp_available(false);
     }
 
-    Timestamp last_tstamp = m_buff->get_last_tstamp();
+    Timestamp last_tstamp = info->get_last_tstamp();
 
-    if ((dp.get_timestamp() <= last_tstamp) && (! m_buff->is_empty()))
+    if ((dp.get_timestamp() <= last_tstamp) && (! info->is_empty()))
     {
         return add_ooo_data_point(dp);
     }
 
-    bool ok = m_buff->add_data_point(dp.get_timestamp(), dp.get_value());
+    bool ok = info->add_data_point(dp.get_timestamp(), dp.get_value());
 
     if (! ok)
     {
-        ASSERT(m_buff->is_full());
+        ASSERT(info->is_full());
 
-        m_buff->flush();
-        m_buff = get_free_page_on_disk(false);
-        ASSERT(m_buff->is_empty());
+        Tsdb *tsdb = get_tsdb();
+        PageInfo *replace = info->flush(false, tsdb);
+        if (replace != nullptr)
+        {
+            ASSERT(info == m_pages.back());
+            m_pages.back() = replace;
+            tsdb->append_meta(this, replace);
+            MemoryManager::free_recyclable(info);
+        }
+        info = get_free_page_on_disk(false);
+        ASSERT(info->is_empty());
+        ASSERT(m_pages.back() == info);
 
         // try again
-        ok = m_buff->add_data_point(dp.get_timestamp(), dp.get_value());
+        ok = info->add_data_point(dp.get_timestamp(), dp.get_value());
         ASSERT(ok);
     }
 
@@ -201,24 +235,22 @@ bool
 TimeSeries::add_batch(DataPointSet& dps)
 {
     std::lock_guard<std::mutex> guard(m_lock);
+    PageInfo *info;
     bool success = true;
 
-    if (m_buff == nullptr)
+    if (m_pages.empty())
+        info = get_free_page_on_disk(false);
+    else
     {
-        if (m_pages.empty())
-            m_buff = get_free_page_on_disk(false);
-        else
-        {
-            m_buff = m_pages.back();
-            m_buff->ensure_dp_available();
-        }
+        info = m_pages.back();
+        info->ensure_dp_available(false);
     }
 
     for (int i = 0; i < dps.get_dp_count(); i++)
     {
         Timestamp tstamp = dps.get_timestamp(i);
         double value = dps.get_value(i);
-        Timestamp last_tstamp = m_buff->get_last_tstamp();
+        Timestamp last_tstamp = info->get_last_tstamp();
 
         if (tstamp < last_tstamp)
         {
@@ -227,19 +259,20 @@ TimeSeries::add_batch(DataPointSet& dps)
             continue;
         }
 
-        bool ok = m_buff->add_data_point(tstamp, value);
+        bool ok = info->add_data_point(tstamp, value);
 
         if (! ok)
         {
-            ASSERT(m_buff->is_full());
+            ASSERT(info->is_full());
 
-            m_buff->flush();
-            m_buff = get_free_page_on_disk(false);
-            ASSERT(m_buff->is_empty());
-            ASSERT(m_buff->get_last_tstamp() == m_tsdb->get_time_range().get_from());
+            // TODO: NOT WORKING...
+            info->flush(false, get_tsdb());
+            info = get_free_page_on_disk(false);
+            ASSERT(info->is_empty());
+            ASSERT(info->get_last_tstamp() == get_tsdb()->get_time_range().get_from());
 
             // try again
-            ok = m_buff->add_data_point(tstamp, value);
+            ok = info->add_data_point(tstamp, value);
             ASSERT(ok);
         }
 
@@ -253,29 +286,38 @@ TimeSeries::add_batch(DataPointSet& dps)
 bool
 TimeSeries::add_ooo_data_point(DataPoint& dp)
 {
-    if (m_ooo_buff == nullptr)
+    PageInfo *info;
+
+    if (m_ooo_pages.empty())
+        info = get_free_page_on_disk(true);
+    else
     {
-        if (m_ooo_pages.empty())
-            m_ooo_buff = get_free_page_on_disk(true);
-        else
-        {
-            m_ooo_buff = m_ooo_pages.back();
-            m_ooo_buff->ensure_dp_available();
-        }
+        info = m_ooo_pages.back();
+        info->ensure_dp_available(false);
     }
 
-    bool ok = m_ooo_buff->add_data_point(dp.get_timestamp(), dp.get_value());
+    bool ok = info->add_data_point(dp.get_timestamp(), dp.get_value());
 
     if (! ok)
     {
-        ASSERT(m_ooo_buff->is_full());
+        ASSERT(info->is_full());
 
-        m_ooo_buff->flush();
-        m_ooo_buff = get_free_page_on_disk(true);
-        ASSERT(m_ooo_buff->is_empty());
+        Tsdb *tsdb = get_tsdb();
+        PageInfo *replace = info->flush(false, tsdb);
+        if (replace != nullptr)
+        {
+            ASSERT(info == m_ooo_pages.back());
+            m_ooo_pages.back() = replace;
+            tsdb->append_meta(this, replace);
+            MemoryManager::free_recyclable(info);
+        }
+        info = get_free_page_on_disk(true);
+        ASSERT(info->is_empty());
+        ASSERT(info->is_out_of_order());
+        ASSERT(info == m_ooo_pages.back());
 
         // try again
-        ok = m_ooo_buff->add_data_point(dp.get_timestamp(), dp.get_value());
+        ok = info->add_data_point(dp.get_timestamp(), dp.get_value());
         ASSERT(ok);
     }
 
@@ -294,14 +336,10 @@ TimeSeries::query(TimeRange& range, Downsampler *downsampler, DataPointVector& d
 {
     Meter meter(METRIC_TICKTOCK_QUERY_TS_LATENCY_MS);
 
-    if ((m_ooo_buff != nullptr) || (! m_ooo_pages.empty()))
-    {
+    if (! m_ooo_pages.empty())
         query_with_ooo(range, downsampler, dps);
-    }
     else
-    {
         query_without_ooo(range, downsampler, dps);
-    }
 }
 
 void
@@ -420,7 +458,7 @@ TimeSeries::query_without_ooo(TimeRange& range, Downsampler *downsampler, DataPo
 {
     ASSERT(page_info != nullptr);
 
-    if (m_tsdb == nullptr) return;
+    if (get_tsdb_const() == nullptr) return;
 
     if (! range.has_intersection(page_info->get_time_range())) return;
 
@@ -488,13 +526,14 @@ TimeSeries::compact(MetaFile& meta_file)
 {
     DataPointVector dps;
     PageInfo *info = nullptr;
-    TimeRange range = m_tsdb->get_time_range();
+    Tsdb *tsdb = get_tsdb();
+    TimeRange range = tsdb->get_time_range();
     int id_from, id_to, file_id;
 
     // get all data points
     query_with_ooo(range, nullptr, dps);
 
-    Logger::trace("ts (%s, %s): Found %d dps to compact", m_metric, m_key, dps.size());
+    Logger::trace("ts (%s, %s): Found %lu dps to compact", m_metric, m_key, dps.size());
 
     for (auto& dp : dps)
     {
@@ -503,8 +542,8 @@ TimeSeries::compact(MetaFile& meta_file)
 
         if (info == nullptr)
         {
-            info = m_tsdb->get_free_page_for_compaction();
-            //meta_file.append(this, info);
+            info = tsdb->get_free_page_for_compaction();
+            meta_file.append(this, info);
             file_id = info->get_file_id();
             id_from = id_to = info->get_id();
         }
@@ -514,11 +553,11 @@ TimeSeries::compact(MetaFile& meta_file)
         if (! ok)
         {
             ASSERT(info->is_full());
-            info->flush();
+            info->flush(false, tsdb);
             MemoryManager::free_recyclable(info);
 
-            info = m_tsdb->get_free_page_for_compaction();
-            //meta_file.append(this, info);
+            info = tsdb->get_free_page_for_compaction();
+            meta_file.append(this, info);
             ok = info->add_data_point(dp.first, dp.second);
             ASSERT(ok);
 
@@ -540,7 +579,7 @@ TimeSeries::compact(MetaFile& meta_file)
     {
         info->shrink_to_fit();
         MemoryManager::free_recyclable(info);
-        meta_file.append(this, file_id, id_from, id_to);
+        //meta_file.append(this, file_id, id_from, id_to);
     }
 
     return (! dps.empty());
@@ -579,8 +618,8 @@ TimeSeries::set_check_point()
 {
     std::lock_guard<std::mutex> guard(m_lock);
 
-    if (m_buff != nullptr) m_buff->persist(true);
-    if (m_ooo_buff != nullptr) m_ooo_buff->persist(true);
+    if (! m_pages.empty()) m_pages.back()->persist(true);
+    if (! m_ooo_pages.empty()) m_ooo_pages.back()->persist(true);
 }
 
 const char*

@@ -107,8 +107,9 @@ close_mmap(int fd, char *base, size_t size)
 void
 dump_tsdb_header(struct tsdb_header *tsdb_header)
 {
-    printf("TSDB: (major=%d, minor=%d, page_cnt=%d, head_idx=%d, page_idx=%d, start=%" PRIu64 ", end=%" PRIu64 ", actual_cnt=%d, flags=0x%x)\n",
+    printf("TSDB: (major=%d, minor=%d, page_size=%u, page_cnt=%d, head_idx=%d, page_idx=%d, start=%" PRIu64 ", end=%" PRIu64 ", actual_cnt=%d, flags=0x%x)\n",
         tsdb_header->m_major_version, tsdb_header->m_minor_version,
+        tsdb_header->m_page_size,
         tsdb_header->m_page_count, tsdb_header->m_header_index,
         tsdb_header->m_page_index, tsdb_header->m_start_tstamp,
         tsdb_header->m_end_tstamp, tsdb_header->m_actual_pg_cnt, tsdb_header->m_flags);
@@ -149,13 +150,14 @@ dump_data(struct tsdb_header *tsdb_header, int header_index)
     int page_idx = info->m_page_index;
     int version = info->is_out_of_order() ? 0 : tsdb_header->get_compressor_version();
     Compressor *compressor = Compressor::create(version);
-    uint8_t *base = ((uint8_t*)tsdb_header) + page_idx*g_page_size + info->m_offset;
+    uint8_t *base = ((uint8_t*)tsdb_header) + page_idx*tsdb_header->m_page_size + info->m_offset;
     compressor->init(tsdb_header->m_start_tstamp, base, info->m_size);
     CompressorPosition position(info);
     DataPointVector dps;
     compressor->restore(dps, position, nullptr);
-    printf("dps.size() == %d, pos.offset = %d, pos.start = %d\n",
-        (int)dps.size(), position.m_offset, position.m_start);
+    printf("dps.size() == %d, pos.offset = %d, pos.start = %d, index = %d, ooo = %s, range = (%u, %u)\n",
+        (int)dps.size(), position.m_offset, position.m_start, header_index, info->is_out_of_order()?"true":"false",
+        info->m_tstamp_from, info->m_tstamp_to);
     for (auto& dp: dps) printf("ts = %" PRIu64 ", value = %.2f\n", dp.first, dp.second);
     delete compressor;
 }

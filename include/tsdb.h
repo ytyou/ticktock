@@ -88,7 +88,7 @@ private:
     void init(const char *name, Tsdb* tsdb);
     void unload();
     void unload_no_lock();
-    void flush();
+    void flush(bool accessed);
     bool recycle() override;
     void set_check_point();
 
@@ -101,6 +101,9 @@ private:
     void query_for_ts(Tag *tags, std::unordered_set<TimeSeries*>& tsv);
     void add_ts(Tsdb *tsdb, std::string& metric, std::string& key, PageInfo *page_info);
 
+    inline Tsdb*& get_tsdb() { return (Tsdb*&)Recyclable::next(); }
+    inline Tsdb *get_tsdb_const() const { return (Tsdb*)Recyclable::next_const(); }
+
     int get_dp_count();
     int get_ts_count();
     int get_page_count(bool ooo);   // for testing only
@@ -111,7 +114,6 @@ private:
     //std::unordered_map<const char*,TimeSeries*,hash_func,eq_func> m_map;
     //std::map<const char*,TimeSeries*,cstr_less> m_map;
 
-    Tsdb *m_tsdb;
     Partition *m_partition;
 
     std::atomic<int> m_ref_count;
@@ -173,6 +175,7 @@ public:
 
     std::string get_partition_defs() const;
 
+    PageInfo *get_free_page(bool out_of_order);
     PageInfo *get_free_page_on_disk(bool out_of_order);
     PageInfo *get_free_page_for_compaction();   // used during compaction
     // Caller should acquire m_pm_lock before calling this method
@@ -243,7 +246,7 @@ public:
     static int get_data_page_count();       // for testing only
     static bool validate(Tsdb *tsdb);
     double get_page_percent_used();
-    inline size_t c_size() const override { return m_time_range.c_size() + 4; }
+    inline size_t c_size() const override { return m_time_range.c_size() + 24; }
     const char *c_str(char *buff) const override;
 
 private:

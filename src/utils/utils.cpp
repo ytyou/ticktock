@@ -808,6 +808,35 @@ spin_yield(unsigned int k)
 }
 
 bool
+is_aligned(uintptr_t ptr, unsigned long align)
+{
+    return ((ptr % align) == 0);
+}
+
+bool
+is_power_of_2(uint64_t n)
+{
+    return (n && !(n & (n-1)));
+}
+
+uint64_t
+next_power_of_2(uint64_t n)
+{
+    if (is_power_of_2(n))
+        return n;
+
+    uint32_t count = 0;
+
+    while (n != 0)
+    {
+        n >>= 1;
+        count++;
+    }
+
+    return 1 << count;
+}
+
+bool
 operator<(const DataPointPair& lhs, const DataPointPair& rhs)
 {
     return lhs.first < rhs.first;

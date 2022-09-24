@@ -161,11 +161,13 @@ process_cmdline_opts(int argc, char *argv[])
         { CFG_TSDB_COMPACT_FREQUENCY,               required_argument,  0,  0 },
         { CFG_TSDB_COMPRESSOR_VERSION,              required_argument,  0,  0 },
         { CFG_TSDB_DATA_DIR,                        required_argument,  0,  0 },
+        { CFG_TSDB_FLUSH_FREQUENCY,                 required_argument,  0,  0 },
+        { CFG_TSDB_GC_FREQUENCY,                    required_argument,  0,  0 },
+        { CFG_TSDB_MAX_DP_LINE,                     required_argument,  0,  0 },
         { CFG_TSDB_OFF_HOUR_BEGIN,                  required_argument,  0,  0 },
         { CFG_TSDB_OFF_HOUR_END,                    required_argument,  0,  0 },
         { CFG_TSDB_PAGE_COUNT,                      required_argument,  0,  0 },
-        { CFG_TSDB_FLUSH_FREQUENCY,                 required_argument,  0,  0 },
-        { CFG_TSDB_MAX_DP_LINE,                     required_argument,  0,  0 },
+        { CFG_TSDB_PAGE_SIZE,                       required_argument,  0,  0 },
         { CFG_TSDB_READ_ONLY_THRESHOLD,             required_argument,  0,  0 },
         { CFG_TSDB_RETENTION_THRESHOLD,             required_argument,  0,  0 },
         { CFG_TSDB_ROTATION_FREQUENCY,              required_argument,  0,  0 },
@@ -341,7 +343,8 @@ initialize()
     Logger::info("std::thread::hardware_concurrency() = %d", n);
     Logger::info("sizeof(std::pair<Timestamp,double>) = %d", sizeof(std::pair<Timestamp,double>));
     Logger::info("sizeof(struct page_info_on_disk) = %d", sizeof(struct page_info_on_disk));
-    Logger::info("page-size = %d", sysconf(_SC_PAGE_SIZE));
+    Logger::info("page-size = %u", g_page_size);
+    Logger::info("sys-page-size = %ld", sysconf(_SC_PAGE_SIZE));
     Logger::info("Using config file: %s", g_config_file.c_str());
     Logger::info("Timestamp resolution: %s", (g_tstamp_resolution_ms ? "millisecond" : "second"));
 }
