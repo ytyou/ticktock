@@ -110,6 +110,50 @@ struct tsdb_header
     }
 };
 
+// old version
+struct tsdb_header_0_4
+{
+    uint8_t m_major_version;    //  8-bit
+    uint16_t m_minor_version;   // 16-bit
+    uint8_t m_flags;            // 8-bit
+    PageCount m_page_count;     // 32-bit
+    PageCount m_header_index;   // 32-bit
+    PageCount m_page_index;     // 32-bit
+    Timestamp m_start_tstamp;   // 64-bit
+    Timestamp m_end_tstamp;     // 64-bit
+    PageCount m_actual_pg_cnt;  // 32-bit
+
+    inline int get_compressor_version() const
+    {
+        return (int)(m_flags & 0x03);
+    }
+
+    inline void set_compressor_version(int version)
+    {
+        m_flags = (m_flags & 0xF6) | (uint8_t)version;
+    }
+
+    inline bool is_compacted() const
+    {
+        return ((m_flags & 0x80) != 0);
+    }
+
+    inline void set_compacted(bool compacted)
+    {
+        m_flags = compacted ? (m_flags | 0x80) : (m_flags & 0x7F);
+    }
+
+    inline bool is_millisecond() const
+    {
+        return ((m_flags & 0x40) != 0);
+    }
+
+    inline void set_millisecond(bool milli)
+    {
+        m_flags = milli ? (m_flags | 0x40) : (m_flags & 0xBF);
+    }
+};
+
 
 /* There will be an array of page_info_on_disk immediately following the
  * tsdb_header (defined above) at the beginning of each tsdb data file;
@@ -330,13 +374,12 @@ public:
     inline PageCount get_data_page_count() const    // no. data pages currently in use
     {
         ASSERT(m_actual_pg_cnt != nullptr);
-        return *m_actual_pg_cnt - calc_first_page_info_index(*m_page_count);
+        return *m_actual_pg_cnt - calc_first_page_info_index(*m_page_count, m_page_size);
     }
 
     inline PageSize get_page_size() const
     {
-        ASSERT(m_page_size != nullptr);
-        return *m_page_size;
+        return m_page_size;
     }
 
     inline uint8_t get_compressor_version() const
@@ -378,7 +421,7 @@ private:
     bool resize(TsdbSize old_size);     // resize (shrink) the data file
     void init_headers();    // zero-out headers
     PageInfoInMem *get_free_page_in_mem(Tsdb *tsdb, bool ooo);
-    static PageCount calc_first_page_info_index(PageCount page_count);
+    static PageCount calc_first_page_info_index(PageCount page_count, PageSize page_size);
 
     static std::atomic<int32_t> m_total;    // total number of open mmap files
 
@@ -421,7 +464,7 @@ private:
     // this could be different than m_page_count;
     PageCount *m_actual_pg_cnt;
 
-    PageSize *m_page_size;
+    PageSize m_page_size;
 
     // total size of the data file, in bytes. this is usually
     // m_page_count * page_size, but after compaction, it should
