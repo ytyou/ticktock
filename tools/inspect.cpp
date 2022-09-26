@@ -150,7 +150,7 @@ dump_data(struct tsdb_header *tsdb_header, int header_index)
     int page_idx = info->m_page_index;
     int version = info->is_out_of_order() ? 0 : tsdb_header->get_compressor_version();
     Compressor *compressor = Compressor::create(version);
-    uint8_t *base = ((uint8_t*)tsdb_header) + page_idx*tsdb_header->m_page_size + info->m_offset;
+    uint8_t *base = ((uint8_t*)tsdb_header) + page_idx*(long)(tsdb_header->m_page_size) + info->m_offset;
     compressor->init(tsdb_header->m_start_tstamp, base, info->m_size);
     CompressorPosition position(info);
     DataPointVector dps;

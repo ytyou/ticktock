@@ -248,6 +248,7 @@ PageInfo::setup_compressor(const TimeRange& range, int compressor_version)
     }
 
     compressor->init(range.get_from(), reinterpret_cast<uint8_t*>(get_page()), header->m_size);
+    get_compressor() = compressor;
 }
 
 /*
@@ -801,6 +802,7 @@ PageManager::open_mmap(PageCount page_count)
         header->set_compressor_version(m_compressor_version);
         header->set_millisecond(g_tstamp_resolution_ms);
         header->m_page_size = g_page_size;
+        m_page_size = g_page_size;
         *m_page_count = page_count;
         *m_page_index = calc_first_page_info_index(page_count, g_page_size);
         *m_header_index = 0;
@@ -828,7 +830,7 @@ PageManager::open_mmap(PageCount page_count)
         }
         else
         {
-            m_page_size = g_page_size;
+            m_page_size = header->m_page_size;
             m_page_info = reinterpret_cast<struct page_info_on_disk*>(static_cast<char*>(m_pages)+(sizeof(struct tsdb_header)));
         }
 
@@ -1060,7 +1062,7 @@ PageManager::flush(bool sync)
     if (m_pages == nullptr) return;
 
     ASSERT(m_page_index != nullptr);
-    TsdbSize size = (*m_page_index) * m_page_size;
+    TsdbSize size = (*m_page_index) * (TsdbSize)m_page_size;
     if (size > m_total_size) size = m_total_size;   // could happen after compaction
     int rc = msync(m_pages, size, (sync?MS_SYNC:MS_ASYNC));
 
@@ -1082,7 +1084,7 @@ PageManager::persist()
     if (m_pages == nullptr) return;
 
     ASSERT(m_page_index != nullptr);
-    TsdbSize size = (*m_page_index) * m_page_size;
+    TsdbSize size = (*m_page_index) * (TsdbSize)m_page_size;
     ASSERT(size <= m_total_size);
     msync(m_pages, size, MS_SYNC);
 }
@@ -1122,7 +1124,7 @@ PageManager::shrink_to_fit()
     PageCount last = header->m_page_index + 1;
     *m_actual_pg_cnt = last;
     ASSERT(*m_page_index <= *m_actual_pg_cnt);
-    m_total_size = last * m_page_size;
+    m_total_size = last * (TsdbSize)m_page_size;
     persist_compacted_flag(true);
     Logger::debug("shrink from %" PRIu64 " to %" PRIu64, old_total_size, m_total_size);
     resize(old_total_size);
