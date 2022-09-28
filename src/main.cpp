@@ -259,6 +259,9 @@ daemonize(const char *cwd)
     // ignore signals sent from child to parent process
     std::signal(SIGCHLD, SIG_IGN);
 
+    // ignore the SIGPIPE signals caused by closed connections
+    std::signal(SIGPIPE, SIG_IGN);
+
     // fork again
     pid = fork();
     if (pid < 0) exit(EXIT_FAILURE);
