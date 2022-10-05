@@ -973,7 +973,7 @@ Tsdb::get_free_page_on_disk(bool out_of_order)
     else
         pm = m_page_mgrs.back();
 
-    ASSERT(pm->is_open());
+    //ASSERT(pm->is_open());
     PageInfo *pi = pm->get_free_page_on_disk(this, out_of_order);
 
     if (pi == nullptr)

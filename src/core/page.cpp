@@ -903,7 +903,7 @@ PageManager::get_free_page_in_mem(Tsdb *tsdb, bool ooo)
     {
         // TODO: handle OOM
         Logger::fatal("Running out of memory!");
-        return nullptr;
+        throw std::runtime_error("Out of memory");
     }
 
     info->init_for_memory(this, *m_page_size, ooo);
@@ -922,11 +922,13 @@ PageManager::get_free_page_for_compaction(Tsdb *tsdb)
     {
         // TODO: handle OOM
         Logger::fatal("Running out of memory!");
-        return nullptr;
+        throw std::runtime_error("Out of memory");
     }
 
     // get a new, unsed page from mmapped file
     std::lock_guard<std::mutex> guard(m_lock);
+
+    if (! is_open()) reopen();
 
     if (((*m_page_index) < (*m_actual_pg_cnt)) && ((*m_header_index) < (*m_page_count)))
     {
@@ -1098,6 +1100,8 @@ PageManager::get_page_percent_used() const
 void
 PageManager::try_unload()
 {
+    std::lock_guard<std::mutex> guard(m_lock);
+
     if (m_accessed)
         m_accessed = false;
     else
