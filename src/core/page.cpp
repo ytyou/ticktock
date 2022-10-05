@@ -103,9 +103,11 @@ PageInfo::flush(bool accessed, Tsdb *tsdb)
 
     // Skip this if m_offset != 0. madvise() can only be done when address is
     // aligned perfectly along 4K.
-    if (get_header()->m_offset == 0)
+    if ((get_header()->m_offset == 0) && is_aligned((uintptr_t)get_page(), g_sys_page_size))
     {
-        int rc = madvise(get_page(), g_page_size, MADV_DONTNEED);
+        ASSERT(m_page_mgr != nullptr);
+        PageSize page_size = m_page_mgr->get_page_size();
+        int rc = madvise(get_page(), page_size, MADV_DONTNEED);
         if (rc == -1)
             Logger::info("Failed to madvise(DONTNEED), page = %p, errno = %d", get_page(), errno);
     }
@@ -392,9 +394,11 @@ PageInfo::copy_from(PageInfo *src)
                    //src->m_time_range.get_from() - start,
                    //src->m_time_range.get_to() - start);
 
-    if (header->m_offset == 0)
+    if ((header->m_offset == 0) && is_aligned((uintptr_t)get_page(), g_sys_page_size))
     {
-        int rc = madvise(get_page(), g_page_size, MADV_DONTNEED);
+        ASSERT(m_page_mgr != nullptr);
+        PageSize page_size = m_page_mgr->get_page_size();
+        int rc = madvise(get_page(), page_size, MADV_DONTNEED);
         if (rc == -1)
             Logger::info("Failed to madvise(DONTNEED), page = %p, errno = %d", get_page(), errno);
     }
@@ -451,7 +455,9 @@ PageInfo::get_page()
     ASSERT(first_page != nullptr);
     struct page_info_on_disk *header = get_header();
     PageCount idx = header->m_page_index;
-    return static_cast<void*>(first_page + (idx * g_page_size) + header->m_offset);
+    ASSERT(m_page_mgr != nullptr);
+    PageSize page_size = m_page_mgr->get_page_size();
+    return static_cast<void*>(first_page + (idx * page_size) + header->m_offset);
 }
 
 Timestamp
@@ -739,6 +745,7 @@ PageManager::open_mmap(PageCount page_count)
     m_page_index = &(header->m_page_index);
     m_header_index = &(header->m_header_index);
     m_actual_pg_cnt = &(header->m_actual_pg_cnt);
+    m_page_size = &(header->m_page_size);
 
     m_page_info = reinterpret_cast<struct page_info_on_disk*>(static_cast<char*>(m_pages)+(sizeof(struct tsdb_header)));
 
@@ -752,6 +759,7 @@ PageManager::open_mmap(PageCount page_count)
         header->set_compacted(m_compacted);
         header->set_compressor_version(m_compressor_version);
         header->set_millisecond(g_tstamp_resolution_ms);
+        header->m_page_size = g_page_size;
         *m_page_count = page_count;
         *m_page_index = calc_first_page_info_index(page_count);
         *m_header_index = 0;
@@ -788,7 +796,7 @@ PageManager::open_mmap(PageCount page_count)
         }
 
         m_compacted = header->is_compacted();
-        m_total_size = (TsdbSize)*m_actual_pg_cnt * (TsdbSize)g_page_size;
+        m_total_size = (TsdbSize)*m_actual_pg_cnt * (TsdbSize)(*m_page_size);
         ASSERT(*m_page_index <= *m_actual_pg_cnt);
 
         // TODO: verify time range in the header. It should agree with our m_time_range!
@@ -866,7 +874,7 @@ PageManager::get_free_page_on_disk(Tsdb *tsdb, bool ooo)
         PageCount id = *m_header_index;
         PageCount page_idx = *m_page_index;
         struct page_info_on_disk *header = get_page_info_on_disk(id);
-        info->init_for_disk(this, header, id, page_idx, g_page_size, ooo);
+        info->init_for_disk(this, header, id, page_idx, *m_page_size, ooo);
         info->setup_compressor(m_time_range, (ooo ? 0 : m_compressor_version));
         ASSERT(info->is_out_of_order() == ooo);
 
@@ -898,7 +906,7 @@ PageManager::get_free_page_in_mem(Tsdb *tsdb, bool ooo)
         return nullptr;
     }
 
-    info->init_for_memory(this, g_page_size, ooo);
+    info->init_for_memory(this, *m_page_size, ooo);
     info->setup_compressor(m_time_range, (ooo ? 0 : m_compressor_version));
 
     return info;
@@ -926,7 +934,7 @@ PageManager::get_free_page_for_compaction(Tsdb *tsdb)
         PageCount page_idx = *m_page_index;
 
         struct page_info_on_disk *header = get_page_info_on_disk(id);
-        info->init_for_disk(this, header, id, page_idx, g_page_size, false);
+        info->init_for_disk(this, header, id, page_idx, *m_page_size, false);
 
         (*m_header_index)++;
 
@@ -938,11 +946,11 @@ PageManager::get_free_page_for_compaction(Tsdb *tsdb)
             PageSize offset = header->m_offset + header->m_size;
             struct page_info_on_disk *info_header = info->get_header();
 
-            if ((g_page_size - offset) >= 12) // at least 12 bytes left
+            if ((*m_page_size - offset) >= 12) // at least 12 bytes left
             {
                 info_header->m_page_index = header->m_page_index;
                 info_header->m_offset = offset;
-                info_header->m_size = g_page_size - offset;
+                info_header->m_size = *m_page_size - offset;
             }
             else
             {
@@ -1002,7 +1010,7 @@ PageManager::flush(bool sync)
     if (m_pages == nullptr) return;
 
     ASSERT(m_page_index != nullptr);
-    TsdbSize size = *m_page_index * g_page_size;
+    TsdbSize size = (*m_page_index) * (*m_page_size);
     if (size > m_total_size) size = m_total_size;   // could happen after compaction
     int rc = msync(m_pages, size, (sync?MS_SYNC:MS_ASYNC));
 
@@ -1024,7 +1032,7 @@ PageManager::persist()
     if (m_pages == nullptr) return;
 
     ASSERT(m_page_index != nullptr);
-    TsdbSize size = *m_page_index * g_page_size;
+    TsdbSize size = (*m_page_index) * (*m_page_size);
     ASSERT(size <= m_total_size);
     msync(m_pages, size, MS_SYNC);
 }
@@ -1064,7 +1072,7 @@ PageManager::shrink_to_fit()
     PageCount last = header->m_page_index + 1;
     *m_actual_pg_cnt = last;
     ASSERT(*m_page_index <= *m_actual_pg_cnt);
-    m_total_size = last * g_page_size;
+    m_total_size = last * (*m_page_size);
     persist_compacted_flag(true);
     Logger::debug("shrink from %" PRIu64 " to %" PRIu64, old_total_size, m_total_size);
     resize(old_total_size);

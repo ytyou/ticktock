@@ -76,6 +76,8 @@ struct tsdb_header
     Timestamp m_start_tstamp;   // 64-bit
     Timestamp m_end_tstamp;     // 64-bit
     PageCount m_actual_pg_cnt;  // 32-bit
+    PageSize m_page_size;       // 16-bit
+    uint16_t m_reserved;        // 16-bi6
 
     inline int get_compressor_version() const
     {
@@ -145,6 +147,7 @@ struct page_info_on_disk
     PageCount m_page_index;     // 32-bit
     uint32_t m_tstamp_from;     // 32-bit
     uint32_t m_tstamp_to;       // 32-bit
+    PageSize m_next_page;       // 32-bit
 
     void init(const TimeRange& range)
     {
@@ -339,6 +342,12 @@ public:
         return *m_actual_pg_cnt - calc_first_page_info_index(*m_page_count);
     }
 
+    inline PageSize get_page_size() const
+    {
+        ASSERT(m_page_size != nullptr);
+        return *m_page_size;
+    }
+
     inline void *get_version() const
     {
         return m_pages;
@@ -388,8 +397,8 @@ private:
     static std::atomic<int32_t> m_total;    // total number of open mmap files
 
     std::mutex m_lock;
-    int m_fd;       // file-descriptor of the mmapp'ed file
     void *m_pages;  // points to the beginning of the mmapp'ed file
+    int m_fd;       // file-descriptor of the mmapp'ed file
 
     // If one mmapp'ed file is not big enough to hold all the dps for
     // this Tsdb, we will create multiple of them, and m_id is a
@@ -402,6 +411,7 @@ private:
     uint16_t m_minor_version;
     uint8_t m_compressor_version;
     bool m_compacted;
+    std::atomic<bool> m_accessed;
 
     // number of pages in the file when it is newly created;
     // after compaction, the actual page count could change,
@@ -425,6 +435,8 @@ private:
     // this could be different than m_page_count;
     PageCount *m_actual_pg_cnt;
 
+    PageSize *m_page_size;
+
     // total size of the data file, in bytes. this is usually
     // m_page_count * page_size, but after compaction, it should
     // be m_actual_pg_cnt * page_size;
@@ -436,8 +448,6 @@ private:
     TimeRange m_time_range;
 
     struct page_info_on_disk *m_page_info;
-
-    std::atomic<bool> m_accessed;
 
 };  // class PageManager
 

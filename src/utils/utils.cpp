@@ -808,6 +808,12 @@ spin_yield(unsigned int k)
 }
 
 bool
+is_aligned(uintptr_t ptr, unsigned long align)
+{
+    return ((ptr % align) == 0);
+}
+
+bool
 operator<(const DataPointPair& lhs, const DataPointPair& rhs)
 {
     return lhs.first < rhs.first;

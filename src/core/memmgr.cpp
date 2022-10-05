@@ -170,6 +170,18 @@ MemoryManager::free_memory_page(void* page)
 void
 MemoryManager::init()
 {
+    if (Config::exists(CFG_TSDB_PAGE_SIZE))
+    {
+        g_page_size = Config::get_bytes(CFG_TSDB_PAGE_SIZE);
+        if (g_page_size < 128)
+            g_page_size = 128;
+        else if (g_page_size > UINT16_MAX)
+            g_page_size = UINT16_MAX;
+    }
+    else
+        g_page_size = sysconf(_SC_PAGE_SIZE);
+    Logger::info("mm::page-size = %u", g_page_size);
+
     m_network_buffer_len = Config::get_bytes(CFG_TCP_BUFFER_SIZE, CFG_TCP_BUFFER_SIZE_DEF);
     // make sure it's multiple of g_page_size
     m_network_buffer_len = ((long)m_network_buffer_len / g_page_size) * g_page_size;
