@@ -863,7 +863,7 @@ PageManager::get_free_page_on_disk(Tsdb *tsdb, bool ooo)
     {
         // TODO: handle OOM
         Logger::fatal("Running out of memory!");
-        return nullptr;
+        throw std::runtime_error("Out of memory");
     }
 
     // get a new, unsed page from mmapped file
