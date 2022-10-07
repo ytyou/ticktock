@@ -768,6 +768,14 @@ PageManager::open_mmap(PageCount page_count)
     }
     else
     {
+        // Not compatible with any versions less than 0.5.0
+        if ((header->m_major_version == 0) && (header->m_minor_version < 5))
+        {
+            Logger::error("This version of TickTock is not compatible with any versions less than 0.5.0");
+            close_mmap();
+            return false;
+        }
+
         if (m_major_version != header->m_major_version)
         {
             Logger::fatal("file major version: %d, our major version: %d",
