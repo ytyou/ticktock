@@ -834,6 +834,7 @@ PageManager::close_mmap()
 
         // these need to be invalidated
         m_page_count = nullptr;
+        m_page_size = nullptr;
         m_page_index = nullptr;
         m_header_index = nullptr;
         m_page_info = nullptr;
@@ -877,6 +878,8 @@ PageManager::get_free_page_on_disk(Tsdb *tsdb, bool ooo)
     // get a new, unsed page from mmapped file
     std::lock_guard<std::mutex> guard(m_lock);
 
+    if (! is_open()) reopen();
+
     if (((*m_page_index) < (*m_actual_pg_cnt)) && ((*m_header_index) < (*m_page_count)))
     {
         PageCount id = *m_header_index;
@@ -914,6 +917,11 @@ PageManager::get_free_page_in_mem(Tsdb *tsdb, bool ooo)
         throw std::runtime_error("Out of memory");
     }
 
+    std::lock_guard<std::mutex> guard(m_lock);
+
+    if (! is_open()) reopen();
+
+    ASSERT(m_page_size != nullptr);
     info->init_for_memory(this, *m_page_size, ooo);
     info->setup_compressor(m_time_range, (ooo ? 0 : m_compressor_version));
 

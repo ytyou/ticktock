@@ -956,7 +956,7 @@ Tsdb::get_free_page(bool out_of_order)
     else
         pm = m_page_mgrs.back();
 
-    ASSERT(pm->is_open());
+    //ASSERT(pm->is_open());
     PageInfo *pi = pm->get_free_page(this, out_of_order);
     ASSERT(pi != nullptr);
     return pi;
