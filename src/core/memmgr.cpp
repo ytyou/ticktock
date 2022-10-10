@@ -176,7 +176,7 @@ MemoryManager::init()
         if (g_page_size < 128)
             g_page_size = 128;
         else if (g_page_size > UINT16_MAX)
-            g_page_size = UINT16_MAX;
+            g_page_size = ((long)UINT16_MAX / 128) * 128;
     }
     else
         g_page_size = sysconf(_SC_PAGE_SIZE);
