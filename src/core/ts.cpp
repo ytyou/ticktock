@@ -569,7 +569,7 @@ TimeSeries::compact(MetaFile& meta_file)
             MemoryManager::free_recyclable(info);
 
             info = tsdb->get_free_page_for_compaction();
-            //meta_file.append(this, info);
+            meta_file.append(this, info);
             ok = info->add_data_point(dp.first, dp.second);
             ASSERT(ok);
 
@@ -591,7 +591,7 @@ TimeSeries::compact(MetaFile& meta_file)
     {
         info->shrink_to_fit();
         MemoryManager::free_recyclable(info);
-        meta_file.append(this, file_id, id_from, id_to);
+        //meta_file.append(this, file_id, id_from, id_to);
     }
 
     return (! dps.empty());

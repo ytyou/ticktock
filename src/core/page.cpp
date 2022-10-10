@@ -536,7 +536,10 @@ PageInfoInMem::init_for_memory(PageManager *pm, PageSize size, bool is_ooo)
     header->m_page_index = std::numeric_limits<uint32_t>::max();
     ASSERT(header->m_size != 0);
     m_page_mgr = pm;
-    m_version = MemoryManager::alloc_memory_page();
+    if (LIKELY(pm->get_page_size() == g_page_size))
+        m_version = MemoryManager::alloc_memory_page();
+    else
+        m_version = malloc(pm->get_page_size());
     ASSERT(m_version != nullptr);
     get_compressor() = nullptr;
 }
@@ -553,7 +556,10 @@ PageInfoInMem::flush(bool accessed, Tsdb *tsdb)
     //info->flush(false);
     if (m_version != nullptr)
     {
-        MemoryManager::free_memory_page(m_version);
+        if (LIKELY(m_page_mgr->get_page_size() == g_page_size))
+            MemoryManager::free_memory_page(m_version);
+        else
+            std::free(m_version);
         m_version = nullptr;
     }
     Logger::debug("Writing to page #%d in file %s",
@@ -746,8 +752,6 @@ PageManager::open_mmap(PageCount page_count)
     m_header_index = &(header->m_header_index);
     m_actual_pg_cnt = &(header->m_actual_pg_cnt);
 
-    m_page_info = reinterpret_cast<struct page_info_on_disk*>(static_cast<char*>(m_pages)+(sizeof(struct tsdb_header)));
-
     if (sb.st_size == 0)
     {
         // new file
@@ -760,6 +764,7 @@ PageManager::open_mmap(PageCount page_count)
         header->set_millisecond(g_tstamp_resolution_ms);
         header->m_page_size = g_page_size;
         m_page_size = g_page_size;
+        m_page_info = reinterpret_cast<struct page_info_on_disk*>(static_cast<char*>(m_pages)+(sizeof(struct tsdb_header)));
         *m_page_count = page_count;
         *m_page_index = calc_first_page_info_index(page_count, g_page_size);
         *m_header_index = 0;
