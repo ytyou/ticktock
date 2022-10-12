@@ -49,13 +49,17 @@ public:
     static int get_recyclable_total();
 
     // network buffer
-    static char* alloc_network_buffer();
+    static char *alloc_network_buffer();
     static void free_network_buffer(char *buff);
 
     inline static uint64_t get_network_buffer_size()
     {
         return m_network_buffer_len;
     }
+
+    // in-memory page
+    static void *alloc_memory_page();
+    static void free_memory_page(void *page);
 
     static Recyclable *alloc_recyclable(RecyclableType type);
     static void free_recyclable(Recyclable *r);
@@ -80,12 +84,12 @@ private:
 
     // keep track of number of reusable objects,
     // both free and in total
-    static std::atomic<int> m_free[RecyclableType::RT_COUNT+1];
-    static std::atomic<int> m_total[RecyclableType::RT_COUNT+1];
+    static std::atomic<int> m_free[RecyclableType::RT_COUNT+2];
+    static std::atomic<int> m_total[RecyclableType::RT_COUNT+2];
 
     // garbage collector
     static std::mutex m_garbage_lock;   // to prevent multi-invoke of collect_garbage()
-    static int m_max_usage[RecyclableType::RT_COUNT+1][MAX_USAGE_SIZE];
+    static int m_max_usage[RecyclableType::RT_COUNT+2][MAX_USAGE_SIZE];
     static int m_max_usage_idx;
 
 #ifdef _DEBUG

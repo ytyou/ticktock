@@ -385,12 +385,12 @@ void
 Stats::write_proc_stat(Timestamp tstamp, Tsdb *tsdb)
 {
     {
-        DataPoint dp(tstamp, (double)(g_proc_stats.rss*g_page_size));
+        DataPoint dp(tstamp, (double)(g_proc_stats.rss*g_sys_page_size));
         dp.set_metric("ticktock.memory.rss");
         //dp.add_tag(METRIC_TAG_NAME, "ticktock.memory.rss");
         dp.add_tag(HOST_TAG_NAME, g_host_name.c_str());
         tsdb->add(dp);
-        Logger::debug("rss = %ld, page size = %ld", g_proc_stats.rss, g_page_size);
+        Logger::debug("rss = %ld, page size = %ld", g_proc_stats.rss, g_sys_page_size);
     }
 
     {
@@ -481,7 +481,7 @@ Stats::collect_stats(char *buff, int size)
 uint64_t
 Stats::get_rss_mb()
 {
-    return ((uint64_t)g_proc_stats.rss * (uint64_t)g_page_size) / (uint64_t)ONE_MEGABYTES;
+    return ((uint64_t)g_proc_stats.rss * (uint64_t)g_sys_page_size) / (uint64_t)ONE_MEGABYTES;
 }
 
 uint64_t

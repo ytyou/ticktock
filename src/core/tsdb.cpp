@@ -114,7 +114,7 @@ Mapping::unload_no_lock()
 }
 
 void
-Mapping::flush()
+Mapping::flush(bool accessed)
 {
     ReadLock guard(m_lock);
 
@@ -127,7 +127,7 @@ Mapping::flush()
         if (it->first == ts->get_key())
         {
             Logger::trace("Flushing ts: %T", ts);
-            ts->flush(true);
+            ts->flush(accessed);
         }
     }
 }
@@ -866,7 +866,7 @@ Tsdb::flush(bool sync)
     for (auto it = m_map.begin(); it != m_map.end(); it++)
     {
         Mapping *mapping = it->second;
-        mapping->flush();
+        mapping->flush(false);
         ASSERT(it->first == mapping->m_metric);
     }
 
@@ -946,6 +946,23 @@ Tsdb::create_page_manager(int id)
 }
 
 PageInfo *
+Tsdb::get_free_page(bool out_of_order)
+{
+    std::lock_guard<std::mutex> guard(m_pm_lock);
+    PageManager *pm;
+
+    if (m_page_mgrs.empty())
+        pm = create_page_manager();
+    else
+        pm = m_page_mgrs.back();
+
+    //ASSERT(pm->is_open());
+    PageInfo *pi = pm->get_free_page(this, out_of_order);
+    ASSERT(pi != nullptr);
+    return pi;
+}
+
+PageInfo *
 Tsdb::get_free_page_on_disk(bool out_of_order)
 {
     std::lock_guard<std::mutex> guard(m_pm_lock);
@@ -956,7 +973,7 @@ Tsdb::get_free_page_on_disk(bool out_of_order)
     else
         pm = m_page_mgrs.back();
 
-    ASSERT(pm->is_open());
+    //ASSERT(pm->is_open());
     PageInfo *pi = pm->get_free_page_on_disk(this, out_of_order);
 
     if (pi == nullptr)
@@ -1104,6 +1121,7 @@ Tsdb::load_from_disk_no_lock()
     m_mode |= TSDB_MODE_READ;
     if (compacted) m_mode |= TSDB_MODE_COMPACTED;
     m_load_time = ts_now_sec();
+    Logger::info("Loaded %T (lt=%" PRIu64 ")", this, m_load_time.load());
     return true;
 }
 
@@ -1842,7 +1860,7 @@ Tsdb::unload()
 void
 Tsdb::unload_no_lock()
 {
-    ASSERT(m_count.load() <= 0);
+    ASSERT(count_is_zero());
     m_meta_file.close();
 
     for (auto it = m_map.begin(); it != m_map.end(); it++)
@@ -1930,7 +1948,7 @@ Tsdb::rotate(TaskData& data)
 
         if (((int64_t)now_sec - (int64_t)load_time) > (int64_t)thrashing_threshold)
         {
-            if (! (mode & TSDB_MODE_READ) && (tsdb->m_count <= 0))
+            if (! (mode & TSDB_MODE_READ) && tsdb->count_is_zero())
             {
                 // archive it
                 Logger::info("[rotate] Archiving %T (lt=%" PRIu64 ", now=%" PRIu64 ")", tsdb, load_time, now_sec);
@@ -1946,8 +1964,20 @@ Tsdb::rotate(TaskData& data)
                 continue;
             }
         }
-        else
-            Logger::debug("[rotate] %T SKIPPED to avoid thrashing (lt=%" PRIu64 ")", tsdb, load_time);
+        else if (! (mode & TSDB_MODE_READ) && tsdb->count_is_zero())
+        {
+            //Logger::debug("[rotate] %T SKIPPED to avoid thrashing (lt=%" PRIu64 ")", tsdb, load_time);
+            // try to archive individual PageManager.
+            for (auto it = tsdb->m_map.begin(); it != tsdb->m_map.end(); it++)
+            {
+                Mapping *mapping = it->second;
+                mapping->flush(true);
+                ASSERT(it->first == mapping->m_metric);
+            }
+
+            for (PageManager* pm: tsdb->m_page_mgrs)
+                pm->try_unload();
+        }
 
         if (tsdb->m_mode & TSDB_MODE_CHECKPOINT)
         {

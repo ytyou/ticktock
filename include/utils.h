@@ -92,6 +92,8 @@ extern bool operator<(const DataPointPair& lhs, const DataPointPair& rhs);
 extern bool dp_pair_less(const DataPointPair& lhs, const DataPointPair& rhs);
 extern int max_subset_4k(int16_t set[], size_t size, std::vector<int>& subset); // 'subset' is the output
 
+extern bool is_aligned(uintptr_t ptr, unsigned long align);
+
 extern bool file_exists(const std::string& full_path);
 extern int rm_file(const std::string& full_path);
 extern int rm_all_files(const std::string& pattern);

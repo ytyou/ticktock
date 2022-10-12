@@ -88,7 +88,7 @@ private:
     void init(const char *name, Tsdb* tsdb);
     void unload();
     void unload_no_lock();
-    void flush();
+    void flush(bool accessed);
     bool recycle() override;
     void set_check_point();
 
@@ -173,6 +173,7 @@ public:
 
     std::string get_partition_defs() const;
 
+    PageInfo *get_free_page(bool out_of_order);
     PageInfo *get_free_page_on_disk(bool out_of_order);
     PageInfo *get_free_page_for_compaction();   // used during compaction
     // Caller should acquire m_pm_lock before calling this method

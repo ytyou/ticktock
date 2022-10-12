@@ -69,7 +69,53 @@ struct tsdb_header
 {
     uint8_t m_major_version;    //  8-bit
     uint16_t m_minor_version;   // 16-bit
-    uint8_t m_flags;            // 8-bit
+    uint8_t m_flags;            //  8-bit
+    PageCount m_page_count;     // 32-bit
+    PageCount m_header_index;   // 32-bit
+    PageCount m_page_index;     // 32-bit
+    Timestamp m_start_tstamp;   // 64-bit
+    Timestamp m_end_tstamp;     // 64-bit
+    PageCount m_actual_pg_cnt;  // 32-bit
+    PageSize m_page_size;       // 16-bit
+    uint16_t m_reserved;        // 16-bi6
+
+    inline int get_compressor_version() const
+    {
+        return (int)(m_flags & 0x03);
+    }
+
+    inline void set_compressor_version(int version)
+    {
+        m_flags = (m_flags & 0xF6) | (uint8_t)version;
+    }
+
+    inline bool is_compacted() const
+    {
+        return ((m_flags & 0x80) != 0);
+    }
+
+    inline void set_compacted(bool compacted)
+    {
+        m_flags = compacted ? (m_flags | 0x80) : (m_flags & 0x7F);
+    }
+
+    inline bool is_millisecond() const
+    {
+        return ((m_flags & 0x40) != 0);
+    }
+
+    inline void set_millisecond(bool milli)
+    {
+        m_flags = milli ? (m_flags | 0x40) : (m_flags & 0xBF);
+    }
+};
+
+// old version
+struct tsdb_header_0_4
+{
+    uint8_t m_major_version;    //  8-bit
+    uint16_t m_minor_version;   // 16-bit
+    uint8_t m_flags;            //  8-bit
     PageCount m_page_count;     // 32-bit
     PageCount m_header_index;   // 32-bit
     PageCount m_page_index;     // 32-bit
@@ -183,7 +229,7 @@ struct page_info_on_disk
 // these are what we keep in memory for a page;
 // part of it (see struct page_info_on_disk) will be
 // persisted on disk;
-class PageInfo : public Serializable, public Recyclable
+class PageInfo : public Recyclable
 {
 public:
     PageInfo();
@@ -193,40 +239,42 @@ public:
     // this one initialize PageInfo to represent a new page on disk
     void init_for_disk(PageManager *pm,
                        struct page_info_on_disk *header,
+                       PageCount header_idx,
                        PageCount page_idx,
                        PageSize size,
                        bool is_ooo);
 
     // init a page info representing an existing page on disk
-    void init_from_disk(PageManager *pm, struct page_info_on_disk *header);
+    void init_from_disk(PageManager *pm, struct page_info_on_disk *header, PageCount header_idx);
 
-    inline void set_ooo(bool ooo) { m_header->set_out_of_order(ooo); }
+    inline void set_ooo(bool ooo) { get_header()->set_out_of_order(ooo); }
 
     // prepare to be used to represent a different page
-    void flush();
+    virtual PageInfo *flush(bool accessed, Tsdb *tsdb = nullptr);
     void reset();
     void shrink_to_fit();
     bool is_full() const;
     bool is_empty() const;
     inline bool is_on_disk() const { return true; }
-    inline bool is_out_of_order() const { return m_header->is_out_of_order(); }
-    void ensure_dp_available(DataPointVector *dps = nullptr);
+    inline bool is_out_of_order() const { return get_header_const()->is_out_of_order(); }
+    virtual void ensure_dp_available(DataPointVector *dps = nullptr);
+    //virtual void ensure_page_open();
+    virtual struct page_info_on_disk *get_header();
+    virtual struct page_info_on_disk *get_header_const() const;
+    inline Compressor*& get_compressor() { return (Compressor*&)Recyclable::next(); }
+    inline Compressor *get_compressor_const() const { return (Compressor*)Recyclable::next_const(); }
 
     Timestamp get_last_tstamp() const;
-
-    inline const TimeRange& get_time_range()
-    {
-        return m_time_range;
-    }
+    TimeRange get_time_range() const;
 
     int get_dp_count() const;
-    PageCount get_id() const;
+    inline virtual PageCount get_id() const { return m_header_index; }
     PageCount get_file_id() const;
     int get_page_order() const;
 
-    inline PageCount get_page_index() const
+    inline PageCount get_page_index()
     {
-        return m_header->m_page_index;
+        return get_header()->m_page_index;
     }
 
     // return true if dp is added; false if page is full;
@@ -238,36 +286,64 @@ public:
 
     // existing compressor, if any, will be destroyed, and new one created
     void setup_compressor(const TimeRange& range, int compressor_version);
-    void persist(bool copy_data = false);   // persist page to disk
+    virtual void persist(bool copy_data = false);   // persist page to disk
     void merge_after(PageInfo *dst);        // share page with 'dst' (compaction)
     void copy_to(PageCount dst_id);
+    void copy_from(PageInfo *src);
 
-    inline size_t c_size() const override { return 64; }
-    const char *c_str(char *buff) const override;
+    //inline size_t c_size() const override { return 64; }
+    //const char *c_str(char *buff) const override;
 
 private:
     friend class PageManager;
     friend class MemoryManager;
     friend class SanityChecker;
     friend class page_info_index_less;
+    friend class PageInfoInMem;
 
-    void *get_page();
+    virtual void *get_page();
 
-    TimeRange m_time_range;     // range of actual data points in this page
+protected:
+    //TimeRange m_time_range;     // range of actual data points in this page
+    uint32_t m_from;            // relative to PM's start
+    uint32_t m_to;              // relative to PM's start
     PageManager *m_page_mgr;    // this is null for in-memory page
-    Compressor *m_compressor;   // this is null except for in-memory page
+    //Compressor *m_compressor;   // this is null except for in-memory page
+    void *m_version;            // version of PM
 
-    struct page_info_on_disk *m_header;
+    PageCount m_header_index;
+    //struct page_info_on_disk *m_header;
 
 };  // class PageInfo
+
+
+class PageInfoInMem : public PageInfo
+{
+public:
+    void init_for_memory(PageManager *pm,
+                         PageSize size,
+                         bool is_ooo);
+    PageInfo *flush(bool accessed, Tsdb *tsdb = nullptr) override;
+    void persist(bool copy_data = false) override {}
+    void *get_page() override { return m_version; }
+    PageCount get_id() const override { return 0; }
+    void ensure_dp_available(DataPointVector *dps = nullptr) override {}
+    inline struct page_info_on_disk *get_header() override
+    {
+        return &m_page_header;
+    }
+
+private:
+    struct page_info_on_disk m_page_header;
+};
 
 
 class page_info_index_less
 {
 public:
-    bool operator()(PageInfo *info1, PageInfo *info2) const
+    bool operator()(PageInfo *info1, PageInfo *info2)
     {
-        return info1->m_header->m_page_index < info2->m_header->m_page_index;
+        return info1->get_header()->m_page_index < info2->get_header()->m_page_index;
     }
 };
 
@@ -283,7 +359,7 @@ public:
     PageManager(const PageManager& copy) = delete;
     virtual ~PageManager();
 
-    PageInfo *get_free_page_on_disk(Tsdb *tsdb, bool ooo);
+    PageInfo *get_free_page(Tsdb *tsdb, bool ooo);
     PageInfo *get_free_page_for_compaction(Tsdb *tsdb); // used during compaction
     PageInfo *get_the_page_on_disk(PageCount header_index);
     PageCount calc_page_info_index(struct page_info_on_disk *piod) const;
@@ -298,10 +374,25 @@ public:
         return m_id;
     }
 
+    std::string get_file_name() const
+    {
+        return m_file_name;
+    }
+
     inline PageCount get_data_page_count() const    // no. data pages currently in use
     {
         ASSERT(m_actual_pg_cnt != nullptr);
-        return *m_actual_pg_cnt - calc_first_page_info_index(*m_page_count);
+        return *m_actual_pg_cnt - calc_first_page_info_index(*m_page_count, m_page_size);
+    }
+
+    inline PageSize get_page_size() const
+    {
+        return m_page_size;
+    }
+
+    inline void *get_version() const
+    {
+        return m_pages;
     }
 
     inline uint8_t get_compressor_version() const
@@ -312,6 +403,7 @@ public:
     void flush(bool sync);
     void close_mmap();
     bool reopen();  // return false if reopen() failed
+    bool reopen_with_lock();    // return false if reopen_with_lock() failed
     void persist();
     void shrink_to_fit();
 
@@ -329,18 +421,26 @@ public:
     inline PageCount get_page_count() const { return *m_page_count; }
     inline static int32_t get_mmap_file_count() { return m_total.load(); }
 
+    PageInfo *get_free_page_on_disk(Tsdb *tsdb, bool ooo);
+    struct page_info_on_disk *get_page_info_on_disk(PageCount index);
+
+    void try_unload();
+    inline bool is_accessed() { return m_accessed; }
+    inline void mark_accessed() { m_accessed = true; }
+
 private:
     bool open_mmap(PageCount page_count);
     void persist_compacted_flag(bool compacted);
     bool resize(TsdbSize old_size);     // resize (shrink) the data file
     void init_headers();    // zero-out headers
-    struct page_info_on_disk *get_page_info_on_disk(PageCount index);
-    static PageCount calc_first_page_info_index(PageCount page_count);
+    PageInfoInMem *get_free_page_in_mem(Tsdb *tsdb, bool ooo);
+    static PageCount calc_first_page_info_index(PageCount page_count, PageSize page_size);
+
     static std::atomic<int32_t> m_total;    // total number of open mmap files
 
     std::mutex m_lock;
-    int m_fd;       // file-descriptor of the mmapp'ed file
     void *m_pages;  // points to the beginning of the mmapp'ed file
+    int m_fd;       // file-descriptor of the mmapp'ed file
 
     // If one mmapp'ed file is not big enough to hold all the dps for
     // this Tsdb, we will create multiple of them, and m_id is a
@@ -353,6 +453,7 @@ private:
     uint16_t m_minor_version;
     uint8_t m_compressor_version;
     bool m_compacted;
+    std::atomic<bool> m_accessed;
 
     // number of pages in the file when it is newly created;
     // after compaction, the actual page count could change,
@@ -375,6 +476,8 @@ private:
     // usually this is the same as m_page_count; after compaction
     // this could be different than m_page_count;
     PageCount *m_actual_pg_cnt;
+
+    PageSize m_page_size;
 
     // total size of the data file, in bytes. this is usually
     // m_page_count * page_size, but after compaction, it should

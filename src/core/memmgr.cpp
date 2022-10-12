@@ -22,6 +22,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include "admin.h"
+#include "bitset.h"
 #include "compress.h"
 #include "config.h"
 #include "memmgr.h"
@@ -52,11 +53,11 @@ char *MemoryManager::m_network_buffer_free_list = nullptr;
 std::mutex MemoryManager::m_locks[RecyclableType::RT_COUNT];
 Recyclable * MemoryManager::m_free_lists[RecyclableType::RT_COUNT];
 
-std::atomic<int> MemoryManager::m_free[RecyclableType::RT_COUNT+1];
-std::atomic<int> MemoryManager::m_total[RecyclableType::RT_COUNT+1];
+std::atomic<int> MemoryManager::m_free[RecyclableType::RT_COUNT+2];
+std::atomic<int> MemoryManager::m_total[RecyclableType::RT_COUNT+2];
 
 std::mutex MemoryManager::m_garbage_lock;
-int MemoryManager::m_max_usage[RecyclableType::RT_COUNT+1][MAX_USAGE_SIZE];
+int MemoryManager::m_max_usage[RecyclableType::RT_COUNT+2][MAX_USAGE_SIZE];
 int MemoryManager::m_max_usage_idx;
 
 #ifdef _DEBUG
@@ -122,21 +123,77 @@ MemoryManager::free_network_buffer(char* buff)
     m_free[RecyclableType::RT_COUNT]++;
 }
 
+void *
+MemoryManager::alloc_memory_page()
+{
+    void* page = nullptr;
+
+    {
+        std::lock_guard<std::mutex> guard(m_page_lock);
+        page = m_page_free_list;
+        if (page != nullptr)
+        {
+            m_page_free_list = *((char**)page);
+            m_free[RecyclableType::RT_COUNT+1]--;
+        }
+    }
+
+    ASSERT(m_initialized);
+
+    if (page == nullptr)
+    {
+        // TODO: check if we have enough memory
+        page = std::malloc(g_page_size);
+        if (page == nullptr)
+            throw std::runtime_error("Out of memory");
+        m_total[RecyclableType::RT_COUNT+1]++;
+    }
+
+    return page;
+}
+
+void
+MemoryManager::free_memory_page(void* page)
+{
+    if (UNLIKELY(page == nullptr))
+    {
+        Logger::error("Passing nullptr to MemoryManager::free_memory_page()");
+        return;
+    }
+
+    std::lock_guard<std::mutex> guard(m_page_lock);
+    *((void**)page) = m_page_free_list;
+    m_page_free_list = page;
+    m_free[RecyclableType::RT_COUNT+1]++;
+}
+
 void
 MemoryManager::init()
 {
+    if (Config::exists(CFG_TSDB_PAGE_SIZE))
+    {
+        g_page_size = Config::get_bytes(CFG_TSDB_PAGE_SIZE);
+        if (g_page_size < 128)
+            g_page_size = 128;
+        else if (g_page_size > UINT16_MAX)
+            g_page_size = ((long)UINT16_MAX / 128) * 128;
+    }
+    else
+        g_page_size = sysconf(_SC_PAGE_SIZE);
+    Logger::info("mm::page-size = %u", g_page_size);
+
     m_network_buffer_len = Config::get_bytes(CFG_TCP_BUFFER_SIZE, CFG_TCP_BUFFER_SIZE_DEF);
     // make sure it's multiple of g_page_size
     m_network_buffer_len = ((long)m_network_buffer_len / g_page_size) * g_page_size;
     Logger::info("mm::m_network_buffer_len = %d", m_network_buffer_len);
     for (int i = 0; i < RecyclableType::RT_COUNT; i++)
         m_free_lists[i] = nullptr;
-    for (int i = 0; i <= RecyclableType::RT_COUNT; i++)
+    for (int i = 0; i <= RecyclableType::RT_COUNT+1; i++)
         m_free[i] = m_total[i] = 0;
     m_initialized = true;
 
     m_max_usage_idx = 0;
-    for (int i = 0; i <= RecyclableType::RT_COUNT; i++)
+    for (int i = 0; i <= RecyclableType::RT_COUNT+1; i++)
     {
         for (int j = 0; j < MAX_USAGE_SIZE; j++)
             m_max_usage[i][j] = 0;
@@ -159,13 +216,13 @@ MemoryManager::collect_stats(Timestamp ts, std::vector<DataPoint> &dps)
 #define COLLECT_STATS_FOR(RTYPE, RNAME, SIZE_OF_RTYPE)     \
     {   \
         {   \
-            dps.emplace_back(ts, (double)m_total[RTYPE] * SIZE_OF_RTYPE);   \
+            dps.emplace_back(ts, (double)m_total[RTYPE] * (SIZE_OF_RTYPE));   \
             auto& dp = dps.back();  \
             dp.set_metric("ticktock.mem.reusable.total");   \
             dp.add_tag(TYPE_TAG_NAME, RNAME);    \
         }   \
         {   \
-            dps.emplace_back(ts, (double)m_free[RTYPE] * SIZE_OF_RTYPE);    \
+            dps.emplace_back(ts, (double)m_free[RTYPE] * (SIZE_OF_RTYPE));    \
             auto& dp = dps.back();  \
             dp.set_metric("ticktock.mem.reusable.free");    \
             dp.add_tag(TYPE_TAG_NAME, RNAME);    \
@@ -180,9 +237,11 @@ MemoryManager::collect_stats(Timestamp ts, std::vector<DataPoint> &dps)
     COLLECT_STATS_FOR(RT_AGGREGATOR_NONE, "aggregator_none", sizeof(AggregatorNone))
     COLLECT_STATS_FOR(RT_AGGREGATOR_PT, "aggregator_pt", sizeof(AggregatorPercentile))
     COLLECT_STATS_FOR(RT_AGGREGATOR_SUM, "aggregator_sum", sizeof(AggregatorSum))
+    COLLECT_STATS_FOR(RT_BITSET_CURSOR, "bitset_cursor", sizeof(BitSetCursor))
     COLLECT_STATS_FOR(RT_COMPRESSOR_V0, "compressor_v0", sizeof(Compressor_v0))
     COLLECT_STATS_FOR(RT_COMPRESSOR_V1, "compressor_v1", sizeof(Compressor_v1))
     COLLECT_STATS_FOR(RT_COMPRESSOR_V2, "compressor_v2", sizeof(Compressor_v2))
+    COLLECT_STATS_FOR(RT_COMPRESSOR_V3, "compressor_v3", sizeof(Compressor_v3))
     COLLECT_STATS_FOR(RT_DATA_POINT, "data_point", sizeof(DataPoint))
     COLLECT_STATS_FOR(RT_DOWNSAMPLER_AVG, "downsampler_avg", sizeof(DownsamplerAvg))
     COLLECT_STATS_FOR(RT_DOWNSAMPLER_COUNT, "downsampler_count", sizeof(DownsamplerCount))
@@ -198,12 +257,14 @@ MemoryManager::collect_stats(Timestamp ts, std::vector<DataPoint> &dps)
     COLLECT_STATS_FOR(RT_KEY_VALUE_PAIR, "key_value_pair", sizeof(KeyValuePair))
     COLLECT_STATS_FOR(RT_MAPPING, "mapping", sizeof(Mapping))
     COLLECT_STATS_FOR(RT_PAGE_INFO, "page_info", sizeof(PageInfo))
+    COLLECT_STATS_FOR(RT_PAGE_INFO_IN_MEM, "page_info_in_mem", sizeof(PageInfoInMem))
     COLLECT_STATS_FOR(RT_QUERY_RESULTS, "query_results", sizeof(QueryResults))
     COLLECT_STATS_FOR(RT_QUERY_TASK, "query_task", sizeof(QueryTask))
     COLLECT_STATS_FOR(RT_RATE_CALCULATOR, "rate_calculator", sizeof(RateCalculator))
     COLLECT_STATS_FOR(RT_TCP_CONNECTION, "tcp_connection", sizeof(TcpConnection))
     COLLECT_STATS_FOR(RT_TIME_SERIES, "time_series", sizeof(TimeSeries))
     COLLECT_STATS_FOR(RT_COUNT, "network_buffer", m_network_buffer_len)
+    COLLECT_STATS_FOR(RT_COUNT+1, "memory_page", g_page_size)
 
     float total = 0;
     total += m_total[RT_AGGREGATOR_AVG] * sizeof(AggregatorAvg);
@@ -214,9 +275,11 @@ MemoryManager::collect_stats(Timestamp ts, std::vector<DataPoint> &dps)
     total += m_total[RT_AGGREGATOR_NONE] * sizeof(AggregatorNone);
     total += m_total[RT_AGGREGATOR_PT] * sizeof(AggregatorPercentile);
     total += m_total[RT_AGGREGATOR_SUM] * sizeof(AggregatorSum);
+    total += m_total[RT_BITSET_CURSOR] * sizeof(BitSetCursor);
     total += m_total[RT_COMPRESSOR_V0] * sizeof(Compressor_v0);
     total += m_total[RT_COMPRESSOR_V1] * sizeof(Compressor_v1);
     total += m_total[RT_COMPRESSOR_V2] * sizeof(Compressor_v2);
+    total += m_total[RT_COMPRESSOR_V3] * sizeof(Compressor_v3);
     total += m_total[RT_DATA_POINT] * sizeof(DataPoint);
     total += m_total[RT_DOWNSAMPLER_AVG] * sizeof(DownsamplerAvg);
     total += m_total[RT_DOWNSAMPLER_COUNT] * sizeof(DownsamplerCount);
@@ -232,12 +295,14 @@ MemoryManager::collect_stats(Timestamp ts, std::vector<DataPoint> &dps)
     total += m_total[RT_KEY_VALUE_PAIR] * sizeof(KeyValuePair);
     total += m_total[RT_MAPPING] * sizeof(Mapping);
     total += m_total[RT_PAGE_INFO] * sizeof(PageInfo);
+    total += m_total[RT_PAGE_INFO_IN_MEM] * sizeof(PageInfoInMem);
     total += m_total[RT_QUERY_RESULTS] * sizeof(QueryResults);
     total += m_total[RT_QUERY_TASK] * sizeof(QueryTask);
     total += m_total[RT_RATE_CALCULATOR] * sizeof(RateCalculator);
     total += m_total[RT_TCP_CONNECTION] * sizeof(TcpConnection);
     total += m_total[RT_TIME_SERIES] * sizeof(TimeSeries);
     total += m_total[RT_COUNT] * m_network_buffer_len;
+    total += m_total[RT_COUNT+1] * g_page_size;
 
     dps.emplace_back(ts, total);
     auto& dp = dps.back();
@@ -260,9 +325,11 @@ MemoryManager::log_stats()
     Logger::debug("mm::aggregator_none = %d", m_maps[RecyclableType::RT_AGGREGATOR_NONE].size());
     Logger::debug("mm::aggregator_pt = %d", m_maps[RecyclableType::RT_AGGREGATOR_PT].size());
     Logger::debug("mm::aggregator_sum = %d", m_maps[RecyclableType::RT_AGGREGATOR_SUM].size());
+    Logger::debug("mm::bitset_cursor = %d", m_maps[RecyclableType::RT_BITSET_CURSOR].size());
     Logger::debug("mm::compressor_v0 = %d", m_maps[RecyclableType::RT_COMPRESSOR_V0].size());
     Logger::debug("mm::compressor_v1 = %d", m_maps[RecyclableType::RT_COMPRESSOR_V1].size());
     Logger::debug("mm::compressor_v2 = %d", m_maps[RecyclableType::RT_COMPRESSOR_V2].size());
+    Logger::debug("mm::compressor_v3 = %d", m_maps[RecyclableType::RT_COMPRESSOR_V3].size());
     Logger::debug("mm::data_point = %d", m_maps[RecyclableType::RT_DATA_POINT].size());
     Logger::debug("mm::downsampler_avg = %d", m_maps[RecyclableType::RT_DOWNSAMPLER_AVG].size());
     Logger::debug("mm::downsampler_count = %d", m_maps[RecyclableType::RT_DOWNSAMPLER_COUNT].size());
@@ -278,6 +345,7 @@ MemoryManager::log_stats()
     Logger::debug("mm::key_value_pair = %d", m_maps[RecyclableType::RT_KEY_VALUE_PAIR].size());
     Logger::debug("mm::mapping = %d", m_maps[RecyclableType::RT_MAPPING].size());
     Logger::debug("mm::page_info = %d", m_maps[RecyclableType::RT_PAGE_INFO].size());
+    Logger::debug("mm::page_info_in_mem = %d", m_maps[RecyclableType::RT_PAGE_INFO_IN_MEM].size());
     Logger::debug("mm::query_results = %d", m_maps[RecyclableType::RT_QUERY_RESULTS].size());
     Logger::debug("mm::query_task = %d", m_maps[RecyclableType::RT_QUERY_TASK].size());
     Logger::debug("mm::rate_calculator = %d", m_maps[RecyclableType::RT_RATE_CALCULATOR].size());
@@ -376,6 +444,14 @@ MemoryManager::cleanup()
         delete static_cast<AggregatorSum*>(r);
     }
 
+    while (m_free_lists[RecyclableType::RT_BITSET_CURSOR] != nullptr)
+    {
+        Recyclable *r = m_free_lists[RecyclableType::RT_BITSET_CURSOR];
+        m_free_lists[RecyclableType::RT_BITSET_CURSOR] = r->next();
+        ASSERT(r->recyclable_type() == RecyclableType::RT_BITSET_CURSOR);
+        delete static_cast<BitSetCursor*>(r);
+    }
+
     while (m_free_lists[RecyclableType::RT_COMPRESSOR_V0] != nullptr)
     {
         Recyclable *r = m_free_lists[RecyclableType::RT_COMPRESSOR_V0];
@@ -398,6 +474,14 @@ MemoryManager::cleanup()
         m_free_lists[RecyclableType::RT_COMPRESSOR_V2] = r->next();
         ASSERT(r->recyclable_type() == RecyclableType::RT_COMPRESSOR_V2);
         delete static_cast<Compressor_v2*>(r);
+    }
+
+    while (m_free_lists[RecyclableType::RT_COMPRESSOR_V3] != nullptr)
+    {
+        Recyclable *r = m_free_lists[RecyclableType::RT_COMPRESSOR_V3];
+        m_free_lists[RecyclableType::RT_COMPRESSOR_V3] = r->next();
+        ASSERT(r->recyclable_type() == RecyclableType::RT_COMPRESSOR_V3);
+        delete static_cast<Compressor_v3*>(r);
     }
 
     while (m_free_lists[RecyclableType::RT_DATA_POINT] != nullptr)
@@ -520,6 +604,14 @@ MemoryManager::cleanup()
         delete static_cast<PageInfo*>(r);
     }
 
+    while (m_free_lists[RecyclableType::RT_PAGE_INFO_IN_MEM] != nullptr)
+    {
+        Recyclable *r = m_free_lists[RecyclableType::RT_PAGE_INFO_IN_MEM];
+        m_free_lists[RecyclableType::RT_PAGE_INFO_IN_MEM] = r->next();
+        ASSERT(r->recyclable_type() == RecyclableType::RT_PAGE_INFO_IN_MEM);
+        delete static_cast<PageInfoInMem*>(r);
+    }
+
     while (m_free_lists[RecyclableType::RT_QUERY_RESULTS] != nullptr)
     {
         Recyclable *r = m_free_lists[RecyclableType::RT_QUERY_RESULTS];
@@ -609,9 +701,14 @@ MemoryManager::alloc_recyclable(RecyclableType type)
                     r = new AggregatorSum();
                     break;
 
+                case RecyclableType::RT_BITSET_CURSOR:
+                    r = new BitSetCursor();
+                    break;
+
                 case RecyclableType::RT_COMPRESSOR_V0:
                 case RecyclableType::RT_COMPRESSOR_V1:
                 case RecyclableType::RT_COMPRESSOR_V2:
+                case RecyclableType::RT_COMPRESSOR_V3:
                     r = Compressor::create(type - RecyclableType::RT_COMPRESSOR_V0);
                     break;
 
@@ -673,6 +770,10 @@ MemoryManager::alloc_recyclable(RecyclableType type)
 
                 case RecyclableType::RT_PAGE_INFO:
                     r = new PageInfo();
+                    break;
+
+                case RecyclableType::RT_PAGE_INFO_IN_MEM:
+                    r = new PageInfoInMem();
                     break;
 
                 case RecyclableType::RT_QUERY_RESULTS:
@@ -827,7 +928,7 @@ MemoryManager::collect_garbage(TaskData& data)
     bool gc = (data.integer != 0);
 
     // record usage stats
-    for (int i = 0; i <= RecyclableType::RT_COUNT; i++)
+    for (int i = 0; i <= RecyclableType::RT_COUNT+1; i++)
     {
         m_max_usage[i][m_max_usage_idx] =
             m_total[i].load(std::memory_order_relaxed) - m_free[i].load(std::memory_order_relaxed);
@@ -895,6 +996,32 @@ MemoryManager::collect_garbage(TaskData& data)
                     std::free(buff);
                     m_free[RecyclableType::RT_COUNT]--;
                     m_total[RecyclableType::RT_COUNT]--;
+                }
+            }
+        }
+
+        // collect memory pages
+        {
+            int max_usage = 0;
+
+            for (int j = 0; j < MAX_USAGE_SIZE; j++)
+                max_usage = std::max(max_usage, m_max_usage[RecyclableType::RT_COUNT+1][j]);
+
+            if (max_usage < m_total[RecyclableType::RT_COUNT+1].load(std::memory_order_relaxed))
+            {
+                Logger::debug("[gc] Trying to GC of memory page from %d to %d",
+                              m_total[RecyclableType::RT_COUNT+1].load(std::memory_order_relaxed), max_usage);
+
+                std::lock_guard<std::mutex> guard(m_page_lock);
+
+                while (max_usage < m_total[RecyclableType::RT_COUNT+1].load())
+                {
+                    void *page = m_page_free_list;
+                    if (page == nullptr) break;
+                    m_page_free_list = *((void**)page);
+                    std::free(page);
+                    m_free[RecyclableType::RT_COUNT+1]--;
+                    m_total[RecyclableType::RT_COUNT+1]--;
                 }
             }
         }

@@ -44,7 +44,7 @@ public:
     ~TimeSeries();
 
     void init(const char *metric, const char *key, Tag *tags, Tsdb *tsdb, bool read_only);
-    void flush(bool close);
+    void flush(bool accessed = false);
     bool recycle();
     bool compact(MetaFile& meta_file);
     void append_meta_all(MetaFile &meta);
@@ -57,6 +57,9 @@ public:
 
     // collect all pages to be compacted
     void get_all_pages(std::vector<PageInfo*>& pages);
+
+    inline Tsdb*& get_tsdb() { return (Tsdb*&)Recyclable::next(); }
+    inline Tsdb *get_tsdb_const() const { return (Tsdb*)Recyclable::next_const(); }
 
     inline const char* get_key() const
     {
@@ -78,7 +81,7 @@ public:
     inline void set_tsdb(Tsdb *tsdb)
     {
         ASSERT(tsdb != nullptr);
-        m_tsdb = tsdb;
+        get_tsdb() = tsdb;
     }
 
     inline const char *get_metric() const
@@ -122,7 +125,7 @@ private:
     std::vector<PageInfo*> m_ooo_pages; // out-of-order pages
 
     char *m_metric;
-    Tsdb *m_tsdb;
+    //Tsdb *m_tsdb;
 };
 
 
@@ -131,11 +134,13 @@ class DataPointContainer : public Recyclable
 public:
     void init(PageInfo *info)
     {
-        info->ensure_dp_available();
+        m_dps.clear();
+        m_dps.reserve(700);
+        info->ensure_dp_available(&m_dps);
         m_out_of_order = info->is_out_of_order();
         m_page_index = info->get_page_order();
-        m_dps.reserve(700);
-        info->get_all_data_points(m_dps);
+        if (m_dps.empty())
+            info->get_all_data_points(m_dps);
     }
 
     inline size_t size() const { return m_dps.size(); }

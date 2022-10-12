@@ -110,6 +110,7 @@
 #define CFG_TSDB_OFF_HOUR_END_DEF               5
 #define CFG_TSDB_PAGE_COUNT                     "tsdb.page.count"
 #define CFG_TSDB_PAGE_COUNT_DEF                 32768
+#define CFG_TSDB_PAGE_SIZE                      "tsdb.page.size"
 #define CFG_TSDB_FLUSH_FREQUENCY                "tsdb.flush.frequency"
 #define CFG_TSDB_FLUSH_FREQUENCY_DEF            "5min"
 #define CFG_TSDB_GC_FREQUENCY                   "tsdb.gc.frequency"
