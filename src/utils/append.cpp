@@ -38,10 +38,12 @@ bool AppendLog::m_enabled = false;
 std::atomic<uint64_t> AppendLog::m_order {0};
 static thread_local AppendLog *instance = nullptr;
 
+static std::atomic<Timestamp> rotate_time {0};
+
 
 AppendLog::AppendLog() :
     m_file(nullptr),
-    m_time(0L)
+    m_rotate_time(0L)
 {
     reopen();
 }
@@ -59,15 +61,15 @@ AppendLog::init()
 
     // Schedule tasks to flush append logs.
     Task task;
-    task.doit = &AppendLog::flush_all;
-    int freq_sec = Config::get_time(CFG_APPEND_LOG_FLUSH_FREQUENCY, TimeUnit::SEC, CFG_APPEND_LOG_FLUSH_FREQUENCY_DEF);
-    ASSERT(freq_sec > 0);
-    Timer::inst()->add_task(task, freq_sec, "append_log_flush");
-    Logger::info("using %s of %ds", CFG_APPEND_LOG_FLUSH_FREQUENCY, freq_sec);
+    //task.doit = &AppendLog::flush_all;
+    //int freq_sec = Config::get_time(CFG_APPEND_LOG_FLUSH_FREQUENCY, TimeUnit::SEC, CFG_APPEND_LOG_FLUSH_FREQUENCY_DEF);
+    //ASSERT(freq_sec > 0);
+    //Timer::inst()->add_task(task, freq_sec, "append_log_flush");
+    //Logger::info("using %s of %ds", CFG_APPEND_LOG_FLUSH_FREQUENCY, freq_sec);
 
     // Schedule tasks to rotate append logs.
     task.doit = &AppendLog::rotate;
-    freq_sec = Config::get_time(CFG_APPEND_LOG_ROTATION_FREQUENCY, TimeUnit::SEC, CFG_APPEND_LOG_ROTATION_FREQUENCY_DEF);
+    int freq_sec = Config::get_time(CFG_APPEND_LOG_ROTATION_FREQUENCY, TimeUnit::SEC, CFG_APPEND_LOG_ROTATION_FREQUENCY_DEF);
     ASSERT(freq_sec > 0);
     Timer::inst()->add_task(task, freq_sec, "append_log_rotate");
     Logger::info("using %s of %ds", CFG_APPEND_LOG_ROTATION_FREQUENCY, freq_sec);
@@ -152,6 +154,7 @@ AppendLog::rotate(TaskData& data)
     if (cnt > 0)
         Logger::info("Purged %d append logs", cnt);
 
+    rotate_time = ts_now_sec();
     return false;
 }
 
@@ -196,8 +199,8 @@ AppendLog::reopen()
         Config::get_time(CFG_APPEND_LOG_ROTATION_FREQUENCY, TimeUnit::SEC, CFG_APPEND_LOG_ROTATION_FREQUENCY_DEF);
     long time = (ts_now_sec() / rotation_sec) * rotation_sec;
 
-    if (time == m_time) return;
-    m_time = time;
+    if (time == m_rotate_time) return;
+    m_rotate_time = time;
 
     close();    // close before open again
 
@@ -260,6 +263,11 @@ AppendLog::append(char *data, size_t size)
 
     append_internal(buff, std::strlen(buff));
     append_internal(data, size);
+
+    fflush(m_file);
+
+    if (m_rotate_time < rotate_time)
+        reopen();
 }
 
 void

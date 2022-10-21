@@ -74,7 +74,7 @@ private:
     static std::atomic<uint64_t> m_order;
 
     FILE *m_file;
-    long m_time;    // for log rotation
+    Timestamp m_rotate_time;
     z_stream m_stream;
 };
 
