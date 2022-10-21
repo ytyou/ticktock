@@ -175,6 +175,8 @@ public:
 
     static bool resend_response(TaskData& data);
 
+    virtual inline const char *get_name() const { return "http"; }
+
 protected:
     TcpConnection *create_conn() const override;
     Task get_recv_data_task(TcpConnection *conn) const override;

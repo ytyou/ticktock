@@ -183,9 +183,11 @@ MemoryManager::init()
     Logger::info("mm::page-size = %u", g_page_size);
 
     m_network_buffer_len = Config::get_bytes(CFG_TCP_BUFFER_SIZE, CFG_TCP_BUFFER_SIZE_DEF);
+    if (m_network_buffer_len < g_page_size) m_network_buffer_len = g_page_size;
     // make sure it's multiple of g_page_size
     m_network_buffer_len = ((long)m_network_buffer_len / g_page_size) * g_page_size;
     Logger::info("mm::m_network_buffer_len = %d", m_network_buffer_len);
+    ASSERT(m_network_buffer_len > 0);
     for (int i = 0; i < RecyclableType::RT_COUNT; i++)
         m_free_lists[i] = nullptr;
     for (int i = 0; i <= RecyclableType::RT_COUNT+1; i++)
