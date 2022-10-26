@@ -958,7 +958,18 @@ Tsdb::get_free_page(bool out_of_order)
 
     //ASSERT(pm->is_open());
     PageInfo *pi = pm->get_free_page(this, out_of_order);
-    ASSERT(pi != nullptr);
+
+    if (pi == nullptr)
+    {
+        // We need a new mmapp'ed file!
+        ASSERT(pm->is_full());
+        pm = create_page_manager();
+        ASSERT(pm->is_open());
+        ASSERT(m_time_range.contains(pm->get_time_range()));
+        ASSERT(pm->get_time_range().contains(m_time_range));
+        pi = pm->get_free_page(this, out_of_order);
+    }
+
     return pi;
 }
 
