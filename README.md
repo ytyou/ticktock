@@ -7,7 +7,7 @@ TickTock is an open source Time Series DataBase (TSDB) for DevOps, Internet of T
 * **High performance:** 
   - At least 10X better than OpenTSDB, competitive to the best TSDBs like InfluxDB.
 * **Easy to install and maintain:** 
-  - Many TSDBs are built on top of other DBs, e.g., OpenTSDB on HBase, Clickhouse and Druid on relational DBs. This incurs complexity in installation and maintenance besides performance overhead. TickTock is natively developed in C++ and has a single process only. It doesn't require additional expertise like HBase for OpenTSDB in maintence. It doesn't have painful Garbage Collection issues to deal with in high load scenarios.
+  - Many TSDBs are built on top of other DBs, e.g., OpenTSDB on HBase, Timescaledb on Postgresql, Clickhouse and Druid on relational DBs. This incurs complexity in installation and maintenance besides performance overhead. TickTock is natively developed in C++ and has a single process only. It doesn't require additional expertise like HBase for OpenTSDB in maintence. It doesn't have painful Garbage Collection issues to deal with in high load scenarios.
 * **Replication and Scalability supports:**
   - TickTock provides replication and partition features in its open source versions.
 * **Compatible with OpenTSDB APIs:** 
