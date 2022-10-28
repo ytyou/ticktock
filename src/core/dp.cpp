@@ -122,7 +122,7 @@ DataPoint::from_json(char* json)
             char *value;
             json = next_word(json, value);
             if (json == nullptr) return nullptr;
-            add_tag(key, value);
+            //add_tag(key, value);
             set_metric(value);
         }
         else if (strcmp(key, "tags") == 0)

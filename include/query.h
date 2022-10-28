@@ -191,7 +191,7 @@ public:
 private:
     Query(const Query&) = delete;
 
-    inline bool in_range(Timestamp tstamp) const
+    inline int in_range(Timestamp tstamp) const
     {
         return m_time_range.in_range(tstamp);
     }

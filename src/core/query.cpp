@@ -328,23 +328,17 @@ Query::~Query()
 int
 Query::add_data_point(DataPointPair& dp, DataPointVector& dps, Downsampler *downsampler)
 {
-    if (in_range(dp.first))
+    int n = in_range(dp.first);
+
+    if (n == 0)
     {
         if (downsampler != nullptr)
-        {
             downsampler->add_data_point(dp, dps);
-        }
         else
-        {
             dps.push_back(dp);
-        }
+    }
 
-        return 0;
-    }
-    else
-    {
-        return (dp.first < m_time_range.get_from()) ? -1 : 1;
-    }
+    return n;
 }
 
 void

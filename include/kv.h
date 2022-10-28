@@ -57,6 +57,7 @@ public:
 
     // WARNING: The input 'buff' will be modified!
     static KeyValuePair* parse_in_place(char *buff, char delim);
+    static KeyValuePair* parse_multiple(std::string& buff);
 
     const char *m_key;
     const char *m_value;

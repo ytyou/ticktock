@@ -120,6 +120,7 @@ Stats::inject_metrics(TaskData& data)
         */
 
         // ticktock.mmap_file.count
+        /*
         {
             int32_t count = PageManager::get_mmap_file_count();
             DataPoint dp(now, (double)count);
@@ -127,6 +128,7 @@ Stats::inject_metrics(TaskData& data)
             dp.add_tag(HOST_TAG_NAME, g_host_name.c_str());
             tsdb->add(dp);
         }
+        */
 
         // ticktock.time_series.count
         {
@@ -164,6 +166,7 @@ Stats::inject_metrics(TaskData& data)
                     std::string responder = std::to_string(j);
                     dp.add_tag("listener", listener.c_str());
                     dp.add_tag("responder", responder.c_str());
+                    dp.add_tag(HOST_TAG_NAME, g_host_name.c_str());
                     tsdb->add(dp);
                 }
             }
@@ -185,6 +188,7 @@ Stats::inject_metrics(TaskData& data)
                     std::string responder = std::to_string(j);
                     dp.add_tag("listener", listener.c_str());
                     dp.add_tag("responder", responder.c_str());
+                    dp.add_tag(HOST_TAG_NAME, g_host_name.c_str());
                     tsdb->add(dp);
                 }
             }
@@ -201,6 +205,7 @@ Stats::inject_metrics(TaskData& data)
                 dp.set_metric("ticktock.query.pending_task.count");
                 std::string executor = std::to_string(i);
                 dp.add_tag("executor", executor.c_str());
+                dp.add_tag(HOST_TAG_NAME, g_host_name.c_str());
                 tsdb->add(dp);
             }
         }

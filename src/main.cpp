@@ -338,7 +338,6 @@ initialize()
     AppendLog::init();
     Stats::init();
     QueryExecutor::init();
-    //SanityChecker::init();
     Admin::init();
     Timer::inst()->start();
 

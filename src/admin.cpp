@@ -211,11 +211,8 @@ Admin::cmd_ping(KeyValuePair *params, HttpResponse& response)
 bool
 Admin::cmd_stat(KeyValuePair *params, HttpResponse& response)
 {
-    int dp_cnt = Tsdb::get_dp_count();
-    int ts_cnt = Tsdb::get_ts_count();
     char buff[64];
-
-    int len = snprintf(buff, sizeof(buff), "{\"dp_count\":%d,\"ts_count\":%d}", dp_cnt, ts_cnt);
+    int len = snprintf(buff, sizeof(buff), "{}");
     response.init(200, HttpContentType::JSON, len, buff);
     return true;
 }

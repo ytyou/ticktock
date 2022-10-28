@@ -195,7 +195,7 @@ UdpListener::process_one_line(Tsdb* &tsdb, char *line)
 
     if (! dp.from_plain(line)) return false;
 
-    if ((tsdb == nullptr) || !(tsdb->in_range(dp.get_timestamp())))
+    if ((tsdb == nullptr) || (tsdb->in_range(dp.get_timestamp()) != 0))
     {
         tsdb = Tsdb::inst(dp.get_timestamp());
     }

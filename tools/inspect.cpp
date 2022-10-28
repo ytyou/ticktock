@@ -26,17 +26,18 @@
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include "compress.h"
+#include "mmap.h"
 #include "page.h"
+#include "tsdb.h"
 #include "type.h"
 #include "utils.h"
 
 
 using namespace tt;
 
-int g_dump_all = false;
-int g_dump_data = -1;
-int g_dump_info = false;
-std::string g_data_file;
+std::string g_tsdb_dir, g_data_dir;
+char *g_index_base = nullptr;
+std::vector<TimeSeries*> g_time_series;
 
 
 void
@@ -47,9 +48,7 @@ find_matching_files(std::string& pattern, std::vector<std::string>& files)
     glob(pattern.c_str(), GLOB_TILDE, nullptr, &result);
 
     for (unsigned int i = 0; i < result.gl_pathc; i++)
-    {
         files.push_back(std::string(result.gl_pathv[i]));
-    }
 
     globfree(&result);
 }
@@ -104,132 +103,31 @@ close_mmap(int fd, char *base, size_t size)
     if (fd != -1) close(fd);
 }
 
-void
-dump_tsdb_header(struct tsdb_header *tsdb_header)
-{
-    printf("TSDB: (major=%d, minor=%d, page_cnt=%d, page_size=%u, head_idx=%d, page_idx=%d, start=%" PRIu64 ", end=%" PRIu64 ", actual_cnt=%d, flags=0x%x)\n",
-        tsdb_header->m_major_version, tsdb_header->m_minor_version,
-        tsdb_header->m_page_count, tsdb_header->m_page_size, tsdb_header->m_header_index,
-        tsdb_header->m_page_index, tsdb_header->m_start_tstamp,
-        tsdb_header->m_end_tstamp, tsdb_header->m_actual_pg_cnt, tsdb_header->m_flags);
-    g_tstamp_resolution_ms = tsdb_header->is_millisecond();
-}
-
-void
-dump_page_info_headers(struct tsdb_header *tsdb_header)
-{
-    struct page_info_on_disk *page_infos =
-        (struct page_info_on_disk *) ((char*)tsdb_header + sizeof(struct tsdb_header));
-
-    float total_util = 0.0;
-
-    for (int i = 0; i < tsdb_header->m_header_index; i++)
-    {
-        struct page_info_on_disk *info = &page_infos[i];
-        PageSize cursor = info->m_cursor;
-        if (info->m_start > 0) cursor++;
-        float util = (float)cursor/(float)info->m_size;
-        printf("INFO(%4d): (offset=%d, size=%d, cursor=%d, start=%d, page_idx=%d, from=%d, to=%d, flags=%x, pctused=%.2f)\n",
-            i, info->m_offset, info->m_size, info->m_cursor, info->m_start,
-            info->m_page_index, info->m_tstamp_from, info->m_tstamp_to, info->m_flags, util);
-        total_util += util;
-    }
-
-    if (tsdb_header->m_header_index != 0)
-        printf("Average page utilization = %.2f\n", total_util/tsdb_header->m_header_index);
-}
-
-void
-dump_data(struct tsdb_header *tsdb_header, int header_index)
-{
-    struct page_info_on_disk *page_infos =
-        (struct page_info_on_disk *) ((char*)tsdb_header + sizeof(struct tsdb_header));
-
-    struct page_info_on_disk *info = &page_infos[header_index];
-    int page_idx = info->m_page_index;
-    int version = info->is_out_of_order() ? 0 : tsdb_header->get_compressor_version();
-    Compressor *compressor = Compressor::create(version);
-    uint8_t *base = ((uint8_t*)tsdb_header) + page_idx*(long)(tsdb_header->m_page_size) + info->m_offset;
-    compressor->init(tsdb_header->m_start_tstamp, base, info->m_size);
-    CompressorPosition position(info);
-    DataPointVector dps;
-    compressor->restore(dps, position, nullptr);
-    printf("dps.size() == %d, pos.offset = %d, pos.start = %d, index = %d, ooo = %s, range = (%u, %u)\n",
-        (int)dps.size(), position.m_offset, position.m_start, header_index, info->is_out_of_order()?"true":"false",
-        info->m_tstamp_from, info->m_tstamp_to);
-    for (auto& dp: dps) printf("ts = %" PRIu64 ", value = %.2f\n", dp.first, dp.second);
-    delete compressor;
-}
-
-void
-dump_all_data(struct tsdb_header *tsdb_header)
-{
-    for (int i = 0; i < tsdb_header->m_header_index; i++)
-    {
-        dump_data(tsdb_header, i);
-    }
-}
-
-void
-inspect(char *base)
-{
-    struct tsdb_header *tsdb_header = (struct tsdb_header *) base;
-
-    dump_tsdb_header(tsdb_header);
-
-    //if (g_dump_info || g_dump_all)
-    if (g_dump_info)
-    {
-        dump_page_info_headers(tsdb_header);
-    }
-
-    if (g_dump_all)
-    {
-        dump_all_data(tsdb_header);
-    }
-    else if (g_dump_data >= 0)
-    {
-        dump_data(tsdb_header, g_dump_data);
-    }
-}
-
 static int
 process_cmdline_opts(int argc, char *argv[])
 {
     int c;
 
-    while ((c = getopt(argc, argv, "?ad:hp:")) != -1)
+    while ((c = getopt(argc, argv, "?d:t:")) != -1)
     {
         switch (c)
         {
-            case 'a':
-                g_dump_all = true;
-                break;
-
             case 'd':
-                g_data_file.assign(optarg);
+                g_data_dir.assign(optarg);
                 break;
 
-            case 'h':
-                g_dump_info = true;
-                break;
-
-            case 'p':
-                g_dump_data = std::atoi(optarg);
+            case 't':
+                g_tsdb_dir.assign(optarg);
                 break;
 
             case '?':
-                if (optopt == 'd')
+                if (optopt == 't')
                 {
-                    fprintf(stderr, "Option -d requires a data file (or pattern).\n");
-                }
-                else if (optopt == 'p')
-                {
-                    fprintf(stderr, "Option -p requires a page header index.\n");
+                    fprintf(stderr, "Option -t requires a tsdb dir.\n");
                 }
                 else
                 {
-                    fprintf(stderr, "Usage: %s [-ah] [-p <header-index>] [-d] <data_file>\n", argv[0]);
+                    fprintf(stderr, "Usage: %s [-d <data_dir>] [-t <tsdb_dir>]\n", argv[0]);
                 }
                 return 1;
             default:
@@ -238,11 +136,122 @@ process_cmdline_opts(int argc, char *argv[])
     }
 
     if ((optind + 1) == argc)
-    {
-        g_data_file.assign(argv[optind]);
-    }
+        g_tsdb_dir.assign(argv[optind]);
 
     return 0;
+}
+
+void
+inspect_page(const std::string& dir, FileIndex file_idx, HeaderIndex header_idx)
+{
+    char header_file_name[PATH_MAX];
+    char data_file_name[PATH_MAX];
+
+    snprintf(header_file_name, sizeof(header_file_name), "%s/header.%u", dir.c_str(), file_idx);
+    snprintf(data_file_name, sizeof(data_file_name), "%s/data.%u", dir.c_str(), file_idx);
+
+    int header_file_fd, data_file_fd;
+    size_t header_file_size, data_file_size;
+
+    std::string header_file_name_str(header_file_name);
+    std::string data_file_name_str(data_file_name);
+
+    char *header_base = open_mmap(header_file_name_str, header_file_fd, header_file_size);
+    char *data_base = open_mmap(data_file_name_str, data_file_fd, data_file_size);
+
+    struct tsdb_header *tsdb_header = (struct tsdb_header*)header_base;
+    int compressor_version = tsdb_header->get_compressor_version();
+    g_tstamp_resolution_ms = tsdb_header->is_millisecond();
+
+    struct page_info_on_disk *header = (struct page_info_on_disk *)
+        (header_base + sizeof(struct tsdb_header) + header_idx * sizeof(struct page_info_on_disk));
+    char *page_base = data_base + (header->m_page_index * tsdb_header->m_page_size);
+    ASSERT(header->m_page_index < tsdb_header->m_page_index);
+
+    // dump page header
+    printf("     [%u,%u][offset=%u,size=%u,cursor=%u,start=%u,flags=%x,page-idx=%u,from=%u,to=%u,next-file=%u,next-header=%u]\n",
+        file_idx,
+        header_idx,
+        header->m_offset,
+        header->m_size,
+        header->m_cursor,
+        header->m_start,
+        header->m_flags,
+        header->m_page_index,
+        header->m_tstamp_from,
+        header->m_tstamp_to,
+        header->m_next_file,
+        header->m_next_header);
+
+    // dump page data
+    DataPointVector dps;
+    Compressor *compressor = Compressor::create(compressor_version);
+    CompressorPosition position(header);
+    compressor->init(tsdb_header->m_start_tstamp, (uint8_t*)page_base, tsdb_header->m_page_size);
+    compressor->restore(dps, position, nullptr);
+    for (auto& dp: dps) printf("ts = %" PRIu64 ", value = %.3f\n", dp.first, dp.second);
+    delete compressor;
+
+    file_idx = header->m_next_file;
+    header_idx = header->m_next_header;
+
+    close_mmap(data_file_fd, data_base, data_file_size);
+    close_mmap(header_file_fd, header_base, header_file_size);
+
+    if ((file_idx != TT_INVALID_FILE_INDEX) && (header_idx != TT_INVALID_HEADER_INDEX))
+        inspect_page(dir, file_idx, header_idx);
+}
+
+void
+inspect_tsdb(const std::string& dir)
+{
+    printf("Inspecting tsdb %s...\n", dir.c_str());
+
+    // dump all headers first...
+    std::string header_files_pattern = dir + "/header.*";
+    std::vector<std::string> header_files;
+    find_matching_files(header_files_pattern, header_files);
+
+    for (std::string& header_file: header_files)
+    {
+        int header_fd;
+        size_t header_size;
+
+        char *base_hdr = open_mmap(header_file, header_fd, header_size);
+
+        struct tsdb_header *tsdb_header = (struct tsdb_header*)base_hdr;
+        printf("%s: [major=%u, minor=%u, flags=%x, page_cnt=%u, header_idx=%u, page_idx=%u, start=%lu, end=%lu, actual=%u, size=%u]\n",
+            header_file.c_str(),
+            tsdb_header->m_major_version,
+            tsdb_header->m_minor_version,
+            tsdb_header->m_flags,
+            tsdb_header->m_page_count,
+            tsdb_header->m_header_index,
+            tsdb_header->m_page_index,
+            tsdb_header->m_start_tstamp,
+            tsdb_header->m_end_tstamp,
+            tsdb_header->m_actual_pg_cnt,
+            tsdb_header->m_page_size);
+
+        close_mmap(header_fd, base_hdr, header_size);
+    }
+
+    std::string index_file_name = dir + "/index";
+    int index_file_fd;
+    size_t index_file_size;
+    char *index_base = open_mmap(index_file_name, index_file_fd, index_file_size);
+    struct index_entry *index_entries = (struct index_entry*)index_base;
+
+    for (TimeSeries *ts: g_time_series)
+    {
+        TimeSeriesId id = ts->get_id();
+        if (((id+1) * sizeof(struct index_entry)) >= index_file_size) continue;
+        if (index_entries[id].file_index == TT_INVALID_FILE_INDEX) continue;
+        printf("%4u %s %s\n", id, ts->get_metric(), ts->get_key());
+        inspect_page(dir, index_entries[id].file_index, index_entries[id].header_index);
+    }
+
+    close_mmap(index_file_fd, index_base, index_file_size);
 }
 
 int
@@ -251,33 +260,19 @@ main(int argc, char *argv[])
     if (process_cmdline_opts(argc, argv) != 0)
         return 1;
 
-    if (g_data_file.empty())
+    if (g_data_dir.empty())
     {
-        fprintf(stderr, "-d <data-file> option is required and missing\n");
+        fprintf(stderr, "-d <data-dir> option is required and missing\n");
         return 2;
     }
 
-    std::string data_file_pattern(g_data_file);
+    Config::set_value(CFG_TSDB_DATA_DIR, g_data_dir);
+    MetaFile::init(Tsdb::restore_ts);
+    Tsdb::get_all_ts(g_time_series);
 
-    std::vector<std::string> files;
-    find_matching_files(data_file_pattern, files);
-
-    for (std::string& file: files)
-    {
-        if (ends_with(file, ".meta") || ends_with(file, ".part"))
-            continue;
-
-        printf("Inspecting %s...\n", file.c_str());
-
-        int fd;
-        size_t size;
-        char *base = open_mmap(file, fd, size);
-
-        if (base != nullptr)
-            inspect(base);
-
-        close_mmap(fd, base, size);
-    }
+    // data directory structure:
+    // <year>/<month>/<tsdb>/<index>|<header>|<data>
+    for_all_dirs(g_data_dir, inspect_tsdb, 3);
 
     return 0;
 }

@@ -72,9 +72,10 @@ public:
         if (m_to < tstamp) m_to = tstamp;
     }
 
-    inline bool in_range(Timestamp tstamp) const
+    // return 0 if in range; -1 if on the left; +1 if on the right;
+    inline int in_range(Timestamp tstamp) const
     {
-        return (m_from <= tstamp) && (tstamp < m_to);
+        return (tstamp < m_from) ? -1 : ((m_to <= tstamp) ? 1 : 0);
     }
 
     inline bool has_intersection(const TimeRange& range) const

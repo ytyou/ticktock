@@ -38,55 +38,37 @@ class Downsampler;
 class Tsdb;
 
 
-class TimeSeries : public Serializable, public TagOwner, public Recyclable
+class TimeSeries : public TagOwner
 {
 public:
+    TimeSeries(const char *metric, const char *key, Tag *tags);
+    TimeSeries(TimeSeriesId id, const char *metric, const char *key, Tag *tags);
     ~TimeSeries();
 
-    void init(const char *metric, const char *key, Tag *tags, Tsdb *tsdb, bool read_only);
+    void init(TimeSeriesId id, const char *metric, const char *key, Tag *tags);
+
+    inline TimeSeriesId get_id() const { return m_id; }
+
     void flush(bool accessed = false);
-    bool recycle();
+    void flush_no_lock(bool accessed = false);
     bool compact(MetaFile& meta_file);
-    void append_meta_all(MetaFile &meta);
     void set_check_point();
 
-    void add_page_info(PageInfo *page_info);
     bool add_data_point(DataPoint& dp);
     bool add_ooo_data_point(DataPoint& dp);
-    bool add_batch(DataPointSet& dps);
 
-    // collect all pages to be compacted
-    void get_all_pages(std::vector<PageInfo*>& pages);
-
-    inline Tsdb*& get_tsdb() { return (Tsdb*&)Recyclable::next(); }
-    inline Tsdb *get_tsdb_const() const { return (Tsdb*)Recyclable::next_const(); }
-
-    inline const char* get_key() const
-    {
-        return m_key;
-    }
-
+    inline const char* get_key() const { return m_key; }
     inline void set_key(const char *key)
     {
         ASSERT(key != nullptr);
         m_key = STRDUP(key);    // TODO: better memory management than strdup()???
     }
 
+    inline const char *get_metric() const { return m_metric; }
     inline void set_metric(const char *metric)
     {
         ASSERT(metric != nullptr);
         m_metric = STRDUP(metric);
-    }
-
-    inline void set_tsdb(Tsdb *tsdb)
-    {
-        ASSERT(tsdb != nullptr);
-        get_tsdb() = tsdb;
-    }
-
-    inline const char *get_metric() const
-    {
-        return m_metric;
     }
 
     Tag *find_tag_by_name(const char *name) const;
@@ -96,36 +78,21 @@ public:
     void query_without_ooo(TimeRange& range, Downsampler *downsampler, DataPointVector& dps);
     void query_without_ooo(TimeRange& range, Downsampler *downsampler, DataPointVector& dps, PageInfo *page_info);
 
-    int get_dp_count();
-    int get_page_count(bool ooo);   // for testing only
-
-    inline size_t c_size() const override { return 1024; }
-    const char* c_str(char* buff) const override;
-
 private:
-    friend class MemoryManager;
-    friend class SanityChecker;
-
-    TimeSeries();
-    PageInfo *get_free_page_on_disk(bool is_out_of_order);
-
-    // used during compaction
-    void add_data_point_with_dedup(DataPointPair &dp, DataPointPair &prev, PageInfo* &info);
-
-    char *m_key;        // this defines the time-series
+    char *m_key;            // this uniquely defines the time-series
     std::mutex m_lock;
 
-    // this will be null unless Tsdb is in read-write mode
-    PageInfo *m_buff;   // in-memory buffer; if m_id is 0, it's contents are
-                        // not on disk; otherwise it's contents are at least
-                        // partially on the page indexed by m_id
-    std::vector<PageInfo*> m_pages; // set of on disk pages
+    PageInMemory *m_buff;   // in-memory buffer; if m_id is 0, it's contents are
+                            // not on disk; otherwise it's contents are at least
+                            // partially on the page indexed by m_id
 
-    PageInfo *m_ooo_buff;
-    std::vector<PageInfo*> m_ooo_pages; // out-of-order pages
+    PageInMemory *m_ooo_buff;
 
     char *m_metric;
-    //Tsdb *m_tsdb;
+    Tsdb *m_tsdb;           // current tsdb we are writing into
+
+    static std::atomic<TimeSeriesId> m_next_id;
+    TimeSeriesId m_id;      // global, unique, permanent id starting at 0
 };
 
 
@@ -136,11 +103,9 @@ public:
     {
         m_dps.clear();
         m_dps.reserve(700);
-        info->ensure_dp_available(&m_dps);
         m_out_of_order = info->is_out_of_order();
-        m_page_index = info->get_page_order();
-        if (m_dps.empty())
-            info->get_all_data_points(m_dps);
+        m_page_index = info->get_global_page_index();
+        info->get_all_data_points(m_dps);
     }
 
     inline size_t size() const { return m_dps.size(); }

@@ -27,6 +27,7 @@
 #include "append.h"
 #include "config.h"
 #include "cp.h"
+#include "limit.h"
 #include "memmgr.h"
 #include "meter.h"
 #include "timer.h"
@@ -46,32 +47,18 @@ namespace tt
 default_contention_free_shared_mutex Tsdb::m_tsdb_lock;
 std::vector<Tsdb*> Tsdb::m_tsdbs;
 static uint64_t tsdb_rotation_freq = 0;
-//static thread_local std::unordered_map<const char*, Mapping*, hash_func, eq_func> thread_local_cache;
-static thread_local tsl::robin_map<const char*, Mapping*, hash_func, eq_func> thread_local_cache;
+
+// maps metrics => Mapping;
+std::mutex g_metric_lock;
+tsl::robin_map<const char*,Mapping*,hash_func,eq_func> g_metric_map;
+thread_local tsl::robin_map<const char*, Mapping*, hash_func, eq_func> thread_local_cache;
 
 
-Mapping::Mapping() :
-    m_metric(nullptr),
-    m_tsdb(nullptr),
-    m_partition(nullptr),
-    m_ref_count(0)
+Mapping::Mapping(const char *name) :
+    m_partition(nullptr)
 {
-}
-
-void
-Mapping::init(const char *name, Tsdb *tsdb)
-{
-    if (m_metric != nullptr)
-        FREE(m_metric);
-
     m_metric = STRDUP(name);
     ASSERT(m_metric != nullptr);
-    m_tsdb = tsdb;
-    m_partition = tsdb->get_partition(name);
-    m_ref_count = 1;
-
-    m_map.clear();
-    m_map.rehash(16);
 }
 
 Mapping::~Mapping()
@@ -81,44 +68,13 @@ Mapping::~Mapping()
         FREE(m_metric);
         m_metric = nullptr;
     }
-
-    unload_no_lock();
-}
-
-void
-Mapping::unload()
-{
-    WriteLock guard(m_lock);
-    unload_no_lock();
-}
-
-void
-Mapping::unload_no_lock()
-{
-    // More than one key could be mapped to the same
-    // TimeSeries; so we need to dedup first to avoid
-    // double free it.
-    for (auto it = m_map.begin(); it != m_map.end(); it++)
-    {
-        const char *key = it->first;
-        TimeSeries *ts = it->second;
-
-        if (ts->get_key() == key)
-            MemoryManager::free_recyclable(ts);
-        else
-            FREE((void*)key);
-    }
-
-    m_map.clear();
-    m_tsdb = nullptr;
 }
 
 void
 Mapping::flush(bool accessed)
 {
-    ReadLock guard(m_lock);
-
-    if (m_tsdb == nullptr) return;
+    //ReadLock guard(m_lock);
+    std::lock_guard<std::mutex> guard(m_lock);
 
     for (auto it = m_map.begin(); it != m_map.end(); it++)
     {
@@ -132,95 +88,16 @@ Mapping::flush(bool accessed)
     }
 }
 
-bool
-Mapping::recycle()
-{
-    if (m_metric != nullptr)
-    {
-        FREE(m_metric);
-        m_metric = nullptr;
-    }
-
-    ASSERT(m_map.size() == 0);
-    m_map.clear();
-    m_tsdb = nullptr;
-
-    return true;
-}
-
-void
-Mapping::set_check_point()
-{
-    WriteLock guard(m_lock);
-
-    for (auto it = m_map.begin(); (it != m_map.end()) && (!g_shutdown_requested); it++)
-    {
-        TimeSeries *ts = it->second;
-        ts->set_check_point();
-    }
-}
-
 TimeSeries *
-Mapping::get_ts(TagOwner& to)
-{
-    char buff[1024];
-    to.get_ordered_tags(buff, sizeof(buff));
-
-    TimeSeries *ts = nullptr;
-
-    {
-        ReadLock guard(m_lock);
-
-        // work-around for possibly a bug in std::unordered_map
-        if (m_map.bucket_count() != 0)
-        {
-            auto result = m_map.find(buff);
-            if (result != m_map.end())
-            {
-                ts = result->second;
-            }
-        }
-    }
-
-    if (ts == nullptr)
-    {
-        WriteLock guard(m_lock);
-
-        // work-around for possibly a bug in std::unordered_map
-        if (m_map.bucket_count() == 0)
-        {
-            m_map.rehash(16);
-            ASSERT(m_map.bucket_count() != 0);
-        }
-        else
-        {
-            auto result = m_map.find(buff);
-            if (result != m_map.end())
-            {
-                ts = result->second;
-            }
-        }
-
-        if (ts == nullptr)
-        {
-            ts = (TimeSeries*)MemoryManager::alloc_recyclable(RecyclableType::RT_TIME_SERIES);
-            ts->init(m_metric, buff, to.get_cloned_tags(), m_tsdb, false);
-            m_map[ts->get_key()] = ts;
-        }
-    }
-
-    return ts;
-}
-
-TimeSeries *
-Mapping::get_ts2(DataPoint& dp)
+Mapping::get_ts(DataPoint& dp)
 {
     TimeSeries *ts = nullptr;
     char *raw_tags = dp.get_raw_tags();
+    std::lock_guard<std::mutex> guard(m_lock);
 
     if (raw_tags != nullptr)
     {
-        ReadLock guard(m_lock);
+        //ReadLock guard(m_lock);
         auto result = m_map.find(raw_tags);
         if (result != m_map.end())
             ts = result->second;
@@ -235,57 +112,49 @@ Mapping::get_ts2(DataPoint& dp)
             dp.set_raw_tags(raw_tags);
         }
 
-        char buff[1024];
-        dp.get_ordered_tags(buff, sizeof(buff));
+        char buff[MAX_TOTAL_TAG_LENGTH];
+        dp.get_ordered_tags(buff, MAX_TOTAL_TAG_LENGTH);
 
-        WriteLock guard(m_lock);
+        //WriteLock guard(m_lock);
 
-        // work-around for possibly a bug in std::unordered_map
-        //if (m_map.bucket_count() == 0)
-        //{
-            //m_map.rehash(16);
-            //ASSERT(m_map.bucket_count() != 0);
-        //}
-        //else
         {
             auto result = m_map.find(buff);
             if (result != m_map.end())
-            {
                 ts = result->second;
-            }
         }
 
         if (ts == nullptr)
         {
-            ts = (TimeSeries*)MemoryManager::alloc_recyclable(RecyclableType::RT_TIME_SERIES);
-            ts->init(m_metric, buff, dp.get_cloned_tags(), m_tsdb, false);
+            ts = new TimeSeries(m_metric, buff, dp.get_cloned_tags());
             m_map[ts->get_key()] = ts;
         }
 
         if (raw_tags != nullptr)
             m_map[raw_tags] = ts;
-            //m_map[ts->add_raw_tags(raw_tags)] = ts;
     }
 
     return ts;
 }
 
+void
+Mapping::get_all_ts(std::vector<TimeSeries*>& tsv)
+{
+    for (auto it = m_map.begin(); it != m_map.end(); it++)
+    {
+        const char *key = it->first;
+        TimeSeries *ts = it->second;
+
+        if (ts->get_key() == key)
+            tsv.push_back(ts);
+    }
+}
+
 bool
 Mapping::add(DataPoint& dp)
 {
-    TimeSeries *ts = get_ts2(dp);
-    bool success;
-
-    if (ts != nullptr)
-    {
-        success = ts->add_data_point(dp);
-    }
-    else
-    {
-        success = false;
-    }
-
-    return success;
+    TimeSeries *ts = get_ts(dp);
+    if (UNLIKELY(ts == nullptr)) return false;
+    return ts->add_data_point(dp);
 }
 
 bool
@@ -309,29 +178,11 @@ Mapping::add_data_point(DataPoint& dp, bool forward)
     return success;
 }
 
-// TODO: deprecate add_batch()
-bool
-Mapping::add_batch(DataPointSet& dps)
-{
-    TimeSeries *ts = get_ts(dps);
-    bool success;
-
-    if (ts != nullptr)
-    {
-        success = ts->add_batch(dps);
-    }
-    else
-    {
-        success = false;
-    }
-
-    return success;
-}
-
 void
 Mapping::query_for_ts(Tag *tags, std::unordered_set<TimeSeries*>& tsv)
 {
-    ReadLock guard(m_lock);
+    //ReadLock guard(m_lock);
+    std::lock_guard<std::mutex> guard(m_lock);
 
     for (auto curr = m_map.begin(); curr != m_map.end(); curr++)
     {
@@ -354,93 +205,40 @@ Mapping::query_for_ts(Tag *tags, std::unordered_set<TimeSeries*>& tsv)
 }
 
 void
-Mapping::add_ts(Tsdb *tsdb, std::string& metric, std::string& keys, PageInfo *page_info)
+Mapping::restore_ts(std::string& metric, std::string& keys, TimeSeriesId id)
 {
-    TimeSeries *ts;
-    auto result = m_map.find(keys.c_str());
+    auto search = m_map.find(keys.c_str());
 
-    if (result == m_map.end())
+    if (search != m_map.end())
     {
-        std::vector<std::string> tokens;
-        tokenize(keys, tokens, ';');
-
-        Tag *tags = nullptr;
-
-        for (std::string token: tokens)
-        {
-            std::tuple<std::string,std::string> kv;
-            tokenize(token, kv, '=');
-
-            Tag *tag = (Tag*)MemoryManager::alloc_recyclable(RecyclableType::RT_KEY_VALUE_PAIR);
-            tag->m_key = STRDUP(std::get<0>(kv).c_str());
-            tag->m_value = STRDUP(std::get<1>(kv).c_str());
-            tag->next() = tags;
-            tags = tag;
-        }
-
-        ts = (TimeSeries*)MemoryManager::alloc_recyclable(RecyclableType::RT_TIME_SERIES);
-        ts->init(metric.c_str(), keys.c_str(), tags, tsdb, tsdb->is_read_only());
-        m_map[ts->get_key()] = ts;
-
-    }
-    else
-    {
-        ts = result->second;
+        Logger::fatal("Duplicate entry in meta file: %s %s %u",
+            metric.c_str(), keys.c_str(), id);
+        throw std::runtime_error("Duplicate entry in meta file");
     }
 
-    ts->add_page_info(page_info);
-}
-
-int
-Mapping::get_dp_count()
-{
-    int count = 0;
-    //std::lock_guard<std::mutex> guard(m_lock);
-    ReadLock guard(m_lock);
-
-    for (auto it = m_map.begin(); it != m_map.end(); it++)
-    {
-        count += it->second->get_dp_count();
-    }
-
-    return count;
+    Tag *tags = Tag::parse_multiple(keys);
+    TimeSeries *ts = new TimeSeries(id, metric.c_str(), keys.c_str(), tags);
+    m_map[ts->get_key()] = ts;
 }
 
 int
 Mapping::get_ts_count()
 {
-    //std::lock_guard<std::mutex> guard(m_lock);
-    ReadLock guard(m_lock);
+    std::lock_guard<std::mutex> guard(m_lock);
+    //ReadLock guard(m_lock);
     return m_map.size();
-}
-
-int
-Mapping::get_page_count(bool ooo)
-{
-    int count = 0;
-    ReadLock guard(m_lock);
-
-    for (auto it = m_map.begin(); it != m_map.end(); it++)
-    {
-        count += it->second->get_page_count(ooo);
-    }
-
-    return count;
 }
 
 
 Tsdb::Tsdb(TimeRange& range, bool existing) :
     m_time_range(range),
-    m_meta_file(Tsdb::get_file_name(range, "meta")),
+    m_index_file(Tsdb::get_index_file_name(range)),
     m_load_time(ts_now_sec()),
     m_partition_mgr(nullptr)
 {
     ASSERT(g_tstamp_resolution_ms ? is_ms(range.get_from()) : is_sec(range.get_from()));
 
-    m_map.rehash(16);
     m_mode = mode_of();
-    if (m_mode & TSDB_MODE_READ_WRITE)
-        m_page_mgrs.push_back(new PageManager(range, 0));
     m_partition_mgr = new PartitionManager(this, existing);
 
     Logger::debug("tsdb %T created (mode=%d)", &range, m_mode);
@@ -455,43 +253,39 @@ Tsdb::~Tsdb()
         delete m_partition_mgr;
         m_partition_mgr = nullptr;
     }
-/*
-    if (m_meta_file != nullptr)
-    {
-        std::fflush(m_meta_file);
-        std::fclose(m_meta_file);
-        m_meta_file = nullptr;
-    }
-
-    std::lock_guard<std::mutex> guard(m_lock);
-
-    for (auto it = m_map.begin(); it != m_map.end(); it++)
-    {
-        Mapping *mapping = it->second;
-        delete mapping;
-    }
-
-    m_map.clear();
-*/
 }
 
 Tsdb *
 Tsdb::create(TimeRange& range, bool existing)
 {
     Tsdb *tsdb = new Tsdb(range, existing);
+    std::string dir = get_tsdb_dir_name(range);
 
-    if (tsdb->m_mode & TSDB_MODE_READ_WRITE)
-    {
-        tsdb->load_from_disk_no_lock();
-    }
-    else
-    {
-        // TODO: load read-only
-        Logger::trace("tsdb %T mode is: %d", tsdb, tsdb->m_mode);
-    }
+    m_tsdbs.push_back(tsdb);
 
-    if (! existing)
+    if (existing)
     {
+        // create Header/Data files...
+        std::vector<std::string> files;
+        get_all_files(dir + "/header.*", files);
+        for (auto file: files) tsdb->restore_header(file);
+        std::sort(tsdb->m_header_files.begin(), tsdb->m_header_files.end(), header_less());
+
+        files.clear();
+        get_all_files(dir + "/data.*", files);
+        for (auto file: files) tsdb->restore_data(file);
+        std::sort(tsdb->m_data_files.begin(), tsdb->m_data_files.end(), data_less());
+
+        if ((tsdb->m_mode & TSDB_MODE_READ_WRITE))
+            tsdb->load_from_disk_no_lock((tsdb->m_mode & TSDB_MODE_WRITE) == 0);
+    }
+    else    // new one
+    {
+        // create the folder
+        create_dir(dir);
+        std::sort(m_tsdbs.begin(), m_tsdbs.end(), tsdb_less());
+
+/*
         const std::string& defs = Config::get_str(CFG_CLUSTER_PARTITIONS);
 
         if (! defs.empty())
@@ -503,14 +297,67 @@ Tsdb::create(TimeRange& range, bool existing)
             std::fprintf(f, "%s\n", defs.c_str());
             std::fclose(f);
         }
+*/
     }
 
-    // Caller already acquired the lock
-    //WriteLock guard(m_tsdb_lock);
-    m_tsdbs.push_back(tsdb);
-    std::sort(m_tsdbs.begin(), m_tsdbs.end(), tsdb_less());
-
     return tsdb;
+}
+
+// 'dir' should be in the form of /.../<from-sec>.<to-sec>
+void
+Tsdb::restore_tsdb(const std::string& dir)
+{
+    std::vector<std::string> tokens;
+    tokenize(dir, tokens, '/');
+    std::string last = tokens.back();
+
+    tokens.clear();
+    tokenize(last, tokens, '.');
+
+    if (tokens.size() != 2)
+    {
+        Logger::error("Malformatted tsdb dir %s ignored!", dir.c_str());
+        return;
+    }
+
+    Timestamp start = std::stoull(tokens[0].c_str());
+    Timestamp end = std::stoull(tokens[1].c_str());
+
+    if (g_tstamp_resolution_ms)
+    {
+        start *= 1000L;
+        end *= 1000L;
+    }
+
+    TimeRange range(start, end);
+    Tsdb *tsdb = Tsdb::create(range, true);
+}
+
+void
+Tsdb::restore_data(const std::string& file)
+{
+    FileIndex id = get_file_suffix(file);
+    ASSERT(id != TT_INVALID_FILE_INDEX);
+    DataFile *data_file = new DataFile(file);
+    HeaderFile *header_file = get_header_file(id);
+    data_file->init(header_file);
+    m_data_files.push_back(data_file);
+}
+
+void
+Tsdb::restore_header(const std::string& file)
+{
+    m_header_files.push_back(HeaderFile::restore(file));
+}
+
+void
+Tsdb::get_all_ts(std::vector<TimeSeries*>& tsv)
+{
+    for (auto it = g_metric_map.begin(); it != g_metric_map.end(); it++)
+    {
+        Mapping *mapping = it->second;
+        mapping->get_all_ts(tsv);
+    }
 }
 
 /* The following configurations determine what mode a Tsdb should be in.
@@ -564,43 +411,44 @@ Tsdb::mode_of() const
 std::string
 Tsdb::get_partition_defs() const
 {
-    std::string part_file = Tsdb::get_file_name(m_time_range, "part");
-    if (! file_exists(part_file)) return EMPTY_STD_STRING;
+    //std::string part_file = Tsdb::get_file_name(m_time_range, "part");
+    //if (! file_exists(part_file)) return EMPTY_STD_STRING;
 
-    std::FILE *f = std::fopen(part_file.c_str(), "r");
-    char buff[1024];
+    //std::FILE *f = std::fopen(part_file.c_str(), "r");
+    //char buff[1024];
     std::string defs;
-    if (std::fgets(buff, sizeof(buff), f) != nullptr)
-        defs.assign(buff);
-    std::fclose(f);
+    //if (std::fgets(buff, sizeof(buff), f) != nullptr)
+        //defs.assign(buff);
+    //std::fclose(f);
     return defs;
 }
 
-/*
-void
-Tsdb::open_meta()
+PageSize
+Tsdb::get_page_size() const
 {
-    std::string data_dir = Config::get_str(CFG_TSDB_DATA_DIR, CFG_TSDB_DATA_DIR_DEF);
-    ASSERT(! data_dir.empty());
-    std::string meta_file = Tsdb::get_file_name(m_time_range, "meta");
-
-    int fd = open(meta_file.c_str(), O_CREAT|O_WRONLY|O_NONBLOCK, S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH);
-
-    if (fd == -1)
-    {
-        Logger::error("Failed to open file %s for writing: %d", meta_file.c_str(), errno);
-    }
+    if (m_header_files.empty())
+        return g_page_size;
     else
-    {
-        m_meta_file = fdopen(fd, "a");
-
-        if (m_meta_file == nullptr)
-        {
-            Logger::error("Failed to convert fd %d to FILE: %d", fd, errno);
-        }
-    }
+        return m_header_files[0]->get_page_size();
 }
-*/
+
+PageCount
+Tsdb::get_page_count() const
+{
+    if (m_header_files.empty())
+        return Config::get_int(CFG_TSDB_PAGE_COUNT, CFG_TSDB_PAGE_COUNT_DEF);
+    else
+        return m_header_files[0]->get_page_count();
+}
+
+int
+Tsdb::get_compressor_version()
+{
+    if (m_header_files.empty())
+        return Config::get_int(CFG_TSDB_COMPRESSOR_VERSION,CFG_TSDB_COMPRESSOR_VERSION_DEF);
+    else
+        return m_header_files[0]->get_compressor_version();
+}
 
 void
 Tsdb::get_range(Timestamp tstamp, TimeRange& range)
@@ -610,121 +458,32 @@ Tsdb::get_range(Timestamp tstamp, TimeRange& range)
 }
 
 Mapping *
-Tsdb::get_or_add_mapping(TagOwner& dp)
+Tsdb::get_or_add_mapping(DataPoint& dp)
 {
-    // cache per thread; may need a way (config) to disable it?
-    //thread_local static std::map<const char*,Mapping*,cstr_less> cache;
-    //thread_local static std::unordered_map<const char*,Mapping*,hash_func,eq_func> cache;
-    //thread_local static tsl::robin_map<const char*, Mapping*, hash_func, eq_func> cache;
-
-    const char *metric = dp.get_tag_value(METRIC_TAG_NAME);
-
-    if (metric == nullptr)
-    {
-        Logger::warn("dp without metric");
-        return nullptr;
-    }
-
-    auto result = thread_local_cache.find(metric);
-    if (result != thread_local_cache.end())
-    {
-        Mapping *m = result->second;
-
-        if (m->m_tsdb == this)
-        {
-            return m;
-        }
-    }
-
-    Mapping *mapping;
-
-    {
-        std::lock_guard<std::mutex> guard(m_lock);
-
-        auto result1 = m_map.find(metric);
-
-        // TODO: this is not thread-safe!
-        if ((result1 == m_map.end()) && ((m_mode & TSDB_MODE_READ) == 0))
-        {
-            ensure_readable();
-            result1 = m_map.find(metric);
-        }
-
-        if (result1 == m_map.end())
-        {
-            mapping =
-                (Mapping*)MemoryManager::alloc_recyclable(RecyclableType::RT_MAPPING);
-            mapping->init(metric, this);
-            m_map[mapping->m_metric] = mapping;
-        }
-        else
-        {
-            mapping = result1->second;
-        }
-    }
-
-    ASSERT(mapping->m_metric != nullptr);
-    thread_local_cache[mapping->m_metric] = mapping;
-
-    return mapping;
-}
-
-Mapping *
-Tsdb::get_or_add_mapping2(DataPoint& dp)
-{
-    // cache per thread; may need a way (config) to disable it?
-    //thread_local static std::map<const char*,Mapping*,cstr_less> cache;
-    //thread_local static std::unordered_map<const char*,Mapping*,hash_func,eq_func> cache;
-    //thread_local static tsl::robin_map<const char*, Mapping*, hash_func, eq_func> cache;
-
     const char *metric = dp.get_metric();
     ASSERT(metric != nullptr);
 
     auto result = thread_local_cache.find(metric);
     if (result != thread_local_cache.end())
-    {
-        Mapping *m = result->second;
-        ASSERT(m->m_metric != nullptr);
-        ASSERT(std::strcmp(metric, m->m_metric) == 0);
-        if (m->m_tsdb == this) return m;
-        thread_local_cache.erase(m->m_metric);
-        ASSERT(thread_local_cache.find(m->m_metric) == thread_local_cache.end());
-        m->dec_ref_count();
-    }
+        return result->second;
 
     Mapping *mapping;
 
     {
-        std::lock_guard<std::mutex> guard(m_lock);
-        auto result1 = m_map.find(metric);
+        std::lock_guard<std::mutex> guard(g_metric_lock);
+        auto result1 = g_metric_map.find(metric);
 
-/*
-        if ((result1 == m_map.end()) && ((m_mode & TSDB_MODE_READ) == 0))
+        if (result1 == g_metric_map.end())
         {
-            //ensure_readable();
-            result1 = m_map.find(metric);
-        }
-*/
-
-        if (result1 == m_map.end())
-        {
-            mapping =
-                (Mapping*)MemoryManager::alloc_recyclable(RecyclableType::RT_MAPPING);
-            mapping->init(metric, this);
-            m_map[mapping->m_metric] = mapping;
+            mapping = new Mapping(metric);
+            g_metric_map[mapping->m_metric] = mapping;
         }
         else
         {
             mapping = result1->second;
-            ASSERT(mapping->m_ref_count >= 1);
         }
-
-        mapping->inc_ref_count();
-        ASSERT(mapping->m_tsdb == this);
-        ASSERT(mapping->m_ref_count >= 2);
     }
 
-    ASSERT(mapping->m_tsdb == this);
     ASSERT(mapping->m_metric != nullptr);
     ASSERT(strcmp(mapping->m_metric, metric) == 0);
     thread_local_cache[mapping->m_metric] = mapping;
@@ -735,85 +494,51 @@ Tsdb::get_or_add_mapping2(DataPoint& dp)
 bool
 Tsdb::add(DataPoint& dp)
 {
-    ASSERT(m_time_range.in_range(dp.get_timestamp()));
-
-    Mapping *mapping = get_or_add_mapping2(dp);
-    bool success;
-
-    if (mapping != nullptr)
-    {
-        success = mapping->add(dp);
-        //m_load_time = ts_now_sec();
-    }
-    else
-    {
-        success = false;
-    }
-
-    return success;
-}
-
-bool
-Tsdb::add_batch(DataPointSet& dps)
-{
-/*
-    if ((m_mode & TSDB_MODE_WRITE) == 0)
-    {
-        char buff[1024];
-        Logger::warn("out of order dps dropped: %s", dps.c_str(buff, sizeof(buff)));
-        return;
-    }
-*/
-    ASSERT(! m_page_mgrs.empty());
-
-    Mapping *mapping = get_or_add_mapping(dps);
-    bool success;
-
-    if (mapping != nullptr)
-    {
-        success = mapping->add_batch(dps);
-        //m_load_time = ts_now_sec();
-    }
-    else
-    {
-        success = false;
-    }
-
-    return success;
+    ASSERT(m_time_range.in_range(dp.get_timestamp()) == 0);
+    Mapping *mapping = get_or_add_mapping(dp);
+    if (mapping == nullptr) return false;
+    return mapping->add(dp);
 }
 
 bool
 Tsdb::add_data_point(DataPoint& dp, bool forward)
 {
-    ASSERT(m_time_range.in_range(dp.get_timestamp()));
+    Mapping *mapping = get_or_add_mapping(dp);
+    if (mapping == nullptr) return false;
+    return mapping->add_data_point(dp, forward);
+}
 
-    Mapping *mapping = get_or_add_mapping2(dp);
-    bool success;
+void
+Tsdb::restore_ts(std::string& metric, std::string& key, TimeSeriesId id)
+{
+    Mapping *mapping;
 
-    if (mapping != nullptr)
-        success = mapping->add_data_point(dp, forward);
+    auto search = g_metric_map.find(metric.c_str());
+
+    if (search == g_metric_map.end())
+    {
+        mapping = new Mapping(metric.c_str());
+        g_metric_map[mapping->m_metric] = mapping;
+    }
     else
-        success = false;
+    {
+        mapping = search->second;
+        ASSERT(search->first == mapping->m_metric);
+    }
 
-    return success;
+    mapping->restore_ts(metric, key, id);
 }
 
 void
 Tsdb::query_for_ts(const char *metric, Tag *tags, std::unordered_set<TimeSeries*>& ts)
 {
+/*
     Mapping *mapping = nullptr;
 
     {
         std::lock_guard<std::mutex> guard(m_lock);
 
         ASSERT((m_mode & TSDB_MODE_READ) != 0);
-/*
-        if ((m_mode & TSDB_MODE_READ) == 0)
-        {
-            m_mode |= TSDB_MODE_READ;
-            load_from_disk_no_lock();
-        }
-*/
 
         auto result = m_map.find(metric);
         if (result != m_map.end())
@@ -827,6 +552,7 @@ Tsdb::query_for_ts(const char *metric, Tag *tags, std::unordered_set<TimeSeries*
     {
         mapping->query_for_ts(tags, ts);
     }
+*/
 }
 
 // prepare this Tsdb for query (AND writes too!)
@@ -834,6 +560,7 @@ void
 Tsdb::ensure_readable(bool count)
 {
     bool readable = true;
+    //std::lock_guard<std::mutex> guard(m_load_lock);
 
     {
         ReadLock guard(m_load_lock);
@@ -854,7 +581,7 @@ Tsdb::ensure_readable(bool count)
         if ((m_mode & TSDB_MODE_READ) == 0)
         {
             m_mode |= TSDB_MODE_READ;
-            load_from_disk_no_lock();
+            load_from_disk_no_lock(true);
         }
     }
 }
@@ -863,132 +590,38 @@ Tsdb::ensure_readable(bool count)
 void
 Tsdb::flush(bool sync)
 {
-    for (auto it = m_map.begin(); it != m_map.end(); it++)
-    {
-        Mapping *mapping = it->second;
-        mapping->flush(false);
-        ASSERT(it->first == mapping->m_metric);
-    }
-
-    m_meta_file.flush();
-
-    std::lock_guard<std::mutex> guard(m_pm_lock);
-
-    for (PageManager *pm: m_page_mgrs)
-    {
-        pm->flush(sync);
-    }
-
-    m_mode &= ~TSDB_MODE_WRITE_CHECKPOINT;
+    for (DataFile *file: m_data_files) file->flush(sync);
+    for (HeaderFile *file: m_header_files) file->flush(sync);
+    m_index_file.flush(sync);
 }
-
-void
-Tsdb::set_check_point()
-{
-    for (auto it = m_map.begin(); (it != m_map.end()) && (!g_shutdown_requested); it++)
-    {
-        Mapping *mapping = it->second;
-        mapping->set_check_point();
-        ASSERT(it->first == mapping->m_metric);
-    }
-
-    m_meta_file.flush();
-
-    std::lock_guard<std::mutex> guard(m_pm_lock);
-
-    for (PageManager *pm: m_page_mgrs)
-    {
-        if (g_shutdown_requested) break;
-        pm->persist();
-    }
-
-    m_mode &= ~TSDB_MODE_CHECKPOINT;
-}
-
-//bool
-//Tsdb::is_mmapped(PageInfo *page_info) const
-//{
-    //return (m_page_mgr.is_mmapped(page_info));
-//}
 
 void
 Tsdb::shutdown()
 {
-    //std::lock_guard<std::mutex> guard(m_tsdb_lock);
+    {
+        std::lock_guard<std::mutex> guard(g_metric_lock);
+
+        for (auto it = g_metric_map.begin(); it != g_metric_map.end(); it++)
+        {
+            Mapping *mapping = it->second;
+            mapping->flush(false);
+        }
+    }
+
     WriteLock guard(m_tsdb_lock);
 
     for (Tsdb *tsdb: m_tsdbs)
     {
-        {
-            WriteLock unload_guard(tsdb->m_load_lock);
-            std::lock_guard<std::mutex> tsdb_guard(tsdb->m_lock);
-            if (! tsdb->is_read_only()) tsdb->flush(true);
-        }
-
-        delete tsdb;
+        tsdb->flush(true);
+        for (DataFile *file: tsdb->m_data_files) file->close();
+        for (HeaderFile *file: tsdb->m_header_files) file->close();
+        tsdb->m_index_file.close();
     }
 
     m_tsdbs.clear();
     CheckPointManager::close();
+    MetaFile::instance()->close();
     Logger::info("Tsdb::shutdown complete");
-}
-
-PageManager *
-Tsdb::create_page_manager(int id)
-{
-    if (id < 0)
-        id = m_page_mgrs.empty() ? 0 : m_page_mgrs.back()->get_id() + 1;
-    PageManager *pm = new PageManager(m_time_range, id);
-    ASSERT(pm != nullptr);
-    ASSERT(m_page_mgrs.empty() || (m_page_mgrs.back()->get_id() < pm->get_id()));
-    m_page_mgrs.push_back(pm);
-    return pm;
-}
-
-PageInfo *
-Tsdb::get_free_page(bool out_of_order)
-{
-    std::lock_guard<std::mutex> guard(m_pm_lock);
-    PageManager *pm;
-
-    if (m_page_mgrs.empty())
-        pm = create_page_manager();
-    else
-        pm = m_page_mgrs.back();
-
-    //ASSERT(pm->is_open());
-    PageInfo *pi = pm->get_free_page(this, out_of_order);
-    ASSERT(pi != nullptr);
-    return pi;
-}
-
-PageInfo *
-Tsdb::get_free_page_on_disk(bool out_of_order)
-{
-    std::lock_guard<std::mutex> guard(m_pm_lock);
-    PageManager *pm;
-
-    if (m_page_mgrs.empty())
-        pm = create_page_manager();
-    else
-        pm = m_page_mgrs.back();
-
-    //ASSERT(pm->is_open());
-    PageInfo *pi = pm->get_free_page_on_disk(this, out_of_order);
-
-    if (pi == nullptr)
-    {
-        // We need a new mmapp'ed file!
-        ASSERT(pm->is_full());
-        pm = create_page_manager();
-        ASSERT(pm->is_open());
-        ASSERT(m_time_range.contains(pm->get_time_range()));
-        ASSERT(pm->get_time_range().contains(m_time_range));
-        pi = pm->get_free_page_on_disk(this, out_of_order);
-    }
-
-    ASSERT(pi != nullptr);
-    return pi;
 }
 
 PageInfo *
@@ -996,6 +629,7 @@ Tsdb::get_free_page_for_compaction()
 {
     PageInfo *info = nullptr;
 
+/*
     if (! m_temp_page_mgrs.empty())
         info = m_temp_page_mgrs.back()->get_free_page_for_compaction(this);
 
@@ -1006,6 +640,7 @@ Tsdb::get_free_page_for_compaction()
         m_temp_page_mgrs.push_back(pm);
         info = pm->get_free_page_for_compaction(this);
     }
+*/
 
     return info;
 }
@@ -1013,16 +648,120 @@ Tsdb::get_free_page_for_compaction()
 PageInfo *
 Tsdb::get_the_page_on_disk(PageCount id, PageCount header_index)
 {
-    PageManager *pm = get_page_manager(id);
+    return nullptr;     // TODO: implement it
+}
 
-    if (pm == nullptr)
-        pm = create_page_manager(id);
+void
+Tsdb::get_last_header_indices(TimeSeriesId id, FileIndex& file_idx, HeaderIndex& header_idx)
+{
+    FileIndex fidx;
+    HeaderIndex hidx;
 
-    ASSERT(pm->get_id() == id);
-    PageInfo *pi = pm->get_the_page_on_disk(header_index);
+    file_idx = TT_INVALID_FILE_INDEX;
+    header_idx = TT_INVALID_HEADER_INDEX;
 
-    ASSERT(pi != nullptr);
-    return pi;
+    m_index_file.get_indices(id, fidx, hidx);
+
+    while (fidx != TT_INVALID_FILE_INDEX)
+    {
+        ASSERT(hidx != TT_INVALID_HEADER_INDEX);
+
+        file_idx = fidx;
+        header_idx = hidx;
+
+        HeaderFile *header_file = get_header_file(fidx);
+        ASSERT(header_file != nullptr);
+        ASSERT(header_file->get_id() == fidx);
+
+        struct page_info_on_disk *header = header_file->get_page_header(hidx);
+        fidx = header->m_next_file;
+        hidx = header->m_next_header;
+    }
+}
+
+void
+Tsdb::set_indices(TimeSeriesId id, FileIndex prev_file_idx, HeaderIndex prev_header_idx, FileIndex this_file_idx, HeaderIndex this_header_idx)
+{
+    ASSERT(TT_INVALID_FILE_INDEX != this_file_idx);
+    ASSERT(TT_INVALID_HEADER_INDEX != this_header_idx);
+
+    if ((prev_file_idx == TT_INVALID_FILE_INDEX) || (this_header_idx == TT_INVALID_HEADER_INDEX))
+        m_index_file.set_indices(id, this_file_idx, this_header_idx);
+    else
+    {
+        // update header
+        HeaderFile *header_file = get_header_file(prev_file_idx);
+        ASSERT(header_file != nullptr);
+        header_file->update_next(prev_header_idx, this_file_idx, this_header_idx);
+    }
+}
+
+HeaderFile *
+Tsdb::get_header_file(FileIndex file_idx)
+{
+    for (auto file: m_header_files)
+    {
+        if (file->get_id() == file_idx)
+            return file;
+    }
+
+    return nullptr;
+}
+
+void
+Tsdb::append_page(TimeSeriesId id, FileIndex prev_file_idx, HeaderIndex prev_header_idx, struct page_info_on_disk *header, void *page)
+{
+    ASSERT(page != nullptr);
+    ASSERT(header != nullptr);
+
+    HeaderFile *header_file;
+    std::lock_guard<std::mutex> guard(m_lock);
+
+    if (m_header_files.empty())
+    {
+        ASSERT(m_data_files.empty());
+        header_file = new HeaderFile(get_header_file_name(m_time_range, 0), 0, get_page_count(), this),
+        m_header_files.push_back(header_file);
+        m_data_files.push_back(new DataFile(get_data_file_name(m_time_range, 0), 0, get_page_size(), get_page_count()));
+    }
+    else
+    {
+        header_file = m_header_files.back();
+
+        if (! header_file->is_open())
+            header_file->open(false);
+
+        if (header_file->is_full())
+        {
+            FileIndex id = m_header_files.size();
+            header_file = new HeaderFile(get_header_file_name(m_time_range, id), id, get_page_count(), this);
+            m_header_files.push_back(header_file);
+            m_data_files.push_back(new DataFile(get_data_file_name(m_time_range, id), id, get_page_size(), get_page_count()));
+        }
+    }
+
+    ASSERT(! m_data_files.empty());
+    ASSERT(! header_file->is_full());
+    ASSERT(m_header_files.size() == m_data_files.size());
+
+    DataFile *data_file = m_data_files.back();
+
+    if (! data_file->is_open()) data_file->open(false);
+
+    header->m_page_index = data_file->append(page);
+
+    ASSERT(header_file->get_id() == data_file->get_id());
+
+    HeaderIndex header_idx = header_file->new_header_index(this);
+    ASSERT(header_idx != TT_INVALID_HEADER_INDEX);
+    struct page_info_on_disk *new_header = header_file->get_page_header(header_idx);
+    new_header->init(header);
+
+    set_indices(id, prev_file_idx, prev_header_idx, header_file->get_id(), header_idx);
+
+    // passing our own indices back to caller
+    header->m_next_file = header_file->get_id();
+    header->m_next_header = header_idx;
 }
 
 Tsdb *
@@ -1034,7 +773,9 @@ Tsdb::search(Timestamp tstamp)
         for (int i = m_tsdbs.size() - 1; i >= 0; i--)
         {
             Tsdb *tsdb = m_tsdbs[i];
-            if (tsdb->in_range(tstamp)) return tsdb;
+            int n = tsdb->in_range(tstamp);
+            if (n == 0) return tsdb;
+            if (n > 0) break;
         }
     }
 
@@ -1063,6 +804,8 @@ Tsdb::inst(Timestamp tstamp, bool create)
             TimeRange range;
             Tsdb::get_range(tstamp, range);
             tsdb = Tsdb::create(range, false);  // create new
+            Logger::info("Created %T, tstamp = %lu", tsdb, tstamp);
+            ASSERT(Tsdb::search(tstamp) == tsdb);
         }
     }
 
@@ -1070,21 +813,28 @@ Tsdb::inst(Timestamp tstamp, bool create)
 }
 
 bool
-Tsdb::load_from_disk()
+Tsdb::load_from_disk(bool for_read)
 {
     std::lock_guard<std::mutex> guard(m_lock);
-    return load_from_disk_no_lock();
+    return load_from_disk_no_lock(for_read);
 }
 
 bool
-Tsdb::load_from_disk_no_lock()
+Tsdb::load_from_disk_no_lock(bool for_read)
 {
     Meter meter(METRIC_TICKTOCK_TSDB_LOAD_TOTAL_MS);
-
-    if (m_meta_file.is_open())
-        return true;    // already loaded
-
     bool success = true;
+
+    return success;
+/*
+    if (! m_index_file.is_open())
+        m_index_file.open(for_read);
+
+    for (HeaderFile *header : m_header_files)
+    {
+        if (! header->is_open())
+            header->open(for_read);
+    }
 
     for (PageManager *pm: m_page_mgrs)
     {
@@ -1114,15 +864,15 @@ Tsdb::load_from_disk_no_lock()
         }
     }
 
-    ASSERT(m_map.empty());
-    m_meta_file.load(this);
-    m_meta_file.open(); // open for append
+    //m_meta_file.load(this);
+    //m_meta_file.open(); // open for append
 
     m_mode |= TSDB_MODE_READ;
     if (compacted) m_mode |= TSDB_MODE_COMPACTED;
     m_load_time = ts_now_sec();
     Logger::info("Loaded %T (lt=%" PRIu64 ")", this, m_load_time.load());
     return true;
+*/
 }
 
 void
@@ -1206,35 +956,30 @@ Tsdb::http_api_put_handler(HttpRequest& request, HttpResponse& response)
         if (*curr == ';') curr++;
         curr = dp.from_http(curr);
 
-        if ((tsdb == nullptr) || !(tsdb->in_range(dp.get_timestamp())))
+        if ((tsdb == nullptr) || (tsdb->in_range(dp.get_timestamp()) != 0))
         {
-            if (tsdb != nullptr)
-                tsdb->m_mode |= TSDB_MODE_CHECKPOINT;
             if (guard != nullptr) delete guard;
             tsdb = Tsdb::inst(dp.get_timestamp());
             guard = new ReadLock(tsdb->m_load_lock);    // prevent from unloading
             if (! (tsdb->m_mode & TSDB_MODE_READ))
             {
-                if (! tsdb->load_from_disk())
+                if (! tsdb->load_from_disk(false))
                 {
                     success = false;
                     break;
                 }
-                tsdb->m_mode |= (TSDB_MODE_READ_WRITE | TSDB_MODE_CHECKPOINT);
             }
             else
             {
-                tsdb->m_mode |= TSDB_MODE_WRITE_CHECKPOINT;
                 tsdb->m_load_time = ts_now_sec();
-                ASSERT(tsdb->m_meta_file.is_open());
+                //ASSERT(tsdb->m_meta_file.is_open());
             }
+            tsdb->m_mode |= TSDB_MODE_READ_WRITE;
         }
 
         success = tsdb->add(dp) && success;
     }
 
-    if (tsdb != nullptr)
-        tsdb->m_mode |= TSDB_MODE_CHECKPOINT;
     if (guard != nullptr) delete guard;
     response.status_code = (success ? 200 : 500);
     response.content_length = 0;
@@ -1269,35 +1014,30 @@ Tsdb::http_api_put_handler_json(HttpRequest& request, HttpResponse& response)
         //char buff[1024];
         //Logger::info("dp: %s", dp.c_str(buff, sizeof(buff)));
 
-        if ((tsdb == nullptr) || !(tsdb->in_range(dp.get_timestamp())))
+        if ((tsdb == nullptr) || (tsdb->in_range(dp.get_timestamp()) != 0))
         {
-            if (tsdb != nullptr)
-                tsdb->m_mode |= TSDB_MODE_CHECKPOINT;
             if (guard != nullptr) delete guard;
             tsdb = Tsdb::inst(dp.get_timestamp());
             guard = new ReadLock(tsdb->m_load_lock);    // prevent from unloading
             if (! (tsdb->m_mode & TSDB_MODE_READ))
             {
-                if (! tsdb->load_from_disk())
+                if (! tsdb->load_from_disk(false))
                 {
                     success = false;
                     break;
                 }
-                tsdb->m_mode |= (TSDB_MODE_READ_WRITE | TSDB_MODE_CHECKPOINT);
             }
             else
             {
-                tsdb->m_mode |= TSDB_MODE_WRITE_CHECKPOINT;
                 tsdb->m_load_time = ts_now_sec();
             }
+            tsdb->m_mode |= TSDB_MODE_READ_WRITE;
         }
 
         success = tsdb->add(dp) && success;
         while (isspace(*curr)) curr++;
     }
 
-    if (tsdb != nullptr)
-        tsdb->m_mode |= TSDB_MODE_CHECKPOINT;
     if (guard != nullptr) delete guard;
     response.init((success ? 200 : 500), HttpContentType::PLAIN);
     return success;
@@ -1305,6 +1045,102 @@ Tsdb::http_api_put_handler_json(HttpRequest& request, HttpResponse& response)
 
 bool
 Tsdb::http_api_put_handler_plain(HttpRequest& request, HttpResponse& response)
+{
+    Logger::trace("Entered http_api_put_handler_plain()...");
+
+    char *curr = request.content;
+    bool forward = request.forward;
+    bool success = true;
+
+    // handle special requests
+    if (request.length <= 10)
+    {
+        if ((request.length == 8) && (strncmp(curr, "version\n", 8) == 0))
+        {
+            return HttpServer::http_get_api_version_handler(request, response);
+        }
+        else if ((request.length == 6) && (strncmp(curr, "stats\n", 6) == 0))
+        {
+            return HttpServer::http_get_api_stats_handler(request, response);
+        }
+        else if ((request.length == 5) && (strncmp(curr, "help\n", 5) == 0))
+        {
+            return HttpServer::http_get_api_help_handler(request, response);
+        }
+        else if ((request.length == 10) && (strncmp(curr, "diediedie\n", 10) == 0))
+        {
+            char buff[10];
+            std::strcpy(buff, "cmd=stop");
+            request.params = buff;
+            return Admin::http_post_api_admin_handler(request, response);
+        }
+    }
+
+    response.content_length = 0;
+    AppendLog::inst()->append(request.content, request.length);
+
+    // safety measure
+    curr[request.length] = ' ';
+    curr[request.length+1] = '\n';
+    curr[request.length+2] = '0';
+
+    while ((curr != nullptr) && (*curr != 0))
+    {
+        DataPoint dp;
+
+        if (std::isspace(*curr)) break;
+        if (UNLIKELY(std::strncmp(curr, "put ", 4) != 0))
+        {
+            if (std::strncmp(curr, "version\n", 8) == 0)
+            {
+                curr += 8;
+                HttpServer::http_get_api_version_handler(request, response);
+            }
+            else if (std::strncmp(curr, "cp ", 3) == 0)
+            {
+                curr += 3;
+                char *cp = curr;
+                curr = strchr(curr, '\n');
+                if (curr == nullptr) break;
+                *curr = 0;
+                curr++;
+
+                CheckPointManager::add(cp);
+            }
+            else if (std::strncmp(curr, DONT_FORWARD, std::strlen(DONT_FORWARD)) == 0)
+            {
+                int len = std::strlen(DONT_FORWARD);
+                curr += len;
+                forward = false;
+                response.init(200, HttpContentType::PLAIN, len, DONT_FORWARD);
+            }
+            else
+            {
+                curr = strchr(curr, '\n');
+                if (curr == nullptr) break;
+                curr++;
+            }
+            if ((curr - request.content) > request.length) break;
+            continue;
+        }
+
+        curr += 4;
+        bool ok = dp.from_plain(curr);
+        if (! ok) { success = false; break; }
+
+        success = add_data_point(dp, forward) && success;
+    }
+
+    // TODO: Now what???
+    //if (forward && (tsdb != nullptr))
+        //success = tsdb->submit_data_points() && success; // flush
+    response.init((success ? 200 : 500), HttpContentType::PLAIN);
+
+    return success;
+}
+
+bool
+Tsdb::http_api_put_handler_plain2(HttpRequest& request, HttpResponse& response)
 {
     Logger::trace("Entered http_api_put_handler_plain()...");
 
@@ -1392,11 +1228,10 @@ Tsdb::http_api_put_handler_plain(HttpRequest& request, HttpResponse& response)
 
         if (! ok) { success = false; break; }
 
-        if ((tsdb == nullptr) || !(tsdb->in_range(dp.get_timestamp())))
+        if ((tsdb == nullptr) || (tsdb->in_range(dp.get_timestamp()) != 0))
         {
             if (tsdb != nullptr)
             {
-                tsdb->m_mode |= TSDB_MODE_CHECKPOINT;
                 if ((curr - request.content) > request.length)
                 {
                     // most likely the last line was cut off half way
@@ -1411,36 +1246,27 @@ Tsdb::http_api_put_handler_plain(HttpRequest& request, HttpResponse& response)
             guard = new ReadLock(tsdb->m_load_lock);    // prevent from unloading
             if (! (tsdb->m_mode & TSDB_MODE_READ))
             {
-                if (! tsdb->load_from_disk())
+                if (! tsdb->load_from_disk(false))
                 {
                     success = false;
                     break;
                 }
-                tsdb->m_mode |= (TSDB_MODE_READ_WRITE | TSDB_MODE_CHECKPOINT);
             }
             else
             {
-                tsdb->m_mode |= TSDB_MODE_WRITE_CHECKPOINT;
                 tsdb->m_load_time = ts_now_sec();
-                ASSERT(tsdb->m_meta_file.is_open());
+                //ASSERT(tsdb->m_meta_file.is_open());
             }
+            tsdb->m_mode |= TSDB_MODE_READ_WRITE;
         }
 
         ASSERT(tsdb != nullptr);
-        ASSERT(tsdb->m_meta_file.is_open());
-
-        //if (forward)
-            //success = tsdb->add_data_point(dp) && success;
-        //else
-            //success = tsdb->add(dp) && success;
         ASSERT((tsdb->m_mode & TSDB_MODE_READ_WRITE) == TSDB_MODE_READ_WRITE);
         success = tsdb->add_data_point(dp, forward) && success;
     }
 
     if (forward && (tsdb != nullptr))
         success = tsdb->submit_data_points() && success; // flush
-    if (tsdb != nullptr)
-        tsdb->m_mode |= TSDB_MODE_CHECKPOINT;
     if (guard != nullptr) delete guard;
     response.init((success ? 200 : 500), HttpContentType::PLAIN);
 
@@ -1450,6 +1276,7 @@ Tsdb::http_api_put_handler_plain(HttpRequest& request, HttpResponse& response)
 bool
 Tsdb::http_get_api_suggest_handler(HttpRequest& request, HttpResponse& response)
 {
+/*
     size_t buff_size = MemoryManager::get_network_buffer_size() - 6;
 
     JsonMap params;
@@ -1572,35 +1399,18 @@ Tsdb::http_get_api_suggest_handler(HttpRequest& request, HttpResponse& response)
     int n = JsonParser::to_json(suggestions, buff, buff_size);
     response.init(200, HttpContentType::JSON, n, buff);
     MemoryManager::free_network_buffer(buff);
+*/
 
     return true;
-}
-
-void
-Tsdb::append_meta_all()
-{
-    for (const auto& t: m_map)
-    {
-        Mapping *mapping = t.second;
-        ASSERT(t.first == mapping->m_metric);
-
-        for (const auto& m: mapping->m_map)
-        {
-            TimeSeries *ts = m.second;
-            ts->append_meta_all(m_meta_file);
-        }
-    }
 }
 
 void
 Tsdb::init()
 {
     std::string data_dir = Config::get_str(CFG_TSDB_DATA_DIR, CFG_TSDB_DATA_DIR_DEF);
-    DIR *dir;
-    struct dirent *dir_ent;
-
     Logger::info("Loading data from %s", data_dir.c_str());
 
+    MetaFile::init(Tsdb::restore_ts);
     CheckPointManager::init();
     PartitionManager::init();
 
@@ -1625,6 +1435,12 @@ Tsdb::init()
         Logger::warn("Low disk space at %s", data_dir.c_str());
     }
 
+    // restore all tsdbs
+    for_all_dirs(data_dir, Tsdb::restore_tsdb, 3);
+    std::sort(m_tsdbs.begin(), m_tsdbs.end(), tsdb_less());
+    Logger::debug("%d Tsdbs restored", m_tsdbs.size());
+
+/*
     compact2();
 
     dir = opendir(data_dir.c_str());
@@ -1655,7 +1471,6 @@ Tsdb::init()
             TimeRange range(start, end);
             Tsdb *tsdb = Tsdb::create(range, true); // create existing
             ASSERT(tsdb != nullptr);
-            Logger::trace("loaded tsdb with %d Mappings", tsdb->m_map.size());
             //m_tsdbs.push_back(tsdb);
         }
 
@@ -1663,6 +1478,7 @@ Tsdb::init()
 
         std::sort(m_tsdbs.begin(), m_tsdbs.end(), tsdb_less());
     }
+*/
 
     Task task;
     task.doit = &Tsdb::rotate;
@@ -1682,177 +1498,98 @@ Tsdb::init()
 }
 
 std::string
-Tsdb::get_file_name(const TimeRange& range, std::string ext, bool temp)
+Tsdb::get_tsdb_dir_name(const TimeRange& range)
 {
+    time_t sec = range.get_from_sec();
+    struct tm timeinfo;
+    localtime_r(&sec, &timeinfo);
     char buff[PATH_MAX];
-    snprintf(buff, sizeof(buff), "%s/%" PRIu64 ".%" PRIu64 ".%s%s",
+    snprintf(buff, sizeof(buff), "%s/%d/%d/%lu.%lu",
         Config::get_str(CFG_TSDB_DATA_DIR,CFG_TSDB_DATA_DIR_DEF).c_str(),
+        timeinfo.tm_year+1900,
+        timeinfo.tm_mon+1,
         range.get_from_sec(),
-        range.get_to_sec(),
-        ext.c_str(),
+        range.get_to_sec());
+    return std::string(buff);
+}
+
+std::string
+Tsdb::get_index_file_name(const TimeRange& range, bool temp)
+{
+    std::string dir = get_tsdb_dir_name(range);
+    char buff[PATH_MAX];
+    snprintf(buff, sizeof(buff), "%s/index%s",
+        dir.c_str(),
         temp ? ".temp" : "");
     return std::string(buff);
 }
 
-void
-Tsdb::add_ts(std::string& metric, std::string& key, PageCount file_id, PageCount header_index)
+std::string
+Tsdb::get_header_file_name(const TimeRange& range, FileIndex id, bool temp)
 {
-    Mapping *mapping;
-
-    auto search = m_map.find(metric.c_str());
-
-    if (search != m_map.end())
-    {
-        // found
-        mapping = search->second;
-        ASSERT(search->first == mapping->m_metric);
-    }
-    else
-    {
-        mapping =
-            (Mapping*)MemoryManager::alloc_recyclable(RecyclableType::RT_MAPPING);
-        mapping->init(metric.c_str(), this);
-        m_map[mapping->m_metric] = mapping;
-    }
-
-    PageInfo *info = get_the_page_on_disk(file_id, header_index);
-
-    if (info->is_empty())
-        MemoryManager::free_recyclable(info);
-    else
-        mapping->add_ts(this, metric, key, info);
+    std::string dir = get_tsdb_dir_name(range);
+    char buff[PATH_MAX];
+    snprintf(buff, sizeof(buff), "%s/header.%u%s",
+        dir.c_str(),
+        id,
+        temp ? ".temp" : "");
+    return std::string(buff);
 }
 
+std::string
+Tsdb::get_data_file_name(const TimeRange& range, FileIndex id, bool temp)
+{
+    std::string dir = get_tsdb_dir_name(range);
+    char buff[PATH_MAX];
+    snprintf(buff, sizeof(buff), "%s/data.%u%s",
+        dir.c_str(),
+        id,
+        temp ? ".temp" : "");
+    return std::string(buff);
+}
 
 int
 Tsdb::get_metrics_count()
 {
-    int count = 0;
-    //std::lock_guard<std::mutex> guard(m_tsdb_lock);
-    ReadLock guard(m_tsdb_lock);
-
-    for (Tsdb *tsdb: m_tsdbs)
-    {
-        std::lock_guard<std::mutex> guard(tsdb->m_lock);
-        count += tsdb->m_map.size();
-    }
-
-    return count;
+    std::lock_guard<std::mutex> guard(g_metric_lock);
+    return g_metric_map.size();
 }
 
 int
 Tsdb::get_dp_count()
 {
-    int count = 0;
-    //std::lock_guard<std::mutex> guard(m_tsdb_lock);
-    ReadLock guard(m_tsdb_lock);
-
-    for (Tsdb *tsdb: m_tsdbs)
-    {
-        std::lock_guard<std::mutex> guard(tsdb->m_lock);
-
-        //if (! tsdb->m_loaded) continue;
-        if ((tsdb->m_mode & TSDB_MODE_READ) == 0) continue;
-
-        for (auto it = tsdb->m_map.begin(); it != tsdb->m_map.end(); it++)
-        {
-            count += it->second->get_dp_count();
-        }
-    }
-
-    return count;
+    return 0;       // TODO: implement it
 }
 
 int
 Tsdb::get_ts_count()
 {
-    int count = 0;
-    Tsdb *tsdb = nullptr;
-
-    {
-        //std::lock_guard<std::mutex> guard(m_tsdb_lock);
-        ReadLock guard(m_tsdb_lock);
-        if (! m_tsdbs.empty()) tsdb = m_tsdbs.back();
-    }
-
-    if (tsdb != nullptr)
-    {
-        std::lock_guard<std::mutex> guard(tsdb->m_lock);
-
-        //if (! tsdb->m_loaded) return count;
-        if ((tsdb->m_mode & TSDB_MODE_READ) == 0) return count;
-
-        for (auto it = tsdb->m_map.begin(); it != tsdb->m_map.end(); it++)
-        {
-            count += it->second->get_ts_count();
-        }
-    }
-
-    return count;
+    return 0;       // TODO: implement it
 }
 
 int
 Tsdb::get_page_count(bool ooo)
 {
-    int count = 0;
-    ReadLock guard(m_tsdb_lock);
-
-    for (Tsdb *tsdb: m_tsdbs)
-    {
-        std::lock_guard<std::mutex> guard(tsdb->m_lock);
-
-        for (auto it = tsdb->m_map.begin(); it != tsdb->m_map.end(); it++)
-        {
-            count += it->second->get_page_count(ooo);
-        }
-    }
-
-    return count;
+    return 0;       // TODO: implement it
 }
 
 int
 Tsdb::get_data_page_count()
 {
-    int count = 0;
-    ReadLock guard(m_tsdb_lock);
-
-    for (Tsdb *tsdb: m_tsdbs)
-    {
-        std::lock_guard<std::mutex> guard1(tsdb->m_lock);
-        std::lock_guard<std::mutex> guard2(tsdb->m_pm_lock);
-
-        for (auto pm: tsdb->m_page_mgrs)
-        {
-            count += pm->get_data_page_count();
-        }
-    }
-
-    return count;
+    return 0;       // TODO: implement it
 }
 
 double
 Tsdb::get_page_percent_used()
 {
-    if ((m_mode & TSDB_MODE_READ) == 0) return 0.0;
-
-    std::lock_guard<std::mutex> guard(m_pm_lock);
-
-    if (m_page_mgrs.empty()) return 0.0;
-
-    double pct_used = 0.0;
-
-    for (const PageManager *pm: m_page_mgrs)
-    {
-        pct_used += pm->get_page_percent_used();
-    }
-
-    return pct_used / m_page_mgrs.size();
+    return 0.0;     // TODO: implement it
 }
 
 void
 Tsdb::unload()
 {
     WriteLock unload_guard(m_load_lock);
+    //std::lock_guard<std::mutex> guard(m_load_lock);
     unload_no_lock();
 }
 
@@ -1861,30 +1598,10 @@ void
 Tsdb::unload_no_lock()
 {
     ASSERT(count_is_zero());
-    m_meta_file.close();
 
-    for (auto it = m_map.begin(); it != m_map.end(); it++)
-    {
-        Mapping *mapping = it->second;
-        ASSERT(it->first == mapping->m_metric);
-        mapping->unload();
-        mapping->dec_ref_count();
-    }
-
-    m_map.clear();
-    ASSERT(m_map.size() == 0);
-
-    std::lock_guard<std::mutex> pm_guard(m_pm_lock);
-
-    for (PageManager *pm: m_page_mgrs)
-    {
-        delete pm;
-    }
-
-    m_page_mgrs.clear();
-    m_page_mgrs.shrink_to_fit();
-
-    m_mode &= ~TSDB_MODE_READ_WRITE;
+    for (DataFile *file: m_data_files) file->close();
+    for (HeaderFile *file: m_header_files) file->close();
+    m_index_file.close();
 }
 
 bool
@@ -1900,7 +1617,7 @@ Tsdb::rotate(TaskData& data)
     TimeRange range(0, now);
     Tsdb::insts(range, tsdbs);
 
-    Logger::debug("[rotate] Checking %d tsdbs.", tsdbs.size());
+    Logger::info("[rotate] Checking %d tsdbs.", tsdbs.size());
 
     // adjust CFG_TSDB_ARCHIVE_THRESHOLD when system available memory is low
     if (Stats::get_avphys_pages() < 1600)
@@ -1932,13 +1649,16 @@ Tsdb::rotate(TaskData& data)
         if (g_shutdown_requested) break;
 
         WriteLock unload_guard(tsdb->m_load_lock);
+        //std::lock_guard<std::mutex> unload_guard(tsdb->m_load_lock);
         std::lock_guard<std::mutex> guard(tsdb->m_lock);
 
+/*
         if (! (tsdb->m_mode & TSDB_MODE_READ))
         {
-            Logger::debug("[rotate] %T already archived!", tsdb);
+            Logger::info("[rotate] %T already archived!", tsdb);
             continue;    // already archived
         }
+*/
 
         uint32_t mode = tsdb->mode_of();
         uint64_t load_time = tsdb->m_load_time;
@@ -1966,25 +1686,8 @@ Tsdb::rotate(TaskData& data)
         }
         else if (! (mode & TSDB_MODE_READ) && tsdb->count_is_zero())
         {
-            //Logger::debug("[rotate] %T SKIPPED to avoid thrashing (lt=%" PRIu64 ")", tsdb, load_time);
-            // try to archive individual PageManager.
-            for (auto it = tsdb->m_map.begin(); it != tsdb->m_map.end(); it++)
-            {
-                Mapping *mapping = it->second;
-                mapping->flush(true);
-                ASSERT(it->first == mapping->m_metric);
-            }
-
-            for (PageManager* pm: tsdb->m_page_mgrs)
-                pm->try_unload();
-        }
-
-        if (tsdb->m_mode & TSDB_MODE_CHECKPOINT)
-        {
-            Logger::debug("[rotate] set_check_point for tsdb: %T, mode = %d, tsdb->mode = %d",
-                tsdb, mode, tsdb->m_mode);
-            // TODO: do this only if there were writes since last check point
-            tsdb->set_check_point();
+            //for (PageManager* pm: tsdb->m_page_mgrs)
+                //pm->try_unload();
         }
     }
 
@@ -2035,6 +1738,7 @@ Tsdb::purge_oldest(int threshold)
         }
     }
 
+/*
     if (tsdb != nullptr)
     {
         Logger::info("[rotate] Purging %T permenantly", tsdb);
@@ -2057,11 +1761,13 @@ Tsdb::purge_oldest(int threshold)
 
         delete tsdb;
     }
+*/
 }
 
 bool
 Tsdb::compact(TaskData& data)
 {
+#if 0
     Tsdb *tsdb = nullptr;
     Meter meter(METRIC_TICKTOCK_TSDB_COMPACT_MS);
 
@@ -2083,9 +1789,9 @@ Tsdb::compact(TaskData& data)
             if ((*it)->m_mode & (TSDB_MODE_COMPACTED | TSDB_MODE_READ_WRITE))
                 continue;
 
-            ASSERT(! (*it)->m_meta_file.is_open());
+            //ASSERT(! (*it)->m_meta_file.is_open());
             // load from disk to see if it's already compacted
-            if (! (*it)->load_from_disk_no_lock()) continue;
+            if (! (*it)->load_from_disk_no_lock(true)) continue;
 
             if ((*it)->m_mode & TSDB_MODE_COMPACTED)
             {
@@ -2103,13 +1809,14 @@ Tsdb::compact(TaskData& data)
     if (tsdb != nullptr)
     {
         WriteLock load_lock(tsdb->m_load_lock);
+        //std::lock_guard<std::mutex> guard(m_load_lock);
 
         if (tsdb->m_mode == TSDB_MODE_READ) // make sure it's not unloaded
         {
             Logger::info("[compact] Found this tsdb to compact: %T", tsdb);
             std::lock_guard<std::mutex> guard(tsdb->m_lock);
             TimeRange range = tsdb->get_time_range();
-            MetaFile meta_file(get_file_name(range, "meta", true));
+            //MetaFile meta_file(get_file_name(range, "meta", true));
 
             ASSERT(tsdb->m_temp_page_mgrs.empty());
 
@@ -2122,9 +1829,10 @@ Tsdb::compact(TaskData& data)
                 std::string temp_files = get_file_name(tsdb->m_time_range, "*", true);
                 rm_all_files(temp_files);
 
-                meta_file.open();
-                ASSERT(meta_file.is_open());
+                //meta_file.open();
+                //ASSERT(meta_file.is_open());
 
+/*
                 for (const auto& t: tsdb->m_map)
                 {
                     Mapping *mapping = t.second;
@@ -2140,6 +1848,7 @@ Tsdb::compact(TaskData& data)
                             ts->compact(meta_file);
                     }
                 }
+*/
 
                 tsdb->unload();
                 Logger::info("[compact] 1 Tsdb compacted");
@@ -2155,7 +1864,7 @@ Tsdb::compact(TaskData& data)
 
             // mark it as compacted
             tsdb->m_mode |= TSDB_MODE_COMPACTED;
-            meta_file.close();
+            //meta_file.close();
 
             for (auto mgr: tsdb->m_temp_page_mgrs)
             {
@@ -2186,6 +1895,7 @@ Tsdb::compact(TaskData& data)
     {
         Logger::info("[compact] Did not find any appropriate Tsdb to compact.");
     }
+#endif
 
     return false;
 }
@@ -2193,6 +1903,7 @@ Tsdb::compact(TaskData& data)
 void
 Tsdb::compact2()
 {
+#if 0
     glob_t result;
     std::string pattern = Config::get_str(CFG_TSDB_DATA_DIR, CFG_TSDB_DATA_DIR_DEF);
 
@@ -2254,6 +1965,7 @@ Tsdb::compact2()
     std::string temp_files = Config::get_str(CFG_TSDB_DATA_DIR, CFG_TSDB_DATA_DIR_DEF);
     temp_files.append("/*.temp");
     rm_all_files(temp_files);
+#endif
 }
 
 const char *

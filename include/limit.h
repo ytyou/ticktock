@@ -18,40 +18,10 @@
 
 #pragma once
 
-#include <mutex>
-
 
 namespace tt
 {
 
-
-class TimeSeries;
-
-
-/* This is a singleton.
- */
-class MetaFile
-{
-public:
-    static void init(void (*restore_func)(std::string& metric, std::string& key, TimeSeriesId id));
-    static MetaFile *instance() { return m_instance; }
-
-    void open();    // for append
-    void close();
-    void flush();
-
-    inline bool is_open() const { return (m_file != nullptr); }
-    void add_ts(TimeSeries *ts);
-
-private:
-    void restore(void (*restore_func)(std::string& metric, std::string& key, TimeSeriesId id));
-
-    std::mutex m_lock;
-    std::string m_name;
-    std::FILE *m_file;
-
-    static MetaFile *m_instance;
-};
-
+#define MAX_TOTAL_TAG_LENGTH    1024
 
 }

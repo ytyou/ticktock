@@ -111,8 +111,6 @@ public:
     Timestamp get_start_tstamp_const() const;
 
 protected:
-    friend class SanityChecker;
-
     Compressor();
 
 #ifndef __x86_64__
