@@ -196,6 +196,25 @@ MmapFile::flush(bool sync)
         Logger::info("Failed to madvise(DONTNEED) file %s, errno = %d", m_name.c_str(), errno);
 }
 
+void
+MmapFile::ensure_open(bool for_read)
+{
+    if (! is_open(for_read))
+    {
+        std::lock_guard<std::mutex> guard(m_lock);
+        if (! is_open(for_read)) open(for_read);
+    }
+}
+
+bool
+MmapFile::is_open(bool for_read) const
+{
+    if (for_read)
+        return (m_pages != nullptr);
+    else
+        return (m_pages != nullptr) && !is_read_only();
+}
+
 
 IndexFile::IndexFile(const std::string& file_name) :
     MmapFile(file_name)
@@ -245,21 +264,7 @@ IndexFile::expand(off_t new_len)
 bool
 IndexFile::set_indices(TimeSeriesId id, FileIndex file_index, HeaderIndex header_index)
 {
-    std::lock_guard<std::mutex> guard(m_lock);
     void *pages = get_pages();
-
-    if (pages == nullptr)
-    {
-        this->open(false);
-        pages = get_pages();
-    }
-    else if (is_read_only())
-    {
-        this->close();
-        this->open(false);
-        pages = get_pages();
-    }
-
     ASSERT(pages != nullptr);
     ASSERT(! is_read_only());
 
@@ -287,14 +292,7 @@ IndexFile::set_indices(TimeSeriesId id, FileIndex file_index, HeaderIndex header
 void
 IndexFile::get_indices(TimeSeriesId id, FileIndex& file_index, HeaderIndex& header_index)
 {
-    std::lock_guard<std::mutex> guard(m_lock);
     void *pages = get_pages();
-
-    if (pages == nullptr)
-    {
-        this->open(true);
-        pages = get_pages();
-    }
 
     size_t idx = (id+1) * TT_INDEX_SIZE;
     size_t len = get_length();
@@ -385,7 +383,6 @@ PageSize
 HeaderFile::get_page_size()
 {
     PageSize size;
-    std::lock_guard<std::mutex> guard(m_lock);
     struct tsdb_header *header = get_tsdb_header();
 
     if (header != nullptr)
@@ -400,7 +397,6 @@ PageCount
 HeaderFile::get_page_index()
 {
     PageCount index;
-    std::lock_guard<std::mutex> guard(m_lock);
     struct tsdb_header *header = get_tsdb_header();
 
     if (header != nullptr)
@@ -415,7 +411,6 @@ int
 HeaderFile::get_compressor_version()
 {
     int version;
-    std::lock_guard<std::mutex> guard(m_lock);
     struct tsdb_header *header = get_tsdb_header();
 
     if (header != nullptr)
@@ -429,10 +424,7 @@ HeaderFile::get_compressor_version()
 HeaderIndex
 HeaderFile::new_header_index(Tsdb *tsdb)
 {
-    std::lock_guard<std::mutex> guard(m_lock);
-
-    ensure_writable(tsdb);
-    ASSERT(is_open());
+    ASSERT(is_open(false));
 
     struct tsdb_header *tsdb_header = get_tsdb_header();
     ASSERT(tsdb_header != nullptr);
@@ -451,7 +443,7 @@ HeaderFile::new_header_index(Tsdb *tsdb)
 struct tsdb_header *
 HeaderFile::get_tsdb_header()
 {
-    if (! is_open()) this->open(true);
+    ASSERT(is_open(true));
     void *pages = get_pages();
     ASSERT(pages != nullptr);
     return (struct tsdb_header*)pages;
@@ -460,7 +452,7 @@ HeaderFile::get_tsdb_header()
 struct page_info_on_disk *
 HeaderFile::get_page_header(HeaderIndex header_idx)
 {
-    ASSERT(get_pages() != nullptr);
+    ASSERT(is_open(true));
     struct page_info_on_disk *headers =
         reinterpret_cast<struct page_info_on_disk*>(static_cast<char*>(get_pages())+(sizeof(struct tsdb_header)));
     return &headers[header_idx];
@@ -478,23 +470,11 @@ HeaderFile::update_next(HeaderIndex prev_header_idx, FileIndex this_file_idx, He
 bool
 HeaderFile::is_full()
 {
+    ASSERT(is_open(true));
     struct tsdb_header *tsdb_header =
         reinterpret_cast<struct tsdb_header *>(get_pages());
     ASSERT(tsdb_header != nullptr);
     return tsdb_header->is_full();
-}
-
-void
-HeaderFile::ensure_writable(Tsdb *tsdb)
-{
-    ASSERT(tsdb != nullptr);
-
-    if (! is_open() || is_read_only())
-    {
-        this->close();
-        if (this->open(false))
-            init_tsdb_header(tsdb);
-    }
 }
 
 
@@ -537,8 +517,30 @@ DataFile::open(bool for_read)
     }
     else
     {
+        ASSERT(m_file == nullptr);
         return MmapFile::fopen("ab", m_file);
     }
+}
+
+void
+DataFile::close()
+{
+    if (m_file != nullptr)
+    {
+        std::fclose(m_file);
+        m_file = nullptr;
+    }
+
+    MmapFile::close();
+}
+
+bool
+DataFile::is_open(bool for_read) const
+{
+    if (for_read)
+        return MmapFile::is_open(for_read);
+    else
+        return (m_file != nullptr);
 }
 
 PageCount
@@ -552,15 +554,10 @@ DataFile::append(const void *page)
 }
 
 void
-DataFile::close()
+DataFile::flush(bool sync)
 {
     if (m_file != nullptr)
-    {
-        std::fclose(m_file);
-        m_file = nullptr;
-    }
-
-    MmapFile::close();
+        std::fflush(m_file);
 }
 
 void *

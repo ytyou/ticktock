@@ -40,21 +40,24 @@ public:
     bool open(off_t length, bool read_only, bool append_only);  // return true if new file
     bool fopen(const char *mode, std::FILE * (&file));  // return true if new file
     bool resize(off_t length);
+    virtual bool open(bool for_read) = 0;
     virtual void close();
-    void flush(bool sync);
+    virtual void flush(bool sync);
+    void ensure_open(bool for_read);
 
     void dont_need(void *addr, size_t length);
 
     inline void *get_pages() { return m_pages; }
     inline size_t get_length() { return m_length; }
 
-    inline virtual bool is_open() const { return m_pages != nullptr; }
+    inline virtual bool is_open(bool for_read) const;
     inline bool is_read_only() const { return m_read_only; }
 
 private:
     std::string m_name;
     off_t m_length;
     void *m_pages;
+    std::mutex m_lock;
     int m_fd;
     bool m_read_only;
 };
@@ -71,15 +74,13 @@ class IndexFile : public MmapFile
 {
 public:
     IndexFile(const std::string& file_name);
+    bool open(bool for_read) override;
 
     bool set_indices(TimeSeriesId id, FileIndex file_index, HeaderIndex page_index);
     void get_indices(TimeSeriesId id, FileIndex& file_index, HeaderIndex& page_index);
 
 private:
-    bool open(bool for_read);
     bool expand(off_t new_len);
-
-    std::mutex m_lock;
 };
 
 
@@ -89,7 +90,7 @@ public:
     HeaderFile(const std::string& file_name, FileIndex id, PageCount page_count, Tsdb *tsdb);
 
     void init_tsdb_header(Tsdb *tsdb);
-    bool open(bool for_read);
+    bool open(bool for_read) override;
 
     PageSize get_page_size();
     PageCount get_page_index();
@@ -106,9 +107,7 @@ public:
 
 private:
     HeaderFile(const std::string& file_name);
-    void ensure_writable(Tsdb *tsdb);
 
-    std::mutex m_lock;
     PageCount m_page_count;
     FileIndex m_id;
 };
@@ -120,22 +119,18 @@ public:
     DataFile(const std::string& file_name, FileIndex id, PageSize size, PageCount count);
     DataFile(const std::string& file_name);
 
-    bool open(bool read_only);
-    virtual void close();
+    bool open(bool read_only) override;
+    void close() override;
+    void flush(bool sync) override;
     void init(HeaderFile *header_file);
 
     PageCount append(const void *page);
     inline FileIndex get_id() const { return m_id; }
     void *get_page(PageIndex page_idx);
     inline FILE *get_file() const { return m_file; }
-
-    inline virtual bool is_open() const
-    {
-        return (m_file != nullptr) || MmapFile::is_open();
-    }
+    bool is_open(bool for_read) const override;
 
 private:
-    std::mutex m_lock;
     FILE *m_file;
     PageSize m_page_size;
     PageCount m_page_count;

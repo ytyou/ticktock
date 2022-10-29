@@ -612,6 +612,8 @@ Tsdb::shutdown()
 
     for (Tsdb *tsdb: m_tsdbs)
     {
+        //WriteLock guard(tsdb->m_lock);
+        std::lock_guard<std::mutex> guard(tsdb->m_lock);
         tsdb->flush(true);
         for (DataFile *file: tsdb->m_data_files) file->close();
         for (HeaderFile *file: tsdb->m_header_files) file->close();
@@ -660,6 +662,10 @@ Tsdb::get_last_header_indices(TimeSeriesId id, FileIndex& file_idx, HeaderIndex&
     file_idx = TT_INVALID_FILE_INDEX;
     header_idx = TT_INVALID_HEADER_INDEX;
 
+    //ReadLock guard(m_lock);
+    std::lock_guard<std::mutex> guard(m_lock);
+
+    m_index_file.ensure_open(true);
     m_index_file.get_indices(id, fidx, hidx);
 
     while (fidx != TT_INVALID_FILE_INDEX)
@@ -673,6 +679,7 @@ Tsdb::get_last_header_indices(TimeSeriesId id, FileIndex& file_idx, HeaderIndex&
         ASSERT(header_file != nullptr);
         ASSERT(header_file->get_id() == fidx);
 
+        header_file->ensure_open(true);
         struct page_info_on_disk *header = header_file->get_page_header(hidx);
         fidx = header->m_next_file;
         hidx = header->m_next_header;
@@ -716,6 +723,9 @@ Tsdb::append_page(TimeSeriesId id, FileIndex prev_file_idx, HeaderIndex prev_hea
 
     HeaderFile *header_file;
     std::lock_guard<std::mutex> guard(m_lock);
+    //WriteLock guard(m_lock);
+
+    m_load_time = ts_now_sec();
 
     if (m_header_files.empty())
     {
@@ -727,9 +737,7 @@ Tsdb::append_page(TimeSeriesId id, FileIndex prev_file_idx, HeaderIndex prev_hea
     else
     {
         header_file = m_header_files.back();
-
-        if (! header_file->is_open())
-            header_file->open(false);
+        header_file->ensure_open(false);
 
         if (header_file->is_full())
         {
@@ -740,17 +748,18 @@ Tsdb::append_page(TimeSeriesId id, FileIndex prev_file_idx, HeaderIndex prev_hea
         }
     }
 
+    DataFile *data_file = m_data_files.back();
+
+    data_file->ensure_open(false);
+    header_file->ensure_open(false);
+    m_index_file.ensure_open(false);
+
     ASSERT(! m_data_files.empty());
     ASSERT(! header_file->is_full());
     ASSERT(m_header_files.size() == m_data_files.size());
-
-    DataFile *data_file = m_data_files.back();
-
-    if (! data_file->is_open()) data_file->open(false);
+    ASSERT(header_file->get_id() == data_file->get_id());
 
     header->m_page_index = data_file->append(page);
-
-    ASSERT(header_file->get_id() == data_file->get_id());
 
     HeaderIndex header_idx = header_file->new_header_index(this);
     ASSERT(header_idx != TT_INVALID_HEADER_INDEX);
@@ -816,6 +825,7 @@ bool
 Tsdb::load_from_disk(bool for_read)
 {
     std::lock_guard<std::mutex> guard(m_lock);
+    //WriteLock guard(m_lock);
     return load_from_disk_no_lock(for_read);
 }
 
@@ -1598,7 +1608,6 @@ void
 Tsdb::unload_no_lock()
 {
     ASSERT(count_is_zero());
-
     for (DataFile *file: m_data_files) file->close();
     for (HeaderFile *file: m_header_files) file->close();
     m_index_file.close();
@@ -1651,6 +1660,7 @@ Tsdb::rotate(TaskData& data)
         WriteLock unload_guard(tsdb->m_load_lock);
         //std::lock_guard<std::mutex> unload_guard(tsdb->m_load_lock);
         std::lock_guard<std::mutex> guard(tsdb->m_lock);
+        //WriteLock guard(tsdb->m_lock);
 
 /*
         if (! (tsdb->m_mode & TSDB_MODE_READ))
@@ -1744,6 +1754,7 @@ Tsdb::purge_oldest(int threshold)
         Logger::info("[rotate] Purging %T permenantly", tsdb);
 
         std::lock_guard<std::mutex> guard(tsdb->m_lock);
+        //WriteLock guard(tsdb->m_lock);
 
         tsdb->flush(true);
         tsdb->unload();
@@ -1784,6 +1795,7 @@ Tsdb::compact(TaskData& data)
         for (auto it = m_tsdbs.begin(); it != m_tsdbs.end(); it++)
         {
             std::lock_guard<std::mutex> guard((*it)->m_lock);
+            //WriteLock guard((*it)->m_lock);
 
             // also make sure it's not readable nor writable while we are compacting
             if ((*it)->m_mode & (TSDB_MODE_COMPACTED | TSDB_MODE_READ_WRITE))
@@ -1815,6 +1827,7 @@ Tsdb::compact(TaskData& data)
         {
             Logger::info("[compact] Found this tsdb to compact: %T", tsdb);
             std::lock_guard<std::mutex> guard(tsdb->m_lock);
+            //WriteLock guard(tsdb->m_lock);
             TimeRange range = tsdb->get_time_range();
             //MetaFile meta_file(get_file_name(range, "meta", true));
 
