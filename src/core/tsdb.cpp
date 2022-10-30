@@ -234,7 +234,8 @@ Tsdb::Tsdb(TimeRange& range, bool existing) :
     m_time_range(range),
     m_index_file(Tsdb::get_index_file_name(range)),
     m_load_time(ts_now_sec()),
-    m_partition_mgr(nullptr)
+    m_partition_mgr(nullptr),
+    m_page_size(g_page_size)
 {
     ASSERT(g_tstamp_resolution_ms ? is_ms(range.get_from()) : is_sec(range.get_from()));
 
@@ -265,7 +266,7 @@ Tsdb::create(TimeRange& range, bool existing)
 
     if (existing)
     {
-        // create Header/Data files...
+        // restore Header/Data files...
         std::vector<std::string> files;
         get_all_files(dir + "/header.*", files);
         for (auto file: files) tsdb->restore_header(file);
@@ -276,8 +277,19 @@ Tsdb::create(TimeRange& range, bool existing)
         for (auto file: files) tsdb->restore_data(file);
         std::sort(tsdb->m_data_files.begin(), tsdb->m_data_files.end(), data_less());
 
-        if ((tsdb->m_mode & TSDB_MODE_READ_WRITE))
+        if ((tsdb->m_mode & TSDB_MODE_READ_WRITE) != 0)
             tsdb->load_from_disk_no_lock((tsdb->m_mode & TSDB_MODE_WRITE) == 0);
+
+        // restore page-size
+        if (! tsdb->m_header_files.empty())
+        {
+            HeaderFile *header_file = tsdb->m_header_files.front();
+            header_file->ensure_open(true);
+            tsdb->m_page_size = header_file->get_page_size();
+
+            if ((tsdb->m_mode & TSDB_MODE_READ_WRITE) == 0)
+                header_file->close();
+        }
     }
     else    // new one
     {
@@ -421,15 +433,6 @@ Tsdb::get_partition_defs() const
         //defs.assign(buff);
     //std::fclose(f);
     return defs;
-}
-
-PageSize
-Tsdb::get_page_size() const
-{
-    if (m_header_files.empty())
-        return g_page_size;
-    else
-        return m_header_files[0]->get_page_size();
 }
 
 PageCount
@@ -699,6 +702,8 @@ Tsdb::set_indices(TimeSeriesId id, FileIndex prev_file_idx, HeaderIndex prev_hea
         // update header
         HeaderFile *header_file = get_header_file(prev_file_idx);
         ASSERT(header_file != nullptr);
+        ASSERT(header_file->get_id() == prev_file_idx);
+        header_file->ensure_open(false);
         header_file->update_next(prev_header_idx, this_file_idx, this_header_idx);
     }
 }

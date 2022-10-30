@@ -143,7 +143,7 @@ public:
     void flush(bool sync);
 
     std::string get_partition_defs() const;
-    PageSize get_page_size() const;
+    inline PageSize get_page_size() const { return m_page_size; }
     PageCount get_page_count() const;
     int get_compressor_version();
 
@@ -255,6 +255,7 @@ private:
     default_contention_free_shared_mutex m_load_lock;
 
     PartitionManager *m_partition_mgr;
+    PageSize m_page_size;
 };
 
 
