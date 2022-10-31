@@ -66,14 +66,15 @@ private:
     AppendLog();
 
     void close();
-    void close_no_lock();
     void reopen();
 
+    void append_internal(char *data, size_t size);
+
     static bool m_enabled;
-    static std::mutex m_lock;
+    static std::atomic<uint64_t> m_order;
 
     FILE *m_file;
-    long m_time;    // for log rotation
+    Timestamp m_rotate_time;
     z_stream m_stream;
 };
 

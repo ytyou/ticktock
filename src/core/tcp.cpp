@@ -841,7 +841,7 @@ TcpListener::TcpListener(TcpServer *server, int fd, size_t max_conns, int id) :
     m_free_conns(nullptr),
     m_least_conn_listener(nullptr),
     m_conn_in_transit(nullptr),
-    m_responders(std::string("tcp_")+std::to_string(id),
+    m_responders(std::string(server->get_name())+std::string("_")+std::to_string(id),
                  server->get_responders_per_listener(),
                  Config::get_int(CFG_TCP_RESPONDERS_QUEUE_SIZE, CFG_TCP_RESPONDERS_QUEUE_SIZE_DEF))
     //m_stats_active_conn_count(0)

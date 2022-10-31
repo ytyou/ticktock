@@ -35,20 +35,21 @@ namespace tt
 
 
 bool AppendLog::m_enabled = false;
-std::mutex AppendLog::m_lock;
-static AppendLog *instance = nullptr;
+std::atomic<uint64_t> AppendLog::m_order {0};
+static thread_local AppendLog *instance = nullptr;
+static std::atomic<Timestamp> rotate_time {0};
 
 
 AppendLog::AppendLog() :
     m_file(nullptr),
-    m_time(0L)
+    m_rotate_time(0L)
 {
     reopen();
 }
 
 AppendLog::~AppendLog()
 {
-    close_no_lock();
+    close();
 }
 
 void
@@ -57,11 +58,9 @@ AppendLog::init()
     m_enabled = Config::get_bool(CFG_APPEND_LOG_ENABLED, CFG_APPEND_LOG_ENABLED_DEF);
     if (! m_enabled) return;
 
-    instance = new AppendLog();
-
     // Schedule tasks to flush append logs.
     Task task;
-    task.doit = &AppendLog::flush;
+    task.doit = &AppendLog::flush_all;
     int freq_sec = Config::get_time(CFG_APPEND_LOG_FLUSH_FREQUENCY, TimeUnit::SEC, CFG_APPEND_LOG_FLUSH_FREQUENCY_DEF);
     ASSERT(freq_sec > 0);
     Timer::inst()->add_task(task, freq_sec, "append_log_flush");
@@ -79,8 +78,7 @@ AppendLog::init()
 AppendLog *
 AppendLog::inst()
 {
-    return instance;
-    //return (instance == nullptr) ? (instance = new AppendLog) : instance;
+    return (instance == nullptr) ? (instance = new AppendLog) : instance;
 }
 
 bool
@@ -100,12 +98,9 @@ AppendLog::flush(TaskData& data)
 {
     AppendLog *log = AppendLog::inst();
     Logger::trace("Flushing append log %p", log->m_file);
-    std::lock_guard<std::mutex> guard(m_lock);
 
     if (log->m_file != nullptr)
-    {
         fflush(log->m_file);
-    }
 
     log->reopen();  // try to rotate, if necessary
 
@@ -129,41 +124,39 @@ bool
 AppendLog::rotate(TaskData& data)
 {
     int retention_count = Config::get_int(CFG_APPEND_LOG_RETENTION_COUNT, CFG_APPEND_LOG_RETENTION_COUNT_DEF);
-    int listener_count = Config::get_int(CFG_HTTP_LISTENER_COUNT, CFG_HTTP_LISTENER_COUNT_DEF);
-    int responder_count = Config::get_int(CFG_HTTP_RESPONDERS_PER_LISTENER, CFG_HTTP_RESPONDERS_PER_LISTENER_DEF);
+    int tcp_listener_count = Config::get_int(CFG_TCP_LISTENER_COUNT, CFG_TCP_LISTENER_COUNT_DEF);
+    int tcp_responder_count = Config::get_int(CFG_TCP_RESPONDERS_PER_LISTENER, CFG_TCP_RESPONDERS_PER_LISTENER_DEF);
+    int http_listener_count = Config::get_int(CFG_HTTP_LISTENER_COUNT, CFG_HTTP_LISTENER_COUNT_DEF);
+    int http_responder_count = Config::get_int(CFG_HTTP_RESPONDERS_PER_LISTENER, CFG_HTTP_RESPONDERS_PER_LISTENER_DEF);
 
-    Logger::debug("retention_count = %d, listener_count = %d, responder_count = %d",
-        retention_count, listener_count, responder_count);
+    Logger::debug("retention_count = %d, tcp_listener_count = %d, tcp_responder_count = %d, http_listener_count = %d, http_responder_count = %d",
+        retention_count, tcp_listener_count, tcp_responder_count, http_listener_count, http_responder_count);
 
     ASSERT(retention_count > 0);
-    ASSERT(listener_count > 0);
-    ASSERT(responder_count > 0);
+    ASSERT(tcp_listener_count > 0);
+    ASSERT(tcp_responder_count > 0);
+    ASSERT(http_listener_count > 0);
+    ASSERT(http_responder_count > 0);
 
     std::string append_dir = Config::get_str(CFG_APPEND_LOG_DIR);
-    std::string log_pattern = append_dir + "/append.*.log.zip";
-    Logger::debug("Rotating append logs: %s", log_pattern.c_str());
-    std::lock_guard<std::mutex> guard(m_lock);
+    std::string log_pattern_tcp = append_dir + "/append.*.tcp*.log.zip";
+    std::string log_pattern_http = append_dir + "/append.*.http*.log.zip";
 
-    int cnt = rotate_files(log_pattern, retention_count * listener_count * responder_count);
+    Logger::debug("Rotating append logs: %s and %s", log_pattern_tcp.c_str(), log_pattern_http.c_str());
+
+    int cnt = 0;
+    cnt += rotate_files(log_pattern_tcp, retention_count * tcp_listener_count * tcp_responder_count);
+    cnt += rotate_files(log_pattern_http, retention_count * http_listener_count * http_responder_count);
 
     if (cnt > 0)
-    {
-        Logger::info("Purged %d append logs, retained %d",
-            cnt, retention_count * listener_count * responder_count);
-    }
+        Logger::info("Purged %d append logs", cnt);
 
+    rotate_time = ts_now_sec();
     return false;
 }
 
 void
 AppendLog::close()
-{
-    std::lock_guard<std::mutex> guard(m_lock);
-    close_no_lock();
-}
-
-void
-AppendLog::close_no_lock()
 {
     if (m_file != nullptr)
     {
@@ -203,10 +196,10 @@ AppendLog::reopen()
         Config::get_time(CFG_APPEND_LOG_ROTATION_FREQUENCY, TimeUnit::SEC, CFG_APPEND_LOG_ROTATION_FREQUENCY_DEF);
     long time = (ts_now_sec() / rotation_sec) * rotation_sec;
 
-    if (time == m_time) return;
-    m_time = time;
+    if (time == m_rotate_time) return;
+    m_rotate_time = time;
 
-    close_no_lock();    // close before open again
+    close();    // close before open again
 
     std::string append_dir = Config::get_str(CFG_APPEND_LOG_DIR);
 
@@ -214,14 +207,12 @@ AppendLog::reopen()
     {
         // zlib can't append to existing compressed files, so let's make sure
         // that we create a new file.
-        std::string log_file = append_dir + "/append." + std::to_string(time) + ".log.zip";
-        //std::string log_file = append_dir + "/append." + std::to_string(time) + "." + g_thread_id + ".log.zip";
+        std::string log_file = append_dir + "/append." + std::to_string(time) + "." + g_thread_id + ".log.zip";
 
         for (int i = 0; i < 1024; i++)  // should be able to find one within 1024 tries
         {
             if (! file_exists(log_file)) break;
-            log_file = append_dir + "/append." + std::to_string(time) + "." + std::to_string(i) + ".log.zip";
-            //log_file = append_dir + "/append." + std::to_string(time) + "." + g_thread_id + "." + std::to_string(i) + ".log.zip";
+            log_file = append_dir + "/append." + std::to_string(time) + "." + g_thread_id + "." + std::to_string(i) + ".log.zip";
         }
 
         //m_file = fopen(log_file.c_str(), "a+");
@@ -263,8 +254,17 @@ AppendLog::append(char *data, size_t size)
 {
     if (! m_enabled) return;
 
-    std::lock_guard<std::mutex> guard(m_lock);
+    char buff[32];
+    uint64_t order = m_order.fetch_add(1);
+    sprintf(buff, "order %lu\n", order);
 
+    append_internal(buff, std::strlen(buff));
+    append_internal(data, size);
+}
+
+void
+AppendLog::append_internal(char *data, size_t size)
+{
     if ((m_file != nullptr) && (data != nullptr) && (size >= 0))
     {
         unsigned char buff[size];

@@ -288,6 +288,8 @@ public:
     size_t get_pending_task_count(std::vector<std::vector<size_t>> &counts) const;
     int get_total_task_count(size_t counts[], int size) const;
 
+    virtual inline const char *get_name() const { return "tcp"; }
+
 protected:
     virtual TcpConnection *create_conn() const;
     virtual Task get_recv_data_task(TcpConnection *conn) const;
