@@ -33,7 +33,7 @@ class TimeSeries;
 class MetaFile
 {
 public:
-    static void init(void (*restore_func)(std::string& metric, std::string& key, TimeSeriesId id));
+    static void init(TimeSeries* (*restore_func)(std::string& metric, std::string& key, TimeSeriesId id));
     static MetaFile *instance() { return m_instance; }
 
     void open();    // for append
@@ -44,7 +44,7 @@ public:
     void add_ts(TimeSeries *ts);
 
 private:
-    void restore(void (*restore_func)(std::string& metric, std::string& key, TimeSeriesId id));
+    void restore(TimeSeries* (*restore_func)(std::string& metric, std::string& key, TimeSeriesId id));
 
     std::mutex m_lock;
     std::string m_name;

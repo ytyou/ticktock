@@ -24,7 +24,6 @@
 #include <functional>
 #include <glob.h>
 #include "admin.h"
-#include "append.h"
 #include "config.h"
 #include "cp.h"
 #include "limit.h"
@@ -204,7 +203,7 @@ Mapping::query_for_ts(Tag *tags, std::unordered_set<TimeSeries*>& tsv)
     }
 }
 
-void
+TimeSeries *
 Mapping::restore_ts(std::string& metric, std::string& keys, TimeSeriesId id)
 {
     auto search = m_map.find(keys.c_str());
@@ -219,6 +218,7 @@ Mapping::restore_ts(std::string& metric, std::string& keys, TimeSeriesId id)
     Tag *tags = Tag::parse_multiple(keys);
     TimeSeries *ts = new TimeSeries(id, metric.c_str(), keys.c_str(), tags);
     m_map[ts->get_key()] = ts;
+    return ts;
 }
 
 int
@@ -372,6 +372,14 @@ Tsdb::get_all_ts(std::vector<TimeSeries*>& tsv)
     }
 }
 
+void
+Tsdb::get_all_mappings(std::vector<Mapping*>& mappings)
+{
+    std::lock_guard<std::mutex> guard(g_metric_lock);
+    for (auto it = g_metric_map.begin(); it != g_metric_map.end(); it++)
+        mappings.push_back(it->second);
+}
+
 /* The following configurations determine what mode a Tsdb should be in.
  *   tsdb.archive.threshold - After this amount of time has passed, go into archive mode;
  *   tsdb.read_only.threshold - After this amount of time has passed, go into read-only mode;
@@ -511,7 +519,7 @@ Tsdb::add_data_point(DataPoint& dp, bool forward)
     return mapping->add_data_point(dp, forward);
 }
 
-void
+TimeSeries *
 Tsdb::restore_ts(std::string& metric, std::string& key, TimeSeriesId id)
 {
     Mapping *mapping;
@@ -529,7 +537,7 @@ Tsdb::restore_ts(std::string& metric, std::string& key, TimeSeriesId id)
         ASSERT(search->first == mapping->m_metric);
     }
 
-    mapping->restore_ts(metric, key, id);
+    return mapping->restore_ts(metric, key, id);
 }
 
 void
@@ -960,8 +968,6 @@ Tsdb::http_api_put_handler(HttpRequest& request, HttpResponse& response)
     char *curr = request.content;
     bool success = true;
 
-    AppendLog::inst()->append(request.content, request.length);
-
     ReadLock *guard = nullptr;
 
     while ((curr != nullptr) && (*curr != 0))
@@ -1015,8 +1021,6 @@ Tsdb::http_api_put_handler_json(HttpRequest& request, HttpResponse& response)
 
     Tsdb* tsdb = nullptr;
     bool success = true;
-
-    AppendLog::inst()->append(request.content, request.length);
 
     ReadLock *guard = nullptr;
 
@@ -1092,7 +1096,6 @@ Tsdb::http_api_put_handler_plain(HttpRequest& request, HttpResponse& response)
     }
 
     response.content_length = 0;
-    AppendLog::inst()->append(request.content, request.length);
 
     // safety measure
     curr[request.length] = ' ';
@@ -1189,7 +1192,6 @@ Tsdb::http_api_put_handler_plain2(HttpRequest& request, HttpResponse& response)
     }
 
     response.content_length = 0;
-    AppendLog::inst()->append(request.content, request.length);
 
     // safety measure
     curr[request.length] = ' ';
@@ -1425,7 +1427,6 @@ Tsdb::init()
     std::string data_dir = Config::get_str(CFG_TSDB_DATA_DIR, CFG_TSDB_DATA_DIR_DEF);
     Logger::info("Loading data from %s", data_dir.c_str());
 
-    MetaFile::init(Tsdb::restore_ts);
     CheckPointManager::init();
     PartitionManager::init();
 
@@ -1454,6 +1455,8 @@ Tsdb::init()
     for_all_dirs(data_dir, Tsdb::restore_tsdb, 3);
     std::sort(m_tsdbs.begin(), m_tsdbs.end(), tsdb_less());
     Logger::debug("%d Tsdbs restored", m_tsdbs.size());
+
+    MetaFile::init(Tsdb::restore_ts);
 
 /*
     compact2();

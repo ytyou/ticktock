@@ -87,6 +87,26 @@ TimeSeries::init(TimeSeriesId id, const char *metric, const char *key, Tag *tags
 }
 
 void
+TimeSeries::restore(Tsdb *tsdb, PageSize offset, uint8_t start, char *buff, bool is_ooo)
+{
+    ASSERT(tsdb != nullptr);
+    m_tsdb = tsdb;
+
+    if (is_ooo)
+    {
+        ASSERT(m_ooo_buff == nullptr);
+        m_ooo_buff = new PageInMemory(m_id, m_tsdb, true);
+        m_ooo_buff->init(m_id, m_tsdb, true);
+    }
+    else
+    {
+        ASSERT(m_buff == nullptr);
+        m_buff = new PageInMemory(m_id, m_tsdb, false);
+        m_buff->init(m_id, m_tsdb, false);
+    }
+}
+
+void
 TimeSeries::flush(bool accessed)
 {
     std::lock_guard<std::mutex> guard(m_lock);
@@ -101,6 +121,15 @@ TimeSeries::flush_no_lock(bool accessed)
 
     if (m_ooo_buff != nullptr)
         m_ooo_buff->flush(m_id, m_tsdb);
+}
+
+void
+TimeSeries::append(FILE *file)
+{
+    ASSERT(file != nullptr);
+    std::lock_guard<std::mutex> guard(m_lock);
+    if (m_buff != nullptr) m_buff->append(m_id, file);
+    if (m_ooo_buff != nullptr) m_ooo_buff->append(m_id, file);
 }
 
 bool

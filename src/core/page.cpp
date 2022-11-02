@@ -189,6 +189,30 @@ PageInMemory::flush(TimeSeriesId id, Tsdb *tsdb)
     m_compressor->init(m_start, (uint8_t*)m_page, tsdb->get_page_size());
 }
 
+void
+PageInMemory::append(TimeSeriesId id, FILE *file)
+{
+    if (m_compressor == nullptr) return;
+
+    CompressorPosition position;
+    m_compressor->save(position);
+
+    struct append_log_entry header =
+        {
+            .id = id,
+            .tstamp = m_compressor->get_start_tstamp(),
+            .offset = position.m_offset,
+            .start = position.m_start,
+            .is_ooo = is_out_of_order() ? (uint8_t)1 : (uint8_t)0
+        };
+
+    int ret;
+    ret = fwrite(&header, 1, sizeof(header), file);
+    if (ret != sizeof(header)) Logger::error("PageInMemory::append() failed");
+    ret = fwrite(m_page, 1, position.m_offset, file);
+    if (ret != position.m_offset) Logger::error("PageInMemory::append() failed");
+}
+
 bool
 PageInMemory::add_data_point(Timestamp tstamp, double value)
 {

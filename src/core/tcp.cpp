@@ -1140,8 +1140,6 @@ TcpListener::listener1()
                         case PIPE_CMD_NEW_CONN[0]:          new_conn2(std::atoi(cmd+2)); break;
                         case PIPE_CMD_CLOSE_CONN[0]:        close_conn(std::atoi(cmd+2)); break;
                         case PIPE_CMD_DISCONNECT_CONN[0]:   disconnect(); break;
-                        case PIPE_CMD_FLUSH_APPEND_LOG[0]:  flush_append_log(); break;
-                        case PIPE_CMD_CLOSE_APPEND_LOG[0]:  close_append_log(); break;
                         case PIPE_CMD_RESUBMIT[0]:          resubmit(cmd[2], std::atoi(cmd+4)); break; // r [h|t] <fd>
                         case PIPE_CMD_SET_STOPPED[0]:       set_stopped(); break;
                         default: break;
@@ -1469,22 +1467,6 @@ TcpListener::write_pipe(int fd, const char *msg)
     }
 
     Logger::debug("write_pipe() failed to write all bytes, %d remaining", len);
-}
-
-void
-TcpListener::flush_append_log()
-{
-    Task task;
-    task.doit = &AppendLog::flush;
-    m_responders.submit_task_to_all(task);
-}
-
-void
-TcpListener::close_append_log()
-{
-    Task task;
-    task.doit = &AppendLog::close;
-    m_responders.submit_task_to_all(task);
 }
 
 TcpConnection *

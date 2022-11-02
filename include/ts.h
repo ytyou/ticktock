@@ -46,6 +46,7 @@ public:
     ~TimeSeries();
 
     void init(TimeSeriesId id, const char *metric, const char *key, Tag *tags);
+    void restore(Tsdb *tsdb, PageSize offset, uint8_t start, char *buff, bool is_ooo);
 
     inline TimeSeriesId get_id() const { return m_id; }
 
@@ -56,6 +57,8 @@ public:
 
     bool add_data_point(DataPoint& dp);
     bool add_ooo_data_point(DataPoint& dp);
+
+    void append(FILE *file);
 
     inline const char* get_key() const { return m_key; }
     inline void set_key(const char *key)

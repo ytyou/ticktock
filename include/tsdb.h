@@ -92,7 +92,7 @@ private:
     bool add_data_point(DataPoint& dp, bool forward);
     TimeSeries *get_ts(DataPoint& dp);
     void query_for_ts(Tag *tags, std::unordered_set<TimeSeries*>& tsv);
-    void restore_ts(std::string& metric, std::string& key, TimeSeriesId id);
+    TimeSeries *restore_ts(std::string& metric, std::string& key, TimeSeriesId id);
 
     int get_dp_count();
     int get_ts_count();
@@ -122,8 +122,9 @@ public:
     static bool compact(TaskData& data);
     static void compact2(); // last compaction step
     static bool add_data_point(DataPoint& dp, bool forward);
-    static void restore_ts(std::string& metric, std::string& key, TimeSeriesId id);
+    static TimeSeries *restore_ts(std::string& metric, std::string& key, TimeSeriesId id);
     static void get_all_ts(std::vector<TimeSeries*>& tsv);
+    static void get_all_mappings(std::vector<Mapping*>& mappings);
 
     bool add(DataPoint& dp);
     inline bool submit_data_points()

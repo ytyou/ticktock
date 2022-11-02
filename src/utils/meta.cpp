@@ -20,6 +20,7 @@
 #include <fstream>
 #include <limits.h>
 #include <sys/stat.h>
+#include "append.h"
 #include "config.h"
 #include "fd.h"
 #include "logger.h"
@@ -35,14 +36,14 @@ MetaFile * MetaFile::m_instance;    // Singleton instance
 
 
 void
-MetaFile::init(void (*restore_func)(std::string& metric, std::string& key, TimeSeriesId id))
+MetaFile::init(TimeSeries* (*restore_func)(std::string& metric, std::string& key, TimeSeriesId id))
 {
     m_instance = new MetaFile();            // create the Singleton
     m_instance->restore(restore_func);      // restore from it
 }
 
 void
-MetaFile::restore(void (*restore_func)(std::string& metric, std::string& key, TimeSeriesId id))
+MetaFile::restore(TimeSeries* (*restore_func)(std::string& metric, std::string& key, TimeSeriesId id))
 {
     char buff[PATH_MAX];
     snprintf(buff, sizeof(buff), "%s/ticktock.meta",
@@ -50,7 +51,11 @@ MetaFile::restore(void (*restore_func)(std::string& metric, std::string& key, Ti
     m_name.assign(buff);
     m_file = nullptr;
 
+    bool restore_needed = AppendLog::restore_needed();
+    std::vector<TimeSeries*> tsv;
     std::ifstream is(m_name);
+
+    tsv.reserve(4096);
 
     if (is)
     {
@@ -69,13 +74,25 @@ MetaFile::restore(void (*restore_func)(std::string& metric, std::string& key, Ti
 
             std::string metric = tokens[0]; // metric
             std::string tags = tokens[1];   // tags
-            std::string id = tokens[2];     // TimeSeries id
+            TimeSeriesId id = std::stoi(tokens[2]);
 
-            (*restore_func)(metric, tags, std::stoi(id));
+            TimeSeries *ts = (*restore_func)(metric, tags, id);
+
+            if (restore_needed)
+            {
+                // make sure tsv[] has enough capacity
+                std::vector<TimeSeries*>::size_type cap = tsv.capacity();
+                while (cap <= id) cap *= 2;
+                if (tsv.capacity() < cap) tsv.reserve(cap);
+                tsv[id] = ts;
+            }
         }
     }
 
     is.close();
+
+    if (! tsv.empty())
+        AppendLog::restore(tsv);
 
     open(); // open for append
 

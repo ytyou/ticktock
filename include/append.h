@@ -23,7 +23,6 @@
 #include <mutex>
 #include <vector>
 #include <stdarg.h>
-#include "zlib/zlib.h"
 #include "task.h"
 
 
@@ -31,51 +30,31 @@ namespace tt
 {
 
 
-/* This is used to record all writes from clients. In case of power failure,
- * this log can be used to recover all data that's not flushed to disk before
- * the crash.
- *
- * Zlib, by Jean-loup Gailly and Mark Adler, is used to compress the data
- * stored in these append logs. See zlib.net.
- *
- * This is a per-thread singleton.
+class TimeSeries;
+
+
+/* This is used to recover from an abnormal termination.
  */
 class AppendLog
 {
 public:
-    static AppendLog *inst();
     static void init();
+    static FILE *open(std::string& name);
 
-    static bool flush(TaskData& data);
-    static bool close(TaskData& data);
-
-    // This will be called from Timer periodically to flush append logs
-    // of all threads.
+    // This will be called from Timer periodically to generate append log.
     static bool flush_all(TaskData& data);
-    static bool rotate(TaskData& data);
+    static void shutdown();     // called during normal shutdown
 
-    void append(char *data, size_t size);
+    static bool restore_needed();
+    static void restore(std::vector<TimeSeries*>& tsv);
 
     // make it non-copyable
     AppendLog(AppendLog const&) = delete;
     AppendLog& operator=(AppendLog const&) = delete;
 
-    virtual ~AppendLog();
-
 private:
-    AppendLog();
-
-    void close();
-    void reopen();
-
-    void append_internal(char *data, size_t size);
-
     static bool m_enabled;
-    static std::atomic<uint64_t> m_order;
-
-    FILE *m_file;
-    Timestamp m_rotate_time;
-    z_stream m_stream;
+    static std::mutex m_lock;
 };
 
 

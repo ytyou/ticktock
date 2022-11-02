@@ -218,6 +218,15 @@ struct __attribute__ ((__packed__)) page_info_on_disk
     }
 };
 
+struct __attribute__ ((__packed__)) append_log_entry
+{
+    TimeSeriesId id;
+    Timestamp tstamp;
+    PageSize offset;
+    uint8_t start;
+    uint8_t is_ooo;
+};
+
 
 class PageInfo
 {
@@ -273,6 +282,7 @@ public:
 
     void init(TimeSeriesId id, Tsdb *tsdb, bool is_ooo);
     void flush(TimeSeriesId id, Tsdb *tsdb);
+    void append(TimeSeriesId id, FILE *file);
 
     // return true if dp is added; false if page is full;
     bool add_data_point(Timestamp tstamp, double value);
