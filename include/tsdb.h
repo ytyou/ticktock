@@ -204,6 +204,7 @@ public:
     static int get_ts_count();
     static int get_page_count(bool ooo);    // for testing only
     static int get_data_page_count();       // for testing only
+    static int get_active_tsdb_count();
     static bool validate(Tsdb *tsdb);
     double get_page_percent_used();
     inline size_t c_size() const override { return m_time_range.c_size() + 4; }

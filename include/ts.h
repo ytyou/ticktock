@@ -49,6 +49,7 @@ public:
     void restore(Tsdb *tsdb, PageSize offset, uint8_t start, char *buff, bool is_ooo);
 
     inline TimeSeriesId get_id() const { return m_id; }
+    static inline TimeSeriesId get_next_id() { return m_next_id.load(std::memory_order_relaxed); }
 
     void flush(bool accessed = false);
     void flush_no_lock(bool accessed = false);
@@ -92,7 +93,7 @@ private:
     PageInMemory *m_ooo_buff;
 
     char *m_metric;
-    Tsdb *m_tsdb;           // current tsdb we are writing into
+    //Tsdb *m_tsdb;           // current tsdb we are writing into
 
     static std::atomic<TimeSeriesId> m_next_id;
     TimeSeriesId m_id;      // global, unique, permanent id starting at 0

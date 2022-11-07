@@ -303,6 +303,7 @@ DataPoint::c_str(char* buff) const
         tag = tag->next();
     }
 
+    buff[size-1] = 0;
     return buff;
 }
 

@@ -50,7 +50,7 @@ public:
     inline void *get_pages() { return m_pages; }
     inline size_t get_length() { return m_length; }
 
-    inline virtual bool is_open(bool for_read) const;
+    virtual bool is_open(bool for_read) const;
     inline bool is_read_only() const { return m_read_only; }
 
 private:

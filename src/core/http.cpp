@@ -737,7 +737,7 @@ HttpServer::http_get_api_help_handler(HttpRequest& request, HttpResponse& respon
 bool
 HttpServer::http_get_api_stats_handler(HttpRequest& request, HttpResponse& response)
 {
-    const int buf_size = 4096;
+    const int buf_size = 8192;
     char buff[buf_size];
 
     int len = Stats::collect_stats(buff, buf_size);

@@ -45,6 +45,7 @@ namespace tt
 PageInfo::PageInfo() :
     m_compressor(nullptr),
     m_page(nullptr),
+    m_tsdb(nullptr),
     m_start(0)
 {
 }
@@ -73,6 +74,13 @@ PageInfo::get_time_range()
     struct page_info_on_disk *header = get_page_header();
     ASSERT(header != nullptr);
     return TimeRange(header->m_tstamp_from + m_start, header->m_tstamp_to + m_start);
+}
+
+int
+PageInfo::in_range(Timestamp tstamp) const
+{
+    ASSERT(m_tsdb != nullptr);
+    return m_tsdb->in_range(tstamp);
 }
 
 /* 'range' should be the time range of the Tsdb.
@@ -114,14 +122,16 @@ PageInfo::get_dp_count() const
 
 PageInMemory::PageInMemory(TimeSeriesId id, Tsdb *tsdb, bool is_ooo)
 {
+    m_tsdb = tsdb;
     m_page_header.init();
+    ASSERT(m_page == nullptr);
     init(id, tsdb, is_ooo);
 }
 
 void
 PageInMemory::init(TimeSeriesId id, Tsdb *tsdb, bool is_ooo)
 {
-    ASSERT(tsdb != nullptr);
+    if (tsdb == nullptr) tsdb = m_tsdb; // same tsdb
 
     // preserve m_page_header.m_next_file and m_page_header.m_next_header, if
     // tsdb remains the same...
@@ -132,13 +142,14 @@ PageInMemory::init(TimeSeriesId id, Tsdb *tsdb, bool is_ooo)
     m_page_header.init();
     m_page_header.set_out_of_order(is_ooo);
 
-    if (m_start == from)    // same tsdb
+    if (m_tsdb == tsdb)    // same tsdb
     {
         m_page_header.m_next_file = file_idx;
         m_page_header.m_next_header = header_idx;
     }
     else
     {
+        m_tsdb = tsdb;
         m_start = from;
 
         // need to locate the last page of this TS
@@ -162,11 +173,8 @@ PageInMemory::init(TimeSeriesId id, Tsdb *tsdb, bool is_ooo)
 }
 
 void
-PageInMemory::flush(TimeSeriesId id, Tsdb *tsdb)
+PageInMemory::flush(TimeSeriesId id)
 {
-    ASSERT(tsdb != nullptr);
-    ASSERT(m_compressor != nullptr);
-
     if (m_compressor->is_empty()) return;
 
     // [m_page_header.m_next_file, m_page_header.m_next_header] is the
@@ -183,10 +191,11 @@ PageInMemory::flush(TimeSeriesId id, Tsdb *tsdb)
     m_page_header.m_next_file = TT_INVALID_FILE_INDEX;
     m_page_header.m_next_header = TT_INVALID_HEADER_INDEX;
 
-    tsdb->append_page(id, prev_file_idx, prev_header_idx, &m_page_header, m_page);
+    m_tsdb->append_page(id, prev_file_idx, prev_header_idx, &m_page_header, m_page);
 
     // re-initialize the compressor
-    m_compressor->init(m_start, (uint8_t*)m_page, tsdb->get_page_size());
+    //m_compressor->init(m_start, (uint8_t*)m_page, m_tsdb->get_page_size());
+    ASSERT(m_page != nullptr);
 }
 
 void
@@ -211,6 +220,7 @@ PageInMemory::append(TimeSeriesId id, FILE *file)
     if (ret != sizeof(header)) Logger::error("PageInMemory::append() failed");
     ret = fwrite(m_page, 1, position.m_offset, file);
     if (ret != position.m_offset) Logger::error("PageInMemory::append() failed");
+    ASSERT(m_page != nullptr);
 }
 
 bool

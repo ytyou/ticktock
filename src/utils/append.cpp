@@ -169,7 +169,7 @@ AppendLog::restore(std::vector<TimeSeries*>& tsv)
 
         if (tsdb == nullptr)
         {
-            Logger::error("Can't recover time series %u, tstamp %lu not exist", id, tstamp);
+            Logger::error("Can't recover time series %u, tstamp %" PRIu64 " not exist", id, tstamp);
             continue;
         }
 

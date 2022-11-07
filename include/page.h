@@ -243,6 +243,7 @@ public:
 
     Timestamp get_last_tstamp() const;
     TimeRange get_time_range();
+    int in_range(Timestamp tstamp) const;
 
     inline PageIndex get_page_index() { return get_page_header()->m_page_index; }
     inline FileIndex get_next_file() { return get_page_header()->get_next_file(); }
@@ -267,6 +268,7 @@ private:
     friend class page_info_index_less;
 
 protected:
+    Tsdb *m_tsdb;
     void *m_page;
     Timestamp m_start;
     Compressor *m_compressor;
@@ -281,7 +283,7 @@ public:
     PageInMemory(TimeSeriesId id, Tsdb *tsdb, bool is_ooo);
 
     void init(TimeSeriesId id, Tsdb *tsdb, bool is_ooo);
-    void flush(TimeSeriesId id, Tsdb *tsdb);
+    void flush(TimeSeriesId id);
     void append(TimeSeriesId id, FILE *file);
 
     // return true if dp is added; false if page is full;
@@ -318,7 +320,6 @@ public:
     }
 
 private:
-    Tsdb *m_tsdb;
     FileIndex m_file_index;     // of this page
     HeaderIndex m_header_index; // of this page
     struct page_info_on_disk *m_page_header;

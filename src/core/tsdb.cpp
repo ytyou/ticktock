@@ -826,7 +826,7 @@ Tsdb::inst(Timestamp tstamp, bool create)
             TimeRange range;
             Tsdb::get_range(tstamp, range);
             tsdb = Tsdb::create(range, false);  // create new
-            Logger::info("Created %T, tstamp = %lu", tsdb, tstamp);
+            Logger::info("Created %T, tstamp = %" PRIu64, tsdb, tstamp);
             ASSERT(Tsdb::search(tstamp) == tsdb);
         }
     }
@@ -1522,7 +1522,7 @@ Tsdb::get_tsdb_dir_name(const TimeRange& range)
     struct tm timeinfo;
     localtime_r(&sec, &timeinfo);
     char buff[PATH_MAX];
-    snprintf(buff, sizeof(buff), "%s/%d/%d/%lu.%lu",
+    snprintf(buff, sizeof(buff), "%s/%d/%d/%" PRIu64 ".%" PRIu64,
         Config::get_str(CFG_TSDB_DATA_DIR,CFG_TSDB_DATA_DIR_DEF).c_str(),
         timeinfo.tm_year+1900,
         timeinfo.tm_mon+1,
@@ -1582,7 +1582,7 @@ Tsdb::get_dp_count()
 int
 Tsdb::get_ts_count()
 {
-    return 0;       // TODO: implement it
+    return TimeSeries::get_next_id();
 }
 
 int
@@ -1603,6 +1603,19 @@ Tsdb::get_page_percent_used()
     return 0.0;     // TODO: implement it
 }
 
+int
+Tsdb::get_active_tsdb_count()
+{
+    int total = 0;
+    ReadLock guard(m_tsdb_lock);
+    for (Tsdb *tsdb: m_tsdbs)
+    {
+        if (tsdb->m_index_file.is_open(true))
+            total++;
+    }
+    return total;
+}
+
 void
 Tsdb::unload()
 {
@@ -1619,6 +1632,7 @@ Tsdb::unload_no_lock()
     for (DataFile *file: m_data_files) file->close();
     for (HeaderFile *file: m_header_files) file->close();
     m_index_file.close();
+    m_mode &= ~TSDB_MODE_READ_WRITE;
 }
 
 bool
@@ -1710,6 +1724,7 @@ Tsdb::rotate(TaskData& data)
     }
 
     CheckPointManager::persist();
+    MetaFile::instance()->flush();
 
     if (Config::exists(CFG_TSDB_RETENTION_THRESHOLD))
         purge_oldest(Config::get_int(CFG_TSDB_RETENTION_THRESHOLD));

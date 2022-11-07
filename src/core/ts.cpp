@@ -79,7 +79,6 @@ TimeSeries::init(TimeSeriesId id, const char *metric, const char *key, Tag *tags
     m_id = id;
     m_buff = nullptr;
     m_ooo_buff = nullptr;
-    m_tsdb = nullptr;
 
     m_metric = STRDUP(metric);
     m_key = STRDUP(key);
@@ -90,19 +89,18 @@ void
 TimeSeries::restore(Tsdb *tsdb, PageSize offset, uint8_t start, char *buff, bool is_ooo)
 {
     ASSERT(tsdb != nullptr);
-    m_tsdb = tsdb;
 
     if (is_ooo)
     {
         ASSERT(m_ooo_buff == nullptr);
-        m_ooo_buff = new PageInMemory(m_id, m_tsdb, true);
-        m_ooo_buff->init(m_id, m_tsdb, true);
+        m_ooo_buff = new PageInMemory(m_id, tsdb, true);
+        m_ooo_buff->init(m_id, tsdb, true);
     }
     else
     {
         ASSERT(m_buff == nullptr);
-        m_buff = new PageInMemory(m_id, m_tsdb, false);
-        m_buff->init(m_id, m_tsdb, false);
+        m_buff = new PageInMemory(m_id, tsdb, false);
+        m_buff->init(m_id, tsdb, false);
     }
 }
 
@@ -117,10 +115,10 @@ void
 TimeSeries::flush_no_lock(bool accessed)
 {
     if (m_buff != nullptr)
-        m_buff->flush(m_id, m_tsdb);
+        m_buff->flush(m_id);
 
     if (m_ooo_buff != nullptr)
-        m_ooo_buff->flush(m_id, m_tsdb);
+        m_ooo_buff->flush(m_id);
 }
 
 void
@@ -141,28 +139,21 @@ TimeSeries::add_data_point(DataPoint& dp)
     // Make sure we have a valid m_buff (PageInMemory)
     if (UNLIKELY(m_buff == nullptr))
     {
-        ASSERT(m_tsdb == nullptr);
         ASSERT(m_ooo_buff == nullptr);
-        m_tsdb = Tsdb::inst(tstamp, true);
-        m_buff = new PageInMemory(m_id, m_tsdb, false);
+        Tsdb *tsdb = Tsdb::inst(tstamp, true);
+        m_buff = new PageInMemory(m_id, tsdb, false);
     }
-    else if (m_tsdb->in_range(tstamp) != 0)
+    else if (m_buff->in_range(tstamp) != 0)
     {
-        flush_no_lock(false);
+        m_buff->flush(m_id);
 
         // reset the m_buff
-        m_tsdb = Tsdb::inst(tstamp, true);
-        m_buff->init(m_id, m_tsdb, false);
-
-        if (m_ooo_buff)
-        {
-            delete m_ooo_buff;
-            m_ooo_buff = nullptr;
-        }
+        Tsdb *tsdb = Tsdb::inst(tstamp, true);
+        m_buff->init(m_id, tsdb, false);
     }
 
-    ASSERT(m_tsdb != nullptr);
-    ASSERT(m_tsdb->in_range(tstamp) == 0);
+    ASSERT(m_buff != nullptr);
+    ASSERT(m_buff->in_range(tstamp) == 0);
 
     Timestamp last_tstamp = m_buff->get_last_tstamp();
 
@@ -177,8 +168,8 @@ TimeSeries::add_data_point(DataPoint& dp)
     {
         ASSERT(m_buff->is_full());
 
-        m_buff->flush(m_id, m_tsdb);
-        m_buff->init(m_id, m_tsdb, false);
+        m_buff->flush(m_id);
+        m_buff->init(m_id, nullptr, false);
 
         ASSERT(m_buff->is_empty());
 
@@ -195,14 +186,19 @@ bool
 TimeSeries::add_ooo_data_point(DataPoint& dp)
 {
     const Timestamp tstamp = dp.get_timestamp();
-    ASSERT(m_tsdb->in_range(tstamp) == 0);
 
     // Make sure we have a valid m_ooo_buff (PageInMemory)
-    if (UNLIKELY(m_ooo_buff == nullptr))
+    if (m_ooo_buff == nullptr)
     {
-        ASSERT(m_tsdb == nullptr);
-        m_tsdb = Tsdb::inst(tstamp, true);
-        m_ooo_buff = new PageInMemory(m_id, m_tsdb, true);
+        Tsdb *tsdb = Tsdb::inst(tstamp, true);
+        m_ooo_buff = new PageInMemory(m_id, tsdb, true);
+    }
+    else if (m_ooo_buff->in_range(tstamp) != 0)
+    {
+        m_ooo_buff->flush(m_id);
+
+        Tsdb *tsdb = Tsdb::inst(tstamp, true);
+        m_ooo_buff->init(m_id, tsdb, true);
     }
 
     bool ok = m_ooo_buff->add_data_point(tstamp, dp.get_value());
@@ -211,8 +207,8 @@ TimeSeries::add_ooo_data_point(DataPoint& dp)
     {
         ASSERT(m_ooo_buff->is_full());
 
-        m_ooo_buff->flush(m_id, m_tsdb);
-        m_ooo_buff->init(m_id, m_tsdb, false);
+        m_ooo_buff->flush(m_id);
+        m_ooo_buff->init(m_id, nullptr, true);
 
         ASSERT(m_ooo_buff->is_empty());
         ASSERT(m_ooo_buff->is_out_of_order());
@@ -369,7 +365,7 @@ TimeSeries::query_without_ooo(TimeRange& range, Downsampler *downsampler, DataPo
 {
     ASSERT(page_info != nullptr);
 
-    if (m_tsdb == nullptr) return;
+    //if (m_tsdb == nullptr) return;
 
     if (! range.has_intersection(page_info->get_time_range())) return;
 
