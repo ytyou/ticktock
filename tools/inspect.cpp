@@ -22,6 +22,7 @@
 #include <fcntl.h>
 #include <glob.h>
 #include <inttypes.h>
+#include <string.h>
 #include <unistd.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
@@ -38,6 +39,7 @@ using namespace tt;
 std::string g_tsdb_dir, g_data_dir;
 char *g_index_base = nullptr;
 std::vector<TimeSeries*> g_time_series;
+uint64_t g_total_dps = 0;
 
 
 void
@@ -51,6 +53,7 @@ find_matching_files(std::string& pattern, std::vector<std::string>& files)
         files.push_back(std::string(result.gl_pathv[i]));
 
     globfree(&result);
+    std::sort(files.begin(), files.end());
 }
 
 char *
@@ -142,70 +145,47 @@ process_cmdline_opts(int argc, char *argv[])
 }
 
 void
-inspect_page(const std::string& dir, FileIndex file_idx, HeaderIndex header_idx)
+inspect_page(FileIndex file_idx, HeaderIndex header_idx, struct tsdb_header *tsdb_header, struct page_info_on_disk *page_header, char *data_base)
 {
-    char header_file_name[PATH_MAX];
-    char data_file_name[PATH_MAX];
-
-    snprintf(header_file_name, sizeof(header_file_name), "%s/header.%u", dir.c_str(), file_idx);
-    snprintf(data_file_name, sizeof(data_file_name), "%s/data.%u", dir.c_str(), file_idx);
-
-    int header_file_fd, data_file_fd;
-    size_t header_file_size, data_file_size;
-
-    std::string header_file_name_str(header_file_name);
-    std::string data_file_name_str(data_file_name);
-
-    char *header_base = open_mmap(header_file_name_str, header_file_fd, header_file_size);
-    char *data_base = open_mmap(data_file_name_str, data_file_fd, data_file_size);
-
-    struct tsdb_header *tsdb_header = (struct tsdb_header*)header_base;
     int compressor_version = tsdb_header->get_compressor_version();
     g_tstamp_resolution_ms = tsdb_header->is_millisecond();
 
-    struct page_info_on_disk *header = (struct page_info_on_disk *)
-        (header_base + sizeof(struct tsdb_header) + header_idx * sizeof(struct page_info_on_disk));
-    char *page_base = data_base + (header->m_page_index * tsdb_header->m_page_size);
-    ASSERT(header->m_page_index < tsdb_header->m_page_index);
+    char *page_base = data_base + (page_header->m_page_index * tsdb_header->m_page_size);
+    ASSERT(page_header->m_page_index < tsdb_header->m_page_index);
 
     // dump page header
     printf("     [%u,%u][offset=%u,size=%u,cursor=%u,start=%u,flags=%x,page-idx=%u,from=%u,to=%u,next-file=%u,next-header=%u]\n",
         file_idx,
         header_idx,
-        header->m_offset,
-        header->m_size,
-        header->m_cursor,
-        header->m_start,
-        header->m_flags,
-        header->m_page_index,
-        header->m_tstamp_from,
-        header->m_tstamp_to,
-        header->m_next_file,
-        header->m_next_header);
+        page_header->m_offset,
+        page_header->m_size,
+        page_header->m_cursor,
+        page_header->m_start,
+        page_header->m_flags,
+        page_header->m_page_index,
+        page_header->m_tstamp_from,
+        page_header->m_tstamp_to,
+        page_header->m_next_file,
+        page_header->m_next_header);
 
     // dump page data
     DataPointVector dps;
     Compressor *compressor = Compressor::create(compressor_version);
-    CompressorPosition position(header);
+    CompressorPosition position(page_header);
     compressor->init(tsdb_header->m_start_tstamp, (uint8_t*)page_base, tsdb_header->m_page_size);
     compressor->restore(dps, position, nullptr);
-    for (auto& dp: dps) printf("ts = %" PRIu64 ", value = %.3f\n", dp.first, dp.second);
+    for (auto& dp: dps)
+    {
+        printf("ts = %" PRIu64 ", value = %.3f\n", dp.first, dp.second);
+        g_total_dps++;
+    }
     delete compressor;
-
-    file_idx = header->m_next_file;
-    header_idx = header->m_next_header;
-
-    close_mmap(data_file_fd, data_base, data_file_size);
-    close_mmap(header_file_fd, header_base, header_file_size);
-
-    if ((file_idx != TT_INVALID_FILE_INDEX) && (header_idx != TT_INVALID_HEADER_INDEX))
-        inspect_page(dir, file_idx, header_idx);
 }
 
 void
 inspect_tsdb(const std::string& dir)
 {
-    printf("Inspecting tsdb %s...\n", dir.c_str());
+    fprintf(stderr, "Inspecting tsdb %s...\n", dir.c_str());
 
     // dump all headers first...
     std::string header_files_pattern = dir + "/header.*";
@@ -245,13 +225,72 @@ inspect_tsdb(const std::string& dir)
     for (TimeSeries *ts: g_time_series)
     {
         TimeSeriesId id = ts->get_id();
+
         if (((id+1) * sizeof(struct index_entry)) >= index_file_size) continue;
         if (index_entries[id].file_index == TT_INVALID_FILE_INDEX) continue;
+
         printf("%4u %s %s\n", id, ts->get_metric(), ts->get_key());
-        inspect_page(dir, index_entries[id].file_index, index_entries[id].header_index);
+        //inspect_page(dir, index_entries[id].file_index, index_entries[id].header_index);
+
+        FileIndex file_idx = index_entries[id].file_index;
+        HeaderIndex header_idx = index_entries[id].header_index;
+
+        int header_file_fd = -1;
+        int data_file_fd = -1;
+        size_t header_file_size, data_file_size;
+        char *header_base, *data_base;
+        struct tsdb_header *tsdb_header;
+
+        while ((file_idx != TT_INVALID_FILE_INDEX) && (header_idx != TT_INVALID_HEADER_INDEX))
+        {
+            if (header_file_fd < 0)
+            {
+                char header_file_name[PATH_MAX];
+                char data_file_name[PATH_MAX];
+
+                snprintf(header_file_name, sizeof(header_file_name), "%s/header.%u", dir.c_str(), file_idx);
+                snprintf(data_file_name, sizeof(data_file_name), "%s/data.%u", dir.c_str(), file_idx);
+
+                std::string header_file_name_str(header_file_name);
+                std::string data_file_name_str(data_file_name);
+
+                header_base = open_mmap(header_file_name_str, header_file_fd, header_file_size);
+                data_base = open_mmap(data_file_name_str, data_file_fd, data_file_size);
+
+                tsdb_header = (struct tsdb_header*)header_base;
+            }
+
+            if ((header_base == nullptr) || (data_base == nullptr) || (header_file_fd < 0))
+            {
+                printf("[ERROR] failed to open file\n");
+                continue;
+            }
+
+            struct page_info_on_disk *page_header = (struct page_info_on_disk *)
+                (header_base + sizeof(struct tsdb_header) + header_idx * sizeof(struct page_info_on_disk));
+
+            inspect_page(file_idx, header_idx, tsdb_header, page_header, data_base);
+
+            if (file_idx != page_header->m_next_file)
+            {
+                file_idx = page_header->m_next_file;
+                header_idx = page_header->m_next_header;
+
+                close_mmap(data_file_fd, data_base, data_file_size);
+                close_mmap(header_file_fd, header_base, header_file_size);
+
+                data_file_fd = -1;
+                header_file_fd = -1;
+            }
+            else
+            {
+                header_idx = page_header->m_next_header;
+            }
+        }
     }
 
     close_mmap(index_file_fd, index_base, index_file_size);
+    fprintf(stderr, "total dps = %" PRIu64 "\n", g_total_dps);
 }
 
 int
@@ -273,6 +312,8 @@ main(int argc, char *argv[])
     // data directory structure:
     // <year>/<month>/<tsdb>/<index>|<header>|<data>
     for_all_dirs(g_data_dir, inspect_tsdb, 3);
+
+    fprintf(stderr, "Grand Total = %" PRIu64 "\n", g_total_dps);
 
     return 0;
 }

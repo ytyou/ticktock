@@ -203,6 +203,10 @@ struct __attribute__ ((__packed__)) page_info_on_disk
     inline bool is_out_of_order() const { return ((m_flags & 0x02) != 0); }
     inline bool is_empty() const { return ((m_cursor == 0) && (m_start == 0)); }
     inline bool is_valid() const { return (m_page_index != TT_INVALID_PAGE_INDEX); }
+    inline long int get_global_page_index(FileIndex file_idx, PageCount page_count) const
+    {
+        return ((long int)file_idx * (long int)page_count) + (long int)m_page_index;
+    }
 
     inline void set_full(bool full) { m_flags = (full ? (m_flags | 0x01) : (m_flags & 0xFE)); }
     inline void set_out_of_order(bool ooo) { m_flags = (ooo ? (m_flags | 0x02) : (m_flags & 0xFD)); }

@@ -35,6 +35,8 @@ namespace tt
 {
 
 
+class DataPointContainer;
+class PageInMemory;
 class QueryTask;
 class TimeSeries;
 class Tsdb;
@@ -180,7 +182,7 @@ public:
     // return >0 if dp was too late, indicating the rest
     //           of the dps may be skipped;
     int add_data_point(DataPointPair& dp, DataPointVector& dps, Downsampler *downsampler);
-    void get_query_tasks(std::vector<QueryTask*>& qtv, std::vector<Tsdb*>& tsdbs);
+    void get_query_tasks(std::vector<QueryTask*>& qtv, std::vector<Tsdb*> *tsdbs);
 
     void execute(std::vector<QueryResults*>& results, StringBuffer& strbuf);
     void execute_in_parallel(std::vector<QueryResults*>& results, StringBuffer& strbuf);
@@ -236,12 +238,16 @@ private:
     friend class Query;
     friend class QueryExecutor;
 
+    void query_with_ooo();
+    void query_without_ooo(std::vector<DataPointContainer*>& data);
+
     void init() override;
     bool recycle() override;
 
     TimeRange m_time_range;
     Downsampler *m_downsampler;
-    std::vector<TimeSeries*> m_tsv;
+    TimeSeries *m_ts;
+    std::vector<Tsdb*> *m_tsdbs;
     DataPointVector m_dps;  // results before aggregation
     QueryResults m_results; // results after aggregation
     CountingSignal *m_signal;   // we don't own this, do not free it
@@ -279,6 +285,60 @@ private:
     TaskScheduler m_executors;
 
     static QueryExecutor *m_instance;
+};
+
+
+class DataPointContainer : public Recyclable
+{
+public:
+/*
+    void init(PageInfo *info)
+    {
+        m_dps.clear();
+        m_dps.reserve(700);
+        m_out_of_order = info->is_out_of_order();
+        m_page_index = info->get_global_page_index();
+        info->get_all_data_points(m_dps);
+    }
+
+    void init(struct page_info_on_disk *header)
+    {
+        ASSERT(header != nullptr);
+        m_out_of_order = header->is_out_of_order();
+        m_page_index = header->get_global_page_index();
+    }
+*/
+
+    void init() override
+    {
+        m_dps.clear();
+        m_dps.reserve(700);
+        m_out_of_order = false;
+        m_page_index = 0;
+    }
+
+    bool recycle() override
+    {
+        m_dps.clear();
+        m_dps.shrink_to_fit();
+        return true;
+    }
+
+    inline size_t size() const { return m_dps.size(); }
+    inline DataPointPair& get_data_point(int i) { return m_dps[i]; }
+    inline PageIndex get_page_index() const { return m_page_index; }
+    inline bool is_out_of_order() const { return m_out_of_order; }
+
+    void set_out_of_order(bool ooo) { m_out_of_order = ooo; }
+    void set_page_index(PageIndex idx) { m_page_index = idx; }
+
+    void collect_data(PageInMemory *page);
+    void collect_data(Timestamp from, struct tsdb_header *tsdb_header, struct page_info_on_disk *page_header, void *page);
+
+private:
+    bool m_out_of_order;
+    PageIndex m_page_index;
+    DataPointVector m_dps;
 };
 
 

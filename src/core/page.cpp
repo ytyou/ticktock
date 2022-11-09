@@ -110,7 +110,8 @@ PageInfo::get_last_tstamp() const
 void
 PageInfo::get_all_data_points(DataPointVector& dps)
 {
-    if (m_compressor != nullptr) m_compressor->uncompress(dps);
+    ASSERT(m_compressor != nullptr);
+    m_compressor->uncompress(dps);
 }
 
 int
@@ -122,7 +123,6 @@ PageInfo::get_dp_count() const
 
 PageInMemory::PageInMemory(TimeSeriesId id, Tsdb *tsdb, bool is_ooo)
 {
-    m_tsdb = tsdb;
     m_page_header.init();
     ASSERT(m_page == nullptr);
     init(id, tsdb, is_ooo);

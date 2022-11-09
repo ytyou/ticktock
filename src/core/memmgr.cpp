@@ -181,6 +181,7 @@ MemoryManager::init()
     else
         g_page_size = sysconf(_SC_PAGE_SIZE);
     Logger::info("mm::page-size = %u", g_page_size);
+    g_page_count = Config::get_int(CFG_TSDB_PAGE_COUNT, CFG_TSDB_PAGE_COUNT_DEF);
 
     m_network_buffer_len = Config::get_bytes(CFG_TCP_BUFFER_SIZE, CFG_TCP_BUFFER_SIZE_DEF);
     if (m_network_buffer_len < g_page_size) m_network_buffer_len = g_page_size;
@@ -247,6 +248,7 @@ MemoryManager::collect_stats(Timestamp ts, std::vector<DataPoint> &dps)
     COLLECT_STATS_FOR(RT_COMPRESSOR_V2, "compressor_v2", sizeof(Compressor_v2))
     COLLECT_STATS_FOR(RT_COMPRESSOR_V3, "compressor_v3", sizeof(Compressor_v3))
     COLLECT_STATS_FOR(RT_DATA_POINT, "data_point", sizeof(DataPoint))
+    COLLECT_STATS_FOR(RT_DATA_POINT_CONTAINER, "data_point_container", sizeof(DataPointContainer))
     COLLECT_STATS_FOR(RT_DOWNSAMPLER_AVG, "downsampler_avg", sizeof(DownsamplerAvg))
     COLLECT_STATS_FOR(RT_DOWNSAMPLER_COUNT, "downsampler_count", sizeof(DownsamplerCount))
     COLLECT_STATS_FOR(RT_DOWNSAMPLER_DEV, "downsampler_dev", sizeof(DownsamplerDev))
@@ -282,6 +284,7 @@ MemoryManager::collect_stats(Timestamp ts, std::vector<DataPoint> &dps)
     total += m_total[RT_COMPRESSOR_V2] * sizeof(Compressor_v2);
     total += m_total[RT_COMPRESSOR_V3] * sizeof(Compressor_v3);
     total += m_total[RT_DATA_POINT] * sizeof(DataPoint);
+    total += m_total[RT_DATA_POINT_CONTAINER] * sizeof(DataPointContainer);
     total += m_total[RT_DOWNSAMPLER_AVG] * sizeof(DownsamplerAvg);
     total += m_total[RT_DOWNSAMPLER_COUNT] * sizeof(DownsamplerCount);
     total += m_total[RT_DOWNSAMPLER_DEV] * sizeof(DownsamplerDev);
@@ -330,6 +333,7 @@ MemoryManager::log_stats()
     Logger::debug("mm::compressor_v2 = %d", m_maps[RecyclableType::RT_COMPRESSOR_V2].size());
     Logger::debug("mm::compressor_v3 = %d", m_maps[RecyclableType::RT_COMPRESSOR_V3].size());
     Logger::debug("mm::data_point = %d", m_maps[RecyclableType::RT_DATA_POINT].size());
+    Logger::debug("mm::data_point_container = %d", m_maps[RecyclableType::RT_DATA_POINT_CONTAINER].size());
     Logger::debug("mm::downsampler_avg = %d", m_maps[RecyclableType::RT_DOWNSAMPLER_AVG].size());
     Logger::debug("mm::downsampler_count = %d", m_maps[RecyclableType::RT_DOWNSAMPLER_COUNT].size());
     Logger::debug("mm::downsampler_dev = %d", m_maps[RecyclableType::RT_DOWNSAMPLER_DEV].size());
@@ -486,6 +490,14 @@ MemoryManager::cleanup()
         m_free_lists[RecyclableType::RT_DATA_POINT] = r->next();
         ASSERT(r->recyclable_type() == RecyclableType::RT_DATA_POINT);
         delete static_cast<DataPoint*>(r);
+    }
+
+    while (m_free_lists[RecyclableType::RT_DATA_POINT_CONTAINER] != nullptr)
+    {
+        Recyclable *r = m_free_lists[RecyclableType::RT_DATA_POINT_CONTAINER];
+        m_free_lists[RecyclableType::RT_DATA_POINT_CONTAINER] = r->next();
+        ASSERT(r->recyclable_type() == RecyclableType::RT_DATA_POINT_CONTAINER);
+        delete static_cast<DataPointContainer*>(r);
     }
 
     while (m_free_lists[RecyclableType::RT_DOWNSAMPLER_AVG] != nullptr)
@@ -686,6 +698,10 @@ MemoryManager::alloc_recyclable(RecyclableType type)
 
                 case RecyclableType::RT_DATA_POINT:
                     r = new DataPoint();
+                    break;
+
+                case RecyclableType::RT_DATA_POINT_CONTAINER:
+                    r = new DataPointContainer();
                     break;
 
                 case RecyclableType::RT_DOWNSAMPLER_AVG:

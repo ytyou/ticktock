@@ -34,6 +34,7 @@ namespace tt
 {
 
 
+class DataPointContainer;
 class Downsampler;
 class Tsdb;
 
@@ -77,6 +78,7 @@ public:
 
     Tag *find_tag_by_name(const char *name) const;
 
+    bool query_for_data(Tsdb *tsdb, TimeRange& range, std::vector<DataPointContainer*>& data);
     void query(TimeRange& range, Downsampler *downsampler, DataPointVector& dps);
     void query_with_ooo(TimeRange& range, Downsampler *downsampler, DataPointVector& dps);
     void query_without_ooo(TimeRange& range, Downsampler *downsampler, DataPointVector& dps);
@@ -100,6 +102,7 @@ private:
 };
 
 
+/*
 class DataPointContainer : public Recyclable
 {
 public:
@@ -122,6 +125,7 @@ private:
     PageCount m_page_index;
     DataPointVector m_dps;
 };
+*/
 
 
 }

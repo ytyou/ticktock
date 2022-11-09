@@ -757,6 +757,8 @@ for_all_dirs(const std::string& root, void (*func)(const std::string& dir), int 
 
     if (dir != nullptr)
     {
+        std::vector<std::string> entries;
+
         while (dir_ent = readdir(dir))
         {
             if (dir_ent->d_type != DT_DIR)
@@ -764,8 +766,14 @@ for_all_dirs(const std::string& root, void (*func)(const std::string& dir), int 
             if (dir_ent->d_name[0] == '.')
                 continue;
             std::string dir_name(root + "/" + dir_ent->d_name);
-            for_all_dirs(dir_name, func, level-1);
+            entries.push_back(dir_name);
+            //for_all_dirs(dir_name, func, level-1);
         }
+
+        std::sort(entries.begin(), entries.end());
+
+        for (auto entry: entries)
+            for_all_dirs(entry, func, level-1);
     }
 
     closedir(dir);

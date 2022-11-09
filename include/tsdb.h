@@ -71,6 +71,7 @@ namespace tt
 
 
 class Tsdb;
+class DataPointContainer;
 
 // one per metric
 class Mapping
@@ -138,7 +139,8 @@ public:
         return (m_partition_mgr == nullptr) ? nullptr : m_partition_mgr->get_partition(metric);
     }
 
-    void query_for_ts(const char *metric, Tag *tags, std::unordered_set<TimeSeries*>& ts);
+    static void query_for_ts(const char *metric, Tag *tags, std::unordered_set<TimeSeries*>& ts);
+    bool query_for_data(TimeSeriesId id, TimeRange& range, std::vector<DataPointContainer*>& data);
     void ensure_readable(bool count = false);   // 'count' keep tsdb loaded until it's decremented
 
     void flush(bool sync);
@@ -258,6 +260,7 @@ private:
 
     PartitionManager *m_partition_mgr;
     PageSize m_page_size;
+    PageCount m_page_count;
 };
 
 

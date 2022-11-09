@@ -131,6 +131,22 @@ MmapFile::fopen(const char *mode, std::FILE * (&file))
 {
     bool existing = file_exists(m_name);
     file = std::fopen(m_name.c_str(), mode);
+
+    // get file size
+    if (existing)
+    {
+        int fd = ::fileno(file);
+        struct stat sb;
+        if (fstat(fd, &sb) == -1)
+        {
+            Logger::error("Failed to fstat file %s, errno = %d", m_name.c_str(), errno);
+            m_length = 0;
+        }
+        m_length = sb.st_size;
+    }
+    else
+        m_length = 0;
+
     return !existing;
 }
 
@@ -323,9 +339,9 @@ HeaderFile::HeaderFile(const std::string& file_name, FileIndex id, PageCount pag
     init_tsdb_header(tsdb);
 }
 
-HeaderFile::HeaderFile(const std::string& file_name) :
+HeaderFile::HeaderFile(FileIndex id, const std::string& file_name) :
     MmapFile(file_name),
-    m_id(0),
+    m_id(id),
     m_page_count(0)
 {
 }
@@ -361,12 +377,12 @@ HeaderFile::init_tsdb_header(Tsdb *tsdb)
 HeaderFile *
 HeaderFile::restore(const std::string& file_name)
 {
-    HeaderFile *header_file = new HeaderFile(file_name);
-    header_file->open(true);
-    struct tsdb_header *header = header_file->get_tsdb_header();
-    ASSERT(header != nullptr);
-    header_file->m_page_count = header->m_page_count;
-    header_file->m_id = get_file_suffix(file_name);
+    FileIndex id = get_file_suffix(file_name);
+    HeaderFile *header_file = new HeaderFile(id, file_name);
+    //header_file->open(true);
+    //struct tsdb_header *header = header_file->get_tsdb_header();
+    //ASSERT(header != nullptr);
+    //header_file->m_page_count = header->m_page_count;
     ASSERT(header_file->m_id != TT_INVALID_FILE_INDEX);
     return header_file;
 }
@@ -484,28 +500,19 @@ DataFile::DataFile(const std::string& file_name, FileIndex id, PageSize size, Pa
     m_file(nullptr),
     m_page_size(size),
     m_page_count(count),
-    m_page_index(0)
+    m_page_index(TT_INVALID_PAGE_INDEX)
 {
 }
 
-DataFile::DataFile(const std::string& file_name) :
-    MmapFile(file_name),
-    m_id(0),
-    m_file(nullptr),
-    m_page_size(0),
-    m_page_count(0),
-    m_page_index(0)
-{
-}
-
+/*
 void
 DataFile::init(HeaderFile *header_file)
 {
     m_id = header_file->get_id();
     m_page_size = header_file->get_page_size();
-    m_page_count = header_file->get_page_count();
     m_page_index = header_file->get_page_index();
 }
+*/
 
 bool
 DataFile::open(bool for_read)
@@ -518,7 +525,10 @@ DataFile::open(bool for_read)
     else
     {
         ASSERT(m_file == nullptr);
-        return MmapFile::fopen("ab", m_file);
+        bool new_one = MmapFile::fopen("ab", m_file);
+        size_t len = get_length();
+        m_page_index = len / m_page_size;
+        return new_one;
     }
 }
 

@@ -48,7 +48,7 @@ public:
     void dont_need(void *addr, size_t length);
 
     inline void *get_pages() { return m_pages; }
-    inline size_t get_length() { return m_length; }
+    inline size_t get_length() const { return m_length; }
 
     virtual bool is_open(bool for_read) const;
     inline bool is_read_only() const { return m_read_only; }
@@ -106,7 +106,7 @@ public:
     static HeaderFile *restore(const std::string& file_name);
 
 private:
-    HeaderFile(const std::string& file_name);
+    HeaderFile(FileIndex id, const std::string& file_name);
 
     PageCount m_page_count;
     FileIndex m_id;
@@ -117,12 +117,11 @@ class DataFile : public MmapFile
 {
 public:
     DataFile(const std::string& file_name, FileIndex id, PageSize size, PageCount count);
-    DataFile(const std::string& file_name);
 
     bool open(bool read_only) override;
     void close() override;
     void flush(bool sync) override;
-    void init(HeaderFile *header_file);
+    //void init(HeaderFile *header_file);
 
     PageCount append(const void *page);
     inline FileIndex get_id() const { return m_id; }

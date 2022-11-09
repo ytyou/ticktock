@@ -92,6 +92,11 @@ public:
         return size;
     }
 
+    inline bool is_empty() const
+    {
+        return (m_cursor == m_bits) && (m_start == 0);
+    }
+
     //inline size_t c_size() const override { return 128; }
     //const char *c_str(char *buff) const override;
 

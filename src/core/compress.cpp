@@ -324,6 +324,9 @@ Compressor_v3::compress(int64_t n)
 void
 Compressor_v3::uncompress(DataPointVector& dps, bool restore)
 {
+    if (m_bitset.is_empty())
+        return;
+
     Timestamp timestamp;
     double value = 0.0;
 
@@ -685,6 +688,9 @@ Compressor_v2::compress(Timestamp timestamp, double value)
 void
 Compressor_v2::uncompress(DataPointVector& dps, bool restore)
 {
+    if (m_bitset.is_empty())
+        return;
+
     Timestamp timestamp;
     double value = 0.0;
 

@@ -218,8 +218,35 @@ Stats::inject_metrics(TaskData& data)
         // memory manager stats
         {
             std::vector<DataPoint> dps;
+#ifdef _LEAK_DETECTION
+            Timestamp ts = ts_now_sec();
+            MemoryManager::collect_stats(ts, dps);
+
+            char name[1024];
+            sprintf(name, "/tmp/tt/log/stat.%" PRIu64 ".log", ts);
+            FILE *file = std::fopen(name, "w");
+            if (file != nullptr)
+            {
+                for (DataPoint& dp: dps)
+                {
+                    char buff[dp.c_size()];
+                    fprintf(file, "%s\n", dp.c_str(buff));
+                }
+
+                long ts_cnt = Tsdb::get_ts_count();
+                fprintf(file, "ticktock.time_series.count %" PRIu64 " %ld %s=%s\nticktock.time_series.memory %" PRIu64 " %ld %s=%s\n",
+                    ts, ts_cnt, HOST_TAG_NAME, g_host_name.c_str(),
+                    ts, ts_cnt*sizeof(TimeSeries), HOST_TAG_NAME, g_host_name.c_str());
+
+                fprintf(file, "ticktock.tsdb.active.count %" PRIu64 " %d %s=%s\n",
+                    ts, Tsdb::get_active_tsdb_count(), HOST_TAG_NAME, g_host_name.c_str());
+
+                fclose(file);
+            }
+#else
             MemoryManager::collect_stats(now, dps);
             for (DataPoint& dp: dps) tsdb->add(dp);
+#endif
         }
 
 #ifdef _LEAK_DETECTION

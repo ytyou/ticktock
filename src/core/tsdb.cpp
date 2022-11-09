@@ -29,6 +29,7 @@
 #include "limit.h"
 #include "memmgr.h"
 #include "meter.h"
+#include "query.h"
 #include "timer.h"
 #include "tsdb.h"
 #include "part.h"
@@ -235,7 +236,8 @@ Tsdb::Tsdb(TimeRange& range, bool existing) :
     m_index_file(Tsdb::get_index_file_name(range)),
     m_load_time(ts_now_sec()),
     m_partition_mgr(nullptr),
-    m_page_size(g_page_size)
+    m_page_size(g_page_size),
+    m_page_count(g_page_count)
 {
     ASSERT(g_tstamp_resolution_ms ? is_ms(range.get_from()) : is_sec(range.get_from()));
 
@@ -272,6 +274,18 @@ Tsdb::create(TimeRange& range, bool existing)
         for (auto file: files) tsdb->restore_header(file);
         std::sort(tsdb->m_header_files.begin(), tsdb->m_header_files.end(), header_less());
 
+        // restore page-size & page-count
+        if (! tsdb->m_header_files.empty())
+        {
+            HeaderFile *header_file = tsdb->m_header_files.front();
+            header_file->ensure_open(true);
+            struct tsdb_header *tsdb_header = header_file->get_tsdb_header();
+            ASSERT(tsdb_header != nullptr);
+            tsdb->m_page_size = tsdb_header->m_page_size;
+            tsdb->m_page_count = tsdb_header->m_page_count;
+            header_file->close();
+        }
+
         files.clear();
         get_all_files(dir + "/data.*", files);
         for (auto file: files) tsdb->restore_data(file);
@@ -280,12 +294,13 @@ Tsdb::create(TimeRange& range, bool existing)
         if ((tsdb->m_mode & TSDB_MODE_READ_WRITE) != 0)
             tsdb->load_from_disk_no_lock((tsdb->m_mode & TSDB_MODE_WRITE) == 0);
 
-        // restore page-size
+        // restore page-size/page-count
         if (! tsdb->m_header_files.empty())
         {
             HeaderFile *header_file = tsdb->m_header_files.front();
             header_file->ensure_open(true);
             tsdb->m_page_size = header_file->get_page_size();
+            tsdb->m_page_count = header_file->get_page_count();
 
             if ((tsdb->m_mode & TSDB_MODE_READ_WRITE) == 0)
                 header_file->close();
@@ -350,9 +365,9 @@ Tsdb::restore_data(const std::string& file)
 {
     FileIndex id = get_file_suffix(file);
     ASSERT(id != TT_INVALID_FILE_INDEX);
-    DataFile *data_file = new DataFile(file);
-    HeaderFile *header_file = get_header_file(id);
-    data_file->init(header_file);
+    DataFile *data_file = new DataFile(file, id, m_page_size, m_page_count);
+    //HeaderFile *header_file = get_header_file(id);
+    //data_file->init(header_file);
     m_data_files.push_back(data_file);
 }
 
@@ -446,10 +461,7 @@ Tsdb::get_partition_defs() const
 PageCount
 Tsdb::get_page_count() const
 {
-    if (m_header_files.empty())
-        return Config::get_int(CFG_TSDB_PAGE_COUNT, CFG_TSDB_PAGE_COUNT_DEF);
-    else
-        return m_header_files[0]->get_page_count();
+    return m_page_count;
 }
 
 int
@@ -543,16 +555,12 @@ Tsdb::restore_ts(std::string& metric, std::string& key, TimeSeriesId id)
 void
 Tsdb::query_for_ts(const char *metric, Tag *tags, std::unordered_set<TimeSeries*>& ts)
 {
-/*
     Mapping *mapping = nullptr;
 
     {
-        std::lock_guard<std::mutex> guard(m_lock);
-
-        ASSERT((m_mode & TSDB_MODE_READ) != 0);
-
-        auto result = m_map.find(metric);
-        if (result != m_map.end())
+        std::lock_guard<std::mutex> guard(g_metric_lock);
+        auto result = g_metric_map.find(metric);
+        if (result != g_metric_map.end())
         {
             mapping = result->second;
             ASSERT(result->first == mapping->m_metric);
@@ -560,10 +568,56 @@ Tsdb::query_for_ts(const char *metric, Tag *tags, std::unordered_set<TimeSeries*
     }
 
     if (mapping != nullptr)
-    {
         mapping->query_for_ts(tags, ts);
+}
+
+bool
+Tsdb::query_for_data(TimeSeriesId id, TimeRange& query_range, std::vector<DataPointContainer*>& data)
+{
+    FileIndex file_idx;
+    HeaderIndex header_idx;
+    Timestamp from = m_time_range.get_from();
+    bool has_ooo = false;
+    std::lock_guard<std::mutex> guard(m_lock);
+
+    m_index_file.ensure_open(true);
+    m_index_file.get_indices(id, file_idx, header_idx);
+
+    while (file_idx != TT_INVALID_FILE_INDEX)
+    {
+        ASSERT(header_idx != TT_INVALID_HEADER_INDEX);
+        ASSERT(file_idx < m_header_files.size());
+        ASSERT(m_data_files.size() == m_header_files.size());
+
+        HeaderFile *header_file = m_header_files[file_idx];
+        header_file->ensure_open(true);
+        struct tsdb_header *tsdb_header = header_file->get_tsdb_header();
+        struct page_info_on_disk *page_header = header_file->get_page_header(header_idx);
+        TimeRange range(from + page_header->m_tstamp_from, from + page_header->m_tstamp_to);
+
+        if (query_range.has_intersection(range))
+        {
+            DataFile *data_file = m_data_files[file_idx];
+            data_file->ensure_open(true);
+            void *page = data_file->get_page(page_header->m_page_index);
+            //int compressor_version = header_file->get_compressor_version();
+            //ASSERT(! header->is_out_of_order() || (compressor_version == 0));
+
+            DataPointContainer *container = (DataPointContainer*)
+                MemoryManager::alloc_recyclable(RecyclableType::RT_DATA_POINT_CONTAINER);
+            container->set_out_of_order(page_header->is_out_of_order());
+            container->set_page_index(page_header->get_global_page_index(file_idx, m_page_count));
+            container->collect_data(from, tsdb_header, page_header, page);
+            data.push_back(container);
+
+            if (page_header->is_out_of_order()) has_ooo = true;
+        }
+
+        file_idx = page_header->get_next_file();
+        header_idx = page_header->get_next_header();
     }
-*/
+
+    return has_ooo;
 }
 
 // prepare this Tsdb for query (AND writes too!)
@@ -1628,7 +1682,7 @@ Tsdb::unload()
 void
 Tsdb::unload_no_lock()
 {
-    ASSERT(count_is_zero());
+    if (! count_is_zero()) return;
     for (DataFile *file: m_data_files) file->close();
     for (HeaderFile *file: m_header_files) file->close();
     m_index_file.close();

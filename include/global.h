@@ -21,6 +21,7 @@
 #include <string>
 #include <atomic>
 #include <thread>
+#include "type.h"
 
 
 namespace tt
@@ -47,7 +48,8 @@ extern thread_local std::string g_thread_id;
 extern HttpServer *http_server_ptr;
 extern TcpServer *tcp_server_ptr;
 extern UdpServer *udp_server_ptr;
-extern long int g_page_size;
+extern PageSize g_page_size;
+extern PageCount g_page_count;
 extern const long int g_sys_page_size;
 extern bool g_opt_reuse_port;       // reuse port when bind()?
 extern bool g_tstamp_resolution_ms;

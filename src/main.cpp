@@ -385,9 +385,11 @@ main(int argc, char *argv[])
 {
 #ifdef _DEBUG
     std::signal(SIGFPE, segv_handler);
+    std::signal(SIGKILL, segv_handler);
     std::signal(SIGSEGV, segv_handler);
 #else
     std::signal(SIGFPE, intr_handler);
+    std::signal(SIGKILL, intr_handler);
     std::signal(SIGSEGV, intr_handler);
 #endif
 

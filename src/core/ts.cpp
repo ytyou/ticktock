@@ -22,12 +22,13 @@
 #include "config.h"
 #include "down.h"
 #include "memmgr.h"
+#include "meter.h"
+#include "leak.h"
+#include "logger.h"
+#include "query.h"
 #include "ts.h"
 #include "tsdb.h"
-#include "meter.h"
-#include "logger.h"
 #include "utils.h"
-#include "leak.h"
 
 
 namespace tt
@@ -228,6 +229,60 @@ TimeSeries::find_tag_by_name(const char *name) const
     return Tag::get_key_value_pair(m_tags, name);
 }
 
+bool
+TimeSeries::query_for_data(Tsdb *tsdb, TimeRange& range, std::vector<DataPointContainer*>& data)
+{
+    bool has_ooo = false;
+    std::lock_guard<std::mutex> guard(m_lock);
+
+    if ((m_buff != nullptr) && (! m_buff->is_empty()))
+    {
+        TimeRange r = m_buff->get_time_range();
+
+        if (range.has_intersection(r))
+        {
+            PageIndex page_idx = 0;
+
+            if (! data.empty())
+            {
+                DataPointContainer *last = data.back();
+                page_idx = last->get_page_index() + 1;
+            }
+
+            DataPointContainer *container = (DataPointContainer*)
+                MemoryManager::alloc_recyclable(RecyclableType::RT_DATA_POINT_CONTAINER);
+            container->collect_data(m_buff);
+            container->set_page_index(page_idx);
+            data.push_back(container);
+        }
+    }
+
+    if ((m_ooo_buff != nullptr) && (! m_ooo_buff->is_empty()))
+    {
+        TimeRange r = m_ooo_buff->get_time_range();
+
+        if (range.has_intersection(r))
+        {
+            PageIndex page_idx = 0;
+
+            if (! data.empty())
+            {
+                DataPointContainer *last = data.back();
+                page_idx = last->get_page_index() + 1;
+            }
+
+            DataPointContainer *container = (DataPointContainer*)
+                MemoryManager::alloc_recyclable(RecyclableType::RT_DATA_POINT_CONTAINER);
+            container->collect_data(m_ooo_buff);
+            container->set_page_index(page_idx);
+            data.push_back(container);
+            has_ooo = true;
+        }
+    }
+
+    return has_ooo;
+}
+
 void
 TimeSeries::query(TimeRange& range, Downsampler *downsampler, DataPointVector& dps)
 {
@@ -363,9 +418,10 @@ TimeSeries::query_without_ooo(TimeRange& range, Downsampler *downsampler, DataPo
 void
 TimeSeries::query_without_ooo(TimeRange& range, Downsampler *downsampler, DataPointVector& dps, PageInfo *page_info)
 {
+#if 0
     ASSERT(page_info != nullptr);
 
-    //if (m_tsdb == nullptr) return;
+    if (m_tsdb == nullptr) return;
 
     if (! range.has_intersection(page_info->get_time_range())) return;
 
@@ -395,6 +451,7 @@ TimeSeries::query_without_ooo(TimeRange& range, Downsampler *downsampler, DataPo
             break;
         }
     }
+#endif
 }
 
 // Compress all out-of-order pages in m_ooo_pages[], if any.
