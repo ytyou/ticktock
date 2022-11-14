@@ -55,7 +55,9 @@ thread_local tsl::robin_map<const char*, Mapping*, hash_func, eq_func> thread_lo
 
 
 Mapping::Mapping(const char *name) :
-    m_partition(nullptr)
+    m_partition(nullptr),
+    m_ts_head(nullptr),
+    m_tag_count(-1)
 {
     m_metric = STRDUP(name);
     ASSERT(m_metric != nullptr);
@@ -73,8 +75,8 @@ Mapping::~Mapping()
 void
 Mapping::flush(bool accessed)
 {
-    //ReadLock guard(m_lock);
-    std::lock_guard<std::mutex> guard(m_lock);
+    ReadLock guard(m_lock);
+    //std::lock_guard<std::mutex> guard(m_lock);
 
     for (auto it = m_map.begin(); it != m_map.end(); it++)
     {
@@ -93,11 +95,11 @@ Mapping::get_ts(DataPoint& dp)
 {
     TimeSeries *ts = nullptr;
     char *raw_tags = dp.get_raw_tags();
-    std::lock_guard<std::mutex> guard(m_lock);
+    //std::lock_guard<std::mutex> guard(m_lock);
 
     if (raw_tags != nullptr)
     {
-        //ReadLock guard(m_lock);
+        ReadLock guard(m_lock);
         auto result = m_map.find(raw_tags);
         if (result != m_map.end())
             ts = result->second;
@@ -115,7 +117,7 @@ Mapping::get_ts(DataPoint& dp)
         char buff[MAX_TOTAL_TAG_LENGTH];
         dp.get_ordered_tags(buff, MAX_TOTAL_TAG_LENGTH);
 
-        //WriteLock guard(m_lock);
+        WriteLock guard(m_lock);
 
         {
             auto result = m_map.find(buff);
@@ -127,6 +129,11 @@ Mapping::get_ts(DataPoint& dp)
         {
             ts = new TimeSeries(m_metric, buff, dp.get_cloned_tags());
             m_map[ts->get_key()] = ts;
+
+            ts->m_next = m_ts_head.load();
+            m_ts_head = ts;
+
+            set_tag_count(dp.get_tag_count());
         }
 
         if (raw_tags != nullptr)
@@ -179,28 +186,35 @@ Mapping::add_data_point(DataPoint& dp, bool forward)
 }
 
 void
-Mapping::query_for_ts(Tag *tags, std::unordered_set<TimeSeries*>& tsv)
+Mapping::query_for_ts(Tag *tags, std::unordered_set<TimeSeries*>& tsv, const char *key)
 {
-    //ReadLock guard(m_lock);
-    std::lock_guard<std::mutex> guard(m_lock);
+    int tag_count = TagOwner::get_tag_count(tags);
 
-    for (auto curr = m_map.begin(); curr != m_map.end(); curr++)
+    if ((key != nullptr) && (tag_count == m_tag_count))
     {
-        TimeSeries *ts = curr->second;
-        if (curr->first != ts->get_key()) continue;
+        ReadLock guard(m_lock);
+        auto result = m_map.find(key);
+        if (result != m_map.end())
+            tsv.insert(result->second);
+    }
 
-        bool match = true;
-
-        for (Tag *tag = tags; tag != nullptr; tag = tag->next())
+    if (tsv.empty())
+    {
+        for (TimeSeries *ts = m_ts_head.load(); ts != nullptr; ts = ts->m_next)
         {
-            if (! Tag::match_value(ts->get_tags(), tag->m_key, tag->m_value))
-            {
-                match = false;
-                break;
-            }
-        }
+            bool match = true;
 
-        if (match) tsv.insert(ts);
+            for (Tag *tag = tags; tag != nullptr; tag = tag->next())
+            {
+                if (! Tag::match_value(ts->get_tags(), tag->m_key, tag->m_value))
+                {
+                    match = false;
+                    break;
+                }
+            }
+
+            if (match) tsv.insert(ts);
+        }
     }
 }
 
@@ -219,14 +233,22 @@ Mapping::restore_ts(std::string& metric, std::string& keys, TimeSeriesId id)
     Tag *tags = Tag::parse_multiple(keys);
     TimeSeries *ts = new TimeSeries(id, metric.c_str(), keys.c_str(), tags);
     m_map[ts->get_key()] = ts;
+    set_tag_count(std::count(keys.begin(), keys.end(), ';'));
     return ts;
+}
+
+void
+Mapping::set_tag_count(int tag_count)
+{
+    if (tag_count != m_tag_count)
+        m_tag_count = (m_tag_count == -1) ? tag_count : -2;
 }
 
 int
 Mapping::get_ts_count()
 {
-    std::lock_guard<std::mutex> guard(m_lock);
-    //ReadLock guard(m_lock);
+    //std::lock_guard<std::mutex> guard(m_lock);
+    ReadLock guard(m_lock);
     return m_map.size();
 }
 
@@ -553,7 +575,7 @@ Tsdb::restore_ts(std::string& metric, std::string& key, TimeSeriesId id)
 }
 
 void
-Tsdb::query_for_ts(const char *metric, Tag *tags, std::unordered_set<TimeSeries*>& ts)
+Tsdb::query_for_ts(const char *metric, Tag *tags, std::unordered_set<TimeSeries*>& ts, const char *key)
 {
     Mapping *mapping = nullptr;
 
@@ -568,7 +590,7 @@ Tsdb::query_for_ts(const char *metric, Tag *tags, std::unordered_set<TimeSeries*
     }
 
     if (mapping != nullptr)
-        mapping->query_for_ts(tags, ts);
+        mapping->query_for_ts(tags, ts, key);
 }
 
 bool

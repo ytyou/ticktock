@@ -25,6 +25,7 @@
 #include "down.h"
 #include "http.h"
 #include "json.h"
+#include "limit.h"
 #include "tsdb.h"
 #include "query.h"
 #include "meter.h"
@@ -352,7 +353,9 @@ Query::get_query_tasks(std::vector<QueryTask*>& qtv, std::vector<Tsdb*> *tsdbs)
     Logger::debug("Found %d tsdbs within %T", tsdbs->size(), &m_time_range);
 
     std::unordered_set<TimeSeries*> tsv;
-    Tsdb::query_for_ts(m_metric, m_tags, tsv);
+    char buff[MAX_TOTAL_TAG_LENGTH];
+    get_ordered_tags(buff, sizeof(buff));
+    Tsdb::query_for_ts(m_metric, m_tags, tsv, buff);
 
     for (TimeSeries *ts: tsv)
     {

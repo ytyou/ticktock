@@ -248,6 +248,7 @@ public:
     Timestamp get_last_tstamp() const;
     TimeRange get_time_range();
     int in_range(Timestamp tstamp) const;
+    inline Tsdb *get_tsdb() const { return m_tsdb; }
 
     inline PageIndex get_page_index() { return get_page_header()->m_page_index; }
     inline FileIndex get_next_file() { return get_page_header()->get_next_file(); }

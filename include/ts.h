@@ -84,6 +84,8 @@ public:
     void query_without_ooo(TimeRange& range, Downsampler *downsampler, DataPointVector& dps);
     void query_without_ooo(TimeRange& range, Downsampler *downsampler, DataPointVector& dps, PageInfo *page_info);
 
+    TimeSeries *m_next;
+
 private:
     char *m_key;            // this uniquely defines the time-series
     std::mutex m_lock;

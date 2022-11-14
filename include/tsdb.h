@@ -92,15 +92,19 @@ private:
     bool add(DataPoint& dp);
     bool add_data_point(DataPoint& dp, bool forward);
     TimeSeries *get_ts(DataPoint& dp);
-    void query_for_ts(Tag *tags, std::unordered_set<TimeSeries*>& tsv);
+    void query_for_ts(Tag *tags, std::unordered_set<TimeSeries*>& tsv, const char *key);
     TimeSeries *restore_ts(std::string& metric, std::string& key, TimeSeriesId id);
+    void set_tag_count(int tag_count);
 
     int get_dp_count();
     int get_ts_count();
 
-    std::mutex m_lock;
-    //default_contention_free_shared_mutex m_lock;
+    //std::mutex m_lock;
+    default_contention_free_shared_mutex m_lock;
     tsl::robin_map<const char*,TimeSeries*,hash_func,eq_func> m_map;
+
+    std::atomic<TimeSeries*> m_ts_head;
+    int m_tag_count;    // -1: uninitialized; -2: inconsistent;
 
     Partition *m_partition;
 };
@@ -139,7 +143,7 @@ public:
         return (m_partition_mgr == nullptr) ? nullptr : m_partition_mgr->get_partition(metric);
     }
 
-    static void query_for_ts(const char *metric, Tag *tags, std::unordered_set<TimeSeries*>& ts);
+    static void query_for_ts(const char *metric, Tag *tags, std::unordered_set<TimeSeries*>& ts, const char *key);
     bool query_for_data(TimeSeriesId id, TimeRange& range, std::vector<DataPointContainer*>& data);
     void ensure_readable(bool count = false);   // 'count' keep tsdb loaded until it's decremented
 

@@ -106,6 +106,9 @@ public:
         m_tags = tags;
     }
 
+    inline int get_tag_count() const { return get_tag_count(m_tags); }
+    static int get_tag_count(Tag *tags);
+
 protected:
     bool m_own_mem; // should we free m_key and m_value?
     Tag *m_tags;

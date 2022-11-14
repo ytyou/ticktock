@@ -128,5 +128,16 @@ TagOwner::get_values(std::set<std::string>& values) const
     }
 }
 
+int
+TagOwner::get_tag_count(Tag *tags)
+{
+    int count = 0;
+
+    for (Tag *tag = tags; tag != nullptr; tag = tag->next(), count++)
+        /* do nothing */;
+
+    return count;
+}
+
 
 }

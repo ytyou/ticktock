@@ -39,7 +39,8 @@ std::atomic<TimeSeriesId> TimeSeries::m_next_id{0};
 
 
 TimeSeries::TimeSeries(const char *metric, const char *key, Tag *tags) :
-    TagOwner(true)
+    TagOwner(true),
+    m_next(nullptr)
 {
     TimeSeriesId id = m_next_id.fetch_add(1);
     init(id, metric, key, tags);
@@ -51,7 +52,8 @@ TimeSeries::TimeSeries(const char *metric, const char *key, Tag *tags) :
 
 // called during restart/restore
 TimeSeries::TimeSeries(TimeSeriesId id, const char *metric, const char *key, Tag *tags) :
-    TagOwner(true)
+    TagOwner(true),
+    m_next(nullptr)
 {
     init(id, metric, key, tags);
 
@@ -235,7 +237,7 @@ TimeSeries::query_for_data(Tsdb *tsdb, TimeRange& range, std::vector<DataPointCo
     bool has_ooo = false;
     std::lock_guard<std::mutex> guard(m_lock);
 
-    if ((m_buff != nullptr) && (! m_buff->is_empty()))
+    if ((m_buff != nullptr) && (! m_buff->is_empty()) && (m_buff->get_tsdb() == tsdb))
     {
         TimeRange r = m_buff->get_time_range();
 
@@ -257,7 +259,7 @@ TimeSeries::query_for_data(Tsdb *tsdb, TimeRange& range, std::vector<DataPointCo
         }
     }
 
-    if ((m_ooo_buff != nullptr) && (! m_ooo_buff->is_empty()))
+    if ((m_ooo_buff != nullptr) && (! m_ooo_buff->is_empty()) && (m_ooo_buff->get_tsdb() == tsdb))
     {
         TimeRange r = m_ooo_buff->get_time_range();
 
