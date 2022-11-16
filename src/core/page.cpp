@@ -100,6 +100,21 @@ PageInfo::setup_compressor(const TimeRange& range, PageSize page_size, int compr
     m_compressor->init(range.get_from(), reinterpret_cast<uint8_t*>(m_page), page_size);
 }
 
+void
+PageInfo::update_indices(PageInfo *info)
+{
+    ASSERT(info != nullptr);
+
+    if (m_tsdb != info->m_tsdb)
+        return;
+
+    struct page_info_on_disk *this_header = get_page_header();
+    struct page_info_on_disk *that_header = info->get_page_header();
+
+    this_header->m_next_file = that_header->m_next_file;
+    this_header->m_next_header = that_header->m_next_header;
+}
+
 Timestamp
 PageInfo::get_last_tstamp() const
 {
@@ -191,6 +206,8 @@ PageInMemory::flush(TimeSeriesId id)
     m_page_header.m_next_file = TT_INVALID_FILE_INDEX;
     m_page_header.m_next_header = TT_INVALID_HEADER_INDEX;
 
+    m_compressor->save((uint8_t*)m_page);
+
     m_tsdb->append_page(id, prev_file_idx, prev_header_idx, &m_page_header, m_page);
 
     // re-initialize the compressor
@@ -219,6 +236,7 @@ PageInMemory::append(TimeSeriesId id, FILE *file)
     ret = fwrite(&header, 1, sizeof(header), file);
     if (ret != sizeof(header)) Logger::error("PageInMemory::append() failed");
     ret = fwrite(m_page, 1, position.m_offset, file);
+    std::fflush(file);
     if (ret != position.m_offset) Logger::error("PageInMemory::append() failed");
     ASSERT(m_page != nullptr);
 }
@@ -242,6 +260,7 @@ PageInMemory::add_data_point(Timestamp tstamp, double value)
 }
 
 
+#if 0
 void
 PageOnDisk::init(Tsdb *tsdb,
                  struct page_info_on_disk *header,
@@ -281,6 +300,7 @@ PageOnDisk::recycle()
 
     return true;
 }
+#endif
 
 
 }

@@ -203,12 +203,12 @@ void
 BitSet::copy_from(uint8_t *base, int bytes, uint8_t start)
 {
     ASSERT(bytes > 0);
-    ASSERT(base != m_bits);
+    //ASSERT(base != m_bits);
 
     m_cursor = m_bits + bytes;
     m_start = start;
 
-    if (base != nullptr)
+    if ((base != nullptr) && (base != m_bits))
     {
         if (start != 0) bytes++;
         memcpy(m_bits, base, bytes);

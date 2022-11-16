@@ -243,16 +243,16 @@ public:
     // prepare to be used to represent a different page
     bool is_full();
     bool is_empty();
-    bool is_out_of_order() { return get_page_header()->is_out_of_order(); }
+    inline bool is_out_of_order() { return get_page_header()->is_out_of_order(); }
 
     Timestamp get_last_tstamp() const;
     TimeRange get_time_range();
     int in_range(Timestamp tstamp) const;
     inline Tsdb *get_tsdb() const { return m_tsdb; }
 
-    inline PageIndex get_page_index() { return get_page_header()->m_page_index; }
-    inline FileIndex get_next_file() { return get_page_header()->get_next_file(); }
-    inline HeaderIndex get_next_header() { return get_page_header()->get_next_header(); }
+    //inline PageIndex get_page_index() { return get_page_header()->m_page_index; }
+    //inline FileIndex get_next_file() { return get_page_header()->get_next_file(); }
+    //inline HeaderIndex get_next_header() { return get_page_header()->get_next_header(); }
 
     int get_dp_count() const;
     PageCount get_file_id() const;
@@ -268,9 +268,11 @@ public:
     // existing compressor, if any, will be destroyed, and new one created
     void setup_compressor(const TimeRange& range, PageSize page_size, int compressor_version);
 
+    void update_indices(PageInfo *info);
+
 private:
     friend class DataFile;
-    friend class page_info_index_less;
+    //friend class page_info_index_less;
 
 protected:
     Tsdb *m_tsdb;
@@ -306,6 +308,7 @@ private:
 };
 
 
+#if 0
 // This is used to read data.
 class PageOnDisk : public PageInfo, public Recyclable
 {
@@ -329,8 +332,10 @@ private:
     HeaderIndex m_header_index; // of this page
     struct page_info_on_disk *m_page_header;
 };
+#endif
 
 
+/*
 class page_info_index_less
 {
 public:
@@ -339,6 +344,7 @@ public:
         return info1->get_page_header()->m_page_index < info2->get_page_header()->m_page_index;
     }
 };
+*/
 
 
 }

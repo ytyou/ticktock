@@ -108,20 +108,41 @@ TimeSeries::restore(Tsdb *tsdb, PageSize offset, uint8_t start, char *buff, bool
 }
 
 void
-TimeSeries::flush(bool accessed)
+TimeSeries::flush(bool close)
 {
     std::lock_guard<std::mutex> guard(m_lock);
-    flush_no_lock(accessed);
+    flush_no_lock(close);
 }
 
 void
-TimeSeries::flush_no_lock(bool accessed)
+TimeSeries::flush_no_lock(bool close)
 {
     if (m_buff != nullptr)
+    {
         m_buff->flush(m_id);
 
+        if (m_ooo_buff != nullptr)
+            m_ooo_buff->update_indices(m_buff);
+
+        if (close)
+        {
+            delete m_buff;
+            m_buff = nullptr;
+        }
+    }
+
     if (m_ooo_buff != nullptr)
+    {
         m_ooo_buff->flush(m_id);
+
+        if (close)
+        {
+            delete m_ooo_buff;
+            m_ooo_buff = nullptr;
+        }
+        else if (m_buff != nullptr)
+            m_buff->update_indices(m_ooo_buff);
+    }
 }
 
 void
@@ -150,6 +171,9 @@ TimeSeries::add_data_point(DataPoint& dp)
     {
         m_buff->flush(m_id);
 
+        if (m_ooo_buff != nullptr)
+            m_ooo_buff->update_indices(m_buff);
+
         // reset the m_buff
         Tsdb *tsdb = Tsdb::inst(tstamp, true);
         m_buff->init(m_id, tsdb, false);
@@ -173,6 +197,9 @@ TimeSeries::add_data_point(DataPoint& dp)
 
         m_buff->flush(m_id);
         m_buff->init(m_id, nullptr, false);
+
+        if (m_ooo_buff != nullptr)
+            m_ooo_buff->update_indices(m_buff);
 
         ASSERT(m_buff->is_empty());
 
@@ -200,6 +227,9 @@ TimeSeries::add_ooo_data_point(DataPoint& dp)
     {
         m_ooo_buff->flush(m_id);
 
+        if (m_buff != nullptr)
+            m_buff->update_indices(m_ooo_buff);
+
         Tsdb *tsdb = Tsdb::inst(tstamp, true);
         m_ooo_buff->init(m_id, tsdb, true);
     }
@@ -215,6 +245,9 @@ TimeSeries::add_ooo_data_point(DataPoint& dp)
 
         ASSERT(m_ooo_buff->is_empty());
         ASSERT(m_ooo_buff->is_out_of_order());
+
+        if (m_buff != nullptr)
+            m_buff->update_indices(m_ooo_buff);
 
         // try again
         ok = m_ooo_buff->add_data_point(tstamp, dp.get_value());
@@ -255,6 +288,7 @@ TimeSeries::query_for_data(Tsdb *tsdb, TimeRange& range, std::vector<DataPointCo
                 MemoryManager::alloc_recyclable(RecyclableType::RT_DATA_POINT_CONTAINER);
             container->collect_data(m_buff);
             container->set_page_index(page_idx);
+            ASSERT(container->size() > 0);
             data.push_back(container);
         }
     }
@@ -277,6 +311,7 @@ TimeSeries::query_for_data(Tsdb *tsdb, TimeRange& range, std::vector<DataPointCo
                 MemoryManager::alloc_recyclable(RecyclableType::RT_DATA_POINT_CONTAINER);
             container->collect_data(m_ooo_buff);
             container->set_page_index(page_idx);
+            ASSERT(container->size() > 0);
             data.push_back(container);
             has_ooo = true;
         }

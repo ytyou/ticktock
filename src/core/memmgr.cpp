@@ -261,7 +261,6 @@ MemoryManager::collect_stats(Timestamp ts, std::vector<DataPoint> &dps)
     COLLECT_STATS_FOR(RT_HTTP_CONNECTION, "http_connection", sizeof(HttpConnection))
     COLLECT_STATS_FOR(RT_JSON_VALUE, "json_value", sizeof(JsonValue))
     COLLECT_STATS_FOR(RT_KEY_VALUE_PAIR, "key_value_pair", sizeof(KeyValuePair))
-    COLLECT_STATS_FOR(RT_PAGE_ON_DISK, "page_on_disk", sizeof(PageOnDisk))
     COLLECT_STATS_FOR(RT_QUERY_RESULTS, "query_results", sizeof(QueryResults))
     COLLECT_STATS_FOR(RT_QUERY_TASK, "query_task", sizeof(QueryTask))
     COLLECT_STATS_FOR(RT_RATE_CALCULATOR, "rate_calculator", sizeof(RateCalculator))
@@ -297,7 +296,6 @@ MemoryManager::collect_stats(Timestamp ts, std::vector<DataPoint> &dps)
     total += m_total[RT_HTTP_CONNECTION] * sizeof(HttpConnection);
     total += m_total[RT_JSON_VALUE] * sizeof(JsonValue);
     total += m_total[RT_KEY_VALUE_PAIR] * sizeof(KeyValuePair);
-    total += m_total[RT_PAGE_ON_DISK] * sizeof(PageOnDisk);
     total += m_total[RT_QUERY_RESULTS] * sizeof(QueryResults);
     total += m_total[RT_QUERY_TASK] * sizeof(QueryTask);
     total += m_total[RT_RATE_CALCULATOR] * sizeof(RateCalculator);
@@ -346,7 +344,6 @@ MemoryManager::log_stats()
     Logger::debug("mm::http_connection = %d", m_maps[RecyclableType::RT_HTTP_CONNECTION].size());
     Logger::debug("mm::json_value = %d", m_maps[RecyclableType::RT_JSON_VALUE].size());
     Logger::debug("mm::key_value_pair = %d", m_maps[RecyclableType::RT_KEY_VALUE_PAIR].size());
-    Logger::debug("mm::page_on_disk = %d", m_maps[RecyclableType::RT_PAGE_ON_DISK].size());
     Logger::debug("mm::query_results = %d", m_maps[RecyclableType::RT_QUERY_RESULTS].size());
     Logger::debug("mm::query_task = %d", m_maps[RecyclableType::RT_QUERY_TASK].size());
     Logger::debug("mm::rate_calculator = %d", m_maps[RecyclableType::RT_RATE_CALCULATOR].size());
@@ -596,14 +593,6 @@ MemoryManager::cleanup()
         delete static_cast<KeyValuePair*>(r);
     }
 
-    while (m_free_lists[RecyclableType::RT_PAGE_ON_DISK] != nullptr)
-    {
-        Recyclable *r = m_free_lists[RecyclableType::RT_PAGE_ON_DISK];
-        m_free_lists[RecyclableType::RT_PAGE_ON_DISK] = r->next();
-        ASSERT(r->recyclable_type() == RecyclableType::RT_PAGE_ON_DISK);
-        delete static_cast<PageOnDisk*>(r);
-    }
-
     while (m_free_lists[RecyclableType::RT_QUERY_RESULTS] != nullptr)
     {
         Recyclable *r = m_free_lists[RecyclableType::RT_QUERY_RESULTS];
@@ -750,10 +739,6 @@ MemoryManager::alloc_recyclable(RecyclableType type)
 
                 case RecyclableType::RT_KEY_VALUE_PAIR:
                     r = new KeyValuePair();
-                    break;
-
-                case RecyclableType::RT_PAGE_ON_DISK:
-                    r = new PageOnDisk();
                     break;
 
                 case RecyclableType::RT_QUERY_RESULTS:

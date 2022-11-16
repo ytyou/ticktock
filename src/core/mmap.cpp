@@ -79,16 +79,15 @@ MmapFile::open(off_t length, bool read_only, bool append_only)
         return false;
     }
 
-    if (existing)
-        m_length = sb.st_size;
-    else
+    m_length = length;
+
+    if (! existing)
     {
         if (ftruncate(m_fd, length) != 0)
         {
             Logger::error("Failed to resize file %s, errno = %d", m_name.c_str(), errno);
             return false;
         }
-        m_length = length;
     }
 
     m_pages = mmap64(nullptr,
@@ -123,6 +122,7 @@ MmapFile::open(off_t length, bool read_only, bool append_only)
     if (rc != 0)
         Logger::warn("Failed to madvise(), page = %p, errno = %d", m_pages, errno);
 
+    ASSERT(is_open(read_only));
     return !existing;
 }
 
@@ -220,6 +220,8 @@ MmapFile::ensure_open(bool for_read)
         std::lock_guard<std::mutex> guard(m_lock);
         if (! is_open(for_read)) open(for_read);
     }
+
+    ASSERT(is_open(for_read));
 }
 
 bool
@@ -560,6 +562,7 @@ DataFile::append(const void *page)
     if (m_file == nullptr) open(false);
     ASSERT(m_file != nullptr);
     std::fwrite(page, m_page_size, 1, m_file);
+    std::fflush(m_file);
     return m_page_index++;
 }
 

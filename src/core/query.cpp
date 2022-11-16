@@ -666,7 +666,7 @@ QueryTask::perform()
             has_ooo |= m_ts->query_for_data(tsdb, m_time_range, data);
 
             if (has_ooo)
-                query_with_ooo();
+                query_with_ooo(data);
             else
                 query_without_ooo(data);
 
@@ -692,8 +692,106 @@ QueryTask::perform()
 }
 
 void
-QueryTask::query_with_ooo()
+QueryTask::query_with_ooo(std::vector<DataPointContainer*>& data)
 {
+    using container_it = std::pair<DataPointContainer*,int>;
+    auto container_cmp = [](const container_it &lhs, const container_it &rhs)
+    {
+        if (lhs.first->get_data_point(lhs.second).first > rhs.first->get_data_point(rhs.second).first)
+        {
+            return true;
+        }
+        else if (lhs.first->get_data_point(lhs.second).first == rhs.first->get_data_point(rhs.second).first)
+        {
+            if (lhs.first->is_out_of_order() && ! rhs.first->is_out_of_order())
+                return true;
+            else if (! lhs.first->is_out_of_order() && rhs.first->is_out_of_order())
+                return false;
+
+            //if (lhs.first->get_page_index() == 0)
+                //return true;
+            //else if (rhs.first->get_page_index() == 0)
+                //return false;
+            //else
+                return (lhs.first->get_page_index() > rhs.first->get_page_index());
+        }
+        else
+        {
+            return false;
+        }
+    };
+    std::priority_queue<container_it, std::vector<container_it>, decltype(container_cmp)> pq(container_cmp);
+
+/*
+    size_t size = m_pages.size() + m_ooo_pages.size();
+    DataPointContainer containers[size];
+    size_t count = 0;
+    std::lock_guard<std::mutex> guard(m_lock);
+
+    for (PageInfo *page_info : m_pages)
+    {
+        ASSERT(! page_info->is_empty());
+
+        if (range.has_intersection(page_info->get_time_range()))
+        {
+            containers[count].init(page_info);
+            pq.emplace(&containers[count], 0);
+            count++;
+        }
+    }
+
+    for (PageInfo *page_info : m_ooo_pages)
+    {
+        ASSERT(! page_info->is_empty());
+
+        if (range.has_intersection(page_info->get_time_range()))
+        {
+            containers[count].init(page_info);
+            pq.emplace(&containers[count], 0);
+            count++;
+        }
+    }
+*/
+
+    for (auto container: data)
+        pq.emplace(container, 0);
+
+    while (! pq.empty())
+    {
+        auto top = pq.top();
+        pq.pop();
+
+        DataPointContainer *container = top.first;
+        int i = top.second;
+        DataPointPair& dp = container->get_data_point(i);
+        int in_range = m_time_range.in_range(dp.first);
+
+        if (in_range == 0)
+        {
+            // remove duplicates
+            if ((! m_dps.empty()) && (m_dps.back().first == dp.first))
+            {
+                m_dps.back().second = dp.second;
+            }
+            else if (m_downsampler == nullptr)
+            {
+                m_dps.push_back(dp);
+            }
+            else
+            {
+                m_downsampler->add_data_point(dp, m_dps);
+            }
+        }
+        else if (in_range > 0)
+        {
+            break;
+        }
+
+        if ((i+1) < container->size())
+        {
+            pq.emplace(container, i+1);
+        }
+    }
 }
 
 void
@@ -704,15 +802,16 @@ QueryTask::query_without_ooo(std::vector<DataPointContainer*>& data)
         for (int i = 0; i < container->size(); i++)
         {
             DataPointPair& dp = container->get_data_point(i);
+            int in_range = m_time_range.in_range(dp.first);
 
-            if (m_time_range.in_range(dp.first) == 0)
+            if (in_range == 0)
             {
                 if (m_downsampler == nullptr)
                     m_dps.push_back(dp);
                 else
                     m_downsampler->add_data_point(dp, m_dps);
             }
-            else if (m_time_range.get_to() < dp.first)
+            else if (in_range > 0)
             {
                 break;
             }
@@ -1061,12 +1160,17 @@ DataPointContainer::collect_data(Timestamp from, struct tsdb_header *tsdb_header
     ASSERT(page_header != nullptr);
     ASSERT(page != nullptr);
 
+    CompressorPosition position(page_header);
     int compressor_version = tsdb_header->get_compressor_version();
-    RecyclableType type =
-        (RecyclableType)(compressor_version + RecyclableType::RT_COMPRESSOR_V0);
+    RecyclableType type;
+    if (page_header->is_out_of_order())
+        type = RecyclableType::RT_COMPRESSOR_V0;
+    else
+        type = (RecyclableType)(compressor_version + RecyclableType::RT_COMPRESSOR_V0);
     Compressor *compressor = (Compressor*)MemoryManager::alloc_recyclable(type);
     compressor->init(from, reinterpret_cast<uint8_t*>(page), tsdb_header->m_page_size);
-    compressor->uncompress(m_dps);
+    compressor->restore(m_dps, position, (uint8_t*)page);
+    ASSERT(! m_dps.empty());
     MemoryManager::free_recyclable(compressor);
 }
 

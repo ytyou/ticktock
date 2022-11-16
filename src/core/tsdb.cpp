@@ -73,7 +73,7 @@ Mapping::~Mapping()
 }
 
 void
-Mapping::flush(bool accessed)
+Mapping::flush(bool close)
 {
     ReadLock guard(m_lock);
     //std::lock_guard<std::mutex> guard(m_lock);
@@ -85,7 +85,7 @@ Mapping::flush(bool accessed)
         if (it->first == ts->get_key())
         {
             Logger::trace("Flushing ts: %T", ts);
-            ts->flush(accessed);
+            ts->flush(close);
         }
     }
 }
@@ -630,6 +630,7 @@ Tsdb::query_for_data(TimeSeriesId id, TimeRange& query_range, std::vector<DataPo
             container->set_out_of_order(page_header->is_out_of_order());
             container->set_page_index(page_header->get_global_page_index(file_idx, m_page_count));
             container->collect_data(from, tsdb_header, page_header, page);
+            ASSERT(container->size() > 0);
             data.push_back(container);
 
             if (page_header->is_out_of_order()) has_ooo = true;
@@ -691,7 +692,7 @@ Tsdb::shutdown()
         for (auto it = g_metric_map.begin(); it != g_metric_map.end(); it++)
         {
             Mapping *mapping = it->second;
-            mapping->flush(false);
+            mapping->flush(true);
         }
     }
 
@@ -752,7 +753,7 @@ Tsdb::get_last_header_indices(TimeSeriesId id, FileIndex& file_idx, HeaderIndex&
     //ReadLock guard(m_lock);
     std::lock_guard<std::mutex> guard(m_lock);
 
-    m_index_file.ensure_open(true);
+    m_index_file.ensure_open(false);
     m_index_file.get_indices(id, fidx, hidx);
 
     while (fidx != TT_INVALID_FILE_INDEX)

@@ -238,7 +238,7 @@ private:
     friend class Query;
     friend class QueryExecutor;
 
-    void query_with_ooo();
+    void query_with_ooo(std::vector<DataPointContainer*>& data);
     void query_without_ooo(std::vector<DataPointContainer*>& data);
 
     void init() override;

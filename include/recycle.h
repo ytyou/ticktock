@@ -52,8 +52,7 @@ enum RecyclableType : unsigned char
     RT_HTTP_CONNECTION   = RT_DOWNSAMPLER_SUM + 1,      // 24
     RT_JSON_VALUE        = RT_HTTP_CONNECTION + 1,      // 25
     RT_KEY_VALUE_PAIR    = RT_JSON_VALUE + 1,           // 26
-    RT_PAGE_ON_DISK      = RT_KEY_VALUE_PAIR + 1,       // 27
-    RT_QUERY_RESULTS     = RT_PAGE_ON_DISK + 1,         // 28
+    RT_QUERY_RESULTS     = RT_KEY_VALUE_PAIR + 1,       // 28
     RT_QUERY_TASK        = RT_QUERY_RESULTS + 1,        // 29
     RT_RATE_CALCULATOR   = RT_QUERY_TASK + 1,           // 30
     RT_TCP_CONNECTION    = RT_RATE_CALCULATOR + 1,      // 31

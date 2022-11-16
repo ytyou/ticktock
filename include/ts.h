@@ -52,8 +52,8 @@ public:
     inline TimeSeriesId get_id() const { return m_id; }
     static inline TimeSeriesId get_next_id() { return m_next_id.load(std::memory_order_relaxed); }
 
-    void flush(bool accessed = false);
-    void flush_no_lock(bool accessed = false);
+    void flush(bool close = false);
+    void flush_no_lock(bool close = false);
     bool compact(MetaFile& meta_file);
     void set_check_point();
 

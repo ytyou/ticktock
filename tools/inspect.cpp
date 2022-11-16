@@ -147,7 +147,8 @@ process_cmdline_opts(int argc, char *argv[])
 void
 inspect_page(FileIndex file_idx, HeaderIndex header_idx, struct tsdb_header *tsdb_header, struct page_info_on_disk *page_header, char *data_base)
 {
-    int compressor_version = tsdb_header->get_compressor_version();
+    int compressor_version =
+        page_header->is_out_of_order() ? 0 : tsdb_header->get_compressor_version();
     g_tstamp_resolution_ms = tsdb_header->is_millisecond();
 
     char *page_base = data_base + (page_header->m_page_index * tsdb_header->m_page_size);

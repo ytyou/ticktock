@@ -86,7 +86,7 @@ private:
     Mapping(const char *name);
     ~Mapping();
 
-    void flush(bool accessed);
+    void flush(bool close);
 
     char *m_metric;
     bool add(DataPoint& dp);
