@@ -27,7 +27,7 @@ class TickTockConfig(object):
         sec_from_start = int(round(time.time())) - int(options.start/1000)
 
         # setup default config
-        self._dict["append.log.dir"] = self._options.root
+        self._dict["append.log.dir"] = os.path.join(self._options.root,"append")
         self._dict["append.log.enabled"] = "true"
         self._dict["append.log.rotation.sec"] = 30
 
@@ -52,7 +52,7 @@ class TickTockConfig(object):
 
         self._dict["tsdb.archive.hour"] = (sec_from_start / 3600) + 2
         self._dict["tsdb.compressor.version"] = 1
-        self._dict["tsdb.data.dir"] = self._options.root
+        self._dict["tsdb.data.dir"] = os.path.join(self._options.root,"data")
         self._dict["tsdb.page.count"] = 128
         self._dict["tsdb.partition.sec"] = 120
         self._dict["tsdb.read_only.min"] = (sec_from_start / 60) + 10
@@ -420,11 +420,25 @@ class Test(object):
             return []
         return response.json()
 
+    # Sometimes OpenTsdb returns empty results from a sub-query;
+    # That is, results with no data points; Since TickTock does not
+    # return anything in this situation, we need to remove them
+    # from OpenTsdb's results in order to match results from TickTock.
+    def remove_empty_dps(self, arr):
+        if isinstance(arr, list):
+            for d in arr:
+                if isinstance(d, dict):
+                    if d.has_key("dps"):
+                        dps = d["dps"]
+                        if len(dps) == 0:
+                            arr.remove(d)
+
     def query_and_verify(self, query):
         if self._options.verbose:
             print "query: " + str(query.to_json())
         expected = self.query_opentsdb(query)
         actual = self.query_ticktock(query)
+        self.remove_empty_dps(expected)
         if self.verify_json(expected, actual):
             self._passed = self._passed + 1
         else:
@@ -548,8 +562,11 @@ class Test(object):
         if os.path.exists(self._options.root):
             shutil.rmtree(self._options.root)
         os.mkdir(self._options.root)
+        os.mkdir(os.path.join(self._options.root,"log"))
+        os.mkdir(os.path.join(self._options.root,"data"))
         os.mkdir(os.path.join(self._options.root,"data0"))
         os.mkdir(os.path.join(self._options.root,"data1"))
+        os.mkdir(os.path.join(self._options.root,"append"))
         os.mkdir(os.path.join(self._options.root,"append0"))
         os.mkdir(os.path.join(self._options.root,"append1"))
 
@@ -691,6 +708,7 @@ class Stop_Restart_Tests(Test):
         iterations = 5
 
         for i in range(1, iterations+1):
+            print "iteration {}".format(i)
             query1 = Query(metric=self.metric_name(2), start=self._options.start, end=dps._end, tags=tags1)
             self.query_and_verify(query1)
 

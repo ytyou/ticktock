@@ -233,6 +233,8 @@ Mapping::restore_ts(std::string& metric, std::string& keys, TimeSeriesId id)
     Tag *tags = Tag::parse_multiple(keys);
     TimeSeries *ts = new TimeSeries(id, metric.c_str(), keys.c_str(), tags);
     m_map[ts->get_key()] = ts;
+    ts->m_next = m_ts_head.load();
+    m_ts_head = ts;
     set_tag_count(std::count(keys.begin(), keys.end(), ';'));
     return ts;
 }
