@@ -265,6 +265,9 @@ Tsdb::Tsdb(TimeRange& range, bool existing) :
 {
     ASSERT(g_tstamp_resolution_ms ? is_ms(range.get_from()) : is_sec(range.get_from()));
 
+    m_compressor_version =
+        Config::get_int(CFG_TSDB_COMPRESSOR_VERSION,CFG_TSDB_COMPRESSOR_VERSION_DEF);
+
     m_mode = mode_of();
     m_partition_mgr = new PartitionManager(this, existing);
 
@@ -307,6 +310,7 @@ Tsdb::create(TimeRange& range, bool existing)
             ASSERT(tsdb_header != nullptr);
             tsdb->m_page_size = tsdb_header->m_page_size;
             tsdb->m_page_count = tsdb_header->m_page_count;
+            tsdb->m_compressor_version = tsdb_header->get_compressor_version();
             header_file->close();
         }
 
@@ -491,10 +495,7 @@ Tsdb::get_page_count() const
 int
 Tsdb::get_compressor_version()
 {
-    if (m_header_files.empty())
-        return Config::get_int(CFG_TSDB_COMPRESSOR_VERSION,CFG_TSDB_COMPRESSOR_VERSION_DEF);
-    else
-        return m_header_files[0]->get_compressor_version();
+    return m_compressor_version;
 }
 
 void

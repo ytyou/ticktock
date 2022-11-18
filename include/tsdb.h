@@ -265,6 +265,7 @@ private:
     PartitionManager *m_partition_mgr;
     PageSize m_page_size;
     PageCount m_page_count;
+    int m_compressor_version;
 };
 
 
