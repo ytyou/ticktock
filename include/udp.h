@@ -38,7 +38,7 @@ public:
 private:
     void receiver();            // thread loop
     void receiver2();           // thread loop
-    bool process_one_line(Tsdb* &tsdb, char *line);
+    bool process_one_line(char *line);
 
     int m_id;
     int m_port;

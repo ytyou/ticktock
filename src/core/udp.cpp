@@ -105,7 +105,7 @@ UdpListener::receiver()
         msgs[i].msg_hdr.msg_iovlen = 1;
     }
 
-    Tsdb *tsdb = nullptr;
+    //Tsdb *tsdb = nullptr;
 
     while (! is_shutdown_requested())
     {
@@ -123,7 +123,7 @@ UdpListener::receiver()
             buffs[i][len] = '\n';
             buffs[i][len+1] = 0;
 
-            process_one_line(tsdb, buffs[i]);
+            process_one_line(buffs[i]);
 
             msgs[i].msg_len = 0;
             msgs[i].msg_hdr.msg_flags = 0;
@@ -169,7 +169,7 @@ UdpListener::receiver2()
     // ready to receive
     int max_line = Config::get_int(CFG_TSDB_MAX_DP_LINE, CFG_TSDB_MAX_DP_LINE_DEF);
     char buff[max_line+1];
-    Tsdb *tsdb = nullptr;
+    //Tsdb *tsdb = nullptr;
 
     while (! is_shutdown_requested())
     {
@@ -179,7 +179,7 @@ UdpListener::receiver2()
         {
             ASSERT(retval < max_line);
             buff[retval] = 0;
-            process_one_line(tsdb, buff);
+            process_one_line(buff);
         }
     }
 
@@ -187,7 +187,7 @@ UdpListener::receiver2()
 }
 
 bool
-UdpListener::process_one_line(Tsdb* &tsdb, char *line)
+UdpListener::process_one_line(char *line)
 {
     DataPoint dp;
 
@@ -195,6 +195,8 @@ UdpListener::process_one_line(Tsdb* &tsdb, char *line)
 
     if (! dp.from_plain(line)) return false;
 
+    return Tsdb::add_data_point(dp, false);
+/*
     if ((tsdb == nullptr) || (tsdb->in_range(dp.get_timestamp()) != 0))
     {
         tsdb = Tsdb::inst(dp.get_timestamp());
@@ -202,6 +204,7 @@ UdpListener::process_one_line(Tsdb* &tsdb, char *line)
 
     ASSERT(tsdb != nullptr);
     return tsdb->add(dp);
+*/
 }
 
 
