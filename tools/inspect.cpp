@@ -22,6 +22,8 @@
 #include <fcntl.h>
 #include <glob.h>
 #include <inttypes.h>
+#include <iostream>
+#include <locale>
 #include <string.h>
 #include <unistd.h>
 #include <sys/mman.h>
@@ -29,6 +31,7 @@
 #include "compress.h"
 #include "mmap.h"
 #include "page.h"
+#include "task.h"
 #include "tsdb.h"
 #include "type.h"
 #include "utils.h"
@@ -39,7 +42,10 @@ using namespace tt;
 std::string g_tsdb_dir, g_data_dir;
 char *g_index_base = nullptr;
 std::vector<TimeSeries*> g_time_series;
-uint64_t g_total_dps = 0;
+std::atomic<uint64_t> g_total_dps_cnt{0};
+std::atomic<long> g_total_page_cnt{0};
+bool g_verbose = false;
+TaskScheduler inspector("inspector", std::thread::hardware_concurrency(), 128);
 
 
 void
@@ -57,7 +63,7 @@ find_matching_files(std::string& pattern, std::vector<std::string>& files)
 }
 
 char *
-open_mmap(std::string& file_name, int& fd, size_t& size)
+open_mmap(const std::string& file_name, int& fd, size_t& size)
 {
     struct stat sb;
 
@@ -111,7 +117,7 @@ process_cmdline_opts(int argc, char *argv[])
 {
     int c;
 
-    while ((c = getopt(argc, argv, "?d:t:")) != -1)
+    while ((c = getopt(argc, argv, "?d:t:v")) != -1)
     {
         switch (c)
         {
@@ -121,6 +127,10 @@ process_cmdline_opts(int argc, char *argv[])
 
             case 't':
                 g_tsdb_dir.assign(optarg);
+                break;
+
+            case 'v':
+                g_verbose = true;
                 break;
 
             case '?':
@@ -144,9 +154,10 @@ process_cmdline_opts(int argc, char *argv[])
     return 0;
 }
 
-void
+uint64_t
 inspect_page(FileIndex file_idx, HeaderIndex header_idx, struct tsdb_header *tsdb_header, struct page_info_on_disk *page_header, char *data_base)
 {
+    uint64_t page_dps = 0;
     int compressor_version =
         page_header->is_out_of_order() ? 0 : tsdb_header->get_compressor_version();
     g_tstamp_resolution_ms = tsdb_header->is_millisecond();
@@ -155,19 +166,22 @@ inspect_page(FileIndex file_idx, HeaderIndex header_idx, struct tsdb_header *tsd
     ASSERT(page_header->m_page_index < tsdb_header->m_page_index);
 
     // dump page header
-    printf("     [%u,%u][offset=%u,size=%u,cursor=%u,start=%u,flags=%x,page-idx=%u,from=%u,to=%u,next-file=%u,next-header=%u]\n",
-        file_idx,
-        header_idx,
-        page_header->m_offset,
-        page_header->m_size,
-        page_header->m_cursor,
-        page_header->m_start,
-        page_header->m_flags,
-        page_header->m_page_index,
-        page_header->m_tstamp_from,
-        page_header->m_tstamp_to,
-        page_header->m_next_file,
-        page_header->m_next_header);
+    if (g_verbose)
+    {
+        printf("     [%u,%u][offset=%u,size=%u,cursor=%u,start=%u,flags=%x,page-idx=%u,from=%u,to=%u,next-file=%u,next-header=%u]\n",
+            file_idx,
+            header_idx,
+            page_header->m_offset,
+            page_header->m_size,
+            page_header->m_cursor,
+            page_header->m_start,
+            page_header->m_flags,
+            page_header->m_page_index,
+            page_header->m_tstamp_from,
+            page_header->m_tstamp_to,
+            page_header->m_next_file,
+            page_header->m_next_header);
+    }
 
     // dump page data
     DataPointVector dps;
@@ -175,20 +189,46 @@ inspect_page(FileIndex file_idx, HeaderIndex header_idx, struct tsdb_header *tsd
     CompressorPosition position(page_header);
     compressor->init(tsdb_header->m_start_tstamp, (uint8_t*)page_base, tsdb_header->m_page_size);
     compressor->restore(dps, position, nullptr);
-    for (auto& dp: dps)
+    if (g_verbose)
     {
-        printf("ts = %" PRIu64 ", value = %.3f\n", dp.first, dp.second);
-        g_total_dps++;
+        for (auto& dp: dps)
+        {
+            printf("ts = %" PRIu64 ", value = %.3f\n", dp.first, dp.second);
+            page_dps++;
+        }
     }
+    else
+        page_dps = dps.size();
     delete compressor;
+    g_total_page_cnt++;
+    //g_total_dps_cnt.fetch_add(page_dps, std::memory_order_relaxed);
+    return page_dps;
 }
 
 void
-inspect_tsdb(const std::string& dir)
+inspect_index_file(const std::string& file_name)
+{
+    int index_file_fd;
+    size_t index_file_size;
+    char *index_base = open_mmap(file_name, index_file_fd, index_file_size);
+    struct index_entry *index_entries = (struct index_entry*)index_base;
+
+    for (TimeSeries *ts: g_time_series)
+    {
+        TimeSeriesId id = ts->get_id();
+        printf("%u:%u:%u\n", id, index_entries[id].file_index, index_entries[id].header_index);
+    }
+
+    close_mmap(index_file_fd, index_base, index_file_size);
+}
+
+void
+inspect_tsdb_internal(const std::string& dir)
 {
     fprintf(stderr, "Inspecting tsdb %s...\n", dir.c_str());
 
     // dump all headers first...
+    uint64_t tsdb_dps = 0;
     std::string header_files_pattern = dir + "/header.*";
     std::vector<std::string> header_files;
     find_matching_files(header_files_pattern, header_files);
@@ -201,18 +241,21 @@ inspect_tsdb(const std::string& dir)
         char *base_hdr = open_mmap(header_file, header_fd, header_size);
 
         struct tsdb_header *tsdb_header = (struct tsdb_header*)base_hdr;
-        printf("%s: [major=%u, minor=%u, flags=%x, page_cnt=%u, header_idx=%u, page_idx=%u, start=%lu, end=%lu, actual=%u, size=%u]\n",
-            header_file.c_str(),
-            tsdb_header->m_major_version,
-            tsdb_header->m_minor_version,
-            tsdb_header->m_flags,
-            tsdb_header->m_page_count,
-            tsdb_header->m_header_index,
-            tsdb_header->m_page_index,
-            tsdb_header->m_start_tstamp,
-            tsdb_header->m_end_tstamp,
-            tsdb_header->m_actual_pg_cnt,
-            tsdb_header->m_page_size);
+        if (g_verbose)
+        {
+            printf("%s: [major=%u, minor=%u, flags=%x, page_cnt=%u, header_idx=%u, page_idx=%u, start=%lu, end=%lu, actual=%u, size=%u]\n",
+                header_file.c_str(),
+                tsdb_header->m_major_version,
+                tsdb_header->m_minor_version,
+                tsdb_header->m_flags,
+                tsdb_header->m_page_count,
+                tsdb_header->m_header_index,
+                tsdb_header->m_page_index,
+                tsdb_header->m_start_tstamp,
+                tsdb_header->m_end_tstamp,
+                tsdb_header->m_actual_pg_cnt,
+                tsdb_header->m_page_size);
+        }
 
         close_mmap(header_fd, base_hdr, header_size);
     }
@@ -222,6 +265,7 @@ inspect_tsdb(const std::string& dir)
     size_t index_file_size;
     char *index_base = open_mmap(index_file_name, index_file_fd, index_file_size);
     struct index_entry *index_entries = (struct index_entry*)index_base;
+    long ooo_page_cnt = 0;
 
     for (TimeSeries *ts: g_time_series)
     {
@@ -230,7 +274,8 @@ inspect_tsdb(const std::string& dir)
         if (((id+1) * sizeof(struct index_entry)) >= index_file_size) continue;
         if (index_entries[id].file_index == TT_INVALID_FILE_INDEX) continue;
 
-        printf("%4u %s %s\n", id, ts->get_metric(), ts->get_key());
+        if (g_verbose)
+            printf("%4u %s %s\n", id, ts->get_metric(), ts->get_key());
         //inspect_page(dir, index_entries[id].file_index, index_entries[id].header_index);
 
         FileIndex file_idx = index_entries[id].file_index;
@@ -270,7 +315,9 @@ inspect_tsdb(const std::string& dir)
             struct page_info_on_disk *page_header = (struct page_info_on_disk *)
                 (header_base + sizeof(struct tsdb_header) + header_idx * sizeof(struct page_info_on_disk));
 
-            inspect_page(file_idx, header_idx, tsdb_header, page_header, data_base);
+            if (page_header->is_out_of_order()) ooo_page_cnt++;
+
+            tsdb_dps += inspect_page(file_idx, header_idx, tsdb_header, page_header, data_base);
 
             if (file_idx != page_header->m_next_file)
             {
@@ -291,7 +338,33 @@ inspect_tsdb(const std::string& dir)
     }
 
     close_mmap(index_file_fd, index_base, index_file_size);
-    fprintf(stderr, "total dps = %" PRIu64 "\n", g_total_dps);
+    g_total_dps_cnt.fetch_add(tsdb_dps, std::memory_order_relaxed);
+
+    if (ooo_page_cnt > 0)
+        std::cerr << "tsdb dps = " << tsdb_dps << "; pages = " << g_total_page_cnt.load() << "; total dps = " << g_total_dps_cnt.load() << "; ooo pages = " << ooo_page_cnt << std::endl;
+    else
+        std::cerr << "tsdb dps = " << tsdb_dps << "; pages = " << g_total_page_cnt.load() << "; total dps = " << g_total_dps_cnt.load() << std::endl;
+    //fprintf(stderr, "tsdb dps = %" PRIu64 "; total dps = %" PRIu64 "\n",
+        //tsdb_dps, g_total_dps_cnt);
+}
+
+bool
+inspect_tsdb_task(TaskData& data)
+{
+    std::string tsdb_dir((char*)data.pointer);
+    inspect_tsdb_internal(tsdb_dir);
+    return false;
+}
+
+void
+inspect_tsdb(const std::string& dir)
+{
+    Task task;
+
+    task.doit = inspect_tsdb_task;
+    task.data.pointer = (void*)strdup(dir.c_str());
+
+    inspector.submit_task(task);
 }
 
 int
@@ -300,21 +373,49 @@ main(int argc, char *argv[])
     if (process_cmdline_opts(argc, argv) != 0)
         return 1;
 
-    if (g_data_dir.empty())
+    if (g_data_dir.empty() && g_tsdb_dir.empty())
     {
-        fprintf(stderr, "-d <data-dir> option is required and missing\n");
+        fprintf(stderr, "-d <data-dir> or -t <tsdb-dir> option is required and missing\n");
         return 2;
     }
 
-    Config::set_value(CFG_TSDB_DATA_DIR, g_data_dir);
-    MetaFile::init(Tsdb::restore_ts);
-    Tsdb::get_all_ts(g_time_series);
+    std::locale loc("en_US.UTF-8");
+    std::cerr.imbue(loc);
 
-    // data directory structure:
-    // <year>/<month>/<tsdb>/<index>|<header>|<data>
-    for_all_dirs(g_data_dir, inspect_tsdb, 3);
+    if (! g_data_dir.empty())
+    {
+        Config::set_value(CFG_TSDB_DATA_DIR, g_data_dir);
+        MetaFile::init(Tsdb::restore_ts);
+        Tsdb::get_all_ts(g_time_series);
+        std::cerr << "Total number of time series: " << g_time_series.size() << std::endl;
+    }
 
-    fprintf(stderr, "Grand Total = %" PRIu64 "\n", g_total_dps);
+    if (g_tsdb_dir.empty())
+    {
+        // data directory structure:
+        // <year>/<month>/<tsdb>/<index>|<header>|<data>
+        //for_all_dirs(g_data_dir, inspect_tsdb, 3);
+        for_all_dirs(g_data_dir, inspect_tsdb, 3);
+
+        std::vector<size_t> counts;
+        while (inspector.get_pending_task_count(counts) > 0)
+        {
+            counts.clear();
+            std::this_thread::sleep_for(std::chrono::seconds(5));
+        }
+    }
+    else
+    {
+        //std::string index_file_name = g_tsdb_dir + "/index";
+        //inspect_index_file(index_file_name);
+        inspect_tsdb_internal(g_tsdb_dir);
+    }
+
+    inspector.shutdown();
+    inspector.wait(1);
+
+    //fprintf(stderr, "Grand Total = %" PRIu64 "\n", g_total_dps_cnt);
+    std::cerr << "Grand Total = " << g_total_dps_cnt.load() << std::endl;
 
     return 0;
 }

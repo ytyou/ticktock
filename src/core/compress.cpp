@@ -911,10 +911,8 @@ Compressor_v1::restore(DataPointVector& dps, CompressorPosition& position, uint8
     ASSERT(position.m_start == 0);  // we don't use it, but it should be 0
     m_cursor = m_base + position.m_offset;
 
-    if (base != nullptr)
-    {
+    if ((base != nullptr) && (m_base != base))
         memcpy(m_base, base, position.m_offset);
-    }
 
     uncompress(dps, true);
 

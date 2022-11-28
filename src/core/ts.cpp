@@ -63,6 +63,18 @@ TimeSeries::TimeSeries(TimeSeriesId id, const char *metric, const char *key, Tag
 
 TimeSeries::~TimeSeries()
 {
+    if (m_buff != nullptr)
+    {
+        delete m_buff;
+        m_buff = nullptr;
+    }
+
+    if (m_ooo_buff != nullptr)
+    {
+        delete m_ooo_buff;
+        m_ooo_buff = nullptr;
+    }
+
     if (m_key != nullptr)
     {
         FREE(m_key);

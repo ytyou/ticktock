@@ -267,6 +267,7 @@ TaskScheduler::Worker::work(TaskScheduler* scheduler)
         }
 
         if (task.doit == nullptr) continue;
+        if (is_shutdown_requested()) break;
 
         bool status = false;
 

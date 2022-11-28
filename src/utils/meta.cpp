@@ -84,7 +84,9 @@ MetaFile::restore(TimeSeries* (*restore_func)(std::string& metric, std::string& 
                 std::vector<TimeSeries*>::size_type cap = tsv.capacity();
                 while (cap <= id) cap *= 2;
                 if (tsv.capacity() < cap) tsv.reserve(cap);
-                tsv[id] = ts;
+                auto pos = tsv.begin() + id;
+                tsv.insert(pos, ts);
+                //tsv[id] = ts;
             }
         }
     }

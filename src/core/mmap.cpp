@@ -50,17 +50,14 @@ MmapFile::~MmapFile()
     close();
 }
 
-bool
-MmapFile::open(off_t length, bool read_only, bool append_only)
+void
+MmapFile::open(off_t length, bool read_only, bool append_only, bool resize)
 {
-    ASSERT(length > 0 || read_only);
+    ASSERT(length > 0);
 
     if (m_fd > 0) ::close(m_fd);
-    bool existing = file_exists(m_name);
-
-    if (! existing && read_only)
-        return false;
     m_read_only = read_only;
+    m_length = length;
 
     struct stat sb;
     mode_t mode = read_only ? O_RDONLY : (O_CREAT|O_RDWR);
@@ -70,23 +67,15 @@ MmapFile::open(off_t length, bool read_only, bool append_only)
     if (m_fd == -1)
     {
         Logger::error("Failed to open file %s, errno = %d", m_name.c_str(), errno);
-        return false;
+        return;
     }
 
-    if (fstat(m_fd, &sb) == -1)
+    if (resize && ((fstat(m_fd, &sb) == -1) || (sb.st_size < m_length)))
     {
-        Logger::error("Failed to fstat file %s, errno = %d", m_name.c_str(), errno);
-        return false;
-    }
-
-    m_length = length;
-
-    if (! existing)
-    {
-        if (ftruncate(m_fd, length) != 0)
+        if (ftruncate(m_fd, m_length) != 0)
         {
             Logger::error("Failed to resize file %s, errno = %d", m_name.c_str(), errno);
-            return false;
+            return;
         }
     }
 
@@ -108,13 +97,7 @@ MmapFile::open(off_t length, bool read_only, bool append_only)
             m_fd = -1;
         }
 
-        if (! existing)
-        {
-            if (rm_file(m_name.c_str()) != 0)
-                Logger::error("Mmap fails, but unable to remove newly created file %s", m_name.c_str());
-        }
-
-        return false;
+        return;
     }
 
     int rc = madvise(m_pages, m_length, append_only ? MADV_SEQUENTIAL : MADV_RANDOM);
@@ -123,31 +106,60 @@ MmapFile::open(off_t length, bool read_only, bool append_only)
         Logger::warn("Failed to madvise(), page = %p, errno = %d", m_pages, errno);
 
     ASSERT(is_open(read_only));
-    return !existing;
 }
 
-bool
-MmapFile::fopen(const char *mode, std::FILE * (&file))
+void
+MmapFile::open_existing(bool read_only, bool append_only)
 {
-    bool existing = file_exists(m_name);
-    file = std::fopen(m_name.c_str(), mode);
+    if (m_fd > 0) ::close(m_fd);
+    m_read_only = read_only;
 
-    // get file size
-    if (existing)
+    struct stat sb;
+    mode_t mode = read_only ? O_RDONLY : (O_CREAT|O_RDWR);
+    m_fd = ::open(m_name.c_str(), mode, S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH);
+    m_fd = FileDescriptorManager::dup_fd(m_fd, FileDescriptorType::FD_FILE);
+
+    if (m_fd == -1)
     {
-        int fd = ::fileno(file);
-        struct stat sb;
-        if (fstat(fd, &sb) == -1)
-        {
-            Logger::error("Failed to fstat file %s, errno = %d", m_name.c_str(), errno);
-            m_length = 0;
-        }
-        m_length = sb.st_size;
+        Logger::error("Failed to open file %s, errno = %d", m_name.c_str(), errno);
+        return;
     }
-    else
-        m_length = 0;
 
-    return !existing;
+    if (fstat(m_fd, &sb) == -1)
+    {
+        Logger::error("Failed to fstat file %s, errno = %d", m_name.c_str(), errno);
+        return;
+    }
+
+    m_length = sb.st_size;
+
+    m_pages = mmap64(nullptr,
+                     m_length,
+                     read_only ? PROT_READ : (PROT_READ|PROT_WRITE),
+                     read_only ? MAP_PRIVATE : MAP_SHARED,
+                     m_fd,
+                     0);
+
+    if (m_pages == MAP_FAILED)
+    {
+        Logger::error("Failed to mmap file %s, errno = %d", m_name.c_str(), errno);
+        m_pages = nullptr;
+
+        if (m_fd > 0)
+        {
+            ::close(m_fd);
+            m_fd = -1;
+        }
+
+        return;
+    }
+
+    int rc = madvise(m_pages, m_length, append_only ? MADV_SEQUENTIAL : MADV_RANDOM);
+
+    if (rc != 0)
+        Logger::warn("Failed to madvise(), page = %p, errno = %d", m_pages, errno);
+
+    ASSERT(is_open(read_only));
 }
 
 bool
@@ -185,6 +197,7 @@ MmapFile::close()
 {
     if (m_pages != nullptr)
     {
+        flush(true);
         munmap(m_pages, m_length);
         m_pages = nullptr;
     }
@@ -239,13 +252,15 @@ IndexFile::IndexFile(const std::string& file_name) :
 {
 }
 
-bool
+void
 IndexFile::open(bool for_read)
 {
-    bool is_new = MmapFile::open(TT_SIZE_INCREMENT, for_read, false);
+    bool is_new = ! exists();
+    if (is_new && for_read) return;
 
     if (is_new)
     {
+        MmapFile::open(TT_SIZE_INCREMENT, for_read, false, true);
         struct index_entry *entries = (struct index_entry*)get_pages();
         uint64_t max_idx = get_length() / TT_INDEX_SIZE;
 
@@ -253,8 +268,10 @@ IndexFile::open(bool for_read)
         for (uint64_t i = 0; i < max_idx; i++)
             entries[i].file_index = TT_INVALID_FILE_INDEX;
     }
+    else
+        MmapFile::open_existing(for_read, false);
 
-    return is_new;
+    Logger::debug("index file %s length: %lu", m_name.c_str(), get_length());
 }
 
 bool
@@ -275,6 +292,8 @@ IndexFile::expand(off_t new_len)
     // TODO: memcpy()?
     for ( ; old_idx < new_idx; old_idx++)
         entries[old_idx].file_index = TT_INVALID_FILE_INDEX;
+
+    Logger::debug("index file %s length: %lu", m_name.c_str(), get_length());
 
     return true;
 }
@@ -389,12 +408,12 @@ HeaderFile::restore(const std::string& file_name)
     return header_file;
 }
 
-bool
+void
 HeaderFile::open(bool for_read)
 {
     off_t length =
         sizeof(struct tsdb_header) + m_page_count * sizeof(struct page_info_on_disk);
-    return MmapFile::open(length, for_read, false);
+    MmapFile::open(length, for_read, false, true);
 }
 
 PageSize
@@ -502,7 +521,8 @@ DataFile::DataFile(const std::string& file_name, FileIndex id, PageSize size, Pa
     m_file(nullptr),
     m_page_size(size),
     m_page_count(count),
-    m_page_index(TT_INVALID_PAGE_INDEX)
+    m_page_index(TT_INVALID_PAGE_INDEX),
+    m_header_file(nullptr)
 {
 }
 
@@ -516,21 +536,27 @@ DataFile::init(HeaderFile *header_file)
 }
 */
 
-bool
+void
 DataFile::open(bool for_read)
 {
     if (for_read)
     {
         off_t length = (off_t)m_page_size * (off_t)m_page_count;
-        return MmapFile::open(length, true, false);
+        MmapFile::open(length, true, false, false);
     }
     else
     {
         ASSERT(m_file == nullptr);
-        bool new_one = MmapFile::fopen("ab", m_file);
-        size_t len = get_length();
-        m_page_index = len / m_page_size;
-        return new_one;
+        m_file = std::fopen(m_name.c_str(), "ab");
+
+        // get file size
+        int fd = ::fileno(m_file);
+        struct stat sb;
+        if (fstat(fd, &sb) == -1)
+            Logger::error("Failed to fstat file %s, errno = %d", m_name.c_str(), errno);
+        off_t length = sb.st_size;
+
+        m_page_index = length / m_page_size;
     }
 }
 
@@ -543,6 +569,7 @@ DataFile::close()
         m_file = nullptr;
     }
 
+    Logger::debug("data file %s closing, length = %lu", m_name.c_str(), get_length());
     MmapFile::close();
 }
 

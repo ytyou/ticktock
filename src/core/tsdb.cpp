@@ -61,6 +61,7 @@ Mapping::Mapping(const char *name) :
 {
     m_metric = STRDUP(name);
     ASSERT(m_metric != nullptr);
+    ASSERT(m_ts_head.load() == nullptr);
 }
 
 Mapping::~Mapping()
@@ -78,15 +79,10 @@ Mapping::flush(bool close)
     ReadLock guard(m_lock);
     //std::lock_guard<std::mutex> guard(m_lock);
 
-    for (auto it = m_map.begin(); it != m_map.end(); it++)
+    for (TimeSeries *ts = m_ts_head.load(); ts != nullptr; ts = ts->m_next)
     {
-        TimeSeries *ts = it->second;
-
-        if (it->first == ts->get_key())
-        {
-            Logger::trace("Flushing ts: %T", ts);
-            ts->flush(close);
-        }
+        Logger::trace("Flushing ts: %T", ts);
+        ts->flush(close);
     }
 }
 
@@ -605,6 +601,7 @@ Tsdb::query_for_data(TimeSeriesId id, TimeRange& query_range, std::vector<DataPo
     bool has_ooo = false;
     std::lock_guard<std::mutex> guard(m_lock);
 
+    m_mode |= TSDB_MODE_READ;
     m_index_file.ensure_open(true);
     m_index_file.get_indices(id, file_idx, header_idx);
 
@@ -625,6 +622,7 @@ Tsdb::query_for_data(TimeSeriesId id, TimeRange& query_range, std::vector<DataPo
             DataFile *data_file = m_data_files[file_idx];
             data_file->ensure_open(true);
             void *page = data_file->get_page(page_header->m_page_index);
+            ASSERT(page != nullptr);
             //int compressor_version = header_file->get_compressor_version();
             //ASSERT(! header->is_out_of_order() || (compressor_version == 0));
 
@@ -681,7 +679,7 @@ Tsdb::ensure_readable(bool count)
 void
 Tsdb::flush(bool sync)
 {
-    for (DataFile *file: m_data_files) file->flush(sync);
+    //for (DataFile *file: m_data_files) file->flush(sync);
     for (HeaderFile *file: m_header_files) file->flush(sync);
     m_index_file.flush(sync);
 }
@@ -819,6 +817,7 @@ Tsdb::append_page(TimeSeriesId id, FileIndex prev_file_idx, HeaderIndex prev_hea
     //WriteLock guard(m_lock);
 
     m_load_time = ts_now_sec();
+    m_mode |= TSDB_MODE_READ_WRITE;
 
     if (m_header_files.empty())
     {
@@ -844,7 +843,7 @@ Tsdb::append_page(TimeSeriesId id, FileIndex prev_file_idx, HeaderIndex prev_hea
     DataFile *data_file = m_data_files.back();
 
     data_file->ensure_open(false);
-    header_file->ensure_open(false);
+    //header_file->ensure_open(false);
     m_index_file.ensure_open(false);
 
     ASSERT(! m_data_files.empty());
@@ -857,6 +856,7 @@ Tsdb::append_page(TimeSeriesId id, FileIndex prev_file_idx, HeaderIndex prev_hea
     HeaderIndex header_idx = header_file->new_header_index(this);
     ASSERT(header_idx != TT_INVALID_HEADER_INDEX);
     struct page_info_on_disk *new_header = header_file->get_page_header(header_idx);
+    ASSERT(header->m_page_index == new_header->m_page_index);
     new_header->init(header);
 
     set_indices(id, prev_file_idx, prev_header_idx, header_file->get_id(), header_idx);
@@ -1764,13 +1764,11 @@ Tsdb::rotate(TaskData& data)
         std::lock_guard<std::mutex> guard(tsdb->m_lock);
         //WriteLock guard(tsdb->m_lock);
 
-/*
         if (! (tsdb->m_mode & TSDB_MODE_READ))
         {
             Logger::info("[rotate] %T already archived!", tsdb);
             continue;    // already archived
         }
-*/
 
         uint32_t mode = tsdb->mode_of();
         uint64_t load_time = tsdb->m_load_time;

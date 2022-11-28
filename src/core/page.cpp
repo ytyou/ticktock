@@ -199,6 +199,7 @@ PageInMemory::flush(TimeSeriesId id)
 
     CompressorPosition position;
     m_compressor->save(position);
+    m_compressor->save((uint8_t*)m_page);
 
     m_page_header.m_cursor = position.m_offset;
     m_page_header.m_start = position.m_start;
@@ -206,7 +207,10 @@ PageInMemory::flush(TimeSeriesId id)
     m_page_header.m_next_file = TT_INVALID_FILE_INDEX;
     m_page_header.m_next_header = TT_INVALID_HEADER_INDEX;
 
-    m_compressor->save((uint8_t*)m_page);
+#ifdef _DEBUG
+    g_total_dps_count.fetch_add(m_compressor->get_dp_count(), std::memory_order_relaxed);
+    g_total_page_count++;
+#endif
 
     m_tsdb->append_page(id, prev_file_idx, prev_header_idx, &m_page_header, m_page);
 

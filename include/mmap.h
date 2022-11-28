@@ -22,6 +22,7 @@
 #include <mutex>
 #include "range.h"
 #include "type.h"
+#include "utils.h"
 
 
 namespace tt
@@ -37,10 +38,8 @@ public:
     MmapFile(const std::string& file_name);
     virtual ~MmapFile();
 
-    bool open(off_t length, bool read_only, bool append_only);  // return true if new file
-    bool fopen(const char *mode, std::FILE * (&file));  // return true if new file
     bool resize(off_t length);
-    virtual bool open(bool for_read) = 0;
+    virtual void open(bool for_read) = 0;
     virtual void close();
     virtual void flush(bool sync);
     void ensure_open(bool for_read);
@@ -52,9 +51,15 @@ public:
 
     virtual bool is_open(bool for_read) const;
     inline bool is_read_only() const { return m_read_only; }
+    inline bool exists() const { return file_exists(m_name); }
+
+protected:
+    void open(off_t length, bool read_only, bool append_only, bool resize);
+    void open_existing(bool read_only, bool append_only);
+
+    std::string m_name;
 
 private:
-    std::string m_name;
     off_t m_length;
     void *m_pages;
     std::mutex m_lock;
@@ -74,7 +79,7 @@ class IndexFile : public MmapFile
 {
 public:
     IndexFile(const std::string& file_name);
-    bool open(bool for_read) override;
+    void open(bool for_read) override;
 
     bool set_indices(TimeSeriesId id, FileIndex file_index, HeaderIndex page_index);
     void get_indices(TimeSeriesId id, FileIndex& file_index, HeaderIndex& page_index);
@@ -90,7 +95,7 @@ public:
     HeaderFile(const std::string& file_name, FileIndex id, PageCount page_count, Tsdb *tsdb);
 
     void init_tsdb_header(Tsdb *tsdb);
-    bool open(bool for_read) override;
+    void open(bool for_read) override;
 
     PageSize get_page_size();
     PageCount get_page_index();
@@ -118,7 +123,7 @@ class DataFile : public MmapFile
 public:
     DataFile(const std::string& file_name, FileIndex id, PageSize size, PageCount count);
 
-    bool open(bool read_only) override;
+    void open(bool read_only) override;
     void close() override;
     void flush(bool sync) override;
     //void init(HeaderFile *header_file);
@@ -135,6 +140,7 @@ private:
     PageCount m_page_count;
     FileIndex m_id;
     PageCount m_page_index;
+    HeaderFile *m_header_file;
 };
 
 

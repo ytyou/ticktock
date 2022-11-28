@@ -102,6 +102,7 @@ private:
     //std::mutex m_lock;
     default_contention_free_shared_mutex m_lock;
     tsl::robin_map<const char*,TimeSeries*,hash_func,eq_func> m_map;
+    //std::unordered_map<const char*,TimeSeries*,hash_func,eq_func> m_map;
 
     std::atomic<TimeSeries*> m_ts_head;
     int m_tag_count;    // -1: uninitialized; -2: inconsistent;

@@ -10,8 +10,6 @@ fi
 
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
-inputDir=$1
-totalDataPoints=$($DIR/../bin/inspect -d $1 | grep "^ts = " | wc -l)
-echo "total=$totalDataPoints"
+$DIR/../bin/inspect -d $1
 
 exit 0
