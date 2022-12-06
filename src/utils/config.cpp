@@ -166,6 +166,24 @@ Config::get_int(const std::string& name, int def_value)
     return property->as_int();
 }
 
+float
+Config::get_float(const std::string& name)
+{
+    std::lock_guard<std::mutex> guard(m_lock);
+    std::shared_ptr<Property> property = get_property(name);
+    if (property == nullptr) throw std::exception();
+    return property->as_float();
+}
+
+float
+Config::get_float(const std::string& name, float def_value)
+{
+    std::lock_guard<std::mutex> guard(m_lock);
+    std::shared_ptr<Property> property = get_property(name);
+    if (property == nullptr) return def_value;
+    return property->as_float();
+}
+
 const std::string &
 Config::get_str(const std::string& name)
 {

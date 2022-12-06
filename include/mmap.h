@@ -125,6 +125,7 @@ public:
 
     void open(bool read_only) override;
     void close() override;
+    void close(int rw);
     void flush(bool sync) override;
     //void init(HeaderFile *header_file);
 
@@ -134,6 +135,9 @@ public:
     inline FILE *get_file() const { return m_file; }
     bool is_open(bool for_read) const override;
 
+    inline Timestamp get_last_read() const { return m_last_read; }
+    inline Timestamp get_last_write() const { return m_last_write; }
+
 private:
     FILE *m_file;
     PageSize m_page_size;
@@ -141,6 +145,8 @@ private:
     FileIndex m_id;
     PageCount m_page_index;
     HeaderFile *m_header_file;
+    Timestamp m_last_read;
+    Timestamp m_last_write;
 };
 
 

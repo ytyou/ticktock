@@ -254,7 +254,7 @@ Mapping::get_ts_count()
 Tsdb::Tsdb(TimeRange& range, bool existing) :
     m_time_range(range),
     m_index_file(Tsdb::get_index_file_name(range)),
-    m_load_time(ts_now_sec()),
+    //m_load_time(ts_now_sec()),
     m_partition_mgr(nullptr),
     m_page_size(g_page_size),
     m_page_count(g_page_count)
@@ -656,8 +656,8 @@ Tsdb::ensure_readable(bool count)
 
         if ((m_mode & TSDB_MODE_READ) == 0)
             readable = false;
-        else
-            m_load_time = ts_now_sec();
+        //else
+            //m_load_time = ts_now_sec();
 
         if (count)
             inc_count();
@@ -754,6 +754,7 @@ Tsdb::get_last_header_indices(TimeSeriesId id, FileIndex& file_idx, HeaderIndex&
     //ReadLock guard(m_lock);
     std::lock_guard<std::mutex> guard(m_lock);
 
+    m_mode |= TSDB_MODE_READ;
     m_index_file.ensure_open(false);
     m_index_file.get_indices(id, fidx, hidx);
 
@@ -816,7 +817,7 @@ Tsdb::append_page(TimeSeriesId id, FileIndex prev_file_idx, HeaderIndex prev_hea
     std::lock_guard<std::mutex> guard(m_lock);
     //WriteLock guard(m_lock);
 
-    m_load_time = ts_now_sec();
+    //m_load_time = ts_now_sec();
     m_mode |= TSDB_MODE_READ_WRITE;
 
     if (m_header_files.empty())
@@ -1072,7 +1073,7 @@ Tsdb::http_api_put_handler(HttpRequest& request, HttpResponse& response)
             }
             else
             {
-                tsdb->m_load_time = ts_now_sec();
+                //tsdb->m_load_time = ts_now_sec();
                 //ASSERT(tsdb->m_meta_file.is_open());
             }
             tsdb->m_mode |= TSDB_MODE_READ_WRITE;
@@ -1128,7 +1129,7 @@ Tsdb::http_api_put_handler_json(HttpRequest& request, HttpResponse& response)
             }
             else
             {
-                tsdb->m_load_time = ts_now_sec();
+                //tsdb->m_load_time = ts_now_sec();
             }
             tsdb->m_mode |= TSDB_MODE_READ_WRITE;
         }
@@ -1351,7 +1352,7 @@ Tsdb::http_api_put_handler_plain2(HttpRequest& request, HttpResponse& response)
             }
             else
             {
-                tsdb->m_load_time = ts_now_sec();
+                //tsdb->m_load_time = ts_now_sec();
                 //ASSERT(tsdb->m_meta_file.is_open());
             }
             tsdb->m_mode |= TSDB_MODE_READ_WRITE;
@@ -1509,6 +1510,7 @@ Tsdb::init()
 
     CheckPointManager::init();
     PartitionManager::init();
+    TimeSeries::init();
 
     tsdb_rotation_freq =
         Config::get_time(CFG_TSDB_ROTATION_FREQUENCY, TimeUnit::SEC, CFG_TSDB_ROTATION_FREQUENCY_DEF);
@@ -1696,6 +1698,29 @@ Tsdb::get_active_tsdb_count()
     return total;
 }
 
+int
+Tsdb::get_total_tsdb_count()
+{
+    ReadLock guard(m_tsdb_lock);
+    return (int)m_tsdbs.size();
+}
+
+int
+Tsdb::get_open_data_file_count(bool for_read)
+{
+    int total = 0;
+    ReadLock guard(m_tsdb_lock);
+    for (Tsdb *tsdb: m_tsdbs)
+    {
+        for (auto df: tsdb->m_data_files)
+        {
+            if (df->is_open(for_read))
+                total++;
+        }
+    }
+    return total;
+}
+
 void
 Tsdb::unload()
 {
@@ -1727,8 +1752,6 @@ Tsdb::rotate(TaskData& data)
 
     TimeRange range(0, now);
     Tsdb::insts(range, tsdbs);
-
-    Logger::info("[rotate] Checking %d tsdbs.", tsdbs.size());
 
     // adjust CFG_TSDB_ARCHIVE_THRESHOLD when system available memory is low
     if (Stats::get_avphys_pages() < 1600)
@@ -1771,14 +1794,61 @@ Tsdb::rotate(TaskData& data)
         }
 
         uint32_t mode = tsdb->mode_of();
-        uint64_t load_time = tsdb->m_load_time;
+//        uint64_t load_time = tsdb->m_load_time;
 
         if (disk_avail < 100000000L)    // TODO: get it from config
             mode &= ~TSDB_MODE_WRITE;
 
+        bool all_closed = true;
+
+        for (DataFile *data_file: tsdb->m_data_files)
+        {
+            if (data_file->is_open(true))
+            {
+                Timestamp last_read = data_file->get_last_read();
+                if (((int64_t)now_sec - (int64_t)last_read) > (int64_t)thrashing_threshold)
+                    data_file->close(1);    // close read
+                else
+                {
+                    all_closed = false;
+#ifdef _DEBUG
+                    Logger::info("data file %u last accessed at %" PRIu64 "; now is %" PRIu64,
+                        data_file->get_id(), last_read, now_sec);
+#endif
+                }
+            }
+
+            if (data_file->is_open(false))
+            {
+                Timestamp last_write = data_file->get_last_write();
+                if (((int64_t)now_sec - (int64_t)last_write) > (int64_t)thrashing_threshold)
+                {
+                    data_file->close(2);    // close write
+
+                    if (! data_file->is_open(true))
+                    {
+                        // close the header file as well
+                        FileIndex id = data_file->get_id();
+                        HeaderFile *header_file = tsdb->m_header_files[id];
+                        header_file->close();
+                    }
+                }
+                else
+                    all_closed = false;
+            }
+        }
+
+        tsdb->flush(true);
+
+        if (all_closed)
+        {
+            Logger::info("[rotate] Archiving %T", tsdb);
+            tsdb->unload_no_lock();
+        }
+/*
         if (((int64_t)now_sec - (int64_t)load_time) > (int64_t)thrashing_threshold)
         {
-            if (! (mode & TSDB_MODE_READ) && tsdb->count_is_zero())
+            if (! (mode & TSDB_MODE_READ))
             {
                 // archive it
                 Logger::info("[rotate] Archiving %T (lt=%" PRIu64 ", now=%" PRIu64 ")", tsdb, load_time, now_sec);
@@ -1794,11 +1864,19 @@ Tsdb::rotate(TaskData& data)
                 continue;
             }
         }
-        else if (! (mode & TSDB_MODE_READ) && tsdb->count_is_zero())
+#ifdef _DEBUG
+        else if (! (mode & TSDB_MODE_READ))
         {
+            Logger::info("%T: now_sec = %" PRIu64 "; load_time = %" PRIu64 "; threshold = %" PRIu64,
+                tsdb, now_sec, load_time, thrashing_threshold);
+        }
+#endif
+        //else if (! (mode & TSDB_MODE_READ) && tsdb->count_is_zero())
+        //{
             //for (PageManager* pm: tsdb->m_page_mgrs)
                 //pm->try_unload();
-        }
+        //}
+*/
     }
 
     CheckPointManager::persist();
@@ -1838,6 +1916,7 @@ Tsdb::purge_oldest(int threshold)
             tsdb = m_tsdbs.front();
             Timestamp now = ts_now_sec();
 
+/*
             if ((now - tsdb->m_load_time) > 7200)   // TODO: config?
             {
                 m_tsdbs.erase(m_tsdbs.begin());
@@ -1846,6 +1925,7 @@ Tsdb::purge_oldest(int threshold)
             {
                 tsdb = nullptr;
             }
+*/
         }
     }
 

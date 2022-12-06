@@ -212,6 +212,8 @@ public:
     static int get_page_count(bool ooo);    // for testing only
     static int get_data_page_count();       // for testing only
     static int get_active_tsdb_count();
+    static int get_total_tsdb_count();
+    static int get_open_data_file_count(bool for_read);
     static bool validate(Tsdb *tsdb);
     double get_page_percent_used();
     inline size_t c_size() const override { return m_time_range.c_size() + 4; }
@@ -260,7 +262,8 @@ private:
     // this is true if, 1. m_map is populated; 2. m_page_mgr is open; 3. m_meta_file is open;
     // this is false if all the above are not true;
     uint32_t m_mode;
-    std::atomic<Timestamp> m_load_time; // epoch time in sec
+    //std::atomic<Timestamp> m_load_time; // epoch time in sec
+    //Timestamp m_load_time; // epoch time in sec
     default_contention_free_shared_mutex m_load_lock;
 
     PartitionManager *m_partition_mgr;

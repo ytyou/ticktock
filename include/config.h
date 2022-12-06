@@ -96,6 +96,8 @@
 #define CFG_TIMER_QUEUE_SIZE_DEF                32
 #define CFG_TIMER_THREAD_COUNT                  "timer.thread.count"
 #define CFG_TIMER_THREAD_COUNT_DEF              1
+#define CFG_TS_LOCK_PROBABILITY                 "ts.lock.probability"
+#define CFG_TS_LOCK_PROBABILITY_DEF             0.02
 #define CFG_TSDB_ARCHIVE_THRESHOLD              "tsdb.archive.threshold"
 #define CFG_TSDB_ARCHIVE_THRESHOLD_DEF          "1w"
 #define CFG_TSDB_COMPACT_FREQUENCY              "tsdb.compact.frequency"
@@ -169,6 +171,11 @@ public:
         return bytes;
     }
 
+    inline float as_float() const
+    {
+        return std::stof(m_value);
+    }
+
     inline int as_int() const
     {
         return std::stoi(m_value);
@@ -218,6 +225,8 @@ public:
     static bool get_bool(const std::string& name, bool def_value);
     static int get_int(const std::string& name);
     static int get_int(const std::string& name, int def_value);
+    static float get_float(const std::string& name);
+    static float get_float(const std::string& name, float def_value);
     static const std::string& get_str(const std::string& name);
     static const std::string& get_str(const std::string& name, const std::string& def_value);
 

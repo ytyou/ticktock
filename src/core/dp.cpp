@@ -324,7 +324,7 @@ DataPointSet::~DataPointSet()
 
     if (m_dps != nullptr)
     {
-        delete m_dps;
+        delete[] m_dps;
         m_dps = nullptr;
     }
 }

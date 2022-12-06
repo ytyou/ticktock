@@ -46,6 +46,7 @@ public:
     TimeSeries(TimeSeriesId id, const char *metric, const char *key, Tag *tags);
     ~TimeSeries();
 
+    static void init();    // called by Tsdb::init()
     void init(TimeSeriesId id, const char *metric, const char *key, Tag *tags);
     void restore(Tsdb *tsdb, PageSize offset, uint8_t start, char *buff, bool is_ooo);
 
@@ -88,7 +89,7 @@ public:
 
 private:
     char *m_key;            // this uniquely defines the time-series
-    std::mutex m_lock;
+    //std::mutex m_lock;
 
     PageInMemory *m_buff;   // in-memory buffer; if m_id is 0, it's contents are
                             // not on disk; otherwise it's contents are at least
@@ -101,6 +102,9 @@ private:
 
     static std::atomic<TimeSeriesId> m_next_id;
     TimeSeriesId m_id;      // global, unique, permanent id starting at 0
+
+    static uint32_t m_lock_count;
+    static std::mutex *m_locks;
 };
 
 

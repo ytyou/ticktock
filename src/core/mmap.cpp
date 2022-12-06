@@ -200,6 +200,7 @@ MmapFile::close()
         flush(true);
         munmap(m_pages, m_length);
         m_pages = nullptr;
+        Logger::info("closing %s", m_name.c_str());
     }
 
     if (m_fd > 0)
@@ -522,7 +523,9 @@ DataFile::DataFile(const std::string& file_name, FileIndex id, PageSize size, Pa
     m_page_size(size),
     m_page_count(count),
     m_page_index(TT_INVALID_PAGE_INDEX),
-    m_header_file(nullptr)
+    m_header_file(nullptr),
+    m_last_read(0),
+    m_last_write(0)
 {
 }
 
@@ -543,6 +546,7 @@ DataFile::open(bool for_read)
     {
         off_t length = (off_t)m_page_size * (off_t)m_page_count;
         MmapFile::open(length, true, false, false);
+        Logger::info("opening %s for read", m_name.c_str());
     }
     else
     {
@@ -557,6 +561,7 @@ DataFile::open(bool for_read)
         off_t length = sb.st_size;
 
         m_page_index = length / m_page_size;
+        Logger::info("opening %s for write", m_name.c_str());
     }
 }
 
@@ -569,15 +574,36 @@ DataFile::close()
         m_file = nullptr;
     }
 
-    Logger::debug("data file %s closing, length = %lu", m_name.c_str(), get_length());
+    Logger::info("closing data file %s (for both read & write), length = %lu", m_name.c_str(), get_length());
     MmapFile::close();
+}
+
+void
+DataFile::close(int rw)
+{
+    if (rw == 0)
+    {
+        this->close();
+    }
+    else if (rw == 1)
+    {
+        // close read only
+        MmapFile::close();
+        Logger::info("closing %s for read", m_name.c_str());
+    }
+    else if (m_file != nullptr)
+    {
+        std::fclose(m_file);
+        m_file = nullptr;
+        Logger::info("closing %s for write", m_name.c_str());
+    }
 }
 
 bool
 DataFile::is_open(bool for_read) const
 {
     if (for_read)
-        return MmapFile::is_open(for_read);
+        return MmapFile::is_open(true);
     else
         return (m_file != nullptr);
 }
@@ -590,6 +616,7 @@ DataFile::append(const void *page)
     ASSERT(m_file != nullptr);
     std::fwrite(page, m_page_size, 1, m_file);
     std::fflush(m_file);
+    m_last_write = ts_now_sec();
     return m_page_index++;
 }
 
@@ -606,6 +633,7 @@ DataFile::get_page(PageIndex idx)
     ASSERT(idx != TT_INVALID_PAGE_INDEX);
     uint8_t *pages = (uint8_t*)get_pages();
     ASSERT(pages != nullptr);
+    m_last_read = ts_now_sec();
     return (void*)(pages + (idx * m_page_size));
 }
 

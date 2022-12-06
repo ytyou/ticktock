@@ -16,6 +16,7 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+#include <algorithm>
 #include <cassert>
 #include <cstdint>
 #include "aggregate.h"
@@ -36,6 +37,8 @@ namespace tt
 
 
 std::atomic<TimeSeriesId> TimeSeries::m_next_id{0};
+uint32_t TimeSeries::m_lock_count;
+std::mutex *TimeSeries::m_locks;
 
 
 TimeSeries::TimeSeries(const char *metric, const char *key, Tag *tags) :
@@ -89,6 +92,24 @@ TimeSeries::~TimeSeries()
 }
 
 void
+TimeSeries::init()
+{
+    // Birthday Paradox - Square approximation method
+    int tcp_responders =
+        Config::get_int(CFG_TCP_LISTENER_COUNT, CFG_TCP_LISTENER_COUNT_DEF) *
+        Config::get_int(CFG_TCP_RESPONDERS_PER_LISTENER, CFG_TCP_RESPONDERS_PER_LISTENER_DEF);
+    int http_responders =
+        Config::get_int(CFG_HTTP_LISTENER_COUNT, CFG_HTTP_LISTENER_COUNT_DEF) *
+        Config::get_int(CFG_HTTP_RESPONDERS_PER_LISTENER, CFG_HTTP_RESPONDERS_PER_LISTENER_DEF);
+    float probability =
+        Config::get_float(CFG_TS_LOCK_PROBABILITY, CFG_TS_LOCK_PROBABILITY_DEF);
+    m_lock_count = std::max(tcp_responders, http_responders);
+    m_lock_count = (uint32_t)((float)(m_lock_count * m_lock_count) / (2.0 * probability));
+    m_locks = new std::mutex[m_lock_count];
+    Logger::info("number of ts locks: %u", m_lock_count);
+}
+
+void
 TimeSeries::init(TimeSeriesId id, const char *metric, const char *key, Tag *tags)
 {
     m_id = id;
@@ -122,7 +143,8 @@ TimeSeries::restore(Tsdb *tsdb, PageSize offset, uint8_t start, char *buff, bool
 void
 TimeSeries::flush(bool close)
 {
-    std::lock_guard<std::mutex> guard(m_lock);
+    //std::lock_guard<std::mutex> guard(m_lock);
+    std::lock_guard<std::mutex> guard(m_locks[m_id % m_lock_count]);
     flush_no_lock(close);
 }
 
@@ -161,7 +183,8 @@ void
 TimeSeries::append(FILE *file)
 {
     ASSERT(file != nullptr);
-    std::lock_guard<std::mutex> guard(m_lock);
+    //std::lock_guard<std::mutex> guard(m_lock);
+    std::lock_guard<std::mutex> guard(m_locks[m_id % m_lock_count]);
     if (m_buff != nullptr) m_buff->append(m_id, file);
     if (m_ooo_buff != nullptr) m_ooo_buff->append(m_id, file);
 }
@@ -170,7 +193,8 @@ bool
 TimeSeries::add_data_point(DataPoint& dp)
 {
     const Timestamp tstamp = dp.get_timestamp();
-    std::lock_guard<std::mutex> guard(m_lock);
+    //std::lock_guard<std::mutex> guard(m_lock);
+    std::lock_guard<std::mutex> guard(m_locks[m_id % m_lock_count]);
 
     // Make sure we have a valid m_buff (PageInMemory)
     if (UNLIKELY(m_buff == nullptr))
@@ -280,7 +304,8 @@ bool
 TimeSeries::query_for_data(Tsdb *tsdb, TimeRange& range, std::vector<DataPointContainer*>& data)
 {
     bool has_ooo = false;
-    std::lock_guard<std::mutex> guard(m_lock);
+    //std::lock_guard<std::mutex> guard(m_lock);
+    std::lock_guard<std::mutex> guard(m_locks[m_id % m_lock_count]);
 
     if ((m_buff != nullptr) && (! m_buff->is_empty()) && (m_buff->get_tsdb() == tsdb))
     {
@@ -383,7 +408,8 @@ TimeSeries::query_with_ooo(TimeRange& range, Downsampler *downsampler, DataPoint
     size_t size = m_pages.size() + m_ooo_pages.size();
     DataPointContainer containers[size];
     size_t count = 0;
-    std::lock_guard<std::mutex> guard(m_lock);
+    //std::lock_guard<std::mutex> guard(m_lock);
+    std::lock_guard<std::mutex> guard(m_locks[m_id % m_lock_count]);
 
     for (PageInfo *page_info : m_pages)
     {

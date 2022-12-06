@@ -313,65 +313,44 @@ MemoryManager::collect_stats(Timestamp ts, std::vector<DataPoint> &dps)
 void
 MemoryManager::log_stats()
 {
-    if (Logger::get_level() > LogLevel::DEBUG)
-        return;
+    std::vector<DataPoint> dps;
+    Timestamp ts = ts_now_sec();
+    MemoryManager::collect_stats(ts, dps);
 
-#ifdef _DEBUG
-    Logger::debug("mm::aggregator_avg = %d", m_maps[RecyclableType::RT_AGGREGATOR_AVG].size());
-    Logger::debug("mm::aggregator_count = %d", m_maps[RecyclableType::RT_AGGREGATOR_COUNT].size());
-    Logger::debug("mm::aggregator_dev = %d", m_maps[RecyclableType::RT_AGGREGATOR_DEV].size());
-    Logger::debug("mm::aggregator_max = %d", m_maps[RecyclableType::RT_AGGREGATOR_MAX].size());
-    Logger::debug("mm::aggregator_min = %d", m_maps[RecyclableType::RT_AGGREGATOR_MIN].size());
-    Logger::debug("mm::aggregator_none = %d", m_maps[RecyclableType::RT_AGGREGATOR_NONE].size());
-    Logger::debug("mm::aggregator_pt = %d", m_maps[RecyclableType::RT_AGGREGATOR_PT].size());
-    Logger::debug("mm::aggregator_sum = %d", m_maps[RecyclableType::RT_AGGREGATOR_SUM].size());
-    Logger::debug("mm::bitset_cursor = %d", m_maps[RecyclableType::RT_BITSET_CURSOR].size());
-    Logger::debug("mm::compressor_v0 = %d", m_maps[RecyclableType::RT_COMPRESSOR_V0].size());
-    Logger::debug("mm::compressor_v1 = %d", m_maps[RecyclableType::RT_COMPRESSOR_V1].size());
-    Logger::debug("mm::compressor_v2 = %d", m_maps[RecyclableType::RT_COMPRESSOR_V2].size());
-    Logger::debug("mm::compressor_v3 = %d", m_maps[RecyclableType::RT_COMPRESSOR_V3].size());
-    Logger::debug("mm::data_point = %d", m_maps[RecyclableType::RT_DATA_POINT].size());
-    Logger::debug("mm::data_point_container = %d", m_maps[RecyclableType::RT_DATA_POINT_CONTAINER].size());
-    Logger::debug("mm::downsampler_avg = %d", m_maps[RecyclableType::RT_DOWNSAMPLER_AVG].size());
-    Logger::debug("mm::downsampler_count = %d", m_maps[RecyclableType::RT_DOWNSAMPLER_COUNT].size());
-    Logger::debug("mm::downsampler_dev = %d", m_maps[RecyclableType::RT_DOWNSAMPLER_DEV].size());
-    Logger::debug("mm::downsampler_first = %d", m_maps[RecyclableType::RT_DOWNSAMPLER_FIRST].size());
-    Logger::debug("mm::downsampler_last = %d", m_maps[RecyclableType::RT_DOWNSAMPLER_LAST].size());
-    Logger::debug("mm::downsampler_max = %d", m_maps[RecyclableType::RT_DOWNSAMPLER_MAX].size());
-    Logger::debug("mm::downsampler_min = %d", m_maps[RecyclableType::RT_DOWNSAMPLER_MIN].size());
-    Logger::debug("mm::downsampler_pt = %d", m_maps[RecyclableType::RT_DOWNSAMPLER_PT].size());
-    Logger::debug("mm::downsampler_sum = %d", m_maps[RecyclableType::RT_DOWNSAMPLER_SUM].size());
-    Logger::debug("mm::http_connection = %d", m_maps[RecyclableType::RT_HTTP_CONNECTION].size());
-    Logger::debug("mm::json_value = %d", m_maps[RecyclableType::RT_JSON_VALUE].size());
-    Logger::debug("mm::key_value_pair = %d", m_maps[RecyclableType::RT_KEY_VALUE_PAIR].size());
-    Logger::debug("mm::query_results = %d", m_maps[RecyclableType::RT_QUERY_RESULTS].size());
-    Logger::debug("mm::query_task = %d", m_maps[RecyclableType::RT_QUERY_TASK].size());
-    Logger::debug("mm::rate_calculator = %d", m_maps[RecyclableType::RT_RATE_CALCULATOR].size());
-    Logger::debug("mm::tcp_connection = %d", m_maps[RecyclableType::RT_TCP_CONNECTION].size());
+    char name[PATH_MAX];
+    sprintf(name, "/tmp/tt/log/stat.%" PRIu64 ".log", ts);
+    FILE *file = std::fopen(name, "w");
 
-    int count = 0;
-    for (void *next = m_page_free_list; next != nullptr; count++)
+    if (file != nullptr)
     {
-        next = *(static_cast<void**>(next));
+        for (DataPoint& dp: dps)
+        {
+            char buff[dp.c_size()];
+            fprintf(file, "%s\n", dp.c_str(buff));
+        }
+
+        long ts_cnt = Tsdb::get_ts_count();
+        fprintf(file, "ticktock.time_series.count %" PRIu64 " %ld %s=%s\nticktock.time_series.memory %" PRIu64 " %ld %s=%s\n",
+            ts, ts_cnt, HOST_TAG_NAME, g_host_name.c_str(),
+            ts, ts_cnt*sizeof(TimeSeries), HOST_TAG_NAME, g_host_name.c_str());
+
+        fprintf(file, "ticktock.tsdb.count %" PRIu64 " %d mode=active %s=%s\n",
+            ts, Tsdb::get_active_tsdb_count(), HOST_TAG_NAME, g_host_name.c_str());
+
+        fprintf(file, "ticktock.tsdb.count %" PRIu64 " %d mode=any %s=%s\n",
+            ts, Tsdb::get_total_tsdb_count(), HOST_TAG_NAME, g_host_name.c_str());
+
+        fprintf(file, "ticktock.open.data_file.count %" PRIu64 " %d mode=read %s=%s\n",
+            ts, Tsdb::get_open_data_file_count(true), HOST_TAG_NAME, g_host_name.c_str());
+
+        fprintf(file, "ticktock.open.data_file.count %" PRIu64 " %d mode=write %s=%s\n",
+            ts, Tsdb::get_open_data_file_count(false), HOST_TAG_NAME, g_host_name.c_str());
+
+        fprintf(file, "ticktock.connection.count %" PRIu64 " %d %s=%s\n",
+            ts, TcpListener::get_active_conn_count(), HOST_TAG_NAME, g_host_name.c_str());
+
+        fclose(file);
     }
-    Logger::debug("mm::page = %d", count);
-    Logger::debug("mm::--------");
-#endif
-}
-
-int
-MemoryManager::get_recyclable_total()
-{
-    int total = 0;
-
-#ifdef _DEBUG
-    for (int i = 0; i < (int)RecyclableType::RT_COUNT; i++)
-    {
-        total += m_maps[i].size();
-    }
-#endif
-
-    return total;
 }
 
 void
@@ -984,6 +963,10 @@ MemoryManager::collect_garbage(TaskData& data)
             }
         }
     }
+
+#ifdef _DEBUG
+    log_stats();
+#endif
 
     return false;
 }

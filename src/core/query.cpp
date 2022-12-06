@@ -544,19 +544,6 @@ Query::execute(std::vector<QueryResults*>& results, StringBuffer& strbuf)
 
     for (Tsdb *tsdb: tsdbs)
         tsdb->dec_count();
-
-    // The following code are for debugging purposes only.
-#ifdef _DEBUG
-    int n = 0, c = 0;
-
-    for (QueryResults *qr: results)
-    {
-        c++;
-        n += qr->m_dps.size();
-    }
-
-    Logger::debug("Finished with %d ts, %d qr and %d dps in range %T", qtv.size(), c, n, &m_time_range);
-#endif
 }
 
 // perform query by submitting task to QueryExecutor
@@ -610,18 +597,6 @@ Query::execute_in_parallel(std::vector<QueryResults*>& results, StringBuffer& st
 
     for (Tsdb *tsdb: tsdbs)
         tsdb->dec_count();
-
-    // The following code are for debugging purposes only.
-#ifdef _DEBUG
-    int n = 0;
-
-    for (QueryResults *qr: results)
-    {
-        n += qr->m_dps.size();
-    }
-
-    Logger::debug("Finished with %d ts and %d dps in range %T", qtv.size(), n, &m_time_range);
-#endif
 }
 
 const char *

@@ -54,6 +54,7 @@ public:
     ReferenceCount() : m_count(0) {}
     void dec_count() { m_count--; }
     void inc_count() { m_count++; }
+    int32_t get_count() const { return m_count.load(); }
     inline bool count_is_zero() { return ((int)m_count.load() <= 0); }
 
 private:
