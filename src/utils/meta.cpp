@@ -110,7 +110,7 @@ MetaFile::open()
 {
     ASSERT(m_file == nullptr);
 
-    int fd = ::open(m_name.c_str(), O_WRONLY|O_CREAT|O_APPEND|O_DSYNC, S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH);
+    int fd = ::open(m_name.c_str(), O_WRONLY|O_CREAT|O_APPEND|O_NONBLOCK, S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH);
     fd = FileDescriptorManager::dup_fd(fd, FileDescriptorType::FD_FILE);
 
     if (fd == -1)
