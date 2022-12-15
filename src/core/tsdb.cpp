@@ -101,11 +101,12 @@ Mapping::get_ts_head()
     return m_ts_head.load();
 }
 
-// raw_tags format assumed to be: 'device=123;sensor=343;'
+// raw_tags format assumed to be: 'device=d_123;sensor=s_343;'
 // return ts_id=device*m_total_ts + sensor;
 int
 Mapping::parse_raw_tags(const char* raw_tags)
 {
+    //Logger::info("raw_tags: %s\n", raw_tags);
     if (raw_tags == nullptr) return 0;
 
     char *key, *val, *space, *eq;
@@ -115,15 +116,16 @@ Mapping::parse_raw_tags(const char* raw_tags)
     {
         while (*key == ' ') key++;
         eq = strchr(key, '=');
-        if (eq == nullptr) return;
+        if (eq == nullptr) return 0;
         *eq = 0;
         val = eq + 1;
         space = strchr(val, ' ');
         if (space != nullptr) *space++ = 0;
         // std::cout << key << ":" << val <<"\n";
+        //Logger::info("key: %s, value:%d\n", key, val);
 
-        if (strcmp(key, "device") == 0) device_id=atoi(val);
-        else if (strcmp(key, "sensor") ==0) sensor_id=atoi(val);
+        if (strcmp(key, "device") == 0) device_id=atoi(val+2);
+        else if (strcmp(key, "sensor") ==0) sensor_id=atoi(val+2);
     }
 
     // std::cout << "device_id=" << device_id <<" sensor_id=" << sensor_id <<"\n";
