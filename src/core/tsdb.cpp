@@ -63,7 +63,7 @@ Mapping::Mapping(const char *name) :
     ASSERT(m_metric != nullptr);
     ASSERT(m_ts_head.load() == nullptr);
 
-    m_total_ts = 1000000;
+    m_total_ts = 3000000;
     m_timeseries = new TimeSeries*[m_total_ts];
 }
 
@@ -109,20 +109,26 @@ Mapping::parse_raw_tags(const char* raw_tags)
     //Logger::info("raw_tags: %s\n", raw_tags);
     if (raw_tags == nullptr) return 0;
 
-    char *key, *val, *space, *eq;
+    char *key, *val, *separator, *eq;
     int device_id, sensor_id;
 
-    for (key = strdup(raw_tags); key != nullptr; key = space)
+    for (key = strdup(raw_tags); key != nullptr; key = separator)
     {
-        while (*key == ' ') key++;
+        while (*key == ' ' || *key == ';') key++;
         eq = strchr(key, '=');
-        if (eq == nullptr) return 0;
+        if (eq == nullptr) break;
         *eq = 0;
         val = eq + 1;
-        space = strchr(val, ' ');
-        if (space != nullptr) *space++ = 0;
-        // std::cout << key << ":" << val <<"\n";
-        //Logger::info("key: %s, value:%d\n", key, val);
+
+        separator = val;
+        //std::cout<<"sep:"<<separator<<"\n";
+        while(*separator && *separator != ' ' && *separator != ';') {
+            separator++;
+            //std::cout<<"sep:"<<separator<<"\n";
+        }
+
+        if (separator != nullptr) *separator++ = 0;
+        //std::cout << key << ":" << val <<"\n";
 
         if (strcmp(key, "device") == 0) device_id=atoi(val+2);
         else if (strcmp(key, "sensor") ==0) sensor_id=atoi(val+2);
