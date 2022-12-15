@@ -62,6 +62,9 @@ Mapping::Mapping(const char *name) :
     m_metric = STRDUP(name);
     ASSERT(m_metric != nullptr);
     ASSERT(m_ts_head.load() == nullptr);
+
+    m_total_ts = 1000000;
+    m_timeseries = new TimeSeries*[m_total_ts];
 }
 
 Mapping::~Mapping()
@@ -70,6 +73,12 @@ Mapping::~Mapping()
     {
         FREE(m_metric);
         m_metric = nullptr;
+    }
+
+    if (m_timeseries != nullptr)
+    {
+        FREE(m_timeseries);
+        m_timeseries = nullptr;
     }
 }
 
@@ -92,6 +101,36 @@ Mapping::get_ts_head()
     return m_ts_head.load();
 }
 
+// raw_tags format assumed to be: 'device=123;sensor=343;'
+// return ts_id=device*m_total_ts + sensor;
+int
+Mapping::parse_raw_tags(const char* raw_tags)
+{
+    if (raw_tags == nullptr) return 0;
+
+    char *key, *val, *space, *eq;
+    int device_id, sensor_id;
+
+    for (key = strdup(raw_tags); key != nullptr; key = space)
+    {
+        while (*key == ' ') key++;
+        eq = strchr(key, '=');
+        if (eq == nullptr) return;
+        *eq = 0;
+        val = eq + 1;
+        space = strchr(val, ' ');
+        if (space != nullptr) *space++ = 0;
+        // std::cout << key << ":" << val <<"\n";
+
+        if (strcmp(key, "device") == 0) device_id=atoi(val);
+        else if (strcmp(key, "sensor") ==0) sensor_id=atoi(val);
+    }
+
+    // std::cout << "device_id=" << device_id <<" sensor_id=" << sensor_id <<"\n";
+    int sensor_per_device = 1000;
+    return device_id * sensor_per_device + sensor_id;
+}
+
 TimeSeries *
 Mapping::get_ts(DataPoint& dp)
 {
@@ -102,9 +141,16 @@ Mapping::get_ts(DataPoint& dp)
     if (raw_tags != nullptr)
     {
         ReadLock guard(m_lock);
+
+        /*
         auto result = m_map.find(raw_tags);
         if (result != m_map.end())
             ts = result->second;
+        */
+
+        // raw_tags format assumed to be: 'device=123;sensor=343;'
+        int ts_id = parse_raw_tags(raw_tags);
+        ts = m_timeseries[ts_id];
     }
 
     if (ts == nullptr)
@@ -118,19 +164,25 @@ Mapping::get_ts(DataPoint& dp)
 
         char buff[MAX_TOTAL_TAG_LENGTH];
         dp.get_ordered_tags(buff, MAX_TOTAL_TAG_LENGTH);
+        uint ts_id = parse_raw_tags(buff);
 
         WriteLock guard(m_lock);
 
         {
+            /*
             auto result = m_map.find(buff);
             if (result != m_map.end())
                 ts = result->second;
+            */
+
+            ts = m_timeseries[ts_id];
         }
 
         if (ts == nullptr)
         {
             ts = new TimeSeries(m_metric, buff, dp.get_cloned_tags());
-            m_map[ts->get_key()] = ts;
+            // m_map[ts->get_key()] = ts;
+            m_timeseries[ts_id] = ts;
 
             ts->m_next = m_ts_head.load();
             m_ts_head = ts;
@@ -138,8 +190,10 @@ Mapping::get_ts(DataPoint& dp)
             set_tag_count(dp.get_tag_count());
         }
 
+        /*  Not needed. We will parse_raw_tags to get ts_id correctly.
         if (raw_tags != nullptr)
             m_map[raw_tags] = ts;
+        */
     }
 
     return ts;
@@ -148,12 +202,20 @@ Mapping::get_ts(DataPoint& dp)
 void
 Mapping::get_all_ts(std::vector<TimeSeries*>& tsv)
 {
+    /*
     for (auto it = m_map.begin(); it != m_map.end(); it++)
     {
         const char *key = it->first;
         TimeSeries *ts = it->second;
 
         if (ts->get_key() == key)
+            tsv.push_back(ts);
+    }
+    */
+
+    for (int i=0; i<m_total_ts; i++) {
+        TimeSeries* ts = m_timeseries[i];
+        if (ts != nullptr)
             tsv.push_back(ts);
     }
 }
@@ -195,9 +257,15 @@ Mapping::query_for_ts(Tag *tags, std::unordered_set<TimeSeries*>& tsv, const cha
     if ((key != nullptr) && (tag_count == m_tag_count))
     {
         ReadLock guard(m_lock);
+        /*
         auto result = m_map.find(key);
         if (result != m_map.end())
             tsv.insert(result->second);
+        */
+        int ts_id = parse_raw_tags(key);
+        TimeSeries* ts = m_timeseries[ts_id];
+        if (ts != nullptr)
+            tsv.insert(ts);
     }
 
     if (tsv.empty())
@@ -223,6 +291,7 @@ Mapping::query_for_ts(Tag *tags, std::unordered_set<TimeSeries*>& tsv, const cha
 TimeSeries *
 Mapping::restore_ts(std::string& metric, std::string& keys, TimeSeriesId id)
 {
+	/*
     auto search = m_map.find(keys.c_str());
 
     if (search != m_map.end())
@@ -231,10 +300,21 @@ Mapping::restore_ts(std::string& metric, std::string& keys, TimeSeriesId id)
             metric.c_str(), keys.c_str(), id);
         throw std::runtime_error("Duplicate entry in meta file");
     }
+    */
+
+    int ts_id = parse_raw_tags(keys.c_str());
+    TimeSeries* ts = m_timeseries[ts_id];
+    if (ts != nullptr)
+    {
+        Logger::fatal("Duplicate entry in meta file: %s %s %u",
+            metric.c_str(), keys.c_str(), id);
+        throw std::runtime_error("Duplicate entry in meta file");
+    }
 
     Tag *tags = Tag::parse_multiple(keys);
-    TimeSeries *ts = new TimeSeries(id, metric.c_str(), keys.c_str(), tags);
-    m_map[ts->get_key()] = ts;
+    ts = new TimeSeries(id, metric.c_str(), keys.c_str(), tags);
+    // m_map[ts->get_key()] = ts;
+    m_timeseries[ts_id] = ts;
     ts->m_next = m_ts_head.load();
     m_ts_head = ts;
     set_tag_count(std::count(keys.begin(), keys.end(), ';'));
@@ -253,7 +333,14 @@ Mapping::get_ts_count()
 {
     //std::lock_guard<std::mutex> guard(m_lock);
     ReadLock guard(m_lock);
-    return m_map.size();
+    // return m_map.size();
+    int cnt = 0;
+    for(int i=0; i < m_total_ts; i++)
+    {
+        if (m_timeseries[i] != nullptr)
+            cnt++;
+    }
+    return cnt;
 }
 
 

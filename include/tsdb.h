@@ -100,10 +100,16 @@ private:
     int get_dp_count();
     int get_ts_count();
 
+    int parse_raw_tags(const char* tags);
+
     //std::mutex m_lock;
     default_contention_free_shared_mutex m_lock;
-    tsl::robin_map<const char*,TimeSeries*,hash_func,eq_func> m_map;
+    //tsl::robin_map<const char*,TimeSeries*,hash_func,eq_func> m_map;
     //std::unordered_map<const char*,TimeSeries*,hash_func,eq_func> m_map;
+
+    // Each element is a time series ptr. Length hardcoded as 3M.
+    TimeSeries* m_timeseries[];
+    int m_total_ts;
 
     std::atomic<TimeSeries*> m_ts_head;
     int m_tag_count;    // -1: uninitialized; -2: inconsistent;
