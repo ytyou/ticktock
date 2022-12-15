@@ -76,7 +76,7 @@ Mapping::~Mapping()
 void
 Mapping::flush(bool close)
 {
-    ReadLock guard(m_lock);
+    //ReadLock guard(m_lock);
     //std::lock_guard<std::mutex> guard(m_lock);
 
     for (TimeSeries *ts = m_ts_head.load(); ts != nullptr; ts = ts->m_next)
@@ -84,6 +84,12 @@ Mapping::flush(bool close)
         Logger::trace("Flushing ts: %T", ts);
         ts->flush(close);
     }
+}
+
+TimeSeries *
+Mapping::get_ts_head()
+{
+    return m_ts_head.load();
 }
 
 TimeSeries *
@@ -1374,7 +1380,6 @@ Tsdb::http_api_put_handler_plain2(HttpRequest& request, HttpResponse& response)
 bool
 Tsdb::http_get_api_suggest_handler(HttpRequest& request, HttpResponse& response)
 {
-/*
     size_t buff_size = MemoryManager::get_network_buffer_size() - 6;
 
     JsonMap params;
@@ -1410,80 +1415,52 @@ Tsdb::http_get_api_suggest_handler(HttpRequest& request, HttpResponse& response)
 
     if (std::strcmp(type, "metrics") == 0)
     {
-        ReadLock guard(m_tsdb_lock);
+        //ReadLock guard(m_tsdb_lock);
+        std::lock_guard<std::mutex> guard(g_metric_lock);
 
-        for (Tsdb *tsdb: m_tsdbs)
+        for (auto it = g_metric_map.begin(); it != g_metric_map.end(); it++)
         {
-            std::lock_guard<std::mutex> tsdb_guard(tsdb->m_lock);
+            const char *metric = it->first;
 
-            if ((tsdb->m_mode & TSDB_MODE_READ) == 0) continue;
-
-            for (auto it = tsdb->m_map.begin(); it != tsdb->m_map.end(); it++)
+            if (starts_with(metric, prefix))
             {
-                const char *metric = it->first;
-
-                if (starts_with(metric, prefix))
-                {
-                    suggestions.insert(std::string(metric));
-                    if (suggestions.size() >= max) break;
-                }
+                suggestions.insert(std::string(metric));
+                if (suggestions.size() >= max) break;
             }
-
-            if (suggestions.size() >= max) break;
         }
     }
     else if (std::strcmp(type, "tagk") == 0)
     {
-        ReadLock guard(m_tsdb_lock);
+        //ReadLock guard(m_tsdb_lock);
+        std::lock_guard<std::mutex> guard(g_metric_lock);
 
-        for (Tsdb *tsdb: m_tsdbs)
+        for (auto it = g_metric_map.begin(); it != g_metric_map.end(); it++)
         {
-            std::lock_guard<std::mutex> tsdb_guard(tsdb->m_lock);
+            Mapping *mapping = it->second;
+            ASSERT(it->first == mapping->m_metric);
 
-            if ((tsdb->m_mode & TSDB_MODE_READ) == 0) continue;
+            //ReadLock mapping_guard(mapping->m_lock);
 
-            for (auto it = tsdb->m_map.begin(); it != tsdb->m_map.end(); it++)
-            {
-                Mapping *mapping = it->second;
-                ASSERT(it->first == mapping->m_metric);
-
-                ReadLock mapping_guard(mapping->m_lock);
-
-                for (auto it2 = mapping->m_map.begin(); it2 != mapping->m_map.end(); it2++)
-                {
-                    TimeSeries *ts = it2->second;
-                    ts->get_keys(suggestions);
-                }
-            }
-
-            if (suggestions.size() >= max) break;
+            //for (auto it2 = mapping->m_map.begin(); it2 != mapping->m_map.end(); it2++)
+            for (TimeSeries *ts = mapping->get_ts_head(); ts != nullptr; ts = ts->m_next)
+                ts->get_keys(suggestions);
         }
     }
     else if (std::strcmp(type, "tagv") == 0)
     {
-        ReadLock guard(m_tsdb_lock);
+        //ReadLock guard(m_tsdb_lock);
+        std::lock_guard<std::mutex> guard(g_metric_lock);
 
-        for (Tsdb *tsdb: m_tsdbs)
+        for (auto it = g_metric_map.begin(); it != g_metric_map.end(); it++)
         {
-            std::lock_guard<std::mutex> tsdb_guard(tsdb->m_lock);
+            Mapping *mapping = it->second;
+            ASSERT(it->first == mapping->m_metric);
 
-            if ((tsdb->m_mode & TSDB_MODE_READ) == 0) continue;
+            //ReadLock mapping_guard(mapping->m_lock);
 
-            for (auto it = tsdb->m_map.begin(); it != tsdb->m_map.end(); it++)
-            {
-                Mapping *mapping = it->second;
-                ASSERT(it->first == mapping->m_metric);
-
-                ReadLock mapping_guard(mapping->m_lock);
-
-                for (auto it2 = mapping->m_map.begin(); it2 != mapping->m_map.end(); it2++)
-                {
-                    TimeSeries *ts = it2->second;
-                    ts->get_values(suggestions);
-                }
-            }
-
-            if (suggestions.size() >= max) break;
+            //for (auto it2 = mapping->m_map.begin(); it2 != mapping->m_map.end(); it2++)
+            for (TimeSeries *ts = mapping->get_ts_head(); ts != nullptr; ts = ts->m_next)
+                ts->get_values(suggestions);
         }
     }
     else
@@ -1497,7 +1474,6 @@ Tsdb::http_get_api_suggest_handler(HttpRequest& request, HttpResponse& response)
     int n = JsonParser::to_json(suggestions, buff, buff_size);
     response.init(200, HttpContentType::JSON, n, buff);
     MemoryManager::free_network_buffer(buff);
-*/
 
     return true;
 }

@@ -95,6 +95,7 @@ private:
     void query_for_ts(Tag *tags, std::unordered_set<TimeSeries*>& tsv, const char *key);
     TimeSeries *restore_ts(std::string& metric, std::string& key, TimeSeriesId id);
     void set_tag_count(int tag_count);
+    TimeSeries *get_ts_head();
 
     int get_dp_count();
     int get_ts_count();
