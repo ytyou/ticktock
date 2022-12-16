@@ -65,6 +65,9 @@ Mapping::Mapping(const char *name) :
 
     m_total_ts = 3000000;
     m_timeseries = new TimeSeries*[m_total_ts];
+
+    for (int i = 0; i < m_total_ts; i++)
+        m_timeseries[i] = nullptr;
 }
 
 Mapping::~Mapping()
@@ -112,8 +115,8 @@ Mapping::parse_raw_tags(const char* raw_tags)
     const char *dev = std::strstr(raw_tags, "device=");
     const char *sen = std::strstr(raw_tags, "sensor=");
 
-    int device_id = std::atoi(dev+7);
-    int sensor_id = std::atoi(sen+7);
+    int device_id = std::atoi(dev+9);
+    int sensor_id = std::atoi(sen+9);
 
     // std::cout << "device_id=" << device_id <<" sensor_id=" << sensor_id <<"\n";
     int sensor_per_device = 1000;
@@ -169,7 +172,7 @@ Mapping::get_ts(DataPoint& dp)
 
         if (ts == nullptr)
         {
-            ts = new TimeSeries(m_metric, buff, dp.get_cloned_tags());
+            ts = new TimeSeries(ts_id, m_metric, buff, dp.get_cloned_tags());
             // m_map[ts->get_key()] = ts;
             m_timeseries[ts_id] = ts;
 

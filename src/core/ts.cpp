@@ -59,6 +59,7 @@ TimeSeries::TimeSeries(TimeSeriesId id, const char *metric, const char *key, Tag
     m_next(nullptr)
 {
     init(id, metric, key, tags);
+    MetaFile::instance()->add_ts(this);
 
     if (m_next_id.load() <= id)
         m_next_id = id + 1;
