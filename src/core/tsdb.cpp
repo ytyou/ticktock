@@ -109,30 +109,11 @@ Mapping::parse_raw_tags(const char* raw_tags)
     //Logger::info("raw_tags: %s\n", raw_tags);
     if (raw_tags == nullptr) return 0;
 
-    char *key, *val, *separator, *eq;
-    int device_id, sensor_id;
+    const char *dev = std::strstr(raw_tags, "device=");
+    const char *sen = std::strstr(raw_tags, "sensor=");
 
-    for (key = strdup(raw_tags); key != nullptr; key = separator)
-    {
-        while (*key == ' ' || *key == ';') key++;
-        eq = strchr(key, '=');
-        if (eq == nullptr) break;
-        *eq = 0;
-        val = eq + 1;
-
-        separator = val;
-        //std::cout<<"sep:"<<separator<<"\n";
-        while(*separator && *separator != ' ' && *separator != ';') {
-            separator++;
-            //std::cout<<"sep:"<<separator<<"\n";
-        }
-
-        if (separator != nullptr) *separator++ = 0;
-        //std::cout << key << ":" << val <<"\n";
-
-        if (strcmp(key, "device") == 0) device_id=atoi(val+2);
-        else if (strcmp(key, "sensor") ==0) sensor_id=atoi(val+2);
-    }
+    int device_id = std::atoi(dev+7);
+    int sensor_id = std::atoi(sen+7);
 
     // std::cout << "device_id=" << device_id <<" sensor_id=" << sensor_id <<"\n";
     int sensor_per_device = 1000;
