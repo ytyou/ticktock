@@ -107,15 +107,15 @@ private:
     //tsl::robin_map<const char*,TimeSeries*,hash_func,eq_func> m_map;
     //std::unordered_map<const char*,TimeSeries*,hash_func,eq_func> m_map;
 
-    int m_total_ts;
+    static int m_total_ts;
 
     std::atomic<TimeSeries*> m_ts_head;
     int m_tag_count;    // -1: uninitialized; -2: inconsistent;
 
     Partition *m_partition;
-    
+
     // Each element is a time series ptr. Length hardcoded as 3M.
-    TimeSeries** m_timeseries;
+    static TimeSeries** m_timeseries;
 };
 
 

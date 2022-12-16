@@ -52,6 +52,8 @@ static uint64_t tsdb_rotation_freq = 0;
 std::mutex g_metric_lock;
 tsl::robin_map<const char*,Mapping*,hash_func,eq_func> g_metric_map;
 thread_local tsl::robin_map<const char*, Mapping*, hash_func, eq_func> thread_local_cache;
+TimeSeries **Mapping::m_timeseries;
+int Mapping::m_total_ts = 3000000;
 
 
 Mapping::Mapping(const char *name) :
@@ -62,12 +64,6 @@ Mapping::Mapping(const char *name) :
     m_metric = STRDUP(name);
     ASSERT(m_metric != nullptr);
     ASSERT(m_ts_head.load() == nullptr);
-
-    m_total_ts = 3000000;
-    m_timeseries = new TimeSeries*[m_total_ts];
-
-    for (int i = 0; i < m_total_ts; i++)
-        m_timeseries[i] = nullptr;
 }
 
 Mapping::~Mapping()
@@ -76,12 +72,6 @@ Mapping::~Mapping()
     {
         FREE(m_metric);
         m_metric = nullptr;
-    }
-
-    if (m_timeseries != nullptr)
-    {
-        FREE(m_timeseries);
-        m_timeseries = nullptr;
     }
 }
 
@@ -1562,6 +1552,9 @@ Tsdb::init()
 {
     std::string data_dir = Config::get_str(CFG_TSDB_DATA_DIR, CFG_TSDB_DATA_DIR_DEF);
     Logger::info("Loading data from %s", data_dir.c_str());
+
+    Mapping::m_timeseries = (TimeSeries**)calloc(Mapping::m_total_ts, sizeof(TimeSeries*));
+    for (int i = 0; i < Mapping::m_total_ts; i++) Mapping::m_timeseries[i] = nullptr;
 
     CheckPointManager::init();
     PartitionManager::init();
