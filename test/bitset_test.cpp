@@ -33,6 +33,7 @@ BitSetTests::run()
 
     test1();
     test2();
+    test3();
 
     log("Finished %s", m_name);
 }
@@ -169,6 +170,90 @@ BitSetTests::test2()
     CONFIRM(m6 == n6);
     CONFIRM(m7 == n7);
     CONFIRM(m8 == n8);
+
+    m_stats.add_passed(1);
+}
+
+void
+BitSetTests::test3()
+{
+    {
+        BitSet bits(3);
+
+        CONFIRM(! bits.test(0));
+        CONFIRM(! bits.test(1));
+        CONFIRM(! bits.test(2));
+
+        bits.set(1);
+        CONFIRM(! bits.test(0));
+        CONFIRM(bits.test(1));
+        CONFIRM(! bits.test(2));
+
+        bits.set(0);
+        CONFIRM(bits.test(0));
+        CONFIRM(bits.test(1));
+        CONFIRM(! bits.test(2));
+
+        bits.set(2);
+        CONFIRM(bits.test(0));
+        CONFIRM(bits.test(1));
+        CONFIRM(bits.test(2));
+    }
+
+    {
+        BitSet bits(300);
+
+        CONFIRM(! bits.test(0));
+        CONFIRM(! bits.test(100));
+        CONFIRM(! bits.test(200));
+
+        bits.set(100);
+        CONFIRM(! bits.test(0));
+        CONFIRM(bits.test(100));
+        CONFIRM(! bits.test(200));
+
+        bits.set(0);
+        CONFIRM(bits.test(0));
+        CONFIRM(bits.test(100));
+        CONFIRM(! bits.test(200));
+
+        bits.set(200);
+        CONFIRM(bits.test(0));
+        CONFIRM(bits.test(100));
+        CONFIRM(bits.test(200));
+        CONFIRM(! bits.test(299));
+
+        bits.set(299);
+        CONFIRM(bits.test(0));
+        CONFIRM(bits.test(100));
+        CONFIRM(bits.test(200));
+        CONFIRM(bits.test(299));
+
+        bits.reset();
+        CONFIRM(! bits.test(0));
+        CONFIRM(! bits.test(100));
+        CONFIRM(! bits.test(200));
+        CONFIRM(! bits.test(299));
+
+        CONFIRM(! bits.test(7));
+        CONFIRM(! bits.test(8));
+        CONFIRM(! bits.test(9));
+
+        bits.set(7);
+        CONFIRM(bits.test(7));
+        CONFIRM(! bits.test(8));
+        CONFIRM(! bits.test(9));
+
+        bits.set(8);
+        CONFIRM(bits.test(7));
+        CONFIRM(bits.test(8));
+        CONFIRM(! bits.test(9));
+
+        bits.set(9);
+        CONFIRM(bits.test(7));
+        CONFIRM(bits.test(8));
+        CONFIRM(bits.test(9));
+    }
 
     m_stats.add_passed(1);
 }

@@ -48,11 +48,22 @@ class BitSet
 {
 public:
     BitSet();
+    BitSet(size_t size_in_bits);
+    ~BitSet();
 
     void init(uint8_t *base, size_t capacity_in_bytes);
     void recycle();
     void rebase(uint8_t *base);
     BitSetCursor *new_cursor();
+
+    void set(size_t idx);
+    bool test(size_t idx);
+
+    static inline int pop_count(uint32_t n) { return __builtin_popcount(n); }
+    static inline int pop_count64(uint64_t n) { return __builtin_popcountll(n); }
+
+    void reset();
+    size_t capacity();
 
     // append 'len' of bits stored in 'bits', starting at
     // offset 'start'; return true if successful, return
@@ -125,6 +136,7 @@ private:
     uint8_t m_cp_start;     // for saving check point so we can roll back to it
 
     uint8_t m_start;        // offset within a byte where next new bit should go
+    bool m_own_memory;      // do we own the memory?
 };
 
 

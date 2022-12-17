@@ -97,7 +97,7 @@
 #define CFG_TIMER_THREAD_COUNT                  "timer.thread.count"
 #define CFG_TIMER_THREAD_COUNT_DEF              1
 #define CFG_TS_LOCK_PROBABILITY                 "ts.lock.probability"
-#define CFG_TS_LOCK_PROBABILITY_DEF             0.02
+#define CFG_TS_LOCK_PROBABILITY_DEF             0.01
 #define CFG_TSDB_ARCHIVE_THRESHOLD              "tsdb.archive.threshold"
 #define CFG_TSDB_ARCHIVE_THRESHOLD_DEF          "1w"
 #define CFG_TSDB_COMPACT_FREQUENCY              "tsdb.compact.frequency"
