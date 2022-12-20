@@ -50,6 +50,12 @@ PageInfo::PageInfo() :
 {
 }
 
+PageInfo::~PageInfo()
+{
+    if (m_page != nullptr)
+        std::free(m_page);
+}
+
 bool
 PageInfo::is_full()
 {
@@ -136,17 +142,18 @@ PageInfo::get_dp_count() const
 }
 
 
-PageInMemory::PageInMemory(TimeSeriesId id, Tsdb *tsdb, bool is_ooo)
+PageInMemory::PageInMemory(TimeSeriesId id, Tsdb *tsdb, bool is_ooo, PageSize actual_size)
 {
     m_page_header.init();
     ASSERT(m_page == nullptr);
-    init(id, tsdb, is_ooo);
+    init(id, tsdb, is_ooo, actual_size);
 }
 
 void
-PageInMemory::init(TimeSeriesId id, Tsdb *tsdb, bool is_ooo)
+PageInMemory::init(TimeSeriesId id, Tsdb *tsdb, bool is_ooo, PageSize actual_size)
 {
     if (tsdb == nullptr) tsdb = m_tsdb; // same tsdb
+    ASSERT(actual_size <= tsdb->get_page_size());
 
     // preserve m_page_header.m_next_file and m_page_header.m_next_header, if
     // tsdb remains the same...
@@ -173,24 +180,20 @@ PageInMemory::init(TimeSeriesId id, Tsdb *tsdb, bool is_ooo)
         m_page_header.m_next_header = header_idx;
     }
 
-    PageSize page_size = tsdb->get_page_size();
-
     if (m_page == nullptr)
-    {
-        if (page_size == g_page_size)
-            m_page = MemoryManager::alloc_memory_page();
-        else
-            m_page = malloc(page_size);
-    }
+        m_page = malloc(tsdb->get_page_size());
+
+    if (actual_size == 0)
+        actual_size = tsdb->get_page_size();
 
     int compressor_version = is_ooo ? 0 : tsdb->get_compressor_version();
-    setup_compressor(tsdb->get_time_range(), page_size, compressor_version);
+    setup_compressor(tsdb->get_time_range(), actual_size, compressor_version);
 }
 
-void
-PageInMemory::flush(TimeSeriesId id)
+PageSize
+PageInMemory::flush(TimeSeriesId id, bool compact)
 {
-    if (m_compressor->is_empty()) return;
+    if (m_compressor->is_empty()) return 0;
 
     // [m_page_header.m_next_file, m_page_header.m_next_header] is the
     // indices of the previous page, if any.
@@ -203,20 +206,24 @@ PageInMemory::flush(TimeSeriesId id)
 
     m_page_header.m_cursor = position.m_offset;
     m_page_header.m_start = position.m_start;
+    m_page_header.m_size = m_compressor->size();
     m_page_header.set_full(m_compressor->is_full());
     m_page_header.m_next_file = TT_INVALID_FILE_INDEX;
     m_page_header.m_next_header = TT_INVALID_HEADER_INDEX;
 
 #ifdef _DEBUG
-    g_total_dps_count.fetch_add(m_compressor->get_dp_count(), std::memory_order_relaxed);
-    g_total_page_count++;
+    if (! compact)
+    {
+        g_total_dps_count.fetch_add(m_compressor->get_dp_count(), std::memory_order_relaxed);
+        g_total_page_count++;
+    }
 #endif
 
-    m_tsdb->append_page(id, prev_file_idx, prev_header_idx, &m_page_header, m_page);
+    return m_tsdb->append_page(id, prev_file_idx, prev_header_idx, &m_page_header, m_page, compact);
 
     // re-initialize the compressor
     //m_compressor->init(m_start, (uint8_t*)m_page, m_tsdb->get_page_size());
-    ASSERT(m_page != nullptr);
+    //ASSERT(m_page != nullptr);
 }
 
 void

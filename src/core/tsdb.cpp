@@ -23,6 +23,7 @@
 #include <dirent.h>
 #include <functional>
 #include <glob.h>
+#include <stdio.h>
 #include "admin.h"
 #include "config.h"
 #include "cp.h"
@@ -43,6 +44,10 @@
 namespace tt
 {
 
+
+#define BACK_SUFFIX     ".back"
+#define DONE_SUFFIX     ".done"
+#define TEMP_SUFFIX     ".temp"
 
 default_contention_free_shared_mutex Tsdb::m_tsdb_lock;
 std::vector<Tsdb*> Tsdb::m_tsdbs;
@@ -148,6 +153,9 @@ Mapping::get_ts(DataPoint& dp)
 void
 Mapping::get_all_ts(std::vector<TimeSeries*>& tsv)
 {
+    for (TimeSeries *ts = m_ts_head.load(); ts != nullptr; ts = ts->m_next)
+        tsv.push_back(ts);
+/*
     for (auto it = m_map.begin(); it != m_map.end(); it++)
     {
         const char *key = it->first;
@@ -156,6 +164,7 @@ Mapping::get_all_ts(std::vector<TimeSeries*>& tsv)
         if (ts->get_key() == key)
             tsv.push_back(ts);
     }
+*/
 }
 
 bool
@@ -257,9 +266,9 @@ Mapping::get_ts_count()
 }
 
 
-Tsdb::Tsdb(TimeRange& range, bool existing) :
+Tsdb::Tsdb(TimeRange& range, bool existing, const char *suffix) :
     m_time_range(range),
-    m_index_file(Tsdb::get_index_file_name(range)),
+    m_index_file(Tsdb::get_index_file_name(range, suffix)),
     //m_load_time(ts_now_sec()),
     m_partition_mgr(nullptr),
     m_page_size(g_page_size),
@@ -271,7 +280,7 @@ Tsdb::Tsdb(TimeRange& range, bool existing) :
         Config::get_int(CFG_TSDB_COMPRESSOR_VERSION,CFG_TSDB_COMPRESSOR_VERSION_DEF);
 
     m_mode = mode_of();
-    m_partition_mgr = new PartitionManager(this, existing);
+    //m_partition_mgr = new PartitionManager(this, existing);
 
     Logger::debug("tsdb %T created (mode=%d)", &range, m_mode);
 }
@@ -288,12 +297,15 @@ Tsdb::~Tsdb()
 }
 
 Tsdb *
-Tsdb::create(TimeRange& range, bool existing)
+Tsdb::create(TimeRange& range, bool existing, const char *suffix)
 {
-    Tsdb *tsdb = new Tsdb(range, existing);
-    std::string dir = get_tsdb_dir_name(range);
+    ASSERT(! ((suffix != nullptr) && existing));
 
-    m_tsdbs.push_back(tsdb);
+    Tsdb *tsdb = new Tsdb(range, existing, suffix);
+    std::string dir = get_tsdb_dir_name(range, suffix);
+
+    if (suffix == nullptr)
+        m_tsdbs.push_back(tsdb);
 
     if (existing)
     {
@@ -313,6 +325,8 @@ Tsdb::create(TimeRange& range, bool existing)
             tsdb->m_page_size = tsdb_header->m_page_size;
             tsdb->m_page_count = tsdb_header->m_page_count;
             tsdb->m_compressor_version = tsdb_header->get_compressor_version();
+            if (tsdb_header->is_compacted())
+                tsdb->m_mode |= TSDB_MODE_COMPACTED;
             header_file->close();
         }
 
@@ -321,8 +335,8 @@ Tsdb::create(TimeRange& range, bool existing)
         for (auto file: files) tsdb->restore_data(file);
         std::sort(tsdb->m_data_files.begin(), tsdb->m_data_files.end(), data_less());
 
-        if ((tsdb->m_mode & TSDB_MODE_READ_WRITE) != 0)
-            tsdb->load_from_disk_no_lock((tsdb->m_mode & TSDB_MODE_WRITE) == 0);
+        //if ((tsdb->m_mode & TSDB_MODE_READ_WRITE) != 0)
+            //tsdb->load_from_disk_no_lock((tsdb->m_mode & TSDB_MODE_WRITE) == 0);
 
         // restore page-size/page-count
         if (! tsdb->m_header_files.empty())
@@ -340,21 +354,9 @@ Tsdb::create(TimeRange& range, bool existing)
     {
         // create the folder
         create_dir(dir);
-        std::sort(m_tsdbs.begin(), m_tsdbs.end(), tsdb_less());
 
-/*
-        const std::string& defs = Config::get_str(CFG_CLUSTER_PARTITIONS);
-
-        if (! defs.empty())
-        {
-            // save partition config
-            std::string part_file = Tsdb::get_file_name(tsdb->m_time_range, "part");
-            ASSERT(! file_exists(part_file));
-            std::FILE *f = std::fopen(part_file.c_str(), "w");
-            std::fprintf(f, "%s\n", defs.c_str());
-            std::fclose(f);
-        }
-*/
+        if (suffix == nullptr)
+            std::sort(m_tsdbs.begin(), m_tsdbs.end(), tsdb_less());
     }
 
     return tsdb;
@@ -373,7 +375,8 @@ Tsdb::restore_tsdb(const std::string& dir)
 
     if (tokens.size() != 2)
     {
-        Logger::error("Malformatted tsdb dir %s ignored!", dir.c_str());
+        // not necessarily an error; could be artifacts of compaction
+        Logger::info("tsdb dir %s ignored during restore_tsdb()", dir.c_str());
         return;
     }
 
@@ -601,11 +604,17 @@ Tsdb::query_for_ts(const char *metric, Tag *tags, std::unordered_set<TimeSeries*
 bool
 Tsdb::query_for_data(TimeSeriesId id, TimeRange& query_range, std::vector<DataPointContainer*>& data)
 {
+    std::lock_guard<std::mutex> guard(m_lock);
+    return query_for_data_no_lock(id, query_range, data);
+}
+
+bool
+Tsdb::query_for_data_no_lock(TimeSeriesId id, TimeRange& query_range, std::vector<DataPointContainer*>& data)
+{
     FileIndex file_idx;
     HeaderIndex header_idx;
     Timestamp from = m_time_range.get_from();
     bool has_ooo = false;
-    std::lock_guard<std::mutex> guard(m_lock);
 
     m_mode |= TSDB_MODE_READ;
     m_index_file.ensure_open(true);
@@ -627,7 +636,7 @@ Tsdb::query_for_data(TimeSeriesId id, TimeRange& query_range, std::vector<DataPo
         {
             DataFile *data_file = m_data_files[file_idx];
             data_file->ensure_open(true);
-            void *page = data_file->get_page(page_header->m_page_index);
+            void *page = data_file->get_page(page_header->m_page_index, page_header->m_offset);
             ASSERT(page != nullptr);
             //int compressor_version = header_file->get_compressor_version();
             //ASSERT(! header->is_out_of_order() || (compressor_version == 0));
@@ -685,6 +694,10 @@ Tsdb::ensure_readable(bool count)
 void
 Tsdb::flush(bool sync)
 {
+    std::vector<TimeSeries*> tsv;
+    get_all_ts(tsv);
+    for (auto ts: tsv) ts->flush(false);
+
     //for (DataFile *file: m_data_files) file->flush(sync);
     for (HeaderFile *file: m_header_files) file->flush(sync);
     m_index_file.flush(sync);
@@ -701,6 +714,8 @@ Tsdb::shutdown()
             Mapping *mapping = it->second;
             mapping->flush(true);
         }
+
+        g_metric_map.clear();
     }
 
     WriteLock guard(m_tsdb_lock);
@@ -813,13 +828,14 @@ Tsdb::get_header_file(FileIndex file_idx)
     return nullptr;
 }
 
-void
-Tsdb::append_page(TimeSeriesId id, FileIndex prev_file_idx, HeaderIndex prev_header_idx, struct page_info_on_disk *header, void *page)
+PageSize
+Tsdb::append_page(TimeSeriesId id, FileIndex prev_file_idx, HeaderIndex prev_header_idx, struct page_info_on_disk *header, void *page, bool compact)
 {
     ASSERT(page != nullptr);
     ASSERT(header != nullptr);
 
     HeaderFile *header_file;
+    const char *suffix = compact ? TEMP_SUFFIX : nullptr;
     std::lock_guard<std::mutex> guard(m_lock);
     //WriteLock guard(m_lock);
 
@@ -829,9 +845,9 @@ Tsdb::append_page(TimeSeriesId id, FileIndex prev_file_idx, HeaderIndex prev_hea
     if (m_header_files.empty())
     {
         ASSERT(m_data_files.empty());
-        header_file = new HeaderFile(get_header_file_name(m_time_range, 0), 0, get_page_count(), this),
+        header_file = new HeaderFile(get_header_file_name(m_time_range, 0, suffix), 0, get_page_count(), this),
         m_header_files.push_back(header_file);
-        m_data_files.push_back(new DataFile(get_data_file_name(m_time_range, 0), 0, get_page_size(), get_page_count()));
+        m_data_files.push_back(new DataFile(get_data_file_name(m_time_range, 0, suffix), 0, get_page_size(), get_page_count()));
     }
     else
     {
@@ -841,9 +857,9 @@ Tsdb::append_page(TimeSeriesId id, FileIndex prev_file_idx, HeaderIndex prev_hea
         if (header_file->is_full())
         {
             FileIndex id = m_header_files.size();
-            header_file = new HeaderFile(get_header_file_name(m_time_range, id), id, get_page_count(), this);
+            header_file = new HeaderFile(get_header_file_name(m_time_range, id, suffix), id, get_page_count(), this);
             m_header_files.push_back(header_file);
-            m_data_files.push_back(new DataFile(get_data_file_name(m_time_range, id), id, get_page_size(), get_page_count()));
+            m_data_files.push_back(new DataFile(get_data_file_name(m_time_range, id, suffix), id, get_page_size(), get_page_count()));
         }
     }
 
@@ -858,12 +874,22 @@ Tsdb::append_page(TimeSeriesId id, FileIndex prev_file_idx, HeaderIndex prev_hea
     ASSERT(m_header_files.size() == m_data_files.size());
     ASSERT(header_file->get_id() == data_file->get_id());
 
-    header->m_page_index = data_file->append(page);
+    header->m_offset = data_file->get_offset();
+    header->m_page_index = data_file->append(page, compact?header->get_size():get_page_size());
+
+    struct tsdb_header *tsdb_header = header_file->get_tsdb_header();
+    ASSERT(tsdb_header != nullptr);
+
+    if (tsdb_header->m_page_index < header->m_page_index)
+        tsdb_header->m_page_index = header->m_page_index;
+
+    if (UNLIKELY(compact))
+        tsdb_header->set_compacted(true);
 
     HeaderIndex header_idx = header_file->new_header_index(this);
     ASSERT(header_idx != TT_INVALID_HEADER_INDEX);
     struct page_info_on_disk *new_header = header_file->get_page_header(header_idx);
-    ASSERT(header->m_page_index == new_header->m_page_index);
+    //ASSERT(header->m_page_index == new_header->m_page_index);
     new_header->init(header);
 
     set_indices(id, prev_file_idx, prev_header_idx, header_file->get_id(), header_idx);
@@ -871,6 +897,8 @@ Tsdb::append_page(TimeSeriesId id, FileIndex prev_file_idx, HeaderIndex prev_hea
     // passing our own indices back to caller
     header->m_next_file = header_file->get_id();
     header->m_next_header = header_idx;
+
+    return data_file->get_next_page_size();
 }
 
 Tsdb *
@@ -1516,9 +1544,9 @@ Tsdb::init()
 
     MetaFile::init(Tsdb::restore_ts);
 
-/*
     compact2();
 
+/*
     dir = opendir(data_dir.c_str());
 
     if (dir != nullptr)
@@ -1574,53 +1602,46 @@ Tsdb::init()
 }
 
 std::string
-Tsdb::get_tsdb_dir_name(const TimeRange& range)
+Tsdb::get_tsdb_dir_name(const TimeRange& range, const char *suffix)
 {
     time_t sec = range.get_from_sec();
     struct tm timeinfo;
     localtime_r(&sec, &timeinfo);
     char buff[PATH_MAX];
-    snprintf(buff, sizeof(buff), "%s/%d/%d/%" PRIu64 ".%" PRIu64,
+    snprintf(buff, sizeof(buff), "%s/%d/%d/%" PRIu64 ".%" PRIu64 "%s",
         Config::get_str(CFG_TSDB_DATA_DIR,CFG_TSDB_DATA_DIR_DEF).c_str(),
         timeinfo.tm_year+1900,
         timeinfo.tm_mon+1,
         range.get_from_sec(),
-        range.get_to_sec());
+        range.get_to_sec(),
+        (suffix==nullptr) ? "" : suffix);
     return std::string(buff);
 }
 
 std::string
-Tsdb::get_index_file_name(const TimeRange& range, bool temp)
+Tsdb::get_index_file_name(const TimeRange& range, const char *suffix)
 {
-    std::string dir = get_tsdb_dir_name(range);
+    std::string dir = get_tsdb_dir_name(range, suffix);
     char buff[PATH_MAX];
-    snprintf(buff, sizeof(buff), "%s/index%s",
-        dir.c_str(),
-        temp ? ".temp" : "");
+    snprintf(buff, sizeof(buff), "%s/index", dir.c_str());
     return std::string(buff);
 }
 
 std::string
-Tsdb::get_header_file_name(const TimeRange& range, FileIndex id, bool temp)
+Tsdb::get_header_file_name(const TimeRange& range, FileIndex id, const char *suffix)
 {
-    std::string dir = get_tsdb_dir_name(range);
+    std::string dir = get_tsdb_dir_name(range, suffix);
     char buff[PATH_MAX];
-    snprintf(buff, sizeof(buff), "%s/header.%u%s",
-        dir.c_str(),
-        id,
-        temp ? ".temp" : "");
+    snprintf(buff, sizeof(buff), "%s/header.%u", dir.c_str(), id);
     return std::string(buff);
 }
 
 std::string
-Tsdb::get_data_file_name(const TimeRange& range, FileIndex id, bool temp)
+Tsdb::get_data_file_name(const TimeRange& range, FileIndex id, const char *suffix)
 {
-    std::string dir = get_tsdb_dir_name(range);
+    std::string dir = get_tsdb_dir_name(range, suffix);
     char buff[PATH_MAX];
-    snprintf(buff, sizeof(buff), "%s/data.%u%s",
-        dir.c_str(),
-        id,
-        temp ? ".temp" : "");
+    snprintf(buff, sizeof(buff), "%s/data.%u", dir.c_str(), id);
     return std::string(buff);
 }
 
@@ -1643,16 +1664,32 @@ Tsdb::get_ts_count()
     return TimeSeries::get_next_id();
 }
 
+// for testing only
 int
 Tsdb::get_page_count(bool ooo)
 {
-    return 0;       // TODO: implement it
+    int total = 0;
+    for (auto tsdb: m_tsdbs)
+    {
+        for (auto header_file: tsdb->m_header_files)
+            total += header_file->count_pages(ooo);
+    }
+    return total;
 }
 
 int
 Tsdb::get_data_page_count()
 {
-    return 0;       // TODO: implement it
+    int total = 0;
+    for (auto tsdb: m_tsdbs)
+    {
+        for (auto header_file: tsdb->m_header_files)
+        {
+            header_file->ensure_open(true);
+            total = std::max(total, (int)header_file->get_page_index());
+        }
+    }
+    return total + 1;
 }
 
 double
@@ -1935,7 +1972,6 @@ Tsdb::purge_oldest(int threshold)
 bool
 Tsdb::compact(TaskData& data)
 {
-#if 0
     Tsdb *tsdb = nullptr;
     Meter meter(METRIC_TICKTOCK_TSDB_COMPACT_MS);
 
@@ -1958,20 +1994,8 @@ Tsdb::compact(TaskData& data)
             if ((*it)->m_mode & (TSDB_MODE_COMPACTED | TSDB_MODE_READ_WRITE))
                 continue;
 
-            //ASSERT(! (*it)->m_meta_file.is_open());
-            // load from disk to see if it's already compacted
-            if (! (*it)->load_from_disk_no_lock(true)) continue;
-
-            if ((*it)->m_mode & TSDB_MODE_COMPACTED)
-            {
-                (*it)->unload();
-            }
-            else    // not compacted yet
-            {
-                tsdb = *it;
-                //m_tsdbs.erase(it);
-                break;
-            }
+            tsdb = *it;
+            break;
         }
     }
 
@@ -1980,92 +2004,94 @@ Tsdb::compact(TaskData& data)
         WriteLock load_lock(tsdb->m_load_lock);
         //std::lock_guard<std::mutex> guard(m_load_lock);
 
-        if (tsdb->m_mode == TSDB_MODE_READ) // make sure it's not unloaded
+        Logger::info("[compact] Found this tsdb to compact: %T", tsdb);
+        std::lock_guard<std::mutex> guard(tsdb->m_lock);
+        //WriteLock guard(tsdb->m_lock);
+
+        TimeRange range = tsdb->get_time_range();
+        //MetaFile meta_file(get_file_name(range, "meta", true));
+
+        // perform compaction
+        try
         {
-            Logger::info("[compact] Found this tsdb to compact: %T", tsdb);
-            std::lock_guard<std::mutex> guard(tsdb->m_lock);
-            //WriteLock guard(tsdb->m_lock);
-            TimeRange range = tsdb->get_time_range();
-            //MetaFile meta_file(get_file_name(range, "meta", true));
-
-            ASSERT(tsdb->m_temp_page_mgrs.empty());
-
-            // perform compaction
-            try
+            // cleanup existing temporary tsdb, if any
+            std::string dir = get_tsdb_dir_name(range, TEMP_SUFFIX);
+            if (ends_with(dir, TEMP_SUFFIX)) // safty check
             {
-                // create a temporary data file to compact data into
+                rm_all_files(dir + "/*");
+                rm_file(dir);   // will do empty dir as well
+            }
 
-                // cleanup existing temporary files, if any
-                std::string temp_files = get_file_name(tsdb->m_time_range, "*", true);
-                rm_all_files(temp_files);
+            // create a temporary tsdb to compact data into
+            Tsdb *compacted = Tsdb::create(range, false, TEMP_SUFFIX);
+            compacted->m_page_size = g_sys_page_size;
+            std::vector<Tsdb*> tsdbs = { tsdb };
+            TimeSeriesId max_id = TimeSeries::get_next_id();
+            QueryTask *query =
+                (QueryTask*)MemoryManager::alloc_recyclable(RecyclableType::RT_QUERY_TASK);
+            PageSize next_size = compacted->get_page_size();
 
-                //meta_file.open();
-                //ASSERT(meta_file.is_open());
+            // for each time series...
+            for (TimeSeriesId id = 0; id < max_id; id++)
+            {
+                // collect dps
+                query->init(&tsdbs);
+                query->perform(id);
 
-/*
-                for (const auto& t: tsdb->m_map)
+                // save into temp tsdb
+                PageInMemory page(id, compacted, false, next_size);
+                DataPointVector& dps = query->get_dps();
+
+                for (auto dp: dps)
                 {
-                    Mapping *mapping = t.second;
-                    ASSERT(t.first == mapping->m_metric);
+                    const Timestamp tstamp = dp.first;
+                    bool ok = page.add_data_point(tstamp, dp.second);
 
-                    WriteLock guard(mapping->m_lock);
-
-                    for (const auto& m: mapping->m_map)
+                    if (! ok)
                     {
-                        TimeSeries *ts = m.second;
-
-                        if (std::strcmp(ts->get_key(), m.first) == 0)
-                            ts->compact(meta_file);
+                        next_size = page.flush(id, true);
+                        ASSERT(next_size > 0);
+                        page.init(id, nullptr, false, next_size);
+                        ok = page.add_data_point(tstamp, dp.second);
+                        ASSERT(ok);
                     }
                 }
-*/
 
-                tsdb->unload();
-                Logger::info("[compact] 1 Tsdb compacted");
+                if (! page.is_empty())
+                {
+                    next_size = page.flush(id, true);
+                    ASSERT(next_size > 0);
+                }
+
+                query->recycle();
             }
-            catch (const std::exception& ex)
-            {
-                Logger::error("[compact] compaction failed: %s", ex.what());
-            }
-            catch (...)
-            {
-                Logger::error("[compact] compaction failed for unknown reasons");
-            }
+
+            MemoryManager::free_recyclable(query);
+
+            // rename to indicate compaction was successful
+            std::string temp_name = get_tsdb_dir_name(range, TEMP_SUFFIX);
+            std::string done_name = get_tsdb_dir_name(range, DONE_SUFFIX);
+            int rc = std::rename(temp_name.c_str(), done_name.c_str());
+            compact2();
 
             // mark it as compacted
             tsdb->m_mode |= TSDB_MODE_COMPACTED;
-            //meta_file.close();
-
-            for (auto mgr: tsdb->m_temp_page_mgrs)
-            {
-                mgr->shrink_to_fit();
-                ASSERT(mgr->is_compacted());
-                delete mgr;
-            }
-
-            tsdb->m_temp_page_mgrs.clear();
-            tsdb->m_temp_page_mgrs.shrink_to_fit();
-
-            try
-            {
-                // create a file to indicate compaction was successful
-                std::string done_name = get_file_name(range, "done", true);
-                std::ofstream done_file(done_name);
-                done_file.flush();
-                done_file.close();
-                compact2();
-            }
-            catch (const std::exception& ex)
-            {
-                Logger::error("[compact] compaction failed: %s", ex.what());
-            }
+            tsdb->unload_no_lock();
+            Logger::info("[compact] 1 Tsdb compacted");
+        }
+        catch (const std::exception& ex)
+        {
+            Logger::error("[compact] compaction failed: %s", ex.what());
+        }
+        catch (...)
+        {
+            Logger::error("[compact] compaction failed for unknown reasons");
         }
     }
     else
     {
         Logger::info("[compact] Did not find any appropriate Tsdb to compact.");
     }
-#endif
 
     return false;
 }
@@ -2073,69 +2099,46 @@ Tsdb::compact(TaskData& data)
 void
 Tsdb::compact2()
 {
-#if 0
     glob_t result;
     std::string pattern = Config::get_str(CFG_TSDB_DATA_DIR, CFG_TSDB_DATA_DIR_DEF);
 
-    pattern.append("/*.*.done.temp");
+    pattern.append("/*/*/*");
+    pattern.append(DONE_SUFFIX);
     glob(pattern.c_str(), GLOB_TILDE, nullptr, &result);
 
-    std::vector<std::string> done_files;
+    std::vector<std::string> done_dirs;
 
     for (unsigned int i = 0; i < result.gl_pathc; i++)
     {
-        done_files.push_back(std::string(result.gl_pathv[i]));
+        done_dirs.push_back(std::string(result.gl_pathv[i]));
     }
 
     globfree(&result);
 
-    for (auto& done_file: done_files)
+    for (auto& done_dir: done_dirs)
     {
-        Logger::info("Found %s done compactions", done_file.c_str());
+        Logger::info("Found %s done compactions", done_dir.c_str());
 
-        // format: <data-directory>/1614009600.1614038400.done.temp
-        ASSERT(ends_with(done_file, ".done.temp"));
-        std::string base = done_file.substr(0, done_file.size()-9);
+        // format: <data-directory>/<year>/<month>/1614009600.1614038400.done
+        ASSERT(ends_with(done_dir, DONE_SUFFIX));
+        std::string base = done_dir.substr(0, done_dir.size()-std::strlen(DONE_SUFFIX));
+        std::string back = base + BACK_SUFFIX;
 
-        if (! file_exists(base + "meta.temp"))
+        // mv 1614009600.1614038400 to 1614009600.1614038400.back
+        if (file_exists(base))
+            std::rename(base.c_str(), back.c_str());
+
+        // mv 1614009600.1614038400.done to 1614009600.1614038400
+        std::rename(done_dir.c_str(), base.c_str());
+
+        // rm 1614009600.1614038400.back
+        if (file_exists(base) && file_exists(back))
         {
-            Logger::error("Compaction failed, file %smeta.temp missing!", base.c_str());
-            continue;
+            // TODO: enable this
+            //rm_all_files(back + "/*");
+            //rm_file(back);  // will do empty dir as well
         }
-
-        // finish compaction data files
-        for (int i = 0; ; i++)
-        {
-            std::string data_file = base + std::to_string(i);
-            std::string temp_file = data_file + ".temp";
-
-            bool data_file_exists = file_exists(data_file);
-            bool temp_file_exists = file_exists(temp_file);
-
-            if (! data_file_exists && ! temp_file_exists)
-                break;
-
-            if (data_file_exists) rm_file(data_file);
-            if (temp_file_exists) std::rename(temp_file.c_str(), data_file.c_str());
-        }
-
-        // finish compaction meta file
-        std::string meta_file = base + "meta";
-        std::string temp_file = meta_file + ".temp";
-
-        ASSERT(file_exists(meta_file));
-        ASSERT(file_exists(temp_file));
-        rm_file(meta_file);
-        std::rename(temp_file.c_str(), meta_file.c_str());
-
-        // remove done file
-        rm_file(done_file);
     }
-
-    std::string temp_files = Config::get_str(CFG_TSDB_DATA_DIR, CFG_TSDB_DATA_DIR_DEF);
-    temp_files.append("/*.temp");
-    rm_all_files(temp_files);
-#endif
 }
 
 const char *

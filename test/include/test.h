@@ -122,6 +122,13 @@ public:
         return false;
     }
 
+    void flush_tsdb()
+    {
+        std::vector<tt::Tsdb*> tsdbs;
+        tt::Tsdb::insts(tt::TimeRange::MAX, tsdbs);
+        for (auto tsdb: tsdbs) tsdb->flush(false);
+    }
+
     void query_raw(const char *metric, tt::Timestamp start, tt::DataPointVector& results)
     {
         query_with_downsample(metric, nullptr, start, results);

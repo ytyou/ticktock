@@ -1175,6 +1175,7 @@ Compressor_v0::init(Timestamp start, uint8_t *base, size_t size)
     m_dps.clear();
     m_dps.reserve(g_page_size/sizeof(DataPointPair));
     m_size = std::floor(size / sizeof(DataPointPair));
+    ASSERT(m_size > 0);
     m_data_points = reinterpret_cast<DataPointPair*>(base);
 }
 

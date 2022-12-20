@@ -203,6 +203,7 @@ struct __attribute__ ((__packed__)) page_info_on_disk
     inline bool is_out_of_order() const { return ((m_flags & 0x02) != 0); }
     inline bool is_empty() const { return ((m_cursor == 0) && (m_start == 0)); }
     inline bool is_valid() const { return (m_page_index != TT_INVALID_PAGE_INDEX); }
+    inline PageSize get_size() const { return m_size; }
     inline long int get_global_page_index(FileIndex file_idx, PageCount page_count) const
     {
         return ((long int)file_idx * (long int)page_count) + (long int)m_page_index;
@@ -236,6 +237,7 @@ class PageInfo
 {
 public:
     PageInfo();
+    ~PageInfo();
 
     // init a page info representing an existing page on disk
     //void init_from_disk(DataFile *df, struct page_info_on_disk *header, PageCount header_idx);
@@ -287,10 +289,10 @@ protected:
 class PageInMemory : public PageInfo
 {
 public:
-    PageInMemory(TimeSeriesId id, Tsdb *tsdb, bool is_ooo);
+    PageInMemory(TimeSeriesId id, Tsdb *tsdb, bool is_ooo, PageSize actual_size = 0);
 
-    void init(TimeSeriesId id, Tsdb *tsdb, bool is_ooo);
-    void flush(TimeSeriesId id);
+    void init(TimeSeriesId id, Tsdb *tsdb, bool is_ooo, PageSize actual_size = 0);
+    PageSize flush(TimeSeriesId id, bool compact = false);  // return next page size
     void append(TimeSeriesId id, FILE *file);
 
     // return true if dp is added; false if page is full;

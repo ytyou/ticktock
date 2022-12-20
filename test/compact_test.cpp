@@ -37,6 +37,7 @@ CompactTests::run()
     need_to_fill_empty_page_again(0);
     need_to_fill_empty_page_again(1);
     need_to_fill_empty_page_again(2);
+    need_to_fill_empty_page_again(3);
     remove_duplicates();
 
     log("Finished %s", m_name);
@@ -81,6 +82,8 @@ CompactTests::two_partial_with_ooo1(int dps_cnt, int ooo_cnt, DataPointVector dp
         dp.set_metric(metric);
         tsdb->add(dp);
     }
+
+    flush_tsdb();
 
     DataPointVector results;
     query_raw(metric, 0, results);
@@ -220,6 +223,8 @@ CompactTests::one_full_two_partial_with_ooo1(int dps_cnt, int ooo_cnt, DataPoint
         tsdb->add(dp);
     }
 
+    flush_tsdb();
+
     DataPointVector results;
     query_raw(metric, 0, results);
     CONFIRM(results.size() == (dps_cnt + ooo_cnt));
@@ -346,6 +351,8 @@ CompactTests::three_partial_with_ooo1(int dps_cnt, int ooo_cnt, DataPointVector 
         dp.add_tag("tag", "1");
         tsdb->add(dp);
     }
+
+    flush_tsdb();
 
     DataPointVector results;
     query_raw(metric, 0, results);
@@ -476,6 +483,8 @@ CompactTests::need_to_fill_empty_page1(int dps_cnt1, int dps_cnt2, int dps_cnt3,
         tsdb->add(dp);
     }
 
+    flush_tsdb();
+
     DataPointVector results;
     query_raw(metric, 0, results);
     CONFIRM(results.size() == (dps_cnt1 + dps_cnt2 + dps_cnt3));
@@ -592,6 +601,8 @@ CompactTests::need_to_fill_empty_page_again1(int compressor, int dps_cnts[6], Da
 
         dps_cnt += dps_cnts[i];
     }
+
+    flush_tsdb();
 
     DataPointVector results;
     query_raw(metric, 0, results);
@@ -736,6 +747,8 @@ CompactTests::remove_duplicates1(int dps_cnt, int ooo_cnt, DataPointVector dps, 
         dp.set_metric(metric);
         tsdb->add(dp);
     }
+
+    flush_tsdb();
 
     // retrieve all dps and make sure they are correct;
     DataPointVector results;

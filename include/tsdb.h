@@ -147,6 +147,7 @@ public:
 
     static void query_for_ts(const char *metric, Tag *tags, std::unordered_set<TimeSeries*>& ts, const char *key);
     bool query_for_data(TimeSeriesId id, TimeRange& range, std::vector<DataPointContainer*>& data);
+    bool query_for_data_no_lock(TimeSeriesId id, TimeRange& range, std::vector<DataPointContainer*>& data);
     void ensure_readable(bool count = false);   // 'count' keep tsdb loaded until it's decremented
 
     void flush(bool sync);
@@ -159,11 +160,12 @@ public:
     void get_last_header_indices(TimeSeriesId id, FileIndex& file_idx, HeaderIndex& header_idx);
     void set_indices(TimeSeriesId id, FileIndex prev_file_idx, HeaderIndex prev_header_idx,
                      FileIndex this_file_idx, HeaderIndex this_header_idx);
-    void append_page(TimeSeriesId id,
-                     FileIndex prev_file_idx,
-                     HeaderIndex prev_header_idx,
-                     struct page_info_on_disk *header,
-                     void *page);
+    PageSize append_page(TimeSeriesId id,       // return next page size
+                         FileIndex prev_file_idx,
+                         HeaderIndex prev_header_idx,
+                         struct page_info_on_disk *header,
+                         void *page,
+                         bool compact);
     HeaderFile *get_header_file(FileIndex file_idx);
 
     PageInfo *get_free_page_for_compaction();   // used during compaction
@@ -224,7 +226,7 @@ private:
     friend class tsdb_less;
 
     //Tsdb(Timestamp start, Timestamp end);
-    Tsdb(TimeRange& range, bool existing);
+    Tsdb(TimeRange& range, bool existing, const char *suffix = nullptr);
     virtual ~Tsdb();
     bool load_from_disk(bool for_read);         // return false if load failed
     bool load_from_disk_no_lock(bool for_read); // return false if load failed
@@ -237,16 +239,16 @@ private:
     static Mapping *get_or_add_mapping(DataPoint& dp);
     static bool rotate(TaskData& data);
     static void get_range(Timestamp tstamp, TimeRange& range);
-    static Tsdb *create(TimeRange& range, bool existing);   // caller needs to acquire m_tsdb_lock!
+    static Tsdb *create(TimeRange& range, bool existing, const char *suffix = nullptr); // caller needs to acquire m_tsdb_lock!
     static void restore_tsdb(const std::string& dir);
 
     void restore_data(const std::string& file);
     void restore_header(const std::string& file);
 
-    static std::string get_tsdb_dir_name(const TimeRange& range);
-    static std::string get_index_file_name(const TimeRange& range, bool temp = false);
-    static std::string get_header_file_name(const TimeRange& range, FileIndex id, bool temp = false);
-    static std::string get_data_file_name(const TimeRange& range, FileIndex id, bool temp = false);
+    static std::string get_tsdb_dir_name(const TimeRange& range, const char *suffix = nullptr);
+    static std::string get_index_file_name(const TimeRange& range, const char *suffix = nullptr);
+    static std::string get_header_file_name(const TimeRange& range, FileIndex id, const char *suffix = nullptr);
+    static std::string get_data_file_name(const TimeRange& range, FileIndex id, const char *suffix = nullptr);
 
     //static std::mutex m_tsdb_lock;
     static default_contention_free_shared_mutex m_tsdb_lock;

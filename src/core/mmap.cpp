@@ -473,7 +473,7 @@ HeaderFile::new_header_index(Tsdb *tsdb)
     HeaderIndex header_idx = tsdb_header->m_header_index++;
     struct page_info_on_disk *header = get_page_header(header_idx);
     header->init();
-    header->m_page_index = tsdb_header->m_page_index++;
+    //header->m_page_index = tsdb_header->m_page_index++;
 
     return header_idx;
 }
@@ -515,12 +515,32 @@ HeaderFile::is_full()
     return tsdb_header->is_full();
 }
 
+// for testing only
+int
+HeaderFile::count_pages(bool ooo)
+{
+    ensure_open(true);
+    struct tsdb_header *tsdb_header = get_tsdb_header();
+    ASSERT(tsdb_header != nullptr);
+    int total = 0;
+    for (int i = 0; i < tsdb_header->m_header_index; i++)
+    {
+        struct page_info_on_disk *page_header = get_page_header(i);
+        ASSERT(page_header != nullptr);
+        if ((ooo && page_header->is_out_of_order()) ||
+            (!ooo && !page_header->is_out_of_order()))
+            total++;
+    }
+    return total;
+}
+
 
 DataFile::DataFile(const std::string& file_name, FileIndex id, PageSize size, PageCount count) :
     MmapFile(file_name),
     m_id(id),
     m_file(nullptr),
     m_page_size(size),
+    m_offset(0),
     m_page_count(count),
     m_page_index(TT_INVALID_PAGE_INDEX),
     m_header_file(nullptr),
@@ -609,15 +629,35 @@ DataFile::is_open(bool for_read) const
 }
 
 PageCount
-DataFile::append(const void *page)
+DataFile::append(const void *page, PageSize size)
 {
     ASSERT(page != nullptr);
+    ASSERT((size > 0) && ((size + m_offset) <= m_page_size));
+
+    PageSize sum = m_offset + size;
+    PageIndex idx = m_page_index;
+
+    if ((sum < m_page_size) && ((m_page_size - sum) < 16))
+    {
+        size = m_page_size - m_offset;
+        sum = m_page_size;
+    }
+
     if (m_file == nullptr) open(false);
     ASSERT(m_file != nullptr);
-    std::fwrite(page, m_page_size, 1, m_file);
+    std::fwrite(page, size, 1, m_file);
     std::fflush(m_file);
     m_last_write = ts_now_sec();
-    return m_page_index++;
+
+    if (sum >= m_page_size)
+    {
+        m_offset = 0;
+        m_page_index++;
+    }
+    else
+        m_offset += size;
+
+    return idx;
 }
 
 void
@@ -628,13 +668,13 @@ DataFile::flush(bool sync)
 }
 
 void *
-DataFile::get_page(PageIndex idx)
+DataFile::get_page(PageIndex idx, PageSize offset)
 {
     ASSERT(idx != TT_INVALID_PAGE_INDEX);
     uint8_t *pages = (uint8_t*)get_pages();
     ASSERT(pages != nullptr);
     m_last_read = ts_now_sec();
-    return (void*)(pages + (idx * m_page_size));
+    return (void*)(pages + (idx * m_page_size) + offset);
 }
 
 

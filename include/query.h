@@ -219,6 +219,9 @@ class QueryTask : public Recyclable
 public:
     QueryTask();
     void perform();
+    void perform(TimeSeriesId id);
+
+    void init(std::vector<Tsdb*> *tsdbs);   // used by Tsdb::compact()
 
     Tag *get_tags();
     Tag *get_cloned_tags(StringBuffer& strbuf);
@@ -233,6 +236,9 @@ public:
         m_signal = signal;
     }
 
+    void init() override;
+    bool recycle() override;
+
 private:
     friend class MemoryManager;
     friend class Query;
@@ -240,9 +246,6 @@ private:
 
     void query_with_ooo(std::vector<DataPointContainer*>& data);
     void query_without_ooo(std::vector<DataPointContainer*>& data);
-
-    void init() override;
-    bool recycle() override;
 
     TimeRange m_time_range;
     Downsampler *m_downsampler;

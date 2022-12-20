@@ -110,6 +110,9 @@ public:
 
     static HeaderFile *restore(const std::string& file_name);
 
+    // for testing only
+    int count_pages(bool ooo);
+
 private:
     HeaderFile(FileIndex id, const std::string& file_name);
 
@@ -129,9 +132,12 @@ public:
     void flush(bool sync) override;
     //void init(HeaderFile *header_file);
 
-    PageCount append(const void *page);
+    PageCount append(const void *page, PageSize size);
     inline FileIndex get_id() const { return m_id; }
-    void *get_page(PageIndex page_idx);
+    inline PageSize get_offset() const { return m_offset; }
+    inline PageSize get_next_page_size() const
+    { return m_offset?(m_page_size-m_offset):m_page_size; }
+    void *get_page(PageIndex page_idx, PageSize offset);
     inline FILE *get_file() const { return m_file; }
     bool is_open(bool for_read) const override;
 
@@ -141,6 +147,7 @@ public:
 private:
     FILE *m_file;
     PageSize m_page_size;
+    PageSize m_offset;
     PageCount m_page_count;
     FileIndex m_id;
     PageCount m_page_index;

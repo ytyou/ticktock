@@ -626,19 +626,33 @@ void
 QueryTask::perform()
 {
     ASSERT(m_ts != nullptr);
+    perform(m_ts->get_id());
+}
+
+void
+QueryTask::perform(TimeSeriesId id)
+{
     ASSERT(m_tsdbs != nullptr);
 
     try
     {
-        TimeSeriesId id = m_ts->get_id();
-
         for (auto tsdb: *m_tsdbs)
         {
             // collect all the pages for this TS, in this TSDB;
             // and then collect all the data points from them;
             std::vector<DataPointContainer*> data;
-            bool has_ooo = tsdb->query_for_data(id, m_time_range, data);
-            has_ooo |= m_ts->query_for_data(tsdb, m_time_range, data);
+            bool has_ooo;
+
+            if (m_ts != nullptr)
+            {
+                has_ooo = tsdb->query_for_data(id, m_time_range, data);
+                has_ooo |= m_ts->query_for_data(tsdb, m_time_range, data);
+            }
+            else
+            {
+                // during compaction m_lock should've been taken already
+                has_ooo = tsdb->query_for_data_no_lock(id, m_time_range, data);
+            }
 
             if (has_ooo)
                 query_with_ooo(data);
@@ -818,13 +832,23 @@ QueryTask::init()
     m_downsampler = nullptr;
 }
 
+void
+QueryTask::init(std::vector<Tsdb*> *tsdbs)
+{
+    ASSERT(tsdbs != nullptr);
+    m_tsdbs = tsdbs;
+}
+
 bool
 QueryTask::recycle()
 {
     m_dps.clear();
     m_dps.shrink_to_fit();
     m_results.recycle();
+
     m_signal = nullptr;
+    m_ts = nullptr;
+    m_tsdbs = nullptr;
 
     if (m_downsampler != nullptr)
     {
@@ -1143,7 +1167,7 @@ DataPointContainer::collect_data(Timestamp from, struct tsdb_header *tsdb_header
     else
         type = (RecyclableType)(compressor_version + RecyclableType::RT_COMPRESSOR_V0);
     Compressor *compressor = (Compressor*)MemoryManager::alloc_recyclable(type);
-    compressor->init(from, reinterpret_cast<uint8_t*>(page), tsdb_header->m_page_size);
+    compressor->init(from, reinterpret_cast<uint8_t*>(page), page_header->m_size);
     compressor->restore(m_dps, position, (uint8_t*)page);
     ASSERT(! m_dps.empty());
     MemoryManager::free_recyclable(compressor);

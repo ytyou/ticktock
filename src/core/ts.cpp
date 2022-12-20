@@ -130,13 +130,11 @@ TimeSeries::restore(Tsdb *tsdb, PageSize offset, uint8_t start, char *buff, bool
     {
         ASSERT(m_ooo_buff == nullptr);
         m_ooo_buff = new PageInMemory(m_id, tsdb, true);
-        m_ooo_buff->init(m_id, tsdb, true);
     }
     else
     {
         ASSERT(m_buff == nullptr);
         m_buff = new PageInMemory(m_id, tsdb, false);
-        m_buff->init(m_id, tsdb, false);
     }
 }
 
@@ -163,6 +161,10 @@ TimeSeries::flush_no_lock(bool close)
             delete m_buff;
             m_buff = nullptr;
         }
+        else
+        {
+            m_buff->init(m_id, nullptr, false);
+        }
     }
 
     if (m_ooo_buff != nullptr)
@@ -175,7 +177,10 @@ TimeSeries::flush_no_lock(bool close)
             m_ooo_buff = nullptr;
         }
         else if (m_buff != nullptr)
+        {
             m_buff->update_indices(m_ooo_buff);
+            m_buff->init(m_id, nullptr, true);
+        }
     }
 }
 
