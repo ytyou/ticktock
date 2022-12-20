@@ -694,6 +694,15 @@ Tsdb::ensure_readable(bool count)
 void
 Tsdb::flush(bool sync)
 {
+    //for (DataFile *file: m_data_files) file->flush(sync);
+    for (HeaderFile *file: m_header_files) file->flush(sync);
+    m_index_file.flush(sync);
+}
+
+// for testing only
+void
+Tsdb::flush_for_test()
+{
     std::vector<TimeSeries*> tsv;
     get_all_ts(tsv);
     for (auto ts: tsv) ts->flush(false);

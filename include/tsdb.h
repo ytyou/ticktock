@@ -151,6 +151,7 @@ public:
     void ensure_readable(bool count = false);   // 'count' keep tsdb loaded until it's decremented
 
     void flush(bool sync);
+    void flush_for_test();  // for testing only
 
     std::string get_partition_defs() const;
     inline PageSize get_page_size() const { return m_page_size; }

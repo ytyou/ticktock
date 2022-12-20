@@ -126,7 +126,7 @@ public:
     {
         std::vector<tt::Tsdb*> tsdbs;
         tt::Tsdb::insts(tt::TimeRange::MAX, tsdbs);
-        for (auto tsdb: tsdbs) tsdb->flush(false);
+        for (auto tsdb: tsdbs) tsdb->flush_for_test();
     }
 
     void query_raw(const char *metric, tt::Timestamp start, tt::DataPointVector& results)
