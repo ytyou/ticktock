@@ -21,6 +21,7 @@
 #include "compact_test.h"
 #include "compress_test.h"
 #include "cp_test.h"
+#include "hash_test.h"
 #include "json_test.h"
 #include "max_subset_test.h"
 #include "misc_test.h"
