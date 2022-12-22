@@ -215,6 +215,22 @@ public:
         }
     }
 
+    static int gen_random_string(char *buff, int min, int max)
+    {
+        static const char alphanum[] =
+            "_=; "
+            "0123456789"
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+            "abcdefghijklmnopqrstuvwxyz";
+        int len = tt::random(min, max);
+
+        for (int i = 0; i < len; i++)
+            buff[i] = alphanum[tt::random(0, sizeof(alphanum)-2)];
+        buff[len] = 0;
+
+        return len + 1;
+    }
+
     static void cleanup_data_dir()
     {
         char cmd[1024];

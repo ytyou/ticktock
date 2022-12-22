@@ -37,6 +37,7 @@ static TestCase *tests[] =
     new CheckPointTests(),
     new CompactTests(),
     new CompressTests(),
+    new HashTests(),
     new JsonTests(),
     //new MaxSubsetTests(),
     new MiscTests(),

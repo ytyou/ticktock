@@ -59,9 +59,6 @@ public:
     void set(size_t idx);
     bool test(size_t idx);
 
-    static inline int pop_count(uint32_t n) { return __builtin_popcount(n); }
-    static inline int pop_count64(uint64_t n) { return __builtin_popcountll(n); }
-
     void reset();
     size_t capacity();
 
@@ -137,6 +134,39 @@ private:
 
     uint8_t m_start;        // offset within a byte where next new bit should go
     bool m_own_memory;      // do we own the memory?
+};
+
+
+// Used by PerfectHash
+class BitSet64
+{
+public:
+    BitSet64(std::size_t size); // size: no. of bits
+    BitSet64(BitSet64&& src);   // move constructor
+    ~BitSet64();
+
+    inline void set(std::size_t idx)
+    {
+        m_bits[idx/64] |= (1ULL << (idx % 64));
+    }
+
+    void reset();
+    uint64_t get64(std::size_t idx);
+    uint64_t pop64(std::size_t idx);
+
+    inline bool test(size_t idx)
+    {
+        return (m_bits[idx/64] & (1ULL << (idx % 64))) != 0;
+    }
+
+    inline std::size_t capacity64()   // in no. of uint64_t
+    {
+        return m_capacity;
+    }
+
+private:
+    uint64_t *m_bits;
+    std::size_t m_capacity; // in no. of uint64_t
 };
 
 

@@ -411,4 +411,44 @@ BitSetCursor::init(BitSet *bitset)
 }
 
 
+BitSet64::BitSet64(std::size_t size)
+{
+    m_capacity = (size + 63) / 64;
+    m_bits = (uint64_t*) calloc(size, sizeof(uint64_t));
+}
+
+BitSet64::BitSet64(BitSet64&& src) :
+    m_bits(src.m_bits),
+    m_capacity(src.m_capacity)
+{
+    src.m_bits = nullptr;
+}
+
+BitSet64::~BitSet64()
+{
+    if (m_bits != nullptr)
+        std::free(m_bits);
+}
+
+uint64_t
+BitSet64::get64(std::size_t idx)
+{
+    ASSERT(idx < m_capacity);
+    return m_bits[idx];
+}
+
+uint64_t
+BitSet64::pop64(std::size_t idx)
+{
+    ASSERT(idx < m_capacity);
+    return __builtin_popcountll(m_bits[idx]);
+}
+
+void
+BitSet64::reset()
+{
+    std::memset((void*)m_bits, 0, m_capacity*8);
+}
+
+
 }
