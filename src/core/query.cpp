@@ -354,7 +354,7 @@ Query::get_query_tasks(std::vector<QueryTask*>& qtv, std::vector<Tsdb*> *tsdbs)
 
     std::unordered_set<TimeSeries*> tsv;
     char buff[MAX_TOTAL_TAG_LENGTH];
-    get_ordered_tags(buff, sizeof(buff));
+    get_ordered_tags(buff, sizeof(buff), m_metric);
     Tsdb::query_for_ts(m_metric, m_tags, tsv, buff);
 
     for (TimeSeries *ts: tsv)

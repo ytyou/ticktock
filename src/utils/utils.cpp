@@ -586,6 +586,31 @@ tokenize(const std::string& str, std::vector<std::string>& tokens, char delim)
     return true;
 }
 
+char *
+string_copy(char *dst, const char *src, std::size_t count)
+{
+    ASSERT(src != nullptr);
+    ASSERT(dst != nullptr);
+    ASSERT(count > 0);
+    char *ret = dst;
+
+    if (src < dst)
+    {
+        src += count - 1;
+        dst += count - 1;
+
+        for (std::size_t i = 0; i < count; i++)
+            *dst-- = *src--;
+    }
+    else if (src > dst)
+    {
+        for (std::size_t i = 0; i < count; i++)
+            *dst++ = *src++;
+    }
+
+    return ret;
+}
+
 int
 replace_all(std::string& str, const std::string& from, const std::string& to)
 {

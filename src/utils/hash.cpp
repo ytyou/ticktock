@@ -17,7 +17,14 @@
  */
 
 #include <cstring>
+#include "config.h"
 #include "hash.h"
+#include "logger.h"
+#include "meta.h"
+#include "mmap.h"
+#include "timer.h"
+#include "ts.h"
+#include "type.h"
 #include "utils.h"
 
 
@@ -25,18 +32,129 @@ namespace tt
 {
 
 
-PerfectHash::PerfectHash(const char *keys, uint32_t count) :
-    m_keys(keys),
-    m_count(count)
+//std::atomic<uint64_t> cache_hit{0};
+//std::atomic<uint64_t> cache_miss{0};
+SuperMap * SuperMap::m_instance;
+
+
+InMemoryMap::InMemoryMap() :
+    m_read_only(false)
 {
-    construct(keys, count);
+}
+
+InMemoryMap::~InMemoryMap()
+{
+    Logger::info("InMemoryMap::~InMemoryMap(%p) called", this);
+}
+
+std::shared_ptr<InMemoryMap>
+InMemoryMap::create()
+{
+    Logger::info("Creating InMemoryMap...");
+    return std::shared_ptr<InMemoryMap>(new InMemoryMap());
+}
+
+void
+InMemoryMap::set_read_only()
+{
+    WriteLock guard(m_lock);
+    m_read_only = true;
+}
+
+TimeSeriesId
+InMemoryMap::get(const char *key, uint64_t hash)
+{
+    ReadLock guard(m_lock);
+    SuperKey super_key(key, hash);
+    auto search = m_map.find(super_key);
+    if (search == m_map.end())
+        return TT_INVALID_TIME_SERIES_ID;
+    return search->second;
+}
+
+bool
+InMemoryMap::set(const char *key, uint64_t hash, TimeSeriesId id)
+{
+    WriteLock guard(m_lock);
+    if (is_read_only()) return false;
+    SuperKey super_key(key, hash);
+    m_map[super_key] = id;
+    return true;
+}
+
+void
+InMemoryMap::collect(std::vector<struct perfect_entry>& entries)
+{
+    for (auto it: m_map)
+        entries.emplace_back(it.first.m_key, it.second);
+}
+
+
+PerfectHash::PerfectHash(std::vector<struct perfect_entry>& entries)
+{
+    m_count = entries.size();
+    m_buckets = (struct perfect_entry*) calloc(m_count+1, sizeof(struct perfect_entry));
+    construct(entries);
+}
+
+PerfectHash::~PerfectHash()
+{
+    Logger::info("PerfectHash::~PerfectHash() called");
+
+    if (m_buckets != nullptr)
+        std::free(m_buckets);
+
+    // delete the InMemoryMap...
+    SuperMap::instance()->erase();
+}
+
+std::shared_ptr<PerfectHash>
+PerfectHash::create(MetaFile *meta_file)
+{
+    ASSERT(meta_file != nullptr);
+    std::vector<struct perfect_entry> entries;
+    return std::shared_ptr<PerfectHash>(new PerfectHash(entries));
+}
+
+std::shared_ptr<PerfectHash>
+PerfectHash::create(std::shared_ptr<PerfectHash> ph, std::shared_ptr<InMemoryMap> map)
+{
+    std::vector<struct perfect_entry> entries;
+
+    if (ph != nullptr)
+    {
+        for (uint32_t i = 1; i <= ph->m_count; i++)
+            entries.emplace_back(ph->m_buckets[i]);
+    }
+
+    if (map != nullptr)
+        map->collect(entries);
+
+    return std::shared_ptr<PerfectHash>(new PerfectHash(entries));
+}
+
+TimeSeriesId
+PerfectHash::lookup(const char *key, uint64_t h)
+{
+    uint64_t idx = lookup_internal(key, h);
+    if ((idx != 0) && (std::strcmp(key, m_buckets[idx].key) != 0))
+        idx = 0;
+    if (idx == 0)
+    {
+        return TT_INVALID_TIME_SERIES_ID;
+    }
+    else
+    {
+        return m_buckets[idx].id;
+    }
 }
 
 uint64_t
-PerfectHash::lookup(const char *key)
+PerfectHash::lookup_internal(const char *key, uint64_t h)
 {
     ASSERT(key != nullptr);
-    uint64_t h = hash(key);
+    ASSERT(hash(key) == h);
+
     uint32_t h1 = (uint32_t)(h & 0xFFFFFFFF);
     uint32_t h2 = (uint32_t)(h >> 32);
     uint32_t level = 0;
@@ -129,11 +247,9 @@ PerfectHash::calc_index(const char *key, uint32_t level, uint32_t size)
 }
 
 void
-PerfectHash::construct(const char *keys, uint32_t count)
+PerfectHash::construct(std::vector<struct perfect_entry>& entries)
 {
-    ASSERT(keys != nullptr);
-    ASSERT(count > 0);
-
+    uint32_t count = entries.size();
     uint32_t level = 0;
     uint32_t size = 2 * count;
     size = (size + 63) & ~63;
@@ -142,13 +258,11 @@ PerfectHash::construct(const char *keys, uint32_t count)
     BitSet64 exists(size);
     BitSet64 collide(size);
     std::vector<const char*> redo;
-    uint32_t cnt;
-    const char *key = keys;
 
-    for (cnt = 0; cnt < count; cnt++, key = std::strchr(key, '\0')+1)
+    for (auto entry : entries)
     {
-        ASSERT(std::strlen(key) > 0);
-        uint32_t idx = calc_index(key, level, size);
+        ASSERT(std::strlen(entry.key) > 0);
+        uint32_t idx = calc_index(entry.key, level, size);
 
         if (collide.test(idx))
             continue;
@@ -165,23 +279,32 @@ PerfectHash::construct(const char *keys, uint32_t count)
     m_bits.emplace_back(size);
     BitSet64 &back = m_bits.back();
 
-    for (cnt = 0, key = keys; cnt < count; cnt++, key = std::strchr(key, '\0')+1)
+    for (auto entry : entries)
     {
-        uint32_t idx = calc_index(key, level, size);
+        uint32_t idx = calc_index(entry.key, level, size);
 
         if (collide.test(idx))
-            redo.push_back(key);
+            redo.push_back(entry.key);
         else
             back.set(idx);
     }
 
     while (! redo.empty())
     {
-        size = 2 * redo.size();
+        // TODO!!!
+        //size = 2 * redo.size();
+        size = 2 * redo.size() * (level + 2);
         size = (size + 63) & ~63;
         exists.reset();
         collide.reset();
         level++;
+
+        if (level > 10)
+        {
+            Logger::warn("PerfectHash::level = %u, redo.size = %" PRIu64, level, redo.size());
+            for (auto key : redo) Logger::warn("key = %s", key);
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
 
         for (auto key : redo)
         {
@@ -204,7 +327,7 @@ PerfectHash::construct(const char *keys, uint32_t count)
 
         for (auto it = redo.begin(); it != redo.end(); )
         {
-            key = *it;
+            const char *key = *it;
             ASSERT(std::strlen(key) > 0);
             uint32_t idx = calc_index(key, level, size);
 
@@ -219,6 +342,7 @@ PerfectHash::construct(const char *keys, uint32_t count)
     }
 
     calc_ranks();
+    fill_buckets(entries);
 }
 
 void
@@ -238,6 +362,228 @@ PerfectHash::calc_ranks()
             pop += b.pop64(i);
         }
     }
+}
+
+void
+PerfectHash::fill_buckets(std::vector<struct perfect_entry>& entries)
+{
+    ASSERT(m_buckets != nullptr);
+
+    for (auto entry : entries)
+    {
+        uint64_t idx = lookup_internal(entry.key, PerfectHash::hash(entry.key));
+//printf("fill_buckets: idx = %lu, key = %s\n", idx, key);
+        ASSERT((0 < idx) && (idx <= m_count));
+        //if (! ((0 < idx) && (idx <= m_count)))
+            //printf("idx = %lu, m_count = %u, key = %s\n", idx, m_count, key);
+        m_buckets[idx].key = entry.key;
+        m_buckets[idx].id = entry.id;
+    }
+}
+
+
+SuperMap::SuperMap() :
+    m_buff(1048576)
+{
+}
+
+SuperMap::~SuperMap()
+{
+    if (m_perfect_hash != nullptr)
+        m_perfect_hash.reset();
+}
+
+void
+SuperMap::init()
+{
+    m_instance = new SuperMap();
+
+    Task task;
+    task.doit = &SuperMap::rotate;
+    int freq_sec = Config::get_time(CFG_HASH_ROTATION_FREQUENCY, TimeUnit::SEC, CFG_HASH_ROTATION_FREQUENCY_DEF);
+    if (freq_sec < 1) freq_sec = 1;
+    Timer::inst()->add_task(task, freq_sec, "hash_rotate");
+    Logger::info("Will try to rotate super hash every %d secs.", freq_sec);
+}
+
+std::shared_ptr<PerfectHash>
+SuperMap::get_perfect_hash()
+{
+    return std::atomic_load(&m_perfect_hash);
+}
+
+void
+SuperMap::set_perfect_hash(std::shared_ptr<PerfectHash> ph)
+{
+    std::atomic_store(&m_perfect_hash, ph);
+}
+
+TimeSeriesId
+SuperMap::get(const char *key)
+{
+    uint64_t h = PerfectHash::hash(key);
+    return get_internal(key, h);
+}
+
+TimeSeriesId
+SuperMap::get_internal(const char *key, uint64_t h)
+{
+    ASSERT(key != nullptr);
+
+    std::shared_ptr<PerfectHash> ph = get_perfect_hash();
+
+    // try PerfectHash first
+    if (ph != nullptr)
+    {
+        TimeSeriesId id = ph->lookup(key, h);
+        if (id != TT_INVALID_TIME_SERIES_ID)
+        {
+            //cache_hit++;
+            return id;
+        }
+    }
+
+    ReadLock guard(m_lock);
+
+    for (auto map : m_maps)
+    {
+        TimeSeriesId id = map->get(key, h);
+        if (id != TT_INVALID_TIME_SERIES_ID)
+        {
+            //cache_miss++;
+            return id;
+        }
+    }
+
+    return TT_INVALID_TIME_SERIES_ID;
+}
+
+TimeSeries *
+SuperMap::set(const char *key, TagOwner& owner)
+{
+    ASSERT(key != nullptr);
+
+    uint64_t h = PerfectHash::hash(key);
+    TimeSeriesId id = get_internal(key, h);
+
+    if (id != TT_INVALID_TIME_SERIES_ID)
+        return TimeSeries::get_ts(id);
+
+    WriteLock guard(m_lock);
+
+    for (auto map : m_maps)
+    {
+        id = map->get(key, h);
+        if (id != TT_INVALID_TIME_SERIES_ID)
+            return TimeSeries::get_ts(id);
+    }
+
+    TimeSeries *ts = TimeSeries::create(owner.get_cloned_tags());
+    id = ts->get_id();
+    MetaFile::instance()->add_entry(key, id);
+
+    key = m_buff.strdup(key);
+
+    for (auto it = m_maps.rbegin(); it != m_maps.rend(); it++)
+    {
+        auto map = *it;
+        if (map->set(key, h, id))
+            return ts;
+    }
+
+    std::shared_ptr<InMemoryMap> map = InMemoryMap::create();
+    map->set(key, h, id);
+    m_maps.push_back(map);
+
+    return ts;
+}
+
+void
+SuperMap::set_raw(const char *key, TimeSeriesId id)
+{
+    uint64_t h = PerfectHash::hash(key);
+    TimeSeriesId id2 = get_internal(key, h);
+
+    if (id2 != TT_INVALID_TIME_SERIES_ID)
+    {
+        ASSERT(id == id2);
+        return;
+    }
+
+    WriteLock guard(m_lock);
+
+    for (auto map : m_maps)
+    {
+        id2 = map->get(key, h);
+        if (id2 != TT_INVALID_TIME_SERIES_ID)
+        {
+            ASSERT(id == id2);
+            return;
+        }
+    }
+
+    MetaFile::instance()->add_entry(key, id);
+    key = m_buff.strdup(key);
+
+    for (auto it = m_maps.rbegin(); it != m_maps.rend(); it++)
+    {
+        auto map = *it;
+        if (map->set(key, h, id))
+            return;
+    }
+
+    auto map = InMemoryMap::create();
+    map->set(key, h, id);
+    m_maps.push_back(map);
+}
+
+void
+SuperMap::erase()
+{
+    WriteLock guard(m_lock);
+
+    for (auto it = m_maps.begin(); it != m_maps.end(); it++)
+    {
+        if ((*it)->is_read_only())
+        {
+            m_maps.erase(it);
+            break;
+        }
+    }
+}
+
+bool
+SuperMap::rotate(TaskData& data)
+{
+    //Logger::info("cache-hit = %lu, cache-miss = %lu", cache_hit.load(), cache_miss.load());
+
+    if (g_shutdown_requested) return false;
+    if (m_instance->m_maps.empty()) return false;
+
+    Logger::info("[hash-rotate] Start");
+    std::shared_ptr<InMemoryMap> map = m_instance->m_maps.back();
+    if (map->is_empty()) return false;
+    if (map->is_read_only()) return false;
+
+    // move what's in map into the perfect hash
+    map->set_read_only();
+    //map->write_meta_file();
+
+    std::shared_ptr<PerfectHash> old = m_instance->get_perfect_hash();
+    std::shared_ptr<PerfectHash> ph = PerfectHash::create(old, map);
+
+    {
+        WriteLock guard(m_instance->m_lock);
+        m_instance->set_perfect_hash(ph);
+    }
+
+    if (old == nullptr)
+        m_instance->erase();
+    else
+        old.reset();
+
+    Logger::info("[hash-rotate] Done");
+    return false;
 }
 
 

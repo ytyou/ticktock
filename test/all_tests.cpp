@@ -26,6 +26,7 @@
 #include "max_subset_test.h"
 #include "misc_test.h"
 #include "query_test.h"
+#include "tag_test.h"
 #include "task_test.h"
 
 
@@ -43,6 +44,7 @@ static TestCase *tests[] =
     //new MaxSubsetTests(),
     new MiscTests(),
     new QueryTests(),
+    new TagTests(),
     //new TaskTests()
 };
 
@@ -65,7 +67,9 @@ main(int argc, char *argv[])
 
     // generate our own config file
     TestCase::create_config(CFG_LOG_FILE, TestCase::str_join(TEST_ROOT, "test.log"));
+    TestCase::create_config(CFG_TSDB_DATA_DIR, TestCase::str_join(TEST_ROOT, "data"));
     Config::init();
+    MemoryManager::init();
     Tsdb::init();
     QueryExecutor::init();
 

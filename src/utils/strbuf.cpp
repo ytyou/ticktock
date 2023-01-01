@@ -72,4 +72,48 @@ StringBuffer::strdup(const char *str)
 }
 
 
+HashBuffer::HashBuffer(std::size_t size) :
+    m_cursor(0),
+    m_buff_size(size)
+{
+    m_buffs.push_back((char*)std::malloc(size));
+}
+
+HashBuffer::~HashBuffer()
+{
+    for (char *buff: m_buffs)
+        std::free(buff);
+}
+
+char *
+HashBuffer::strdup(const char *str)
+{
+    size_t buff_size = m_buff_size - 1;
+
+    ASSERT(str != nullptr);
+    ASSERT(std::strlen(str) < buff_size);
+
+    size_t len = std::strlen(str);
+
+    if (UNLIKELY(len > buff_size))
+    {
+        Logger::error("Can't fit str into HashBuffer: '%s'", str);
+        throw std::out_of_range("string too long to fit into HashBuffer");
+    }
+
+    if ((m_cursor + len) >= buff_size)
+    {
+        m_cursor = 0;
+        m_buffs.push_back((char*)std::malloc(m_buff_size));
+    }
+
+    char *buff = m_buffs.back() + m_cursor;
+    std::strncpy(buff, str, len+1);
+    buff[len] = 0;
+    m_cursor += len + 1;
+
+    return buff;
+}
+
+
 }

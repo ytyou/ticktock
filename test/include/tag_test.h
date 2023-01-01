@@ -18,7 +18,7 @@
 
 #pragma once
 
-#include "hash.h"
+#include "tag.h"
 #include "test.h"
 
 
@@ -26,19 +26,21 @@ namespace tt_test
 {
 
 
-class HashTests : public TestCase
+class TagTests : public TestCase
 {
 public:
-    HashTests() { m_name = "hash_tests"; }
+    TagTests() { m_name = "tag_tests"; }
     void run();
 
 private:
-    void in_memory_map_tests(std::vector<tt::perfect_entry>& entries);
-    void perfect_hash_tests(std::vector<tt::perfect_entry>& entries);
-    void robin_hash_tests(std::vector<tt::perfect_entry>& entries);
+    void parsed_tests();
+    void raw_tests();
 
-    char *m_buff;
-    uint32_t m_num_keys;
+    int m_device_count;
+    int m_sensor_count;
+
+    std::vector<tt::Tag*> m_tags;
+    std::vector<const char*> m_raws;
 };
 
 

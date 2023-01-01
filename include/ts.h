@@ -26,7 +26,7 @@
 #include "recycle.h"
 #include "serial.h"
 #include "tag.h"
-#include "meta.h"
+//#include "meta.h"
 #include "leak.h"
 
 
@@ -42,20 +42,25 @@ class Tsdb;
 class TimeSeries : public TagOwner
 {
 public:
-    TimeSeries(const char *metric, const char *key, Tag *tags);
-    TimeSeries(TimeSeriesId id, const char *metric, const char *key, Tag *tags);
+    //TimeSeries(const char *metric, const char *key, Tag *tags);
     ~TimeSeries();
+    static TimeSeries *create(Tag *tags);
 
     static void init();    // called by Tsdb::init()
-    void init(TimeSeriesId id, const char *metric, const char *key, Tag *tags);
+    void init(TimeSeriesId id, Tag *tags);
     void restore(Tsdb *tsdb, PageSize offset, uint8_t start, char *buff, bool is_ooo);
 
     inline TimeSeriesId get_id() const { return m_id; }
-    static inline TimeSeriesId get_next_id() { return m_next_id.load(std::memory_order_relaxed); }
+    static inline TimeSeriesId get_next_id()
+    {
+        return m_next_id.fetch_add(1);
+    }
+    static TimeSeries *get_ts(TimeSeriesId id);
+    static void set_ts(TimeSeries *ts);
 
     void flush(bool close = false);
     void flush_no_lock(bool close = false);
-    bool compact(MetaFile& meta_file);
+    //bool compact(MetaFile& meta_file);
     void set_check_point();
 
     bool add_data_point(DataPoint& dp);
@@ -63,6 +68,7 @@ public:
 
     void append(FILE *file);
 
+/*
     inline const char* get_key() const { return m_key; }
     inline void set_key(const char *key)
     {
@@ -76,6 +82,7 @@ public:
         ASSERT(metric != nullptr);
         m_metric = STRDUP(metric);
     }
+*/
 
     Tag *find_tag_by_name(const char *name) const;
 
@@ -88,7 +95,9 @@ public:
     TimeSeries *m_next;
 
 private:
-    char *m_key;            // this uniquely defines the time-series
+    TimeSeries(TimeSeriesId id, Tag *tags);
+
+    //char *m_key;            // this uniquely defines the time-series
     //std::mutex m_lock;
 
     PageInMemory *m_buff;   // in-memory buffer; if m_id is 0, it's contents are
@@ -97,7 +106,7 @@ private:
 
     PageInMemory *m_ooo_buff;
 
-    char *m_metric;
+    //char *m_metric;
     //Tsdb *m_tsdb;           // current tsdb we are writing into
 
     static std::atomic<TimeSeriesId> m_next_id;
@@ -105,6 +114,10 @@ private:
 
     static uint32_t m_lock_count;
     static std::mutex *m_locks;
+
+    static default_contention_free_shared_mutex m_ts_lock;
+    static TimeSeries **m_time_series;  // indexed by TimeSeriesId
+    static std::size_t m_ts_size;       // size of m_time_series[]
 };
 
 

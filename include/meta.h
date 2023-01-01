@@ -41,7 +41,7 @@ public:
     void flush();
 
     inline bool is_open() const { return (m_file != nullptr); }
-    void add_ts(TimeSeries *ts);
+    void add_entry(const char *key, TimeSeriesId id);
 
 private:
     void restore(TimeSeries* (*restore_func)(std::string& metric, std::string& key, TimeSeriesId id));

@@ -68,7 +68,7 @@ public:
         return KeyValuePair::clone(m_tags, strbuf);
     }
 
-    char *get_ordered_tags(char* buff, size_t size) const;
+    char *get_ordered_tags(char* buff, size_t size, const char *metric) const;
 
     void get_keys(std::set<std::string>& keys) const;
     void get_values(std::set<std::string>& values) const;

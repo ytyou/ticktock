@@ -39,7 +39,7 @@ Admin::init()
     {
         Task task;
         task.doit = &Admin::shutdown_if_disk_full;
-        Timer::inst()->add_task(task, 10, "admin_disk_guard");
+        Timer::inst()->add_task(task, 300, "admin_disk_guard");
     }
 }
 

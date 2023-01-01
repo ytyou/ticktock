@@ -36,32 +36,40 @@ namespace tt
 {
 
 
+#define TT_TIME_SERIES_INCREMENT    65536
+
+
 std::atomic<TimeSeriesId> TimeSeries::m_next_id{0};
 uint32_t TimeSeries::m_lock_count;
 std::mutex *TimeSeries::m_locks;
+default_contention_free_shared_mutex TimeSeries::m_ts_lock;
+TimeSeries **TimeSeries::m_time_series;
+std::size_t TimeSeries::m_ts_size;
 
 
+/*
 TimeSeries::TimeSeries(const char *metric, const char *key, Tag *tags) :
     TagOwner(true),
     m_next(nullptr)
 {
-    TimeSeriesId id = m_next_id.fetch_add(1);
+    //ASSERT(false);
+    //TimeSeriesId id = m_next_id.fetch_add(1);
+    //TimeSeriesId id = TT_INVALID_TIME_SERIES_ID;
+    //while (TT_INVALID_META_POSITION == MetaFile::instance()->put(key, TT_INVALID_META_POSITION, id))
+        //MetaFile::instance()->expand();
     init(id, metric, key, tags);
-
-    // WARN: If there are derived classes from TimeSeries,
-    //       this might be a problem...
-    MetaFile::instance()->add_ts(this);
 }
+*/
 
 // called during restart/restore
-TimeSeries::TimeSeries(TimeSeriesId id, const char *metric, const char *key, Tag *tags) :
+TimeSeries::TimeSeries(TimeSeriesId id, Tag *tags) :
     TagOwner(true),
     m_next(nullptr)
 {
-    init(id, metric, key, tags);
+    init(id, tags);
 
-    if (m_next_id.load() <= id)
-        m_next_id = id + 1;
+    //if (m_next_id.load() <= id)
+        //m_next_id = id + 1;
 }
 
 TimeSeries::~TimeSeries()
@@ -78,6 +86,7 @@ TimeSeries::~TimeSeries()
         m_ooo_buff = nullptr;
     }
 
+/*
     if (m_key != nullptr)
     {
         FREE(m_key);
@@ -89,6 +98,15 @@ TimeSeries::~TimeSeries()
         FREE(m_metric);
         m_metric = nullptr;
     }
+*/
+}
+
+TimeSeries *
+TimeSeries::create(Tag *tags)
+{
+    TimeSeries *ts = new TimeSeries(get_next_id(), tags);
+    set_ts(ts);
+    return ts;
 }
 
 void
@@ -106,19 +124,60 @@ TimeSeries::init()
     m_lock_count = std::max(tcp_responders, http_responders);
     m_lock_count = (uint32_t)((float)(m_lock_count * m_lock_count) / (2.0 * probability));
     m_locks = new std::mutex[m_lock_count];
+
+    m_ts_size = 65536;
+    m_time_series = (TimeSeries**) calloc(m_ts_size, sizeof(TimeSeries*));
+    std::memset(m_time_series, 0, m_ts_size * sizeof(TimeSeries*));
+    ASSERT(m_time_series[0] == nullptr);
+
     Logger::info("number of ts locks: %u", m_lock_count);
 }
 
 void
-TimeSeries::init(TimeSeriesId id, const char *metric, const char *key, Tag *tags)
+TimeSeries::init(TimeSeriesId id, Tag *tags)
 {
     m_id = id;
     m_buff = nullptr;
     m_ooo_buff = nullptr;
 
-    m_metric = STRDUP(metric);
-    m_key = STRDUP(key);
+    //m_metric = STRDUP(metric);
+    //m_key = STRDUP(key);
     m_tags = tags;
+}
+
+TimeSeries *
+TimeSeries::get_ts(TimeSeriesId id)
+{
+    ReadLock guard(m_ts_lock);
+    if (m_ts_size <= id)
+        return nullptr;
+    return m_time_series[id];
+}
+
+void
+TimeSeries::set_ts(TimeSeries *ts)
+{
+    TimeSeriesId id = ts->m_id;
+    WriteLock guard(m_ts_lock);
+
+    if (m_ts_size > id)
+    {
+        ASSERT(m_time_series[id] == nullptr || m_time_series[id] == ts);
+        m_time_series[id] = ts;
+        return;
+    }
+
+    // expand m_time_series[]
+    std::size_t new_cap = id + TT_TIME_SERIES_INCREMENT;
+    TimeSeries **tmp = static_cast<TimeSeries**>(aligned_alloc(g_sys_page_size, new_cap*sizeof(TimeSeries*)));
+    std::memcpy(tmp, m_time_series, m_ts_size * sizeof(TimeSeries*));
+    std::memset(&tmp[m_ts_size], 0, TT_TIME_SERIES_INCREMENT * sizeof(TimeSeries*));
+    std::free(m_time_series);
+    Logger::info("Expanded TimeSeries::m_time_series[] from %" PRIu64 " to %" PRIu64, m_ts_size, new_cap);
+    m_time_series = tmp;
+    m_ts_size = new_cap;
+
+    m_time_series[id] = ts;
 }
 
 void
@@ -532,74 +591,6 @@ TimeSeries::query_without_ooo(TimeRange& range, Downsampler *downsampler, DataPo
         }
     }
 #endif
-}
-
-// Compress all out-of-order pages in m_ooo_pages[], if any.
-// Return true if we actually compacted something.
-bool
-TimeSeries::compact(MetaFile& meta_file)
-{
-    return true;
-/*
-    DataPointVector dps;
-    PageInfo *info = nullptr;
-    TimeRange range = m_tsdb->get_time_range();
-    int id_from, id_to, file_id;
-
-    // get all data points
-    query_with_ooo(range, nullptr, dps);
-
-    Logger::trace("ts (%s, %s): Found %d dps to compact", m_metric, m_key, dps.size());
-
-    for (auto& dp : dps)
-    {
-        ASSERT(range.in_range(dp.first));
-        Logger::trace("dp.first=%" PRIu64 ", dp.second=%f", dp.first, dp.second);
-
-        if (info == nullptr)
-        {
-            info = m_tsdb->get_free_page_for_compaction();
-            //meta_file.append(this, info);
-            file_id = info->get_file_id();
-            id_from = id_to = info->get_id();
-        }
-
-        bool ok = info->add_data_point(dp.first, dp.second);
-
-        if (! ok)
-        {
-            ASSERT(info->is_full());
-            info->flush(false, m_tsdb);
-            MemoryManager::free_recyclable(info);
-
-            info = m_tsdb->get_free_page_for_compaction();
-            //meta_file.append(this, info);
-            ok = info->add_data_point(dp.first, dp.second);
-            ASSERT(ok);
-
-            if (info->get_file_id() == file_id)
-            {
-                id_to = info->get_id();
-            }
-            else
-            {
-                //meta_file.append(this, file_id, id_from, id_to);
-
-                file_id = info->get_file_id();
-                id_from = id_to = info->get_id();
-            }
-        }
-    }
-
-    if (info != nullptr)
-    {
-        info->shrink_to_fit();
-        MemoryManager::free_recyclable(info);
-        //meta_file.append(this, file_id, id_from, id_to);
-    }
-
-    return (! dps.empty());
-*/
 }
 
 

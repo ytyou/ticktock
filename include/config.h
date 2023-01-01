@@ -43,6 +43,8 @@
 #define CFG_CONFIG_RELOAD_ENABLED_DEF           false
 #define CFG_CONFIG_RELOAD_FREQUENCY             "config.reload.frequency"
 #define CFG_CONFIG_RELOAD_FREQUENCY_DEF         "5min"
+#define CFG_HASH_ROTATION_FREQUENCY             "hash.rotation.frequency"
+#define CFG_HASH_ROTATION_FREQUENCY_DEF         "5min"
 #define CFG_HTTP_LISTENER_COUNT                 "http.listener.count"
 #define CFG_HTTP_LISTENER_COUNT_DEF             2
 //#define CFG_HTTP_MAX_RETRIES                    "http.max.retries"

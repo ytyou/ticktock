@@ -133,6 +133,7 @@ process_cmdline_opts(int argc, char *argv[])
         { CFG_APPEND_LOG_RETENTION_COUNT,           required_argument,  0,  0 },
         { CFG_CONFIG_RELOAD_ENABLED,                required_argument,  0,  0 },
         { CFG_CONFIG_RELOAD_FREQUENCY,              required_argument,  0,  0 },
+        { CFG_HASH_ROTATION_FREQUENCY,              required_argument,  0,  0 },
         { CFG_HTTP_LISTENER_COUNT,                  required_argument,  0,  0 },
         { CFG_HTTP_REQUEST_FORMAT,                  required_argument,  0,  0 },
         { CFG_HTTP_RESPONDERS_PER_LISTENER,         required_argument,  0,  0 },

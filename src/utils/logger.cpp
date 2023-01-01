@@ -83,7 +83,7 @@ Logger::Logger() :
     Task task;
     task.doit = &Logger::rotate;
     task.data.pointer = (void*)this;
-    Timer::inst()->add_task(task, 5, "logger_rotate");  // try every 5 seconds
+    Timer::inst()->add_task(task, 120, "logger_rotate");  // try every 5 seconds
 }
 
 Logger::Logger(int fd) :

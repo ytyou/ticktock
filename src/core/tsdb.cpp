@@ -27,9 +27,11 @@
 #include "admin.h"
 #include "config.h"
 #include "cp.h"
+#include "hash.h"
 #include "limit.h"
 #include "memmgr.h"
 #include "meter.h"
+#include "mmap.h"
 #include "query.h"
 #include "timer.h"
 #include "tsdb.h"
@@ -60,13 +62,15 @@ thread_local tsl::robin_map<const char*, Mapping*, hash_func, eq_func> thread_lo
 
 
 Mapping::Mapping(const char *name) :
-    m_partition(nullptr),
+    //m_partition(nullptr),
     m_ts_head(nullptr),
+    //m_ts_head(TT_INVALID_META_POSITION),
+    //m_meta_pos(TT_INVALID_META_POSITION),
     m_tag_count(-1)
 {
     m_metric = STRDUP(name);
     ASSERT(m_metric != nullptr);
-    ASSERT(m_ts_head.load() == nullptr);
+    //ASSERT(m_ts_head.load() == TT_INVALID_META_POSITION);
 }
 
 Mapping::~Mapping()
@@ -102,6 +106,41 @@ Mapping::get_ts(DataPoint& dp)
 {
     TimeSeries *ts = nullptr;
     char *raw_tags = dp.get_raw_tags();
+    char raw_buff[MAX_TOTAL_TAG_LENGTH];
+
+    if (raw_tags != nullptr)
+    {
+        TimeSeriesId id = SuperMap::instance()->get(raw_tags);
+        if (id != TT_INVALID_TIME_SERIES_ID)
+            return TimeSeries::get_ts(id);
+
+        std::strncpy(raw_buff, raw_tags, MAX_TOTAL_TAG_LENGTH);
+        dp.parse_raw_tags();
+        dp.set_raw_tags(nullptr);
+    }
+
+    char ordered_buff[MAX_TOTAL_TAG_LENGTH];
+    dp.get_ordered_tags(ordered_buff, MAX_TOTAL_TAG_LENGTH, m_metric);
+
+    std::lock_guard<std::mutex> guard(m_lock);
+    ts = SuperMap::instance()->set(ordered_buff, dp);
+
+    ts->m_next = m_ts_head.load();
+    m_ts_head = ts;
+
+    if (std::strcmp(raw_buff, ordered_buff) != 0)
+        SuperMap::instance()->set_raw(raw_buff, ts->get_id());
+
+    return ts;
+}
+
+#if 0
+
+TimeSeries *
+Mapping::get_ts3(DataPoint& dp)
+{
+    TimeSeries *ts = nullptr;
+    char *raw_tags = dp.get_raw_tags();
     //std::lock_guard<std::mutex> guard(m_lock);
 
     if (raw_tags != nullptr)
@@ -122,7 +161,13 @@ Mapping::get_ts(DataPoint& dp)
         }
 
         char buff[MAX_TOTAL_TAG_LENGTH];
-        dp.get_ordered_tags(buff, MAX_TOTAL_TAG_LENGTH);
+        //dp.get_ordered_tags(buff, MAX_TOTAL_TAG_LENGTH);
+
+        int n = std::strlen(m_metric);
+        strncpy(buff, m_metric, n);
+        buff[n] = ',';
+        n++;
+        dp.get_ordered_tags(&buff[n], MAX_TOTAL_TAG_LENGTH-n);
 
         WriteLock guard(m_lock);
 
@@ -134,7 +179,14 @@ Mapping::get_ts(DataPoint& dp)
 
         if (ts == nullptr)
         {
-            ts = new TimeSeries(m_metric, buff, dp.get_cloned_tags());
+            TimeSeriesId id = TT_INVALID_TIME_SERIES_ID;
+            MetaPosition pos;
+            while (TT_INVALID_META_POSITION == (pos = MetaFile::instance()->put(buff, m_ts_next, id)))
+                MetaFile::instance()->expand();
+            m_ts_next = pos;
+
+            ASSERT(id != TT_INVALID_TIME_SERIES_ID);
+            ts = new TimeSeries(id, m_metric, buff, dp.get_cloned_tags());
             m_map[ts->get_key()] = ts;
 
             ts->m_next = m_ts_head.load();
@@ -143,12 +195,19 @@ Mapping::get_ts(DataPoint& dp)
             set_tag_count(dp.get_tag_count());
         }
 
-        if (raw_tags != nullptr)
+        if ((raw_tags != nullptr) && (strcmp(buff, raw_tags) != 0))
+        {
             m_map[raw_tags] = ts;
+            TimeSeriesId id = ts->get_id();
+            ASSERT(id != TT_INVALID_TIME_SERIES_ID);
+            while (TT_INVALID_META_POSITION == MetaFile::instance()->put(raw_tags, TT_INVALID_META_POSITION, id))
+                MetaFile::instance()->expand();
+        }
     }
 
     return ts;
 }
+#endif
 
 void
 Mapping::get_all_ts(std::vector<TimeSeries*>& tsv)
@@ -172,12 +231,15 @@ Mapping::add(DataPoint& dp)
 {
     TimeSeries *ts = get_ts(dp);
     if (UNLIKELY(ts == nullptr)) return false;
-    return ts->add_data_point(dp);
+    bool success = ts->add_data_point(dp);
+    return success;
 }
 
 bool
 Mapping::add_data_point(DataPoint& dp, bool forward)
 {
+    return add(dp);
+#if 0
     bool success = true;
 
     if (m_partition == nullptr)
@@ -194,6 +256,7 @@ Mapping::add_data_point(DataPoint& dp, bool forward)
     }
 
     return success;
+#endif
 }
 
 void
@@ -203,10 +266,22 @@ Mapping::query_for_ts(Tag *tags, std::unordered_set<TimeSeries*>& tsv, const cha
 
     if ((key != nullptr) && (tag_count == m_tag_count))
     {
-        ReadLock guard(m_lock);
-        auto result = m_map.find(key);
-        if (result != m_map.end())
-            tsv.insert(result->second);
+        //ReadLock guard(m_lock);
+        //auto result = m_map.find(key);
+        //if (result != m_map.end())
+            //tsv.insert(result->second);
+
+        //char buff[MAX_TOTAL_TAG_LENGTH];
+        //int n = std::strlen(m_metric);
+        //std::strncpy(buff, m_metric, n);
+        //buff[n] = ',';
+        //n++;
+        //std::strncpy(&buff[n], key, MAX_TOTAL_TAG_LENGTH-n);
+
+        TimeSeriesId id = SuperMap::instance()->get(key);
+
+        if (id != TT_INVALID_TIME_SERIES_ID)
+            tsv.insert(TimeSeries::get_ts(id));
     }
 
     if (tsv.empty())
@@ -232,6 +307,7 @@ Mapping::query_for_ts(Tag *tags, std::unordered_set<TimeSeries*>& tsv, const cha
 TimeSeries *
 Mapping::restore_ts(std::string& metric, std::string& keys, TimeSeriesId id)
 {
+/*
     auto search = m_map.find(keys.c_str());
 
     if (search != m_map.end())
@@ -248,6 +324,8 @@ Mapping::restore_ts(std::string& metric, std::string& keys, TimeSeriesId id)
     m_ts_head = ts;
     set_tag_count(std::count(keys.begin(), keys.end(), ';'));
     return ts;
+*/
+    return nullptr;
 }
 
 void
@@ -261,8 +339,9 @@ int
 Mapping::get_ts_count()
 {
     //std::lock_guard<std::mutex> guard(m_lock);
-    ReadLock guard(m_lock);
-    return m_map.size();
+    //ReadLock guard(m_lock);
+    //return m_map.size();
+    return 0;
 }
 
 
@@ -775,6 +854,8 @@ Tsdb::get_the_page_on_disk(PageCount id, PageCount header_index)
 void
 Tsdb::get_last_header_indices(TimeSeriesId id, FileIndex& file_idx, HeaderIndex& header_idx)
 {
+    ASSERT(id != TT_INVALID_TIME_SERIES_ID);
+
     FileIndex fidx;
     HeaderIndex hidx;
 
@@ -1522,7 +1603,8 @@ Tsdb::init()
     Logger::info("Loading data from %s", data_dir.c_str());
 
     CheckPointManager::init();
-    PartitionManager::init();
+    //PartitionManager::init();
+    SuperMap::init();
     TimeSeries::init();
 
     tsdb_rotation_freq =
@@ -1670,7 +1752,8 @@ Tsdb::get_dp_count()
 int
 Tsdb::get_ts_count()
 {
-    return TimeSeries::get_next_id();
+    //return TimeSeries::get_next_id();
+    return 0;
 }
 
 // for testing only
@@ -2035,7 +2118,7 @@ Tsdb::compact(TaskData& data)
             Tsdb *compacted = Tsdb::create(range, false, TEMP_SUFFIX);
             compacted->m_page_size = g_sys_page_size;
             std::vector<Tsdb*> tsdbs = { tsdb };
-            TimeSeriesId max_id = TimeSeries::get_next_id();
+            TimeSeriesId max_id = 0; //TimeSeries::get_next_id();
             QueryTask *query =
                 (QueryTask*)MemoryManager::alloc_recyclable(RecyclableType::RT_QUERY_TASK);
             PageSize next_size = compacted->get_page_size();

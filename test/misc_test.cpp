@@ -38,6 +38,7 @@ MiscTests::run()
     strbuf_tests();
     url_decode_tests();
     time_conv_tests();
+    string_util_tests();
 
     log("Finished %s", m_name);
 }
@@ -267,6 +268,23 @@ MiscTests::time_conv_tests()
     CONFIRM(convert_time(2, TimeUnit::YEAR, TimeUnit::MIN) == 2*365*24*60);
     CONFIRM(convert_time(2, TimeUnit::YEAR, TimeUnit::SEC) == 2*365*24*3600L);
     CONFIRM(convert_time(2, TimeUnit::YEAR, TimeUnit::MS) == (Timestamp)2*365*24*3600000L);
+}
+
+void
+MiscTests::string_util_tests()
+{
+    char str1[] = { '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i' };
+    char str2[] = { 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 0 };
+
+    char *clone1 = string_copy(&str1[5], &str1[0], 10);
+    CONFIRM(std::strncmp(clone1, "0123456789fghi", 14) == 0);
+    CONFIRM(std::strncmp(str1, "012340123456789fghi", 19) == 0);
+
+    char *clone2 = string_copy(&str2[1], &str2[5], 10);
+    log("clone2 = %s", clone2);
+    log("str2 = %s", str2);
+    CONFIRM(std::strncmp(clone2, "fghi01234523456789", 18) == 0);
+    CONFIRM(std::strncmp(str2, "afghi01234523456789", 19) == 0);
 }
 
 

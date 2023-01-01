@@ -42,4 +42,19 @@ private:
 };
 
 
+class HashBuffer
+{
+public:
+    HashBuffer(std::size_t size);
+    ~HashBuffer();
+
+    char *strdup(const char *str);
+
+private:
+    std::size_t m_cursor;
+    std::size_t m_buff_size;
+    std::vector<char*> m_buffs;
+};
+
+
 }

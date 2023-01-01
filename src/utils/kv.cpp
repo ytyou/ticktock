@@ -349,7 +349,7 @@ KeyValuePair *
 KeyValuePair::parse_multiple(std::string& buff)
 {
     std::vector<std::string> tokens;
-    tokenize(buff, tokens, ';');
+    tokenize(buff, tokens, ',');
 
     Tag *kvs = nullptr;
 

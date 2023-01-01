@@ -147,11 +147,11 @@ MetaFile::flush()
 }
 
 void
-MetaFile::add_ts(TimeSeries *ts)
+MetaFile::add_entry(const char *key, TimeSeriesId id)
 {
     ASSERT(m_file != nullptr);
     std::lock_guard<std::mutex> guard(m_lock);
-    fprintf(m_file, "%s %s %u\n", ts->get_metric(), ts->get_key(), ts->get_id());
+    fprintf(m_file, "%s %u\n", key, id);
 }
 
 
