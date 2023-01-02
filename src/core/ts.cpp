@@ -42,21 +42,18 @@ std::mutex *TimeSeries::m_locks;
 
 
 TimeSeries::TimeSeries(const char *metric, const char *key, Tag *tags) :
-    TagOwner(true),
-    m_next(nullptr)
+    m_next(nullptr),
+    m_tags(tags)
 {
     TimeSeriesId id = m_next_id.fetch_add(1);
     init(id, metric, key, tags);
-
-    // WARN: If there are derived classes from TimeSeries,
-    //       this might be a problem...
-    MetaFile::instance()->add_ts(this);
+    MetaFile::instance()->add_ts(metric, key, id);
 }
 
 // called during restart/restore
 TimeSeries::TimeSeries(TimeSeriesId id, const char *metric, const char *key, Tag *tags) :
-    TagOwner(true),
-    m_next(nullptr)
+    m_next(nullptr),
+    m_tags(tags)
 {
     init(id, metric, key, tags);
 
@@ -78,17 +75,23 @@ TimeSeries::~TimeSeries()
         m_ooo_buff = nullptr;
     }
 
-    if (m_key != nullptr)
-    {
-        FREE(m_key);
-        m_key = nullptr;
-    }
+    //if (m_tags != nullptr)
+    //{
+        //std::free(m_tags);
+        //m_tags = nullptr;
+    //}
 
-    if (m_metric != nullptr)
-    {
-        FREE(m_metric);
-        m_metric = nullptr;
-    }
+    //if (m_key != nullptr)
+    //{
+        //FREE(m_key);
+        //m_key = nullptr;
+    //}
+
+    //if (m_metric != nullptr)
+    //{
+        //FREE(m_metric);
+        //m_metric = nullptr;
+    //}
 }
 
 void
@@ -116,9 +119,9 @@ TimeSeries::init(TimeSeriesId id, const char *metric, const char *key, Tag *tags
     m_buff = nullptr;
     m_ooo_buff = nullptr;
 
-    m_metric = STRDUP(metric);
-    m_key = STRDUP(key);
-    m_tags = tags;
+    //m_metric = STRDUP(metric);
+    //m_key = STRDUP(key);
+    //m_tags = tags;
 }
 
 void
@@ -298,12 +301,14 @@ TimeSeries::add_ooo_data_point(DataPoint& dp)
     return ok;
 }
 
+#if 0
 Tag *
 TimeSeries::find_tag_by_name(const char *name) const
 {
     if ((m_tags == nullptr) || (name == nullptr)) return nullptr;
     return Tag::get_key_value_pair(m_tags, name);
 }
+#endif
 
 bool
 TimeSeries::query_for_data(Tsdb *tsdb, TimeRange& range, std::vector<DataPointContainer*>& data)

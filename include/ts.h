@@ -39,7 +39,7 @@ class Downsampler;
 class Tsdb;
 
 
-class TimeSeries : public TagOwner
+class __attribute__ ((__packed__)) TimeSeries
 {
 public:
     TimeSeries(const char *metric, const char *key, Tag *tags);
@@ -63,21 +63,29 @@ public:
 
     void append(FILE *file);
 
-    inline const char* get_key() const { return m_key; }
-    inline void set_key(const char *key)
-    {
-        ASSERT(key != nullptr);
-        m_key = STRDUP(key);    // TODO: better memory management than strdup()???
-    }
+    //inline const char* get_key() const { return m_key; }
+    //inline void set_key(const char *key)
+    //{
+        //ASSERT(key != nullptr);
+        //m_key = STRDUP(key);    // TODO: better memory management than strdup()???
+    //}
 
-    inline const char *get_metric() const { return m_metric; }
-    inline void set_metric(const char *metric)
-    {
-        ASSERT(metric != nullptr);
-        m_metric = STRDUP(metric);
-    }
+    //inline const char *get_metric() const { return m_metric; }
+    //inline void set_metric(const char *metric)
+    //{
+        //ASSERT(metric != nullptr);
+        //m_metric = STRDUP(metric);
+    //}
 
-    Tag *find_tag_by_name(const char *name) const;
+    inline Tag *get_tags() const { return m_tags.get_v1_tags(); }
+    inline Tag *get_cloned_tags(StringBuffer& strbuf) const
+    { return m_tags.get_cloned_v1_tags(strbuf); }
+
+    inline Tag_v2& get_v2_tags() { return m_tags; }
+    //Tag *find_tag_by_name(const char *name) const;
+
+    void get_keys(std::set<std::string>& keys) const { m_tags.get_keys(keys); }
+    void get_values(std::set<std::string>& values) const { m_tags.get_values(values); }
 
     bool query_for_data(Tsdb *tsdb, TimeRange& range, std::vector<DataPointContainer*>& data);
     void query(TimeRange& range, Downsampler *downsampler, DataPointVector& dps);
@@ -88,7 +96,7 @@ public:
     TimeSeries *m_next;
 
 private:
-    char *m_key;            // this uniquely defines the time-series
+    //char *m_key;            // this uniquely defines the time-series
     //std::mutex m_lock;
 
     PageInMemory *m_buff;   // in-memory buffer; if m_id is 0, it's contents are
@@ -97,14 +105,17 @@ private:
 
     PageInMemory *m_ooo_buff;
 
-    char *m_metric;
+    //char *m_metric;
     //Tsdb *m_tsdb;           // current tsdb we are writing into
 
-    static std::atomic<TimeSeriesId> m_next_id;
+    Tag_v2 m_tags;
+
     TimeSeriesId m_id;      // global, unique, permanent id starting at 0
 
     static uint32_t m_lock_count;
     static std::mutex *m_locks;
+
+    static std::atomic<TimeSeriesId> m_next_id;
 };
 
 

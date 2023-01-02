@@ -274,8 +274,8 @@ inspect_tsdb_internal(const std::string& dir)
         if (((id+1) * sizeof(struct index_entry)) >= index_file_size) continue;
         if (index_entries[id].file_index == TT_INVALID_FILE_INDEX) continue;
 
-        if (g_verbose)
-            printf("%4u %s %s\n", id, ts->get_metric(), ts->get_key());
+        //if (g_verbose)
+            //printf("%4u %s %s\n", id, ts->get_metric(), ts->get_key());
         //inspect_page(dir, index_entries[id].file_index, index_entries[id].header_index);
 
         FileIndex file_idx = index_entries[id].file_index;

@@ -264,6 +264,7 @@ MemoryManager::collect_stats(Timestamp ts, std::vector<DataPoint> &dps)
     COLLECT_STATS_FOR(RT_QUERY_RESULTS, "query_results", sizeof(QueryResults))
     COLLECT_STATS_FOR(RT_QUERY_TASK, "query_task", sizeof(QueryTask))
     COLLECT_STATS_FOR(RT_RATE_CALCULATOR, "rate_calculator", sizeof(RateCalculator))
+    COLLECT_STATS_FOR(RT_TAG_MATCHER, "tag_matcher", sizeof(TagMatcher))
     COLLECT_STATS_FOR(RT_TCP_CONNECTION, "tcp_connection", sizeof(TcpConnection))
     COLLECT_STATS_FOR(RT_COUNT, "network_buffer", m_network_buffer_len)
     COLLECT_STATS_FOR(RT_COUNT+1, "memory_page", g_page_size)
@@ -299,6 +300,7 @@ MemoryManager::collect_stats(Timestamp ts, std::vector<DataPoint> &dps)
     total += m_total[RT_QUERY_RESULTS] * sizeof(QueryResults);
     total += m_total[RT_QUERY_TASK] * sizeof(QueryTask);
     total += m_total[RT_RATE_CALCULATOR] * sizeof(RateCalculator);
+    total += m_total[RT_TAG_MATCHER] * sizeof(TagMatcher);
     total += m_total[RT_TCP_CONNECTION] * sizeof(TcpConnection);
     total += m_total[RT_COUNT] * m_network_buffer_len;
     total += m_total[RT_COUNT+1] * g_page_size;
@@ -596,6 +598,14 @@ MemoryManager::cleanup()
         delete static_cast<RateCalculator*>(r);
     }
 
+    while (m_free_lists[RecyclableType::RT_TAG_MATCHER] != nullptr)
+    {
+        Recyclable *r = m_free_lists[RecyclableType::RT_TAG_MATCHER];
+        m_free_lists[RecyclableType::RT_TAG_MATCHER] = r->next();
+        ASSERT(r->recyclable_type() == RecyclableType::RT_TAG_MATCHER);
+        delete static_cast<TagMatcher*>(r);
+    }
+
     while (m_free_lists[RecyclableType::RT_TCP_CONNECTION] != nullptr)
     {
         Recyclable *r = m_free_lists[RecyclableType::RT_TCP_CONNECTION];
@@ -612,8 +622,21 @@ MemoryManager::alloc_recyclable(RecyclableType type)
 {
     ASSERT((0 <= (int)type) && ((int)type < RecyclableType::RT_COUNT));
 
-    std::lock_guard<std::mutex> guard(m_locks[type]);
-    Recyclable *r = m_free_lists[type];
+    Recyclable *r;
+
+    {
+        std::lock_guard<std::mutex> guard(m_locks[type]);
+        r = m_free_lists[type];
+
+        if (r != nullptr)
+        {
+            m_free_lists[type] = r->next();
+            m_free[type]--;
+#ifdef _DEBUG
+            m_maps[type][r] = true;
+#endif
+        }
+    }
 
     if (r == nullptr)
     {
@@ -732,6 +755,10 @@ MemoryManager::alloc_recyclable(RecyclableType type)
                     r = new RateCalculator();
                     break;
 
+                case RecyclableType::RT_TAG_MATCHER:
+                    r = new TagMatcher();
+                    break;
+
                 case RecyclableType::RT_TCP_CONNECTION:
                     r = new TcpConnection();
                     break;
@@ -750,16 +777,12 @@ MemoryManager::alloc_recyclable(RecyclableType type)
 
         ASSERT(r != nullptr);
         m_total[type]++;
-    }
-    else
-    {
-        m_free_lists[type] = r->next();
-        m_free[type]--;
-    }
 
 #ifdef _DEBUG
-    m_maps[type][r] = true;
+        std::lock_guard<std::mutex> guard(m_locks[type]);
+        m_maps[type][r] = true;
 #endif
+    }
 
     if (r != nullptr)
     {
@@ -777,28 +800,32 @@ MemoryManager::free_recyclable(Recyclable *r)
     ASSERT(r != nullptr);
 
     RecyclableType type = r->recyclable_type();
-    std::lock_guard<std::mutex> guard(m_locks[type]);
+    //std::lock_guard<std::mutex> guard(m_locks[type]);
 
 #ifdef _DEBUG
-    auto search = m_maps[type].find(r);
-
-    if (search == m_maps[type].end())
     {
-        Logger::fatal("Trying to free recyclable that's not allocated by MM: %p", r);
-        return;
-    }
+        std::lock_guard<std::mutex> guard(m_locks[type]);
+        auto search = m_maps[type].find(r);
 
-    if (! search->second)
-    {
-        Logger::fatal("Trying to double free recyclable (%d): %p", (int)type, r);
-        return;
-    }
+        if (search == m_maps[type].end())
+        {
+            Logger::fatal("Trying to free recyclable that's not allocated by MM: %p", r);
+            return;
+        }
 
-    m_maps[type][r] = false;
+        if (! search->second)
+        {
+            Logger::fatal("Trying to double free recyclable (%d): %p", (int)type, r);
+            return;
+        }
+
+        m_maps[type][r] = false;
+    }
 #endif
 
     if (r->recycle())   // TODO: also check memory pressure
     {
+        std::lock_guard<std::mutex> guard(m_locks[type]);
         r->next() = m_free_lists[type];
         m_free_lists[type] = r;
         m_free[type]++;
@@ -808,6 +835,7 @@ MemoryManager::free_recyclable(Recyclable *r)
         delete r;
         m_total[type]--;
 #ifdef _DEBUG
+        std::lock_guard<std::mutex> guard(m_locks[type]);
         m_maps[type].erase(r);
 #endif
     }

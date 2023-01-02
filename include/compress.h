@@ -81,7 +81,7 @@ public:
 
 
 // the Compressor interface
-class Compressor : public Recyclable
+class __attribute__ ((__packed__)) Compressor : public Recyclable
 {
 public:
     static Compressor *create(int version);
@@ -104,7 +104,7 @@ public:
 
     // return number of data points if already uncompressed;
     // return 0 otherwise;
-    virtual size_t get_dp_count() const = 0;
+    virtual uint16_t get_dp_count() const = 0;
     virtual Timestamp get_last_tstamp() const = 0;
     virtual int get_version() const = 0;
     Timestamp& get_start_tstamp();
@@ -120,7 +120,7 @@ protected:
 
 
 // This is a modified version of Facebook's Gorilla compression algorithm.
-class Compressor_v3 : public Compressor
+class __attribute__ ((__packed__)) Compressor_v3 : public Compressor
 {
 public:
     void init(Timestamp start, uint8_t *base, size_t size);
@@ -159,7 +159,7 @@ public:
         return m_bitset.size_in_bytes();
     }
 
-    inline size_t get_dp_count() const
+    inline uint16_t get_dp_count() const
     {
         return m_dp_count;
     }
@@ -188,7 +188,7 @@ private:
     int64_t uncompress_i(BitSetCursor *cursor);
 
     BitSet m_bitset;
-    size_t m_dp_count;
+    uint16_t m_dp_count;
 
     Timestamp m_prev_delta;
     Timestamp m_prev_tstamp;
@@ -198,7 +198,7 @@ private:
 
 
 // This implements Facebook's Gorilla compression algorithm.
-class Compressor_v2 : public Compressor
+class __attribute__ ((__packed__)) Compressor_v2 : public Compressor
 {
 public:
     void init(Timestamp start, uint8_t *base, size_t size);
@@ -237,7 +237,7 @@ public:
         return m_bitset.size_in_bytes();
     }
 
-    inline size_t get_dp_count() const
+    inline uint16_t get_dp_count() const
     {
         return m_dp_count;
     }
@@ -262,7 +262,7 @@ private:
     void uncompress(DataPointVector& dps, bool restore);
 
     BitSet m_bitset;
-    size_t m_dp_count;
+    uint16_t m_dp_count;
 
     Timestamp m_prev_delta;
     Timestamp m_prev_tstamp;
@@ -338,7 +338,7 @@ public:
         return 1;
     };
 
-    inline size_t get_dp_count() const
+    inline uint16_t get_dp_count() const
     {
         return m_dp_count;
     }
@@ -358,7 +358,7 @@ private:
     Timestamp m_prev_tstamp;
     double m_prev_value;
     bool m_is_full;
-    size_t m_dp_count;
+    uint16_t m_dp_count;
 };
 
 
@@ -407,7 +407,7 @@ public:
         return 0;
     };
 
-    inline size_t get_dp_count() const
+    inline uint16_t get_dp_count() const
     {
         return m_dps.size();
     }

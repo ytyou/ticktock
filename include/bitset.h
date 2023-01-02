@@ -44,7 +44,7 @@ private:
 /* This class enables us to store data as series of bits. It is used by
  * the Gorilla compression algorithm.
  */
-class BitSet
+class __attribute__ ((__packed__)) BitSet
 {
 public:
     BitSet();

@@ -22,7 +22,9 @@
 #include <cstddef>
 #include <map>
 #include <set>
+#include <unordered_map>
 #include "kv.h"
+#include "rw.h"
 #include "strbuf.h"
 #include "type.h"
 #include "utils.h"
@@ -112,6 +114,66 @@ public:
 protected:
     bool m_own_mem; // should we free m_key and m_value?
     Tag *m_tags;
+};
+
+
+class __attribute__ ((__packed__)) Tag_v2
+{
+public:
+    Tag_v2(Tag *tags);
+    ~Tag_v2();
+
+    bool match(TagId key_id);
+    bool match(TagId key_id, const char *value);
+    bool match(TagId key_id, std::vector<TagId> value_ids);
+
+    Tag *get_v1_tags() const;
+    Tag *get_cloned_v1_tags(StringBuffer& strbuf) const;
+
+    void get_keys(std::set<std::string>& keys) const;
+    void get_values(std::set<std::string>& values) const;
+
+    static TagId get_id(const char *name);
+
+private:
+    static const char *get_value(TagId value_id);
+    TagId get_value_id(TagId key_id);
+
+    static const char *get_name(TagId id);
+    static const char *set_name(TagId id, const char *name);
+
+    TagId *m_tags;
+    uint16_t m_count;
+
+    static TagId get_or_set_id(const char *name);
+
+    static TagId m_next_id;
+    static default_contention_free_shared_mutex m_lock;
+    static std::unordered_map<const char*,TagId,hash_func,eq_func> m_map;
+    static const char **m_names;    // indexed by id
+    static uint32_t m_names_capacity;
+};
+
+
+class TagMatcher : public Recyclable
+{
+public:
+    TagMatcher();
+
+    void init(Tag *tags);
+    bool match(Tag_v2& tags);
+
+    bool recycle() override;
+
+private:
+    inline TagMatcher*& next()
+    {
+        return (TagMatcher*&)Recyclable::next();
+    }
+
+    TagId m_key_id;
+    const char *m_value;
+    std::vector<TagId> m_value_ids;
 };
 
 

@@ -60,7 +60,7 @@ thread_local tsl::robin_map<const char*, Mapping*, hash_func, eq_func> thread_lo
 
 
 Mapping::Mapping(const char *name) :
-    m_partition(nullptr),
+    //m_partition(nullptr),
     m_ts_head(nullptr),
     m_tag_count(-1)
 {
@@ -118,7 +118,7 @@ Mapping::get_ts(DataPoint& dp)
         {
             raw_tags = STRDUP(raw_tags);
             dp.parse_raw_tags();
-            dp.set_raw_tags(raw_tags);
+            //dp.set_raw_tags(raw_tags);
         }
 
         char buff[MAX_TOTAL_TAG_LENGTH];
@@ -134,8 +134,8 @@ Mapping::get_ts(DataPoint& dp)
 
         if (ts == nullptr)
         {
-            ts = new TimeSeries(m_metric, buff, dp.get_cloned_tags());
-            m_map[ts->get_key()] = ts;
+            ts = new TimeSeries(m_metric, buff, dp.get_tags());
+            m_map[STRDUP(buff)] = ts;
 
             ts->m_next = m_ts_head.load();
             m_ts_head = ts;
@@ -144,7 +144,12 @@ Mapping::get_ts(DataPoint& dp)
         }
 
         if (raw_tags != nullptr)
-            m_map[raw_tags] = ts;
+        {
+            if (std::strcmp(raw_tags, buff) != 0)
+                m_map[raw_tags] = ts;
+            else
+                FREE(raw_tags);
+        }
     }
 
     return ts;
@@ -178,6 +183,8 @@ Mapping::add(DataPoint& dp)
 bool
 Mapping::add_data_point(DataPoint& dp, bool forward)
 {
+    return add(dp);
+#if 0
     bool success = true;
 
     if (m_partition == nullptr)
@@ -194,6 +201,7 @@ Mapping::add_data_point(DataPoint& dp, bool forward)
     }
 
     return success;
+#endif
 }
 
 void
@@ -211,8 +219,23 @@ Mapping::query_for_ts(Tag *tags, std::unordered_set<TimeSeries*>& tsv, const cha
 
     if (tsv.empty())
     {
-        for (TimeSeries *ts = m_ts_head.load(); ts != nullptr; ts = ts->m_next)
+        if (tags == nullptr)
         {
+            // matches ALL
+            for (TimeSeries *ts = m_ts_head.load(); ts != nullptr; ts = ts->m_next)
+                tsv.insert(ts);
+        }
+        else
+        {
+            TagMatcher *matcher = (TagMatcher*)
+                MemoryManager::alloc_recyclable(RecyclableType::RT_TAG_MATCHER);
+            matcher->init(tags);
+
+            for (TimeSeries *ts = m_ts_head.load(); ts != nullptr; ts = ts->m_next)
+            {
+                if (matcher->match(ts->get_v2_tags()))
+                    tsv.insert(ts);
+/*
             bool match = true;
 
             for (Tag *tag = tags; tag != nullptr; tag = tag->next())
@@ -225,6 +248,10 @@ Mapping::query_for_ts(Tag *tags, std::unordered_set<TimeSeries*>& tsv, const cha
             }
 
             if (match) tsv.insert(ts);
+*/
+            }
+
+            MemoryManager::free_recyclable(matcher);
         }
     }
 }
@@ -243,7 +270,7 @@ Mapping::restore_ts(std::string& metric, std::string& keys, TimeSeriesId id)
 
     Tag *tags = Tag::parse_multiple(keys);
     TimeSeries *ts = new TimeSeries(id, metric.c_str(), keys.c_str(), tags);
-    m_map[ts->get_key()] = ts;
+    m_map[STRDUP(keys.c_str())] = ts;
     ts->m_next = m_ts_head.load();
     m_ts_head = ts;
     set_tag_count(std::count(keys.begin(), keys.end(), ';'));

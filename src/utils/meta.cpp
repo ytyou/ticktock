@@ -26,6 +26,7 @@
 #include "logger.h"
 #include "meta.h"
 #include "ts.h"
+#include "type.h"
 
 
 namespace tt
@@ -147,11 +148,15 @@ MetaFile::flush()
 }
 
 void
-MetaFile::add_ts(TimeSeries *ts)
+MetaFile::add_ts(const char *metric, const char *key, TimeSeriesId id)
 {
+    ASSERT(metric != nullptr);
+    ASSERT(key != nullptr);
+    ASSERT(id != TT_INVALID_TIME_SERIES_ID);
     ASSERT(m_file != nullptr);
+
     std::lock_guard<std::mutex> guard(m_lock);
-    fprintf(m_file, "%s %s %u\n", ts->get_metric(), ts->get_key(), ts->get_id());
+    fprintf(m_file, "%s %s %u\n", metric, key, id);
 }
 
 

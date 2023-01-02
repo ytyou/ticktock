@@ -233,7 +233,7 @@ struct __attribute__ ((__packed__)) append_log_entry
 };
 
 
-class PageInfo
+class __attribute__ ((__packed__)) PageInfo
 {
 public:
     PageInfo();
@@ -286,7 +286,7 @@ protected:
 
 
 // This is used to write data.
-class PageInMemory : public PageInfo
+class __attribute__ ((__packed__)) PageInMemory : public PageInfo
 {
 public:
     PageInMemory(TimeSeriesId id, Tsdb *tsdb, bool is_ooo, PageSize actual_size = 0);

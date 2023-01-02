@@ -108,7 +108,7 @@ private:
     std::atomic<TimeSeries*> m_ts_head;
     int m_tag_count;    // -1: uninitialized; -2: inconsistent;
 
-    Partition *m_partition;
+    //Partition *m_partition;
 };
 
 
