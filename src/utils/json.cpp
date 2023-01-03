@@ -199,7 +199,9 @@ JsonParser::parse_key_value_unquoted(char *json, std::pair<const char*,JsonValue
 
     while (std::isspace(*json)) json++;
     char *key = json++;
-    while ((*json != delim) && !std::isspace(*json)) json++;
+    while ((*json != delim) && !std::isspace(*json) && (*json != 0)) json++;
+    if (UNLIKELY(*json == 0))
+        throw std::runtime_error(std::string("Malformatted JSON kv: ") + key);
     *json = 0;
     do { json++; } while (std::isspace(*json) || (*json == delim));
 
