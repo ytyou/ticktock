@@ -81,7 +81,11 @@ public:
 
 
 // the Compressor interface
+#ifdef __x86_64__
 class __attribute__ ((__packed__)) Compressor : public Recyclable
+#else
+class Compressor : public Recyclable
+#endif
 {
 public:
     static Compressor *create(int version);
