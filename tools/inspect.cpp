@@ -163,7 +163,7 @@ inspect_page(FileIndex file_idx, HeaderIndex header_idx, struct tsdb_header *tsd
     g_tstamp_resolution_ms = tsdb_header->is_millisecond();
 
     char *page_base = data_base + (page_header->m_page_index * tsdb_header->m_page_size);
-    ASSERT(page_header->m_page_index < tsdb_header->m_page_index);
+    ASSERT(page_header->m_page_index <= tsdb_header->m_page_index);
 
     // dump page header
     if (g_verbose)
