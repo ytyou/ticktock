@@ -224,6 +224,7 @@ public:
     void init(std::vector<Tsdb*> *tsdbs);   // used by Tsdb::compact()
 
     Tag *get_tags();
+    Tag_v2& get_v2_tags();
     Tag *get_cloned_tags(StringBuffer& strbuf);
 
     inline DataPointVector& get_dps()

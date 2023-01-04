@@ -483,6 +483,19 @@ Query::create_query_results(std::vector<QueryTask*>& qtv, std::vector<QueryResul
             for (QueryResults *r: results)
             {
                 bool match = true;
+                Tag *tags = r->get_tags();
+
+                if (tags != nullptr)
+                {
+                    TagMatcher *matcher = (TagMatcher*)
+                        MemoryManager::alloc_recyclable(RecyclableType::RT_TAG_MATCHER);
+                    matcher->init(tags);
+                    if (! matcher->match(qt->get_v2_tags()))
+                        match = false;
+                    MemoryManager::free_recyclable(matcher);
+                }
+/*
+                bool match = true;
 
                 for (Tag *tag = r->get_tags(); tag != nullptr; tag = tag->next())
                 {
@@ -495,6 +508,7 @@ Query::create_query_results(std::vector<QueryTask*>& qtv, std::vector<QueryResul
                         break;
                     }
                 }
+*/
 
                 if (match)
                 {
@@ -815,6 +829,13 @@ QueryTask::get_tags()
     return m_ts->get_tags();
 }
 
+Tag_v2 &
+QueryTask::get_v2_tags()
+{
+    ASSERT(m_ts != nullptr);
+    return m_ts->get_v2_tags();
+}
+
 Tag *
 QueryTask::get_cloned_tags(StringBuffer& strbuf)
 {
@@ -1073,8 +1094,9 @@ void
 QueryResults::add_query_task(QueryTask *qt, StringBuffer& strbuf)
 {
     ASSERT(qt != nullptr);
+    Tag *tag_head = qt->get_tags();
 
-    for (Tag *tag = qt->get_tags(); tag != nullptr; tag = tag->next())
+    for (Tag *tag = tag_head; tag != nullptr; tag = tag->next())
     {
         //if (std::strcmp(tag->m_key, METRIC_TAG_NAME) == 0) continue;
         ASSERT(std::strcmp(tag->m_key, METRIC_TAG_NAME) != 0);
@@ -1114,6 +1136,9 @@ QueryResults::add_query_task(QueryTask *qt, StringBuffer& strbuf)
             //m_aggregate_tags.push_back(tag->m_key);
         }
     }
+
+    if (tag_head != nullptr)
+        Tag::free_list(tag_head);
 
     m_qtv.push_back(qt);
 }
