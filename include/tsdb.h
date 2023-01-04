@@ -148,7 +148,6 @@ public:
     static void query_for_ts(const char *metric, Tag *tags, std::unordered_set<TimeSeries*>& ts, const char *key);
     bool query_for_data(TimeSeriesId id, TimeRange& range, std::vector<DataPointContainer*>& data);
     bool query_for_data_no_lock(TimeSeriesId id, TimeRange& range, std::vector<DataPointContainer*>& data);
-    void ensure_readable(bool count = false);   // 'count' keep tsdb loaded until it's decremented
 
     void flush(bool sync);
     void flush_for_test();  // for testing only
@@ -204,10 +203,8 @@ public:
     }
 
     // http add data-point request handler
-    static bool http_api_put_handler(HttpRequest& request, HttpResponse& response);
     static bool http_api_put_handler_json(HttpRequest& request, HttpResponse& response);
     static bool http_api_put_handler_plain(HttpRequest& request, HttpResponse& response);
-    static bool http_api_put_handler_plain2(HttpRequest& request, HttpResponse& response);
     static bool http_get_api_suggest_handler(HttpRequest& request, HttpResponse& response);
 
     static int get_metrics_count();
@@ -229,8 +226,6 @@ private:
     //Tsdb(Timestamp start, Timestamp end);
     Tsdb(TimeRange& range, bool existing, const char *suffix = nullptr);
     virtual ~Tsdb();
-    bool load_from_disk(bool for_read);         // return false if load failed
-    bool load_from_disk_no_lock(bool for_read); // return false if load failed
     void unload();
     void unload_no_lock();
     uint32_t mode_of() const;

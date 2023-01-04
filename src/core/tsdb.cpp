@@ -362,9 +362,6 @@ Tsdb::create(TimeRange& range, bool existing, const char *suffix)
         for (auto file: files) tsdb->restore_data(file);
         std::sort(tsdb->m_data_files.begin(), tsdb->m_data_files.end(), data_less());
 
-        //if ((tsdb->m_mode & TSDB_MODE_READ_WRITE) != 0)
-            //tsdb->load_from_disk_no_lock((tsdb->m_mode & TSDB_MODE_WRITE) == 0);
-
         // restore page-size/page-count
         if (! tsdb->m_header_files.empty())
         {
@@ -686,37 +683,6 @@ Tsdb::query_for_data_no_lock(TimeSeriesId id, TimeRange& query_range, std::vecto
     return has_ooo;
 }
 
-// prepare this Tsdb for query (AND writes too!)
-void
-Tsdb::ensure_readable(bool count)
-{
-    bool readable = true;
-    //std::lock_guard<std::mutex> guard(m_load_lock);
-
-    {
-        ReadLock guard(m_load_lock);
-
-        if ((m_mode & TSDB_MODE_READ) == 0)
-            readable = false;
-        //else
-            //m_load_time = ts_now_sec();
-
-        if (count)
-            inc_count();
-    }
-
-    if (! readable)
-    {
-        WriteLock guard(m_load_lock);
-
-        if ((m_mode & TSDB_MODE_READ) == 0)
-        {
-            m_mode |= TSDB_MODE_READ;
-            load_from_disk_no_lock(true);
-        }
-    }
-}
-
 // This will make tsdb read-only!
 void
 Tsdb::flush(bool sync)
@@ -985,70 +951,6 @@ Tsdb::inst(Timestamp tstamp, bool create)
     return tsdb;
 }
 
-bool
-Tsdb::load_from_disk(bool for_read)
-{
-    std::lock_guard<std::mutex> guard(m_lock);
-    //WriteLock guard(m_lock);
-    return load_from_disk_no_lock(for_read);
-}
-
-bool
-Tsdb::load_from_disk_no_lock(bool for_read)
-{
-    Meter meter(METRIC_TICKTOCK_TSDB_LOAD_TOTAL_MS);
-    bool success = true;
-
-    return success;
-/*
-    if (! m_index_file.is_open())
-        m_index_file.open(for_read);
-
-    for (HeaderFile *header : m_header_files)
-    {
-        if (! header->is_open())
-            header->open(for_read);
-    }
-
-    for (PageManager *pm: m_page_mgrs)
-    {
-        if (! pm->is_open())
-            success = pm->reopen() && success;
-    }
-
-    for (PageCount id = m_page_mgrs.size(); ; id++)
-    {
-        std::string file_name = get_file_name(m_time_range, std::to_string(id));
-        if (! file_exists(file_name)) break;
-        PageManager *pm = new PageManager(m_time_range, id);
-        success = pm->reopen() && success;
-        m_page_mgrs.push_back(pm);
-    }
-
-    if (! success) return false;
-
-    // check/set compacted flag
-    bool compacted = ! m_page_mgrs.empty();
-    for (PageManager *pm: m_page_mgrs)
-    {
-        if (! pm->is_compacted())
-        {
-            compacted = false;
-            break;
-        }
-    }
-
-    //m_meta_file.load(this);
-    //m_meta_file.open(); // open for append
-
-    m_mode |= TSDB_MODE_READ;
-    if (compacted) m_mode |= TSDB_MODE_COMPACTED;
-    m_load_time = ts_now_sec();
-    Logger::info("Loaded %T (lt=%" PRIu64 ")", this, m_load_time.load());
-    return true;
-*/
-}
-
 void
 Tsdb::insts(const TimeRange& range, std::vector<Tsdb*>& tsdbs)
 {
@@ -1113,53 +1015,6 @@ Tsdb::insts(const TimeRange& range, std::vector<Tsdb*>& tsdbs)
 }
 
 bool
-Tsdb::http_api_put_handler(HttpRequest& request, HttpResponse& response)
-{
-    Tsdb* tsdb = nullptr;
-    char *curr = request.content;
-    bool success = true;
-
-    ReadLock *guard = nullptr;
-
-    while ((curr != nullptr) && (*curr != 0))
-    {
-        DataPoint dp;
-
-        if (*curr == ';') curr++;
-        curr = dp.from_http(curr);
-
-        if ((tsdb == nullptr) || (tsdb->in_range(dp.get_timestamp()) != 0))
-        {
-            if (guard != nullptr) delete guard;
-            tsdb = Tsdb::inst(dp.get_timestamp());
-            guard = new ReadLock(tsdb->m_load_lock);    // prevent from unloading
-            if (! (tsdb->m_mode & TSDB_MODE_READ))
-            {
-                if (! tsdb->load_from_disk(false))
-                {
-                    success = false;
-                    break;
-                }
-            }
-            else
-            {
-                //tsdb->m_load_time = ts_now_sec();
-                //ASSERT(tsdb->m_meta_file.is_open());
-            }
-            tsdb->m_mode |= TSDB_MODE_READ_WRITE;
-        }
-
-        success = tsdb->add(dp) && success;
-    }
-
-    if (guard != nullptr) delete guard;
-    response.status_code = (success ? 200 : 500);
-    response.content_length = 0;
-
-    return success;
-}
-
-bool
 Tsdb::http_api_put_handler_json(HttpRequest& request, HttpResponse& response)
 {
     char *curr = strchr(request.content, '[');
@@ -1170,10 +1025,7 @@ Tsdb::http_api_put_handler_json(HttpRequest& request, HttpResponse& response)
         return false;
     }
 
-    Tsdb* tsdb = nullptr;
     bool success = true;
-
-    ReadLock *guard = nullptr;
 
     while ((*curr != ']') && (*curr != 0))
     {
@@ -1181,34 +1033,10 @@ Tsdb::http_api_put_handler_json(HttpRequest& request, HttpResponse& response)
         curr = dp.from_json(curr+1);
         if (curr == nullptr) break;
 
-        //char buff[1024];
-        //Logger::info("dp: %s", dp.c_str(buff, sizeof(buff)));
-
-        if ((tsdb == nullptr) || (tsdb->in_range(dp.get_timestamp()) != 0))
-        {
-            if (guard != nullptr) delete guard;
-            tsdb = Tsdb::inst(dp.get_timestamp());
-            guard = new ReadLock(tsdb->m_load_lock);    // prevent from unloading
-            if (! (tsdb->m_mode & TSDB_MODE_READ))
-            {
-                if (! tsdb->load_from_disk(false))
-                {
-                    success = false;
-                    break;
-                }
-            }
-            else
-            {
-                //tsdb->m_load_time = ts_now_sec();
-            }
-            tsdb->m_mode |= TSDB_MODE_READ_WRITE;
-        }
-
-        success = tsdb->add(dp) && success;
+        success = add_data_point(dp, false) && success;
         while (isspace(*curr)) curr++;
     }
 
-    if (guard != nullptr) delete guard;
     response.init((success ? 200 : 500), HttpContentType::PLAIN);
     return success;
 }
@@ -1303,139 +1131,6 @@ Tsdb::http_api_put_handler_plain(HttpRequest& request, HttpResponse& response)
     // TODO: Now what???
     //if (forward && (tsdb != nullptr))
         //success = tsdb->submit_data_points() && success; // flush
-    response.init((success ? 200 : 500), HttpContentType::PLAIN);
-
-    return success;
-}
-
-bool
-Tsdb::http_api_put_handler_plain2(HttpRequest& request, HttpResponse& response)
-{
-    Logger::trace("Entered http_api_put_handler_plain()...");
-
-    Tsdb* tsdb = nullptr;
-    char *curr = request.content;
-    bool forward = request.forward;
-    bool success = true;
-
-    // is the the 'version' command?
-    if (request.length <= 10)
-    {
-        if ((request.length == 8) && (strncmp(curr, "version\n", 8) == 0))
-        {
-            return HttpServer::http_get_api_version_handler(request, response);
-        }
-        else if ((request.length == 6) && (strncmp(curr, "stats\n", 6) == 0))
-        {
-            return HttpServer::http_get_api_stats_handler(request, response);
-        }
-        else if ((request.length == 5) && (strncmp(curr, "help\n", 5) == 0))
-        {
-            return HttpServer::http_get_api_help_handler(request, response);
-        }
-        else if ((request.length == 10) && (strncmp(curr, "diediedie\n", 10) == 0))
-        {
-            char buff[10];
-            std::strcpy(buff, "cmd=stop");
-            request.params = buff;
-            return Admin::http_post_api_admin_handler(request, response);
-        }
-    }
-
-    response.content_length = 0;
-
-    // safety measure
-    curr[request.length] = ' ';
-    curr[request.length+1] = '\n';
-    curr[request.length+2] = '0';
-
-    ReadLock *guard = nullptr;
-
-    while ((curr != nullptr) && (*curr != 0))
-    {
-        DataPoint dp;
-
-        if (std::isspace(*curr)) break;
-        if (UNLIKELY(std::strncmp(curr, "put ", 4) != 0))
-        {
-            if (std::strncmp(curr, "version\n", 8) == 0)
-            {
-                curr += 8;
-                HttpServer::http_get_api_version_handler(request, response);
-            }
-            else if (std::strncmp(curr, "cp ", 3) == 0)
-            {
-                curr += 3;
-                char *cp = curr;
-                curr = strchr(curr, '\n');
-                if (curr == nullptr) break;
-                *curr = 0;
-                curr++;
-
-                CheckPointManager::add(cp);
-            }
-            else if (std::strncmp(curr, DONT_FORWARD, std::strlen(DONT_FORWARD)) == 0)
-            {
-                int len = std::strlen(DONT_FORWARD);
-                curr += len;
-                forward = false;
-                response.init(200, HttpContentType::PLAIN, len, DONT_FORWARD);
-            }
-            else
-            {
-                curr = strchr(curr, '\n');
-                if (curr == nullptr) break;
-                curr++;
-            }
-            if ((curr - request.content) > request.length) break;
-            continue;
-        }
-
-        curr += 4;
-        bool ok = dp.from_plain(curr);
-
-        if (! ok) { success = false; break; }
-
-        if ((tsdb == nullptr) || (tsdb->in_range(dp.get_timestamp()) != 0))
-        {
-            if (tsdb != nullptr)
-            {
-                if ((curr - request.content) > request.length)
-                {
-                    // most likely the last line was cut off half way
-                    success = false;
-                    break;
-                }
-                if (forward)
-                    success = tsdb->submit_data_points() && success; // flush
-            }
-            if (guard != nullptr) delete guard;
-            tsdb = Tsdb::inst(dp.get_timestamp());
-            guard = new ReadLock(tsdb->m_load_lock);    // prevent from unloading
-            if (! (tsdb->m_mode & TSDB_MODE_READ))
-            {
-                if (! tsdb->load_from_disk(false))
-                {
-                    success = false;
-                    break;
-                }
-            }
-            else
-            {
-                //tsdb->m_load_time = ts_now_sec();
-                //ASSERT(tsdb->m_meta_file.is_open());
-            }
-            tsdb->m_mode |= TSDB_MODE_READ_WRITE;
-        }
-
-        ASSERT(tsdb != nullptr);
-        ASSERT((tsdb->m_mode & TSDB_MODE_READ_WRITE) == TSDB_MODE_READ_WRITE);
-        success = tsdb->add_data_point(dp, forward) && success;
-    }
-
-    if (forward && (tsdb != nullptr))
-        success = tsdb->submit_data_points() && success; // flush
-    if (guard != nullptr) delete guard;
     response.init((success ? 200 : 500), HttpContentType::PLAIN);
 
     return success;
