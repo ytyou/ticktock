@@ -556,8 +556,8 @@ Query::execute(std::vector<QueryResults*>& results, StringBuffer& strbuf)
     for (QueryTask *qt: qtv)
         MemoryManager::free_recyclable(qt);
 
-    for (Tsdb *tsdb: tsdbs)
-        tsdb->dec_count();
+    //for (Tsdb *tsdb: tsdbs)
+        //tsdb->dec_count();
 }
 
 // perform query by submitting task to QueryExecutor
@@ -609,8 +609,8 @@ Query::execute_in_parallel(std::vector<QueryResults*>& results, StringBuffer& st
     for (QueryTask *qt: qtv)
         MemoryManager::free_recyclable(qt);
 
-    for (Tsdb *tsdb: tsdbs)
-        tsdb->dec_count();
+    //for (Tsdb *tsdb: tsdbs)
+        //tsdb->dec_count();
 }
 
 const char *

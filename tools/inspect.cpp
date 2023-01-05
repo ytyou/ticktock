@@ -45,7 +45,7 @@ std::vector<TimeSeries*> g_time_series;
 std::atomic<uint64_t> g_total_dps_cnt{0};
 std::atomic<long> g_total_page_cnt{0};
 bool g_verbose = false;
-TaskScheduler inspector("inspector", std::thread::hardware_concurrency(), 128);
+TaskScheduler inspector("inspector", std::thread::hardware_concurrency()+1, 128);
 
 
 void

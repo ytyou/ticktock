@@ -63,35 +63,16 @@ public:
 
     void append(FILE *file);
 
-    //inline const char* get_key() const { return m_key; }
-    //inline void set_key(const char *key)
-    //{
-        //ASSERT(key != nullptr);
-        //m_key = STRDUP(key);    // TODO: better memory management than strdup()???
-    //}
-
-    //inline const char *get_metric() const { return m_metric; }
-    //inline void set_metric(const char *metric)
-    //{
-        //ASSERT(metric != nullptr);
-        //m_metric = STRDUP(metric);
-    //}
-
     inline Tag *get_tags() const { return m_tags.get_v1_tags(); }
     inline Tag *get_cloned_tags(StringBuffer& strbuf) const
     { return m_tags.get_cloned_v1_tags(strbuf); }
 
     inline Tag_v2& get_v2_tags() { return m_tags; }
-    //Tag *find_tag_by_name(const char *name) const;
 
     void get_keys(std::set<std::string>& keys) const { m_tags.get_keys(keys); }
     void get_values(std::set<std::string>& values) const { m_tags.get_values(values); }
 
     bool query_for_data(Tsdb *tsdb, TimeRange& range, std::vector<DataPointContainer*>& data);
-    void query(TimeRange& range, Downsampler *downsampler, DataPointVector& dps);
-    void query_with_ooo(TimeRange& range, Downsampler *downsampler, DataPointVector& dps);
-    void query_without_ooo(TimeRange& range, Downsampler *downsampler, DataPointVector& dps);
-    void query_without_ooo(TimeRange& range, Downsampler *downsampler, DataPointVector& dps, PageInfo *page_info);
 
     TimeSeries *m_next;
 

@@ -114,7 +114,7 @@ private:
 
 /* Each instance of Tsdb represents all data points in a specific time range.
  */
-class Tsdb : public Serializable, public ReferenceCount
+class Tsdb : public Serializable
 {
 public:
     // this must be called before anythng else
@@ -134,16 +134,6 @@ public:
     static void get_all_mappings(std::vector<Mapping*>& mappings);
 
     bool add(DataPoint& dp);
-    inline bool submit_data_points()
-    {
-        ASSERT(m_partition_mgr != nullptr);
-        return m_partition_mgr->submit_data_points();
-    }
-
-    inline Partition *get_partition(const char *metric) const
-    {
-        return (m_partition_mgr == nullptr) ? nullptr : m_partition_mgr->get_partition(metric);
-    }
 
     static void query_for_ts(const char *metric, Tag *tags, std::unordered_set<TimeSeries*>& ts, const char *key);
     bool query_for_data(TimeSeriesId id, TimeRange& range, std::vector<DataPointContainer*>& data);
@@ -152,7 +142,6 @@ public:
     void flush(bool sync);
     void flush_for_test();  // for testing only
 
-    std::string get_partition_defs() const;
     inline PageSize get_page_size() const { return m_page_size; }
     PageCount get_page_count() const;
     int get_compressor_version();
@@ -168,7 +157,6 @@ public:
                          bool compact);
     HeaderFile *get_header_file(FileIndex file_idx);
 
-    PageInfo *get_free_page_for_compaction();   // used during compaction
     // Caller should acquire m_pm_lock before calling this method
     PageInfo *get_the_page_on_disk(PageCount id, PageCount header_index);
 
@@ -263,9 +251,9 @@ private:
     uint32_t m_mode;
     //std::atomic<Timestamp> m_load_time; // epoch time in sec
     //Timestamp m_load_time; // epoch time in sec
-    default_contention_free_shared_mutex m_load_lock;
+    //default_contention_free_shared_mutex m_load_lock;
 
-    PartitionManager *m_partition_mgr;
+    //PartitionManager *m_partition_mgr;
     PageSize m_page_size;
     PageCount m_page_count;
     int m_compressor_version;

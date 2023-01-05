@@ -104,6 +104,7 @@ private:
     std::mutex m_lock;
     std::FILE *m_stream;
     int m_fd;
+    std::atomic<bool> m_dirty;  // true if flush is needed
 
     static Logger *m_instance;
     static std::map<int, Logger*> m_instances;  // per connection instances

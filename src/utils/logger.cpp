@@ -83,7 +83,7 @@ Logger::Logger() :
     Task task;
     task.doit = &Logger::rotate;
     task.data.pointer = (void*)this;
-    Timer::inst()->add_task(task, 300, "logger_rotate");  // try every 5 minutes
+    Timer::inst()->add_task(task, 10, "logger_rotate"); // try every 10 seconds
 }
 
 Logger::Logger(int fd) :
@@ -195,13 +195,14 @@ Logger::rotate(TaskData& data)
     Logger *logger = (Logger*)data.pointer;
     ASSERT(logger != nullptr);
 
-    if (logger->m_fd != -1)
+    if ((logger->m_fd != -1) && logger->m_dirty.load())
     {
         int limit = Config::get_bytes(CFG_LOG_ROTATION_SIZE, CFG_LOG_ROTATION_SIZE_DEF);
 
         struct stat buf;
         fstat(logger->m_fd, &buf);
         off_t size = buf.st_size;   // byte count
+        logger->m_dirty = false;
 
         if (size >= limit)
         {
@@ -495,6 +496,8 @@ Logger::print(const LogLevel level, int fd, const char *format, va_list args)
         // log to file
         std::vfprintf(m_stream, fmt, args);
     }
+
+    m_dirty = true;
 }
 
 

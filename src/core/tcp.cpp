@@ -1317,7 +1317,11 @@ TcpListener::new_conn2(int fd)
 void
 TcpListener::close_conn_by_responder(int fd)
 {
+    // make sure no data is in OS buffer before closing
     char buff[32];
+    int cnt = recv(fd, buff, 1, MSG_DONTWAIT|MSG_PEEK);
+    if (cnt > 0) return;
+
     std::snprintf(buff, sizeof(buff), "%c %d\n", PIPE_CMD_CLOSE_CONN[0], fd);
     write_pipe(m_pipe_fds[1], buff);
 }

@@ -160,16 +160,6 @@ Mapping::get_all_ts(std::vector<TimeSeries*>& tsv)
 {
     for (TimeSeries *ts = m_ts_head.load(); ts != nullptr; ts = ts->m_next)
         tsv.push_back(ts);
-/*
-    for (auto it = m_map.begin(); it != m_map.end(); it++)
-    {
-        const char *key = it->first;
-        TimeSeries *ts = it->second;
-
-        if (ts->get_key() == key)
-            tsv.push_back(ts);
-    }
-*/
 }
 
 bool
@@ -235,20 +225,6 @@ Mapping::query_for_ts(Tag *tags, std::unordered_set<TimeSeries*>& tsv, const cha
             {
                 if (matcher->match(ts->get_v2_tags()))
                     tsv.insert(ts);
-/*
-            bool match = true;
-
-            for (Tag *tag = tags; tag != nullptr; tag = tag->next())
-            {
-                if (! Tag::match_value(ts->get_tags(), tag->m_key, tag->m_value))
-                {
-                    match = false;
-                    break;
-                }
-            }
-
-            if (match) tsv.insert(ts);
-*/
             }
 
             MemoryManager::free_recyclable(matcher);
@@ -296,8 +272,6 @@ Mapping::get_ts_count()
 Tsdb::Tsdb(TimeRange& range, bool existing, const char *suffix) :
     m_time_range(range),
     m_index_file(Tsdb::get_index_file_name(range, suffix)),
-    //m_load_time(ts_now_sec()),
-    m_partition_mgr(nullptr),
     m_page_size(g_page_size),
     m_page_count(g_page_count)
 {
@@ -305,22 +279,13 @@ Tsdb::Tsdb(TimeRange& range, bool existing, const char *suffix) :
 
     m_compressor_version =
         Config::get_int(CFG_TSDB_COMPRESSOR_VERSION,CFG_TSDB_COMPRESSOR_VERSION_DEF);
-
     m_mode = mode_of();
-    //m_partition_mgr = new PartitionManager(this, existing);
-
     Logger::debug("tsdb %T created (mode=%d)", &range, m_mode);
 }
 
 Tsdb::~Tsdb()
 {
     unload();
-
-    if (m_partition_mgr != nullptr)
-    {
-        delete m_partition_mgr;
-        m_partition_mgr = nullptr;
-    }
 }
 
 Tsdb *
@@ -498,21 +463,6 @@ Tsdb::mode_of() const
     }
 
     return mode;
-}
-
-std::string
-Tsdb::get_partition_defs() const
-{
-    //std::string part_file = Tsdb::get_file_name(m_time_range, "part");
-    //if (! file_exists(part_file)) return EMPTY_STD_STRING;
-
-    //std::FILE *f = std::fopen(part_file.c_str(), "r");
-    //char buff[1024];
-    std::string defs;
-    //if (std::fgets(buff, sizeof(buff), f) != nullptr)
-        //defs.assign(buff);
-    //std::fclose(f);
-    return defs;
 }
 
 PageCount
@@ -736,27 +686,6 @@ Tsdb::shutdown()
     CheckPointManager::close();
     MetaFile::instance()->close();
     Logger::info("Tsdb::shutdown complete");
-}
-
-PageInfo *
-Tsdb::get_free_page_for_compaction()
-{
-    PageInfo *info = nullptr;
-
-/*
-    if (! m_temp_page_mgrs.empty())
-        info = m_temp_page_mgrs.back()->get_free_page_for_compaction(this);
-
-    if (info == nullptr)
-    {
-        int id = m_temp_page_mgrs.empty() ? 0 : m_temp_page_mgrs.back()->get_id() + 1;
-        PageManager *pm = new PageManager(m_time_range, id, true);
-        m_temp_page_mgrs.push_back(pm);
-        info = pm->get_free_page_for_compaction(this);
-    }
-*/
-
-    return info;
 }
 
 PageInfo *
@@ -1468,8 +1397,8 @@ Tsdb::get_open_data_file_count(bool for_read)
 void
 Tsdb::unload()
 {
-    WriteLock unload_guard(m_load_lock);
-    //std::lock_guard<std::mutex> guard(m_load_lock);
+    //WriteLock unload_guard(m_load_lock);
+    std::lock_guard<std::mutex> guard(m_lock);
     unload_no_lock();
 }
 
@@ -1477,7 +1406,7 @@ Tsdb::unload()
 void
 Tsdb::unload_no_lock()
 {
-    if (! count_is_zero()) return;
+    //if (! count_is_zero()) return;
     for (DataFile *file: m_data_files) file->close();
     for (HeaderFile *file: m_header_files) file->close();
     m_index_file.close();
@@ -1526,7 +1455,7 @@ Tsdb::rotate(TaskData& data)
     {
         if (g_shutdown_requested) break;
 
-        WriteLock unload_guard(tsdb->m_load_lock);
+        //WriteLock unload_guard(tsdb->m_load_lock);
         //std::lock_guard<std::mutex> unload_guard(tsdb->m_load_lock);
         std::lock_guard<std::mutex> guard(tsdb->m_lock);
         //WriteLock guard(tsdb->m_lock);
@@ -1732,7 +1661,7 @@ Tsdb::compact(TaskData& data)
 
     if (tsdb != nullptr)
     {
-        WriteLock load_lock(tsdb->m_load_lock);
+        //WriteLock load_lock(tsdb->m_load_lock);
         //std::lock_guard<std::mutex> guard(m_load_lock);
 
         Logger::info("[compact] Found this tsdb to compact: %T", tsdb);

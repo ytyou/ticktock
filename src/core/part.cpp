@@ -615,9 +615,9 @@ PartitionManager::PartitionManager(Tsdb *tsdb, bool existing) :
 
     std::string partition_defs;
 
-    if (existing)
-        partition_defs = tsdb->get_partition_defs();
-    else
+    //if (existing)
+        //partition_defs = tsdb->get_partition_defs();
+    //else
         partition_defs = Config::get_str(CFG_CLUSTER_PARTITIONS);
 
     if (! partition_defs.empty())
