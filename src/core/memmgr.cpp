@@ -348,6 +348,18 @@ MemoryManager::log_stats()
         fprintf(file, "ticktock.open.data_file.count %" PRIu64 " %d mode=write %s=%s\n",
             ts, Tsdb::get_open_data_file_count(false), HOST_TAG_NAME, g_host_name.c_str());
 
+        fprintf(file, "ticktock.open.header_file.count %" PRIu64 " %d mode=read %s=%s\n",
+            ts, Tsdb::get_open_header_file_count(true), HOST_TAG_NAME, g_host_name.c_str());
+
+        fprintf(file, "ticktock.open.header_file.count %" PRIu64 " %d mode=write %s=%s\n",
+            ts, Tsdb::get_open_header_file_count(false), HOST_TAG_NAME, g_host_name.c_str());
+
+        fprintf(file, "ticktock.open.index_file.count %" PRIu64 " %d mode=read %s=%s\n",
+            ts, Tsdb::get_open_index_file_count(true), HOST_TAG_NAME, g_host_name.c_str());
+
+        fprintf(file, "ticktock.open.index_file.count %" PRIu64 " %d mode=write %s=%s\n",
+            ts, Tsdb::get_open_index_file_count(false), HOST_TAG_NAME, g_host_name.c_str());
+
         fprintf(file, "ticktock.connection.count %" PRIu64 " %d %s=%s\n",
             ts, TcpListener::get_active_conn_count(), HOST_TAG_NAME, g_host_name.c_str());
 

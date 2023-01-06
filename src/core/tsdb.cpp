@@ -1394,6 +1394,35 @@ Tsdb::get_open_data_file_count(bool for_read)
     return total;
 }
 
+int
+Tsdb::get_open_header_file_count(bool for_read)
+{
+    int total = 0;
+    ReadLock guard(m_tsdb_lock);
+    for (Tsdb *tsdb: m_tsdbs)
+    {
+        for (auto hf: tsdb->m_header_files)
+        {
+            if (hf->is_open(for_read))
+                total++;
+        }
+    }
+    return total;
+}
+
+int
+Tsdb::get_open_index_file_count(bool for_read)
+{
+    int total = 0;
+    ReadLock guard(m_tsdb_lock);
+    for (Tsdb *tsdb: m_tsdbs)
+    {
+        if (tsdb->m_index_file.is_open(for_read))
+            total++;
+    }
+    return total;
+}
+
 void
 Tsdb::unload()
 {

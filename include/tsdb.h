@@ -203,6 +203,8 @@ public:
     static int get_active_tsdb_count();
     static int get_total_tsdb_count();
     static int get_open_data_file_count(bool for_read);
+    static int get_open_header_file_count(bool for_read);
+    static int get_open_index_file_count(bool for_read);
     static bool validate(Tsdb *tsdb);
     double get_page_percent_used();
     inline size_t c_size() const override { return m_time_range.c_size() + 4; }
