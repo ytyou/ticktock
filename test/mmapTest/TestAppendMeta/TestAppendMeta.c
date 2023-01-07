@@ -4,6 +4,8 @@
 #include <fcntl.h>
 #include <errno.h>
 #include <string>
+#include <thread>
+#include <chrono>
 
 int main(void) {
     std::string m_name="ticktock.tmp.meta";
@@ -26,13 +28,14 @@ int main(void) {
     }
 
     // Append 1000*1000 lines to m_file
-    for(int i=0; i<1000; i++) {
+    for(int i=0; i<3000; i++) {
        for(int j=0; j<1000; j++) {
            fprintf(m_file, "g_1 device=%u; sensor=%u; %u\n", i, j, i*j);
        }
        printf("Done with i=%u * 1000\n", i);
     }
-    
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(100000));
     std::fclose(m_file);
     m_file=nullptr;
     return 0;
