@@ -129,8 +129,6 @@ process_cmdline_opts(int argc, char *argv[])
         { CFG_APPEND_LOG_DIR,                       required_argument,  0,  0 },
         { CFG_APPEND_LOG_ENABLED,                   required_argument,  0,  0 },
         { CFG_APPEND_LOG_FLUSH_FREQUENCY,           required_argument,  0,  0 },
-        { CFG_APPEND_LOG_ROTATION_FREQUENCY,        required_argument,  0,  0 },
-        { CFG_APPEND_LOG_RETENTION_COUNT,           required_argument,  0,  0 },
         { CFG_CONFIG_RELOAD_ENABLED,                required_argument,  0,  0 },
         { CFG_CONFIG_RELOAD_FREQUENCY,              required_argument,  0,  0 },
         { CFG_HTTP_LISTENER_COUNT,                  required_argument,  0,  0 },

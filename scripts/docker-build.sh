@@ -98,9 +98,9 @@ if [ $_GRAFANA -ne 0 ]; then
     DOCKERFILE=${DOCKERFILE}.grafana
     cp docker/tcollector docker/$TT_VERSION/
     cp -r /opt/tcollector.docker docker/$TT_VERSION/opt/tcollector
-    cp -r /opt/grafana-8.1.5.docker docker/$TT_VERSION/opt/grafana-8.1.5
+    cp -r /opt/grafana-9.3.2.docker docker/$TT_VERSION/opt/grafana-9.3.2
     pushd docker/$TT_VERSION/opt
-    ln -s grafana-8.1.5 grafana
+    ln -s grafana-9.3.2 grafana
     popd
 fi
 

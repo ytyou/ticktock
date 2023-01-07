@@ -28,13 +28,9 @@
 
 #define CFG_APPEND_LOG_DIR                      "append.log.dir"
 #define CFG_APPEND_LOG_ENABLED                  "append.log.enabled"
-#define CFG_APPEND_LOG_ENABLED_DEF              false
+#define CFG_APPEND_LOG_ENABLED_DEF              true
 #define CFG_APPEND_LOG_FLUSH_FREQUENCY          "append.log.flush.frequency"
-#define CFG_APPEND_LOG_FLUSH_FREQUENCY_DEF      "2s"
-#define CFG_APPEND_LOG_ROTATION_FREQUENCY       "append.log.rotation.frequency"
-#define CFG_APPEND_LOG_ROTATION_FREQUENCY_DEF   "1h"
-#define CFG_APPEND_LOG_RETENTION_COUNT          "append.log.retention.count"
-#define CFG_APPEND_LOG_RETENTION_COUNT_DEF      2
+#define CFG_APPEND_LOG_FLUSH_FREQUENCY_DEF      "5min"
 #define CFG_CLUSTER_SERVERS                     "cluster.servers"
 #define CFG_CLUSTER_PARTITIONS                  "cluster.partitions"
 #define CFG_CLUSTER_BACKLOG_ROTATION_SIZE       "cluster.backlog.rotation.size"
