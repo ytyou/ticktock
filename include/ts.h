@@ -34,101 +34,73 @@ namespace tt
 {
 
 
+class DataPointContainer;
 class Downsampler;
 class Tsdb;
 
 
-class TimeSeries : public Serializable, public TagOwner, public Recyclable
+class __attribute__ ((__packed__)) TimeSeries
 {
 public:
+    TimeSeries(const char *metric, const char *key, Tag *tags);
+    TimeSeries(TimeSeriesId id, const char *metric, const char *key, Tag *tags);
     ~TimeSeries();
 
-    void init(const char *metric, const char *key, Tag *tags, Tsdb *tsdb, bool read_only);
-    void flush(bool accessed = false);
-    bool recycle();
+    static void init();    // called by Tsdb::init()
+    void init(TimeSeriesId id, const char *metric, const char *key, Tag *tags);
+    void restore(Tsdb *tsdb, PageSize offset, uint8_t start, char *buff, bool is_ooo);
+
+    inline TimeSeriesId get_id() const { return m_id; }
+    static inline TimeSeriesId get_next_id() { return m_next_id.load(std::memory_order_relaxed); }
+
+    void flush(bool close = false);
+    void flush_no_lock(bool close = false);
     bool compact(MetaFile& meta_file);
-    void append_meta_all(MetaFile &meta);
     void set_check_point();
 
-    void add_page_info(PageInfo *page_info);
     bool add_data_point(DataPoint& dp);
     bool add_ooo_data_point(DataPoint& dp);
-    bool add_batch(DataPointSet& dps);
 
-    // collect all pages to be compacted
-    void get_all_pages(std::vector<PageInfo*>& pages);
+    void append(FILE *file);
 
-    inline Tsdb*& get_tsdb() { return (Tsdb*&)Recyclable::next(); }
-    inline Tsdb *get_tsdb_const() const { return (Tsdb*)Recyclable::next_const(); }
+    inline Tag *get_tags() const { return m_tags.get_v1_tags(); }
+    inline Tag *get_cloned_tags(StringBuffer& strbuf) const
+    { return m_tags.get_cloned_v1_tags(strbuf); }
 
-    inline const char* get_key() const
-    {
-        return m_key;
-    }
+    inline Tag_v2& get_v2_tags() { return m_tags; }
 
-    inline void set_key(const char *key)
-    {
-        ASSERT(key != nullptr);
-        m_key = STRDUP(key);    // TODO: better memory management than strdup()???
-    }
+    void get_keys(std::set<std::string>& keys) const { m_tags.get_keys(keys); }
+    void get_values(std::set<std::string>& values) const { m_tags.get_values(values); }
 
-    inline void set_metric(const char *metric)
-    {
-        ASSERT(metric != nullptr);
-        m_metric = STRDUP(metric);
-    }
+    bool query_for_data(Tsdb *tsdb, TimeRange& range, std::vector<DataPointContainer*>& data);
 
-    inline void set_tsdb(Tsdb *tsdb)
-    {
-        ASSERT(tsdb != nullptr);
-        get_tsdb() = tsdb;
-    }
-
-    inline const char *get_metric() const
-    {
-        return m_metric;
-    }
-
-    Tag *find_tag_by_name(const char *name) const;
-
-    void query(TimeRange& range, Downsampler *downsampler, DataPointVector& dps);
-    void query_with_ooo(TimeRange& range, Downsampler *downsampler, DataPointVector& dps);
-    void query_without_ooo(TimeRange& range, Downsampler *downsampler, DataPointVector& dps);
-    void query_without_ooo(TimeRange& range, Downsampler *downsampler, DataPointVector& dps, PageInfo *page_info);
-
-    int get_dp_count();
-    int get_page_count(bool ooo);   // for testing only
-
-    inline size_t c_size() const override { return 1024; }
-    const char* c_str(char* buff) const override;
+    TimeSeries *m_next;
 
 private:
-    friend class MemoryManager;
-    friend class SanityChecker;
+    //char *m_key;            // this uniquely defines the time-series
+    //std::mutex m_lock;
 
-    TimeSeries();
-    PageInfo *get_free_page_on_disk(bool is_out_of_order);
+    PageInMemory *m_buff;   // in-memory buffer; if m_id is 0, it's contents are
+                            // not on disk; otherwise it's contents are at least
+                            // partially on the page indexed by m_id
 
-    // used during compaction
-    void add_data_point_with_dedup(DataPointPair &dp, DataPointPair &prev, PageInfo* &info);
+    PageInMemory *m_ooo_buff;
 
-    char *m_key;        // this defines the time-series
-    std::mutex m_lock;
+    //char *m_metric;
+    //Tsdb *m_tsdb;           // current tsdb we are writing into
 
-    // this will be null unless Tsdb is in read-write mode
-    PageInfo *m_buff;   // in-memory buffer; if m_id is 0, it's contents are
-                        // not on disk; otherwise it's contents are at least
-                        // partially on the page indexed by m_id
-    std::vector<PageInfo*> m_pages; // set of on disk pages
+    Tag_v2 m_tags;
 
-    PageInfo *m_ooo_buff;
-    std::vector<PageInfo*> m_ooo_pages; // out-of-order pages
+    TimeSeriesId m_id;      // global, unique, permanent id starting at 0
 
-    char *m_metric;
-    //Tsdb *m_tsdb;
+    static uint32_t m_lock_count;
+    static std::mutex *m_locks;
+
+    static std::atomic<TimeSeriesId> m_next_id;
 };
 
 
+/*
 class DataPointContainer : public Recyclable
 {
 public:
@@ -136,11 +108,9 @@ public:
     {
         m_dps.clear();
         m_dps.reserve(700);
-        info->ensure_dp_available(&m_dps);
         m_out_of_order = info->is_out_of_order();
-        m_page_index = info->get_page_order();
-        if (m_dps.empty())
-            info->get_all_data_points(m_dps);
+        m_page_index = info->get_global_page_index();
+        info->get_all_data_points(m_dps);
     }
 
     inline size_t size() const { return m_dps.size(); }
@@ -153,6 +123,7 @@ private:
     PageCount m_page_index;
     DataPointVector m_dps;
 };
+*/
 
 
 }

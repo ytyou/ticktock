@@ -344,5 +344,30 @@ KeyValuePair::parse_in_place(char *buff, char delim)
     return list;
 }
 
+// input: key1=val1;key2=val2;key3=val3;...
+KeyValuePair *
+KeyValuePair::parse_multiple(std::string& buff)
+{
+    std::vector<std::string> tokens;
+    tokenize(buff, tokens, ';');
+
+    Tag *kvs = nullptr;
+
+    for (std::string token: tokens)
+    {
+        std::tuple<std::string,std::string> pair;
+        tokenize(token, pair, '=');
+
+        KeyValuePair *kv =
+            (KeyValuePair*)MemoryManager::alloc_recyclable(RecyclableType::RT_KEY_VALUE_PAIR);
+        kv->m_key = STRDUP(std::get<0>(pair).c_str());
+        kv->m_value = STRDUP(std::get<1>(pair).c_str());
+        kv->next() = kvs;
+        kvs = kv;
+    }
+
+    return kvs;
+}
+
 
 }

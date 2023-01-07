@@ -66,67 +66,55 @@ namespace tt
 #define TSDB_MODE_READ          0x00000001
 #define TSDB_MODE_WRITE         0x00000002
 #define TSDB_MODE_COMPACTED     0x00000004
-#define TSDB_MODE_CHECKPOINT    0x00000008
 
 #define TSDB_MODE_READ_WRITE    (TSDB_MODE_READ | TSDB_MODE_WRITE)
-#define TSDB_MODE_WRITE_CHECKPOINT (TSDB_MODE_CHECKPOINT | TSDB_MODE_WRITE)
 
 
 class Tsdb;
+class DataPointContainer;
 
 // one per metric
-class Mapping : public Recyclable
+class Mapping
 {
+public:
+    char *get_metric() { return m_metric; }
+    void get_all_ts(std::vector<TimeSeries*>& tsv);
+
     friend class Tsdb;
-    friend class MemoryManager;
-    friend class SanityChecker;
 
 private:
-    Mapping();
+    Mapping(const char *name);
     ~Mapping();
 
-    void init(const char *name, Tsdb* tsdb);
-    void unload();
-    void unload_no_lock();
-    void flush(bool accessed);
-    bool recycle() override;
-    void set_check_point();
+    void flush(bool close);
 
     char *m_metric;
     bool add(DataPoint& dp);
     bool add_data_point(DataPoint& dp, bool forward);
-    bool add_batch(DataPointSet& dps);
-    TimeSeries *get_ts(TagOwner& to);
-    TimeSeries *get_ts2(DataPoint& dp);
-    void query_for_ts(Tag *tags, std::unordered_set<TimeSeries*>& tsv);
-    void add_ts(Tsdb *tsdb, std::string& metric, std::string& key, PageInfo *page_info);
+    TimeSeries *get_ts(DataPoint& dp);
+    void query_for_ts(Tag *tags, std::unordered_set<TimeSeries*>& tsv, const char *key);
+    TimeSeries *restore_ts(std::string& metric, std::string& key, TimeSeriesId id);
+    void set_tag_count(int tag_count);
+    TimeSeries *get_ts_head();
 
     int get_dp_count();
     int get_ts_count();
-    int get_page_count(bool ooo);   // for testing only
 
     //std::mutex m_lock;
     default_contention_free_shared_mutex m_lock;
     tsl::robin_map<const char*,TimeSeries*,hash_func,eq_func> m_map;
     //std::unordered_map<const char*,TimeSeries*,hash_func,eq_func> m_map;
-    //std::map<const char*,TimeSeries*,cstr_less> m_map;
 
-    Tsdb *m_tsdb;
-    Partition *m_partition;
+    std::atomic<TimeSeries*> m_ts_head;
+    int m_tag_count;    // -1: uninitialized; -2: inconsistent;
 
-    std::atomic<int> m_ref_count;
-    inline void inc_ref_count() { m_ref_count++; }
-    inline void dec_ref_count()
-    {
-        ASSERT(m_ref_count > 0);
-        if (--m_ref_count == 0) MemoryManager::free_recyclable(this);
-    }
+    //Partition *m_partition;
 };
 
 
 /* Each instance of Tsdb represents all data points in a specific time range.
  */
-class Tsdb : public Serializable, public Counter
+class Tsdb : public Serializable
 {
 public:
     // this must be called before anythng else
@@ -136,77 +124,48 @@ public:
     static Tsdb* inst(Timestamp tstamp, bool create = true);
     static void insts(const TimeRange& range, std::vector<Tsdb*>& tsdbs);
     static void shutdown();
-    static std::string get_file_name(const TimeRange& range, std::string ext, bool temp = false);
     static Tsdb* search(Timestamp tstamp);
     static void purge_oldest(int threshold);
     static bool compact(TaskData& data);
     static void compact2(); // last compaction step
+    static bool add_data_point(DataPoint& dp, bool forward);
+    static TimeSeries *restore_ts(std::string& metric, std::string& key, TimeSeriesId id);
+    static void get_all_ts(std::vector<TimeSeries*>& tsv);
+    static void get_all_mappings(std::vector<Mapping*>& mappings);
 
     bool add(DataPoint& dp);
-    bool add_batch(DataPointSet& dps);
 
-    bool add_data_point(DataPoint& dp, bool forward);
-    inline bool submit_data_points()
-    {
-        ASSERT(m_partition_mgr != nullptr);
-        return m_partition_mgr->submit_data_points();
-    }
-
-    inline Partition *get_partition(const char *metric) const
-    {
-        return (m_partition_mgr == nullptr) ? nullptr : m_partition_mgr->get_partition(metric);
-    }
-
-    void query_for_ts(const char *metric, Tag *tags, std::unordered_set<TimeSeries*>& ts);
-    void ensure_readable(bool count = false);   // 'count' keep tsdb loaded until it's decremented
+    static void query_for_ts(const char *metric, Tag *tags, std::unordered_set<TimeSeries*>& ts, const char *key);
+    bool query_for_data(TimeSeriesId id, TimeRange& range, std::vector<DataPointContainer*>& data);
+    bool query_for_data_no_lock(TimeSeriesId id, TimeRange& range, std::vector<DataPointContainer*>& data);
 
     void flush(bool sync);
-    void set_check_point();
+    void flush_for_test();  // for testing only
 
-    inline void append_meta(TimeSeries *ts, PageInfo *pi)
-    {
-        m_meta_file.append(ts, pi);
-    }
+    inline PageSize get_page_size() const { return m_page_size; }
+    PageCount get_page_count() const;
+    int get_compressor_version();
 
-    void append_meta_all();     // write all meta info to an empty file
-    void add_ts(std::string& metric, std::string& key, PageCount file_id, PageCount page_index);
+    void get_last_header_indices(TimeSeriesId id, FileIndex& file_idx, HeaderIndex& header_idx);
+    void set_indices(TimeSeriesId id, FileIndex prev_file_idx, HeaderIndex prev_header_idx,
+                     FileIndex this_file_idx, HeaderIndex this_header_idx);
+    PageSize append_page(TimeSeriesId id,       // return next page size
+                         FileIndex prev_file_idx,
+                         HeaderIndex prev_header_idx,
+                         struct page_info_on_disk *header,
+                         void *page,
+                         bool compact);
+    HeaderFile *get_header_file(FileIndex file_idx);
 
-    std::string get_partition_defs() const;
-
-    PageInfo *get_free_page(bool out_of_order);
-    PageInfo *get_free_page_on_disk(bool out_of_order);
-    PageInfo *get_free_page_for_compaction();   // used during compaction
     // Caller should acquire m_pm_lock before calling this method
     PageInfo *get_the_page_on_disk(PageCount id, PageCount header_index);
-    //bool is_mmapped(PageInfo *page_info) const;
-
-    // -1 is an invalid id, which means we should generate the next
-    // valid id for the new page manager.
-    PageManager *create_page_manager(int id = -1);
-
-    inline PageManager *get_page_manager(PageCount id)
-    {
-        ASSERT(id >= 0);
-        return (id < m_page_mgrs.size()) ? m_page_mgrs[id] : nullptr;
-    }
 
     inline const TimeRange& get_time_range() const
     {
         return m_time_range;
     }
 
-    inline int get_compressor_version()
-    {
-        ASSERT(! m_page_mgrs.empty());
-        return m_page_mgrs.back()->get_compressor_version();
-    }
-
-    inline size_t size() const
-    {
-        return m_map.size();
-    }
-
-    inline bool in_range(Timestamp tstamp) const
+    inline int in_range(Timestamp tstamp) const
     {
         return m_time_range.in_range(tstamp);
     }
@@ -232,7 +191,6 @@ public:
     }
 
     // http add data-point request handler
-    static bool http_api_put_handler(HttpRequest& request, HttpResponse& response);
     static bool http_api_put_handler_json(HttpRequest& request, HttpResponse& response);
     static bool http_api_put_handler_plain(HttpRequest& request, HttpResponse& response);
     static bool http_get_api_suggest_handler(HttpRequest& request, HttpResponse& response);
@@ -242,6 +200,11 @@ public:
     static int get_ts_count();
     static int get_page_count(bool ooo);    // for testing only
     static int get_data_page_count();       // for testing only
+    static int get_active_tsdb_count();
+    static int get_total_tsdb_count();
+    static int get_open_data_file_count(bool for_read);
+    static int get_open_header_file_count(bool for_read);
+    static int get_open_index_file_count(bool for_read);
     static bool validate(Tsdb *tsdb);
     double get_page_percent_used();
     inline size_t c_size() const override { return m_time_range.c_size() + 4; }
@@ -249,26 +212,29 @@ public:
 
 private:
     friend class tsdb_less;
-    friend class SanityChecker;
 
     //Tsdb(Timestamp start, Timestamp end);
-    Tsdb(TimeRange& range, bool existing);
+    Tsdb(TimeRange& range, bool existing, const char *suffix = nullptr);
     virtual ~Tsdb();
-    //void open_meta();
-    bool load_from_disk();          // return false if load failed
-    bool load_from_disk_no_lock();  // return false if load failed
     void unload();
     void unload_no_lock();
     uint32_t mode_of() const;
 
-    Mapping *get_or_add_mapping(TagOwner& dp);
-    Mapping *get_or_add_mapping2(DataPoint& dp);
+    struct page_info_on_disk *get_page_header(FileIndex file_idx, PageIndex page_idx);
 
+    static Mapping *get_or_add_mapping(DataPoint& dp);
     static bool rotate(TaskData& data);
-
     static void get_range(Timestamp tstamp, TimeRange& range);
+    static Tsdb *create(TimeRange& range, bool existing, const char *suffix = nullptr); // caller needs to acquire m_tsdb_lock!
+    static void restore_tsdb(const std::string& dir);
 
-    static Tsdb *create(TimeRange& range, bool existing);   // caller needs to acquire m_tsdb_lock!
+    void restore_data(const std::string& file);
+    void restore_header(const std::string& file);
+
+    static std::string get_tsdb_dir_name(const TimeRange& range, const char *suffix = nullptr);
+    static std::string get_index_file_name(const TimeRange& range, const char *suffix = nullptr);
+    static std::string get_header_file_name(const TimeRange& range, FileIndex id, const char *suffix = nullptr);
+    static std::string get_data_file_name(const TimeRange& range, FileIndex id, const char *suffix = nullptr);
 
     //static std::mutex m_tsdb_lock;
     static default_contention_free_shared_mutex m_tsdb_lock;
@@ -276,30 +242,23 @@ private:
 
     // This time range will use the time unit specified in the config.
     TimeRange m_time_range;
-
-    std::mutex m_pm_lock;
-    // There needs to be at least 1 PageManager created for every new Tsdb.
-    // The compressor version should be the same for ALL PageManagers in a
-    // single Tsdb.
-    std::vector<PageManager*> m_page_mgrs;
-    std::vector<PageManager*> m_temp_page_mgrs; // used during compaction
-
-    // in archive-mode, this map will be populated from meta-file on-demand
     std::mutex m_lock;
-    //std::map<const char*,Mapping*,cstr_less> m_map;
-    //std::unordered_map<const char*,Mapping*,hash_func,eq_func> m_map;
-    tsl::robin_map<const char*,Mapping*,hash_func,eq_func> m_map;
 
-    //std::FILE *m_meta_file;
-    MetaFile m_meta_file;
+    IndexFile m_index_file;
+    std::vector<HeaderFile*> m_header_files;
+    std::vector<DataFile*> m_data_files;
 
     // this is true if, 1. m_map is populated; 2. m_page_mgr is open; 3. m_meta_file is open;
     // this is false if all the above are not true;
     uint32_t m_mode;
-    std::atomic<Timestamp> m_load_time; // epoch time in sec
-    default_contention_free_shared_mutex m_load_lock;
+    //std::atomic<Timestamp> m_load_time; // epoch time in sec
+    //Timestamp m_load_time; // epoch time in sec
+    //default_contention_free_shared_mutex m_load_lock;
 
-    PartitionManager *m_partition_mgr;
+    //PartitionManager *m_partition_mgr;
+    PageSize m_page_size;
+    PageCount m_page_count;
+    int m_compressor_version;
 };
 
 

@@ -21,12 +21,22 @@
 #include <cstdlib>
 #include <cstring>
 #include "global.h"
+#include "leak.h"
 #include "logger.h"
+#include "memmgr.h"
+#include "rw.h"
 #include "tag.h"
 
 
 namespace tt
 {
+
+
+TagId Tag_v2::m_next_id = 0;
+default_contention_free_shared_mutex Tag_v2::m_lock;
+std::unordered_map<const char*,TagId,hash_func,eq_func> Tag_v2::m_map;
+const char **Tag_v2::m_names = nullptr;
+uint32_t Tag_v2::m_names_capacity = 0;
 
 
 TagOwner::TagOwner(bool own_mem) :
@@ -126,6 +136,301 @@ TagOwner::get_values(std::set<std::string>& values) const
         if ((tag->m_value != nullptr) && (tag->m_value[0] != 0))
             values.insert(tag->m_value);
     }
+}
+
+int
+TagOwner::get_tag_count(Tag *tags)
+{
+    int count = 0;
+
+    for (Tag *tag = tags; tag != nullptr; tag = tag->next(), count++)
+        /* do nothing */;
+
+    return count;
+}
+
+
+Tag_v2::Tag_v2(Tag *tags)
+{
+    if (tags == nullptr)
+    {
+        m_count = 0;
+        m_tags = nullptr;
+    }
+    else
+    {
+        ASSERT(TagOwner::get_tag_count(tags) <= UINT16_MAX);
+        m_count = (uint16_t)TagOwner::get_tag_count(tags);
+        if (m_count > 0)
+        {
+            m_tags = (TagId*) calloc(2 * m_count, sizeof(TagId));
+            int i = 0;
+
+            for (Tag *tag = tags; tag != nullptr; tag = tag->next())
+            {
+                m_tags[i++] = get_or_set_id(tag->m_key);
+                m_tags[i++] = get_or_set_id(tag->m_value);
+            }
+
+            ASSERT(i == (2 * m_count));
+        }
+        else
+            m_tags = nullptr;
+    }
+}
+
+Tag_v2::~Tag_v2()
+{
+    if (m_tags != nullptr)
+        std::free(m_tags);
+}
+
+TagId
+Tag_v2::get_or_set_id(const char *name)
+{
+    {
+        ReadLock guard(m_lock);
+        auto search = m_map.find(name);
+        if (search != m_map.end())
+            return search->second;
+    }
+
+    WriteLock guard(m_lock);
+
+    auto search = m_map.find(name);
+    if (search != m_map.end())
+        return search->second;
+
+    m_map[set_name(m_next_id, name)] = m_next_id;
+    return m_next_id++;
+}
+
+const char *
+Tag_v2::get_name(TagId id)
+{
+    ReadLock guard(m_lock);
+
+    if (UNLIKELY(m_names_capacity <= id))
+        return nullptr;
+    else
+        return m_names[id];
+}
+
+const char *
+Tag_v2::set_name(TagId id, const char *name)
+{
+    if (m_names_capacity <= id)
+    {
+        uint32_t new_capacity = id + 256;
+        const char **tmp = (const char **) calloc(new_capacity, sizeof(const char*));
+        std::memcpy(tmp, m_names, m_names_capacity * sizeof(const char *));
+        std::memset(&tmp[m_names_capacity], 0, (new_capacity-m_names_capacity) * sizeof(const char *));
+        std::free(m_names);
+        m_names = tmp;
+        m_names_capacity = new_capacity;
+    }
+
+    m_names[id] = STRDUP(name);
+    return m_names[id];
+}
+
+TagId
+Tag_v2::get_id(const char *name)
+{
+    ReadLock guard(m_lock);
+    auto search = m_map.find(name);
+    if (search != m_map.end())
+        return search->second;
+    else
+        return TT_INVALID_TAG_ID;
+}
+
+TagId
+Tag_v2::get_value_id(TagId key_id)
+{
+    for (int i = 0; i < 2*m_count; i += 2)
+    {
+        if (m_tags[i] == key_id)
+            return m_tags[i+1];
+    }
+    return TT_INVALID_TAG_ID;
+}
+
+bool
+Tag_v2::match(TagId key_id)
+{
+    for (int i = 0; i < 2*m_count; i += 2)
+    {
+        if (m_tags[i] == key_id)
+            return true;
+    }
+    return false;
+}
+
+// 'value' ends with '*'
+bool
+Tag_v2::match(TagId key_id, const char *value)
+{
+    TagId vid = get_value_id(key_id);
+    if (TT_INVALID_TAG_ID == vid) return false;
+
+    std::size_t len = std::strlen(value) - 1;
+    return (std::strncmp(get_name(vid), value, len) == 0);
+}
+
+bool
+Tag_v2::match(TagId key_id, std::vector<TagId> value_ids)
+{
+    for (int i = 0; i < 2*m_count; i += 2)
+    {
+        if (m_tags[i] == key_id)
+        {
+            TagId target = m_tags[i+1];
+            for (auto vid : value_ids)
+            {
+                if (vid == target)
+                    return true;
+            }
+            return false;
+        }
+    }
+    return false;
+}
+
+Tag *
+Tag_v2::get_v1_tags() const
+{
+    Tag *head = nullptr;
+
+    for (int i = 2*m_count-1; i >= 0; i -= 2)
+    {
+        Tag *tag = (Tag *)
+            MemoryManager::alloc_recyclable(RecyclableType::RT_KEY_VALUE_PAIR);
+        tag->m_key = get_name(m_tags[i-1]);
+        tag->m_value = get_name(m_tags[i]);
+        tag->next() = head;
+        head = tag;
+    }
+
+    return head;
+}
+
+Tag *
+Tag_v2::get_cloned_v1_tags(StringBuffer& strbuf) const
+{
+    Tag *head = nullptr;
+
+    for (int i = 2*m_count-1; i >= 0; i -= 2)
+    {
+        Tag *tag = (Tag *)
+            MemoryManager::alloc_recyclable(RecyclableType::RT_KEY_VALUE_PAIR);
+        tag->m_key = strbuf.strdup(get_name(m_tags[i-1]));
+        tag->m_value = strbuf.strdup(get_name(m_tags[i]));
+        tag->next() = head;
+        head = tag;
+    }
+
+    return head;
+}
+
+void
+Tag_v2::get_keys(std::set<std::string>& keys) const
+{
+    for (int i = 0; i < 2*m_count; i += 2)
+        keys.insert(get_name(m_tags[i]));
+}
+
+void
+Tag_v2::get_values(std::set<std::string>& values) const
+{
+    for (int i = 1; i < 2*m_count; i += 2)
+        values.insert(get_name(m_tags[i]));
+}
+
+
+/* Examples of 'tags':
+ *  1. key=value;
+ *  2. key=val*;
+ *  3. key=*
+ *  4. key=value1|value2|value3
+ */
+TagMatcher::TagMatcher() :
+    m_key_id(TT_INVALID_TAG_ID),
+    m_value(nullptr)
+{
+}
+
+void
+TagMatcher::init(Tag *tags)
+{
+    ASSERT(tags != nullptr);
+    ASSERT(next() == nullptr);
+
+    m_key_id = Tag_v2::get_id(tags->m_key);
+
+    if (TT_INVALID_TAG_ID == m_key_id)
+        return;     // NOT going to match ANYTHING
+
+    if (std::strchr(tags->m_value, '|') != nullptr)
+    {
+        char buff[std::strlen(tags->m_value)+1];
+        std::strcpy(buff, tags->m_value);
+        std::vector<char*> tokens;
+        tokenize(buff, '|', tokens);
+        for (char *v: tokens)
+            m_value_ids.push_back(Tag_v2::get_id(v));
+    }
+    else if (ends_with(tags->m_value, '*'))
+    {
+        if (tags->m_value[1] != 0)  // key=val*
+            m_value = tags->m_value;
+    }
+    else
+    {
+        m_value_ids.push_back(Tag_v2::get_id(tags->m_value));
+    }
+
+    if (tags->next() == nullptr)
+        next() = nullptr;
+    else
+    {
+        TagMatcher *matcher = (TagMatcher*)
+            MemoryManager::alloc_recyclable(RecyclableType::RT_TAG_MATCHER);
+        matcher->init(tags->next());
+        next() = matcher;
+    }
+}
+
+bool
+TagMatcher::match(Tag_v2& tags)
+{
+    if (TT_INVALID_TAG_ID == m_key_id)
+        return false;
+
+    TagMatcher *next = this->next();
+
+    if ((next != nullptr) && ! next->match(tags))
+        return false;
+
+    if (! m_value_ids.empty())
+        return tags.match(m_key_id, m_value_ids);
+
+    if (m_value != nullptr)
+        return tags.match(m_key_id, m_value);
+
+    return tags.match(m_key_id);
+}
+
+bool
+TagMatcher::recycle()
+{
+    TagMatcher *next = this->next();
+    if (next != nullptr)
+        MemoryManager::free_recyclable(next);
+    m_key_id = TT_INVALID_TAG_ID;
+    m_value = nullptr;
+    m_value_ids.clear();
+    return true;
 }
 
 

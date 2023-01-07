@@ -16,40 +16,28 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+#include <cstdio>
 #include <cstring>
 #include <fcntl.h>
 #include <unistd.h>
 #include "global.h"
 #include "append.h"
-#include "utils.h"
 #include "config.h"
-#include "logger.h"
 #include "fd.h"
-#include "meter.h"
-#include "http.h"
+#include "logger.h"
+#include "memmgr.h"
+#include "page.h"
 #include "timer.h"
+#include "tsdb.h"
 
 
 namespace tt
 {
 
 
-bool AppendLog::m_enabled = false;
 std::mutex AppendLog::m_lock;
-static AppendLog *instance = nullptr;
+bool AppendLog::m_enabled = false;
 
-
-AppendLog::AppendLog() :
-    m_file(nullptr),
-    m_time(0L)
-{
-    reopen();
-}
-
-AppendLog::~AppendLog()
-{
-    close_no_lock();
-}
 
 void
 AppendLog::init()
@@ -57,242 +45,142 @@ AppendLog::init()
     m_enabled = Config::get_bool(CFG_APPEND_LOG_ENABLED, CFG_APPEND_LOG_ENABLED_DEF);
     if (! m_enabled) return;
 
-    instance = new AppendLog();
-
     // Schedule tasks to flush append logs.
     Task task;
-    task.doit = &AppendLog::flush;
+    task.doit = &AppendLog::flush_all;
     int freq_sec = Config::get_time(CFG_APPEND_LOG_FLUSH_FREQUENCY, TimeUnit::SEC, CFG_APPEND_LOG_FLUSH_FREQUENCY_DEF);
     ASSERT(freq_sec > 0);
     Timer::inst()->add_task(task, freq_sec, "append_log_flush");
     Logger::info("using %s of %ds", CFG_APPEND_LOG_FLUSH_FREQUENCY, freq_sec);
-
-    // Schedule tasks to rotate append logs.
-    task.doit = &AppendLog::rotate;
-    freq_sec = Config::get_time(CFG_APPEND_LOG_ROTATION_FREQUENCY, TimeUnit::SEC, CFG_APPEND_LOG_ROTATION_FREQUENCY_DEF);
-    ASSERT(freq_sec > 0);
-    Timer::inst()->add_task(task, freq_sec, "append_log_rotate");
-    Logger::info("using %s of %ds", CFG_APPEND_LOG_ROTATION_FREQUENCY, freq_sec);
-}
-
-// Return the thread_local singleton instance.
-AppendLog *
-AppendLog::inst()
-{
-    return instance;
-    //return (instance == nullptr) ? (instance = new AppendLog) : instance;
-}
-
-bool
-AppendLog::close(TaskData& data)
-{
-    AppendLog *log = AppendLog::inst();
-    if (log != nullptr)
-    {
-        Logger::trace("Closing append log %p", log->m_file);
-        log->close();
-    }
-    return false;
-}
-
-bool
-AppendLog::flush(TaskData& data)
-{
-    AppendLog *log = AppendLog::inst();
-    Logger::trace("Flushing append log %p", log->m_file);
-    std::lock_guard<std::mutex> guard(m_lock);
-
-    if (log->m_file != nullptr)
-    {
-        fflush(log->m_file);
-    }
-
-    log->reopen();  // try to rotate, if necessary
-
-    return false;
 }
 
 bool
 AppendLog::flush_all(TaskData& data)
 {
-    if (m_enabled && (http_server_ptr != nullptr))
+    if (g_shutdown_requested)
+        return false;
+
+    std::string append_dir = Config::get_str(CFG_APPEND_LOG_DIR);
+    std::string tmp_name = append_dir + "/append.tmp";
+    std::string log_name = append_dir + "/append.log";
+    std::lock_guard<std::mutex> guard(m_lock);
+    FILE *file = open(tmp_name);
+
+    if (file == nullptr)
     {
-        // Ask HttpServer to broadcast instruction to all its listener threads
-        // to flush their (thread local) append logs.
-        http_server_ptr->instruct0(PIPE_CMD_FLUSH_APPEND_LOG, strlen(PIPE_CMD_FLUSH_APPEND_LOG));
+        Logger::error("failed to open %s for writing", tmp_name.c_str());
+        return false;
     }
 
+    std::vector<Mapping*> mappings;
+    Tsdb::get_all_mappings(mappings);
+
+    for (auto mapping: mappings)
+    {
+        std::vector<TimeSeries*> tsv;
+        mapping->get_all_ts(tsv);
+        for (auto ts: tsv) ts->append(file);
+    }
+
+    fflush(file);
+    fclose(file);
+
+    // append.tmp => append.log
+    rm_file(log_name);
+    if (std::rename(tmp_name.c_str(), log_name.c_str()) != 0)
+        Logger::error("Failed to rename %s to %s", tmp_name.c_str(), log_name.c_str());
+
     return false;
+}
+
+FILE *
+AppendLog::open(std::string& name)
+{
+    FILE *file = nullptr;
+    int fd = ::open(name.c_str(), O_APPEND|O_CREAT|O_RDWR|O_TRUNC|O_NONBLOCK, S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH);
+    fd = FileDescriptorManager::dup_fd(fd, FileDescriptorType::FD_FILE);
+    if (fd >= 0) file = fdopen(fd, "wb");
+    return file;
+}
+
+void
+AppendLog::shutdown()
+{
+    std::string append_dir = Config::get_str(CFG_APPEND_LOG_DIR);
+    std::string tmp_name = append_dir + "/append.tmp";
+    std::string log_name = append_dir + "/append.log";
+    std::lock_guard<std::mutex> guard(m_lock);
+
+    rm_file(tmp_name);
+    rm_file(log_name);
 }
 
 bool
-AppendLog::rotate(TaskData& data)
+AppendLog::restore_needed()
 {
-    int retention_count = Config::get_int(CFG_APPEND_LOG_RETENTION_COUNT, CFG_APPEND_LOG_RETENTION_COUNT_DEF);
-    int listener_count = Config::get_int(CFG_HTTP_LISTENER_COUNT, CFG_HTTP_LISTENER_COUNT_DEF);
-    int responder_count = Config::get_int(CFG_HTTP_RESPONDERS_PER_LISTENER, CFG_HTTP_RESPONDERS_PER_LISTENER_DEF);
-
-    Logger::debug("retention_count = %d, listener_count = %d, responder_count = %d",
-        retention_count, listener_count, responder_count);
-
-    ASSERT(retention_count > 0);
-    ASSERT(listener_count > 0);
-    ASSERT(responder_count > 0);
-
     std::string append_dir = Config::get_str(CFG_APPEND_LOG_DIR);
-    std::string log_pattern = append_dir + "/append.*.log.zip";
-    Logger::debug("Rotating append logs: %s", log_pattern.c_str());
-    std::lock_guard<std::mutex> guard(m_lock);
+    std::string tmp_name = append_dir + "/append.tmp";
+    std::string log_name = append_dir + "/append.log";
 
-    int cnt = rotate_files(log_pattern, retention_count * listener_count * responder_count);
-
-    if (cnt > 0)
-    {
-        Logger::info("Purged %d append logs, retained %d",
-            cnt, retention_count * listener_count * responder_count);
-    }
-
-    return false;
+    return file_exists(tmp_name) || file_exists(log_name);
 }
 
 void
-AppendLog::close()
+AppendLog::restore(std::vector<TimeSeries*>& tsv)
 {
-    std::lock_guard<std::mutex> guard(m_lock);
-    close_no_lock();
-}
-
-void
-AppendLog::close_no_lock()
-{
-    if (m_file != nullptr)
-    {
-        // flush zlib
-        unsigned char in[1], out[128];
-        in[0] = '\n';
-        m_stream.avail_in = 1;
-        m_stream.next_in = in;
-        do
-        {
-            m_stream.avail_out = sizeof(out);
-            m_stream.next_out = out;
-            int ret = deflate(&m_stream, Z_FINISH);
-            ASSERT(ret != Z_STREAM_ERROR);
-            unsigned int bytes = sizeof(out) - m_stream.avail_out;
-            ret = fwrite(out, 1, bytes, m_file);
-            ASSERT(ret == bytes);
-        } while (m_stream.avail_out == 0);
-        (void)deflateEnd(&m_stream);
-
-        fflush(m_file);
-        fclose(m_file);
-        m_file = nullptr;
-    }
-}
-
-void
-AppendLog::reopen()
-{
-    if (! m_enabled)
-    {
-        Logger::debug("append log disabled in the config");
-        return;
-    }
-
-    int rotation_sec =
-        Config::get_time(CFG_APPEND_LOG_ROTATION_FREQUENCY, TimeUnit::SEC, CFG_APPEND_LOG_ROTATION_FREQUENCY_DEF);
-    long time = (ts_now_sec() / rotation_sec) * rotation_sec;
-
-    if (time == m_time) return;
-    m_time = time;
-
-    close_no_lock();    // close before open again
-
     std::string append_dir = Config::get_str(CFG_APPEND_LOG_DIR);
+    std::string tmp_name = append_dir + "/append.tmp";
+    std::string log_name = append_dir + "/append.log";
+    std::string name = file_exists(log_name) ? log_name : tmp_name;
 
-    if (! append_dir.empty())
+    size_t header_size = sizeof(struct append_log_entry);
+    char *buff = MemoryManager::alloc_network_buffer();
+    FILE *file = fopen(name.c_str(), "rb");
+
+    for ( ; ; )
     {
-        // zlib can't append to existing compressed files, so let's make sure
-        // that we create a new file.
-        std::string log_file = append_dir + "/append." + std::to_string(time) + ".log.zip";
-        //std::string log_file = append_dir + "/append." + std::to_string(time) + "." + g_thread_id + ".log.zip";
+        size_t size = ::fread(buff, header_size, 1, file);
+        if (size < header_size) break;
 
-        for (int i = 0; i < 1024; i++)  // should be able to find one within 1024 tries
+        TimeSeriesId id = ((struct append_log_entry*)buff)->id;
+        Timestamp tstamp = ((struct append_log_entry*)buff)->tstamp;
+        PageSize offset = ((struct append_log_entry*)buff)->offset;
+        uint8_t start = ((struct append_log_entry*)buff)->start;
+        uint8_t is_ooo = ((struct append_log_entry*)buff)->is_ooo;
+
+        if (tsv.size() <= id)
         {
-            if (! file_exists(log_file)) break;
-            log_file = append_dir + "/append." + std::to_string(time) + "." + std::to_string(i) + ".log.zip";
-            //log_file = append_dir + "/append." + std::to_string(time) + "." + g_thread_id + "." + std::to_string(i) + ".log.zip";
+            Logger::error("Time series %u in append log, but not present in meta file", id);
+            continue;
         }
 
-        //m_file = fopen(log_file.c_str(), "a+");
+        TimeSeries *ts = tsv[id];
+        ASSERT(ts != nullptr);
 
-        int fd = open(log_file.c_str(), O_APPEND|O_CREAT|O_RDWR|O_NONBLOCK, S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH);
-        fd = FileDescriptorManager::dup_fd(fd, FileDescriptorType::FD_FILE);
+        size = ::fread(buff, offset, 1, file);
 
-        if (fd >= 0)
-            m_file = fdopen(fd, "a+");
-        else
-            m_file = nullptr;
-
-        if (m_file == nullptr)
+        if (size < offset)
         {
-            Logger::error("Failed to open append log file %s for writing: %d",
-                log_file.c_str(), errno);
+            Logger::error("Truncated append log, ts %u not restored", id);
+            break;
         }
-        else
+
+        Tsdb *tsdb = Tsdb::inst(tstamp, false);
+
+        if (tsdb == nullptr)
         {
-            Logger::info("Writing to append log: %s", log_file.c_str());
+            Logger::error("Can't recover time series %u, tstamp %" PRIu64 " not exist", id, tstamp);
+            continue;
         }
-    }
 
-    // initialize zlib
-    m_stream.zalloc = Z_NULL;
-    m_stream.zfree = Z_NULL;
-    m_stream.opaque = Z_NULL;
+        ts->restore(tsdb, offset, start, buff, (is_ooo==(uint8_t)1));
+    };
 
-    int ret = deflateInit(&m_stream, Z_DEFAULT_COMPRESSION);
+    if (file != nullptr)
+        fclose(file);
 
-    if (ret != Z_OK)
-    {
-        Logger::error("Failed to initialize zlib: ret = %d", ret);
-    }
-}
-
-void
-AppendLog::append(char *data, size_t size)
-{
-    if (! m_enabled) return;
-
-    std::lock_guard<std::mutex> guard(m_lock);
-
-    if ((m_file != nullptr) && (data != nullptr) && (size >= 0))
-    {
-        unsigned char buff[size];
-
-        // compress and write
-        m_stream.avail_in = size;
-        m_stream.next_in = (unsigned char*)data;
-
-        do
-        {
-            m_stream.avail_out = size;
-            m_stream.next_out = buff;
-
-            int ret = deflate(&m_stream, Z_SYNC_FLUSH);
-            ASSERT(ret != Z_STREAM_ERROR);
-
-            unsigned int bytes = size - m_stream.avail_out;
-            ret = fwrite(buff, 1, bytes, m_file);
-
-            if (ret != bytes)
-            {
-                Logger::error("write() to append log failed, %d, %d", ret, bytes);
-                break;
-            }
-        } while (m_stream.avail_out == 0);
-
-        ASSERT(m_stream.avail_in == 0);
-    }
+    rm_file(tmp_name);
+    MemoryManager::free_network_buffer(buff);
 }
 
 

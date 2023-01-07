@@ -41,8 +41,6 @@ namespace tt
 #define PIPE_CMD_REBALANCE_CONN     "b\n"
 #define PIPE_CMD_NEW_CONN           "c\n"
 #define PIPE_CMD_DISCONNECT_CONN    "d\n"
-#define PIPE_CMD_FLUSH_APPEND_LOG   "f\n"
-#define PIPE_CMD_CLOSE_APPEND_LOG   "g\n"
 #define PIPE_CMD_RESUBMIT           "r\n"
 #define PIPE_CMD_SET_STOPPED        "s\n"
 #define PIPE_CMD_CLOSE_CONN         "x\n"
@@ -201,8 +199,6 @@ private:
     void rebalance0();
     void rebalance1();
     void disconnect();
-    void flush_append_log();
-    void close_append_log();
 
     void new_conn0();
     void new_conn2(int fd);
@@ -287,6 +283,8 @@ public:
     size_t get_active_conn_count() const;
     size_t get_pending_task_count(std::vector<std::vector<size_t>> &counts) const;
     int get_total_task_count(size_t counts[], int size) const;
+
+    virtual inline const char *get_name() const { return "tcp"; }
 
 protected:
     virtual TcpConnection *create_conn() const;

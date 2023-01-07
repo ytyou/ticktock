@@ -44,9 +44,7 @@ public:
     static void init();
     static void cleanup();
 
-    static void log_stats();
     static void collect_stats(Timestamp ts, std::vector<DataPoint> &dps);
-    static int get_recyclable_total();
 
     // network buffer
     static char *alloc_network_buffer();
@@ -69,6 +67,8 @@ public:
 
 private:
     MemoryManager();
+
+    static void log_stats();
 
     static bool m_initialized;      // must initialize before using
     static uint64_t m_network_buffer_len;

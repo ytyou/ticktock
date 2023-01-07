@@ -841,7 +841,7 @@ TcpListener::TcpListener(TcpServer *server, int fd, size_t max_conns, int id) :
     m_free_conns(nullptr),
     m_least_conn_listener(nullptr),
     m_conn_in_transit(nullptr),
-    m_responders(std::string("tcp_")+std::to_string(id),
+    m_responders(std::string(server->get_name())+std::string("_")+std::to_string(id),
                  server->get_responders_per_listener(),
                  Config::get_int(CFG_TCP_RESPONDERS_QUEUE_SIZE, CFG_TCP_RESPONDERS_QUEUE_SIZE_DEF))
     //m_stats_active_conn_count(0)
@@ -1140,8 +1140,6 @@ TcpListener::listener1()
                         case PIPE_CMD_NEW_CONN[0]:          new_conn2(std::atoi(cmd+2)); break;
                         case PIPE_CMD_CLOSE_CONN[0]:        close_conn(std::atoi(cmd+2)); break;
                         case PIPE_CMD_DISCONNECT_CONN[0]:   disconnect(); break;
-                        case PIPE_CMD_FLUSH_APPEND_LOG[0]:  flush_append_log(); break;
-                        case PIPE_CMD_CLOSE_APPEND_LOG[0]:  close_append_log(); break;
                         case PIPE_CMD_RESUBMIT[0]:          resubmit(cmd[2], std::atoi(cmd+4)); break; // r [h|t] <fd>
                         case PIPE_CMD_SET_STOPPED[0]:       set_stopped(); break;
                         default: break;
@@ -1319,7 +1317,11 @@ TcpListener::new_conn2(int fd)
 void
 TcpListener::close_conn_by_responder(int fd)
 {
+    // make sure no data is in OS buffer before closing
     char buff[32];
+    int cnt = recv(fd, buff, 1, MSG_DONTWAIT|MSG_PEEK);
+    if (cnt > 0) return;
+
     std::snprintf(buff, sizeof(buff), "%c %d\n", PIPE_CMD_CLOSE_CONN[0], fd);
     write_pipe(m_pipe_fds[1], buff);
 }
@@ -1469,22 +1471,6 @@ TcpListener::write_pipe(int fd, const char *msg)
     }
 
     Logger::debug("write_pipe() failed to write all bytes, %d remaining", len);
-}
-
-void
-TcpListener::flush_append_log()
-{
-    Task task;
-    task.doit = &AppendLog::flush;
-    m_responders.submit_task_to_all(task);
-}
-
-void
-TcpListener::close_append_log()
-{
-    Task task;
-    task.doit = &AppendLog::close;
-    m_responders.submit_task_to_all(task);
 }
 
 TcpConnection *

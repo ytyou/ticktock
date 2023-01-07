@@ -32,8 +32,18 @@ namespace tt
 typedef uint32_t PageCount;
 typedef uint16_t PageSize;
 typedef uint64_t TsdbSize;
+typedef uint32_t TimeSeriesId;
+typedef uint16_t FileIndex;
+typedef uint32_t PageIndex;
+typedef uint32_t HeaderIndex;
+typedef uint32_t TagId;
 
+#define TT_INVALID_FILE_INDEX   UINT16_MAX
+#define TT_INVALID_HEADER_INDEX UINT32_MAX
+#define TT_INVALID_PAGE_INDEX   UINT32_MAX
 #define TT_INVALID_TIMESTAMP    UINT64_MAX
+#define TT_INVALID_TAG_ID       UINT32_MAX
+#define TT_INVALID_TIME_SERIES_ID   UINT32_MAX
 
 typedef uint64_t Timestamp;     // milliseconds since epoch
 

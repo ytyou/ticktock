@@ -83,7 +83,7 @@ std::map<const char*,HttpRequestHandler,cstr_less> HttpServer::m_post_handlers;
 /* HttpServer Implementation
  */
 HttpServer::HttpServer() :
-    TcpServer(Config::get_int(CFG_TCP_LISTENER_COUNT, CFG_TCP_LISTENER_COUNT_DEF)+1)
+    TcpServer(Config::get_int(CFG_HTTP_LISTENER_COUNT, CFG_HTTP_LISTENER_COUNT_DEF)+1)
 {
     m_fd_type = FileDescriptorType::FD_HTTP;
 }
@@ -718,11 +718,10 @@ HttpServer::process_request(HttpRequest& request, HttpResponse& response)
 bool
 HttpServer::http_get_api_config_handler(HttpRequest& request, HttpResponse& response)
 {
-    const int buf_size = 4096;
-    char buff[buf_size];
-
-    Config::c_str(buff, buf_size);
+    char *buff = MemoryManager::alloc_network_buffer();
+    Config::c_str(buff, MemoryManager::get_network_buffer_size());
     response.init(200, HttpContentType::JSON, std::strlen(buff), buff);
+    MemoryManager::free_network_buffer(buff);
     return true;
 }
 
@@ -737,11 +736,10 @@ HttpServer::http_get_api_help_handler(HttpRequest& request, HttpResponse& respon
 bool
 HttpServer::http_get_api_stats_handler(HttpRequest& request, HttpResponse& response)
 {
-    const int buf_size = 4096;
-    char buff[buf_size];
-
-    int len = Stats::collect_stats(buff, buf_size);
+    char *buff = MemoryManager::alloc_network_buffer();
+    int len = Stats::collect_stats(buff, MemoryManager::get_network_buffer_size());
     response.init(200, HttpContentType::PLAIN, len, buff);
+    MemoryManager::free_network_buffer(buff);
     return true;
 }
 

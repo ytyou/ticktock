@@ -18,46 +18,25 @@
 
 #pragma once
 
-#include "stop.h"
-#include "tsdb.h"
+#include "hash.h"
+#include "test.h"
 
 
-namespace tt
+namespace tt_test
 {
 
 
-typedef bool (*UdpRequestHandler)();
-
-
-class UdpListener : public Stoppable
+class HashTests : public TestCase
 {
 public:
-    UdpListener(int id, int port);
-    ~UdpListener();
+    HashTests() { m_name = "hash_tests"; }
+    void run();
 
 private:
-    void receiver();            // thread loop
-    void receiver2();           // thread loop
-    bool process_one_line(char *line);
+    void index_tests();
 
-    int m_id;
-    int m_port;
-    int m_fd;
-
-    std::thread m_listener;     // the thread that receives UDP msgs
-};
-
-
-class UdpServer : public Stoppable
-{
-public:
-    bool start(int port);
-    void shutdown(ShutdownRequest request = ShutdownRequest::ASAP);
-
-private:
-    UdpRequestHandler m_request_handler;    // current active handler
-
-    std::vector<UdpListener*> m_listeners;
+    char *m_buff;
+    uint64_t m_num_keys;
 };
 
 

@@ -324,6 +324,9 @@ Compressor_v3::compress(int64_t n)
 void
 Compressor_v3::uncompress(DataPointVector& dps, bool restore)
 {
+    if (m_bitset.is_empty())
+        return;
+
     Timestamp timestamp;
     double value = 0.0;
 
@@ -685,6 +688,9 @@ Compressor_v2::compress(Timestamp timestamp, double value)
 void
 Compressor_v2::uncompress(DataPointVector& dps, bool restore)
 {
+    if (m_bitset.is_empty())
+        return;
+
     Timestamp timestamp;
     double value = 0.0;
 
@@ -905,10 +911,8 @@ Compressor_v1::restore(DataPointVector& dps, CompressorPosition& position, uint8
     ASSERT(position.m_start == 0);  // we don't use it, but it should be 0
     m_cursor = m_base + position.m_offset;
 
-    if (base != nullptr)
-    {
+    if ((base != nullptr) && (m_base != base))
         memcpy(m_base, base, position.m_offset);
-    }
 
     uncompress(dps, true);
 
@@ -1171,6 +1175,7 @@ Compressor_v0::init(Timestamp start, uint8_t *base, size_t size)
     m_dps.clear();
     m_dps.reserve(g_page_size/sizeof(DataPointPair));
     m_size = std::floor(size / sizeof(DataPointPair));
+    ASSERT(m_size > 0);
     m_data_points = reinterpret_cast<DataPointPair*>(base);
 }
 

@@ -18,47 +18,10 @@
 
 #pragma once
 
-#include "stop.h"
-#include "tsdb.h"
-
 
 namespace tt
 {
 
-
-typedef bool (*UdpRequestHandler)();
-
-
-class UdpListener : public Stoppable
-{
-public:
-    UdpListener(int id, int port);
-    ~UdpListener();
-
-private:
-    void receiver();            // thread loop
-    void receiver2();           // thread loop
-    bool process_one_line(char *line);
-
-    int m_id;
-    int m_port;
-    int m_fd;
-
-    std::thread m_listener;     // the thread that receives UDP msgs
-};
-
-
-class UdpServer : public Stoppable
-{
-public:
-    bool start(int port);
-    void shutdown(ShutdownRequest request = ShutdownRequest::ASAP);
-
-private:
-    UdpRequestHandler m_request_handler;    // current active handler
-
-    std::vector<UdpListener*> m_listeners;
-};
-
+#define MAX_TOTAL_TAG_LENGTH    1024
 
 }

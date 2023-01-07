@@ -122,7 +122,7 @@ DataPoint::from_json(char* json)
             char *value;
             json = next_word(json, value);
             if (json == nullptr) return nullptr;
-            add_tag(key, value);
+            //add_tag(key, value);
             set_metric(value);
         }
         else if (strcmp(key, "tags") == 0)
@@ -303,6 +303,7 @@ DataPoint::c_str(char* buff) const
         tag = tag->next();
     }
 
+    buff[size-1] = 0;
     return buff;
 }
 
@@ -323,7 +324,7 @@ DataPointSet::~DataPointSet()
 
     if (m_dps != nullptr)
     {
-        delete m_dps;
+        delete[] m_dps;
         m_dps = nullptr;
     }
 }

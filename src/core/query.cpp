@@ -20,10 +20,12 @@
 #include <chrono>
 #include <cstring>
 #include "aggregate.h"
+#include "compress.h"
 #include "config.h"
 #include "down.h"
 #include "http.h"
 #include "json.h"
+#include "limit.h"
 #include "tsdb.h"
 #include "query.h"
 #include "meter.h"
@@ -328,77 +330,45 @@ Query::~Query()
 int
 Query::add_data_point(DataPointPair& dp, DataPointVector& dps, Downsampler *downsampler)
 {
-    if (in_range(dp.first))
+    int n = in_range(dp.first);
+
+    if (n == 0)
     {
         if (downsampler != nullptr)
-        {
             downsampler->add_data_point(dp, dps);
-        }
         else
-        {
             dps.push_back(dp);
-        }
+    }
 
-        return 0;
-    }
-    else
-    {
-        return (dp.first < m_time_range.get_from()) ? -1 : 1;
-    }
+    return n;
 }
 
 void
-Query::get_query_tasks(std::vector<QueryTask*>& qtv, std::vector<Tsdb*>& tsdbs)
+Query::get_query_tasks(std::vector<QueryTask*>& qtv, std::vector<Tsdb*> *tsdbs)
 {
     ASSERT(qtv.empty());
-    std::vector<Tsdb*> targets;
+    ASSERT(tsdbs != nullptr);
 
-    Tsdb::insts(m_time_range, targets);
-    Logger::debug("Found %d tsdbs within %T", targets.size(), &m_time_range);
+    Tsdb::insts(m_time_range, *tsdbs);
+    Logger::debug("Found %d tsdbs within %T", tsdbs->size(), &m_time_range);
 
-    std::unordered_map<const char*,QueryTask*,hash_func,eq_func> map;
+    std::unordered_set<TimeSeries*> tsv;
+    char buff[MAX_TOTAL_TAG_LENGTH];
+    get_ordered_tags(buff, sizeof(buff));
+    Tsdb::query_for_ts(m_metric, m_tags, tsv, buff);
 
-    for (Tsdb *tsdb: targets)
+    for (TimeSeries *ts: tsv)
     {
-        tsdb->ensure_readable(true);    // will inc count
+        QueryTask *qt =
+            (QueryTask*)MemoryManager::alloc_recyclable(RecyclableType::RT_QUERY_TASK);
 
-        std::unordered_set<TimeSeries*> v;  // TODO: will tsl::robin_set be faster?
-        tsdb->query_for_ts(m_metric, m_tags, v);
-
-        Logger::debug("there are %d ts in %T matching %s and tags", v.size(), tsdb, m_metric);
-
-        if (v.empty())
-            tsdb->dec_count();
-        else
-            tsdbs.push_back(tsdb);
-
-        for (TimeSeries *ts: v)
-        {
-            auto search = map.find(ts->get_key());
-
-            if (search == map.end())
-            {
-                QueryTask *qt =
-                    (QueryTask*)MemoryManager::alloc_recyclable(RecyclableType::RT_QUERY_TASK);
-
-                qt->m_time_range = m_time_range;
-                qt->m_downsampler = (m_downsample == nullptr) ?
-                                    nullptr :
-                                    Downsampler::create(m_downsample, m_time_range, m_ms);
-                qt->m_tsv.push_back(ts);
-                map.emplace(ts->get_key(), qt);
-            }
-            else
-            {
-                QueryTask *qt = search->second;
-                qt->m_tsv.push_back(ts);
-            }
-        }
-    }
-
-    for (const auto& kv: map)
-    {
-        qtv.push_back(kv.second);
+        qt->m_time_range = m_time_range;
+        qt->m_downsampler = (m_downsample == nullptr) ?
+                            nullptr :
+                            Downsampler::create(m_downsample, m_time_range, m_ms);
+        qt->m_ts = ts;
+        qt->m_tsdbs = tsdbs;
+        qtv.push_back(qt);
     }
 
     Logger::debug("Got %d query tasks", qtv.size());
@@ -513,6 +483,19 @@ Query::create_query_results(std::vector<QueryTask*>& qtv, std::vector<QueryResul
             for (QueryResults *r: results)
             {
                 bool match = true;
+                Tag *tags = r->get_tags();
+
+                if (tags != nullptr)
+                {
+                    TagMatcher *matcher = (TagMatcher*)
+                        MemoryManager::alloc_recyclable(RecyclableType::RT_TAG_MATCHER);
+                    matcher->init(tags);
+                    if (! matcher->match(qt->get_v2_tags()))
+                        match = false;
+                    MemoryManager::free_recyclable(matcher);
+                }
+/*
+                bool match = true;
 
                 for (Tag *tag = r->get_tags(); tag != nullptr; tag = tag->next())
                 {
@@ -525,6 +508,7 @@ Query::create_query_results(std::vector<QueryTask*>& qtv, std::vector<QueryResul
                         break;
                     }
                 }
+*/
 
                 if (match)
                 {
@@ -560,7 +544,7 @@ Query::execute(std::vector<QueryResults*>& results, StringBuffer& strbuf)
     std::vector<QueryTask*> qtv;
     std::vector<Tsdb*> tsdbs;
 
-    get_query_tasks(qtv, tsdbs);
+    get_query_tasks(qtv, &tsdbs);
 
     for (QueryTask *qt: qtv)
         qt->perform();
@@ -572,21 +556,8 @@ Query::execute(std::vector<QueryResults*>& results, StringBuffer& strbuf)
     for (QueryTask *qt: qtv)
         MemoryManager::free_recyclable(qt);
 
-    for (Tsdb *tsdb: tsdbs)
-        tsdb->dec_count();
-
-    // The following code are for debugging purposes only.
-#ifdef _DEBUG
-    int n = 0, c = 0;
-
-    for (QueryResults *qr: results)
-    {
-        c++;
-        n += qr->m_dps.size();
-    }
-
-    Logger::debug("Finished with %d ts, %d qr and %d dps in range %T", qtv.size(), c, n, &m_time_range);
-#endif
+    //for (Tsdb *tsdb: tsdbs)
+        //tsdb->dec_count();
 }
 
 // perform query by submitting task to QueryExecutor
@@ -597,7 +568,7 @@ Query::execute_in_parallel(std::vector<QueryResults*>& results, StringBuffer& st
     std::vector<Tsdb*> tsdbs;
     QueryExecutor *executor = QueryExecutor::inst();
 
-    get_query_tasks(qtv, tsdbs);
+    get_query_tasks(qtv, &tsdbs);
 
     if (qtv.size() > 1) // TODO: config?
     {
@@ -610,7 +581,7 @@ Query::execute_in_parallel(std::vector<QueryResults*>& results, StringBuffer& st
             for (int i = 0; i < size; i++)
             {
                 QueryTask *task = qtv[i];
-                ASSERT(! task->m_tsv.empty());
+                //ASSERT(! task->m_tsv.empty());
                 task->set_signal(&signal);
                 executor->submit_query(task);
             }
@@ -638,20 +609,8 @@ Query::execute_in_parallel(std::vector<QueryResults*>& results, StringBuffer& st
     for (QueryTask *qt: qtv)
         MemoryManager::free_recyclable(qt);
 
-    for (Tsdb *tsdb: tsdbs)
-        tsdb->dec_count();
-
-    // The following code are for debugging purposes only.
-#ifdef _DEBUG
-    int n = 0;
-
-    for (QueryResults *qr: results)
-    {
-        n += qr->m_dps.size();
-    }
-
-    Logger::debug("Finished with %d ts and %d dps in range %T", qtv.size(), n, &m_time_range);
-#endif
+    //for (Tsdb *tsdb: tsdbs)
+        //tsdb->dec_count();
 }
 
 const char *
@@ -680,10 +639,43 @@ QueryTask::QueryTask()
 void
 QueryTask::perform()
 {
+    ASSERT(m_ts != nullptr);
+    perform(m_ts->get_id());
+}
+
+void
+QueryTask::perform(TimeSeriesId id)
+{
+    ASSERT(m_tsdbs != nullptr);
+
     try
     {
-        for (TimeSeries *ts: m_tsv)
-            ts->query(m_time_range, m_downsampler, m_dps);
+        for (auto tsdb: *m_tsdbs)
+        {
+            // collect all the pages for this TS, in this TSDB;
+            // and then collect all the data points from them;
+            std::vector<DataPointContainer*> data;
+            bool has_ooo;
+
+            if (m_ts != nullptr)
+            {
+                has_ooo = tsdb->query_for_data(id, m_time_range, data);
+                has_ooo |= m_ts->query_for_data(tsdb, m_time_range, data);
+            }
+            else
+            {
+                // during compaction m_lock should've been taken already
+                has_ooo = tsdb->query_for_data_no_lock(id, m_time_range, data);
+            }
+
+            if (has_ooo)
+                query_with_ooo(data);
+            else
+                query_without_ooo(data);
+
+            for (DataPointContainer *container: data)
+                MemoryManager::free_recyclable(container);
+        }
 
         if (m_downsampler != nullptr)
         {
@@ -694,6 +686,7 @@ QueryTask::perform()
     }
     catch (...)
     {
+        ASSERT(false);
         Logger::error("Caught exception while performing query.");
     }
 
@@ -701,18 +694,153 @@ QueryTask::perform()
         m_signal->count_down();
 }
 
+void
+QueryTask::query_with_ooo(std::vector<DataPointContainer*>& data)
+{
+    using container_it = std::pair<DataPointContainer*,int>;
+    auto container_cmp = [](const container_it &lhs, const container_it &rhs)
+    {
+        if (lhs.first->get_data_point(lhs.second).first > rhs.first->get_data_point(rhs.second).first)
+        {
+            return true;
+        }
+        else if (lhs.first->get_data_point(lhs.second).first == rhs.first->get_data_point(rhs.second).first)
+        {
+            if (lhs.first->is_out_of_order() && ! rhs.first->is_out_of_order())
+                return true;
+            else if (! lhs.first->is_out_of_order() && rhs.first->is_out_of_order())
+                return false;
+
+            //if (lhs.first->get_page_index() == 0)
+                //return true;
+            //else if (rhs.first->get_page_index() == 0)
+                //return false;
+            //else
+                return (lhs.first->get_page_index() > rhs.first->get_page_index());
+        }
+        else
+        {
+            return false;
+        }
+    };
+    std::priority_queue<container_it, std::vector<container_it>, decltype(container_cmp)> pq(container_cmp);
+
+/*
+    size_t size = m_pages.size() + m_ooo_pages.size();
+    DataPointContainer containers[size];
+    size_t count = 0;
+    std::lock_guard<std::mutex> guard(m_lock);
+
+    for (PageInfo *page_info : m_pages)
+    {
+        ASSERT(! page_info->is_empty());
+
+        if (range.has_intersection(page_info->get_time_range()))
+        {
+            containers[count].init(page_info);
+            pq.emplace(&containers[count], 0);
+            count++;
+        }
+    }
+
+    for (PageInfo *page_info : m_ooo_pages)
+    {
+        ASSERT(! page_info->is_empty());
+
+        if (range.has_intersection(page_info->get_time_range()))
+        {
+            containers[count].init(page_info);
+            pq.emplace(&containers[count], 0);
+            count++;
+        }
+    }
+*/
+
+    for (auto container: data)
+        pq.emplace(container, 0);
+
+    while (! pq.empty())
+    {
+        auto top = pq.top();
+        pq.pop();
+
+        DataPointContainer *container = top.first;
+        int i = top.second;
+        DataPointPair& dp = container->get_data_point(i);
+        int in_range = m_time_range.in_range(dp.first);
+
+        if (in_range == 0)
+        {
+            // remove duplicates
+            if ((! m_dps.empty()) && (m_dps.back().first == dp.first))
+            {
+                m_dps.back().second = dp.second;
+            }
+            else if (m_downsampler == nullptr)
+            {
+                m_dps.push_back(dp);
+            }
+            else
+            {
+                m_downsampler->add_data_point(dp, m_dps);
+            }
+        }
+        else if (in_range > 0)
+        {
+            break;
+        }
+
+        if ((i+1) < container->size())
+        {
+            pq.emplace(container, i+1);
+        }
+    }
+}
+
+void
+QueryTask::query_without_ooo(std::vector<DataPointContainer*>& data)
+{
+    for (DataPointContainer *container: data)
+    {
+        for (int i = 0; i < container->size(); i++)
+        {
+            DataPointPair& dp = container->get_data_point(i);
+            int in_range = m_time_range.in_range(dp.first);
+
+            if (in_range == 0)
+            {
+                if (m_downsampler == nullptr)
+                    m_dps.push_back(dp);
+                else
+                    m_downsampler->add_data_point(dp, m_dps);
+            }
+            else if (in_range > 0)
+            {
+                break;
+            }
+        }
+    }
+}
+
 Tag *
 QueryTask::get_tags()
 {
-    ASSERT(! m_tsv.empty());
-    return m_tsv.front()->get_tags();
+    ASSERT(m_ts != nullptr);
+    return m_ts->get_tags();
+}
+
+Tag_v2 &
+QueryTask::get_v2_tags()
+{
+    ASSERT(m_ts != nullptr);
+    return m_ts->get_v2_tags();
 }
 
 Tag *
 QueryTask::get_cloned_tags(StringBuffer& strbuf)
 {
-    ASSERT(! m_tsv.empty());
-    Tag *tags = m_tsv.front()->get_cloned_tags(strbuf);
+    ASSERT(m_ts != nullptr);
+    Tag *tags = m_ts->get_cloned_tags(strbuf);
     //Tag *removed = Tag::remove_first(&tags, METRIC_TAG_NAME);
     //Tag::free_list(removed, false);
     return tags;
@@ -725,15 +853,23 @@ QueryTask::init()
     m_downsampler = nullptr;
 }
 
+void
+QueryTask::init(std::vector<Tsdb*> *tsdbs)
+{
+    ASSERT(tsdbs != nullptr);
+    m_tsdbs = tsdbs;
+}
+
 bool
 QueryTask::recycle()
 {
-    m_tsv.clear();
-    m_tsv.shrink_to_fit();
     m_dps.clear();
     m_dps.shrink_to_fit();
     m_results.recycle();
+
     m_signal = nullptr;
+    m_ts = nullptr;
+    m_tsdbs = nullptr;
 
     if (m_downsampler != nullptr)
     {
@@ -958,8 +1094,9 @@ void
 QueryResults::add_query_task(QueryTask *qt, StringBuffer& strbuf)
 {
     ASSERT(qt != nullptr);
+    Tag *tag_head = qt->get_tags();
 
-    for (Tag *tag = qt->get_tags(); tag != nullptr; tag = tag->next())
+    for (Tag *tag = tag_head; tag != nullptr; tag = tag->next())
     {
         //if (std::strcmp(tag->m_key, METRIC_TAG_NAME) == 0) continue;
         ASSERT(std::strcmp(tag->m_key, METRIC_TAG_NAME) != 0);
@@ -1000,6 +1137,9 @@ QueryResults::add_query_task(QueryTask *qt, StringBuffer& strbuf)
         }
     }
 
+    if (tag_head != nullptr)
+        Tag::free_list(tag_head);
+
     m_qtv.push_back(qt);
 }
 
@@ -1026,6 +1166,36 @@ size_t
 QueryExecutor::get_pending_task_count(std::vector<size_t> &counts)
 {
     return m_instance->m_executors.get_pending_task_count(counts);
+}
+
+
+void
+DataPointContainer::collect_data(PageInMemory *page)
+{
+    ASSERT(page != nullptr);
+    set_out_of_order(page->is_out_of_order());
+    page->get_all_data_points(m_dps);
+}
+
+void
+DataPointContainer::collect_data(Timestamp from, struct tsdb_header *tsdb_header, struct page_info_on_disk *page_header, void *page)
+{
+    ASSERT(tsdb_header != nullptr);
+    ASSERT(page_header != nullptr);
+    ASSERT(page != nullptr);
+
+    CompressorPosition position(page_header);
+    int compressor_version = tsdb_header->get_compressor_version();
+    RecyclableType type;
+    if (page_header->is_out_of_order())
+        type = RecyclableType::RT_COMPRESSOR_V0;
+    else
+        type = (RecyclableType)(compressor_version + RecyclableType::RT_COMPRESSOR_V0);
+    Compressor *compressor = (Compressor*)MemoryManager::alloc_recyclable(type);
+    compressor->init(from, reinterpret_cast<uint8_t*>(page), page_header->m_size);
+    compressor->restore(m_dps, position, (uint8_t*)page);
+    ASSERT(! m_dps.empty());
+    MemoryManager::free_recyclable(compressor);
 }
 
 

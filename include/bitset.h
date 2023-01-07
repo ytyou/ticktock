@@ -44,15 +44,23 @@ private:
 /* This class enables us to store data as series of bits. It is used by
  * the Gorilla compression algorithm.
  */
-class BitSet
+class __attribute__ ((__packed__)) BitSet
 {
 public:
     BitSet();
+    BitSet(size_t size_in_bits);
+    ~BitSet();
 
     void init(uint8_t *base, size_t capacity_in_bytes);
     void recycle();
     void rebase(uint8_t *base);
     BitSetCursor *new_cursor();
+
+    void set(size_t idx);
+    bool test(size_t idx);
+
+    void reset();
+    size_t capacity();
 
     // append 'len' of bits stored in 'bits', starting at
     // offset 'start'; return true if successful, return
@@ -92,6 +100,11 @@ public:
         return size;
     }
 
+    inline bool is_empty() const
+    {
+        return (m_cursor == m_bits) && (m_start == 0);
+    }
+
     //inline size_t c_size() const override { return 128; }
     //const char *c_str(char *buff) const override;
 
@@ -120,6 +133,40 @@ private:
     uint8_t m_cp_start;     // for saving check point so we can roll back to it
 
     uint8_t m_start;        // offset within a byte where next new bit should go
+    bool m_own_memory;      // do we own the memory?
+};
+
+
+// Used by PerfectHash
+class BitSet64
+{
+public:
+    BitSet64(std::size_t size); // size: no. of bits
+    BitSet64(BitSet64&& src);   // move constructor
+    ~BitSet64();
+
+    inline void set(std::size_t idx)
+    {
+        m_bits[idx/64] |= (1ULL << (idx % 64));
+    }
+
+    void reset();
+    uint64_t get64(std::size_t idx);
+    uint64_t pop64(std::size_t idx);
+
+    inline bool test(size_t idx)
+    {
+        return (m_bits[idx/64] & (1ULL << (idx % 64))) != 0;
+    }
+
+    inline std::size_t capacity64()   // in no. of uint64_t
+    {
+        return m_capacity;
+    }
+
+private:
+    uint64_t *m_bits;
+    std::size_t m_capacity; // in no. of uint64_t
 };
 
 

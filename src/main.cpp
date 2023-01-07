@@ -129,8 +129,6 @@ process_cmdline_opts(int argc, char *argv[])
         { CFG_APPEND_LOG_DIR,                       required_argument,  0,  0 },
         { CFG_APPEND_LOG_ENABLED,                   required_argument,  0,  0 },
         { CFG_APPEND_LOG_FLUSH_FREQUENCY,           required_argument,  0,  0 },
-        { CFG_APPEND_LOG_ROTATION_FREQUENCY,        required_argument,  0,  0 },
-        { CFG_APPEND_LOG_RETENTION_COUNT,           required_argument,  0,  0 },
         { CFG_CONFIG_RELOAD_ENABLED,                required_argument,  0,  0 },
         { CFG_CONFIG_RELOAD_FREQUENCY,              required_argument,  0,  0 },
         { CFG_HTTP_LISTENER_COUNT,                  required_argument,  0,  0 },
@@ -338,7 +336,6 @@ initialize()
     AppendLog::init();
     Stats::init();
     QueryExecutor::init();
-    //SanityChecker::init();
     Admin::init();
     Timer::inst()->start();
 
@@ -364,9 +361,9 @@ shutdown()
         Timer::inst()->stop();
         QueryExecutor::inst()->shutdown();
         Tsdb::shutdown();
-        MemoryManager::log_stats();
         // MM are thread-local singletons, and can't be cleaned up from another thread
         //MemoryManager::cleanup();
+        AppendLog::shutdown();  // normal shutdown
     }
     catch (std::exception& ex)
     {
@@ -385,9 +382,11 @@ main(int argc, char *argv[])
 {
 #ifdef _DEBUG
     std::signal(SIGFPE, segv_handler);
+    std::signal(SIGKILL, segv_handler);
     std::signal(SIGSEGV, segv_handler);
 #else
     std::signal(SIGFPE, intr_handler);
+    std::signal(SIGKILL, intr_handler);
     std::signal(SIGSEGV, intr_handler);
 #endif
 

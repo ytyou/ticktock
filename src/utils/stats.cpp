@@ -120,6 +120,7 @@ Stats::inject_metrics(TaskData& data)
         */
 
         // ticktock.mmap_file.count
+        /*
         {
             int32_t count = PageManager::get_mmap_file_count();
             DataPoint dp(now, (double)count);
@@ -127,6 +128,7 @@ Stats::inject_metrics(TaskData& data)
             dp.add_tag(HOST_TAG_NAME, g_host_name.c_str());
             tsdb->add(dp);
         }
+        */
 
         // ticktock.time_series.count
         {
@@ -164,6 +166,7 @@ Stats::inject_metrics(TaskData& data)
                     std::string responder = std::to_string(j);
                     dp.add_tag("listener", listener.c_str());
                     dp.add_tag("responder", responder.c_str());
+                    dp.add_tag(HOST_TAG_NAME, g_host_name.c_str());
                     tsdb->add(dp);
                 }
             }
@@ -185,6 +188,7 @@ Stats::inject_metrics(TaskData& data)
                     std::string responder = std::to_string(j);
                     dp.add_tag("listener", listener.c_str());
                     dp.add_tag("responder", responder.c_str());
+                    dp.add_tag(HOST_TAG_NAME, g_host_name.c_str());
                     tsdb->add(dp);
                 }
             }
@@ -201,6 +205,7 @@ Stats::inject_metrics(TaskData& data)
                 dp.set_metric("ticktock.query.pending_task.count");
                 std::string executor = std::to_string(i);
                 dp.add_tag("executor", executor.c_str());
+                dp.add_tag(HOST_TAG_NAME, g_host_name.c_str());
                 tsdb->add(dp);
             }
         }
@@ -223,7 +228,6 @@ Stats::inject_metrics(TaskData& data)
 #endif
     }
 
-    MemoryManager::log_stats();
     return false;
 }
 
@@ -457,20 +461,32 @@ Stats::collect_stats(char *buff, int size)
         }
     }
 
-    Tsdb *tsdb = Tsdb::inst(now, false);
-
-    if ((tsdb != nullptr) && (size > len))
+    std::vector<DataPoint> dps;
+    MemoryManager::collect_stats(now, dps);
+    for (DataPoint& dp: dps)
     {
-        std::vector<size_t> counts;
-
-        len += snprintf(buff+len, size-len,
-            "ticktock.connection.count %" PRIu64 " %d %s=%s\nticktock.time_series.count %" PRIu64 " %d %s=%s\nticktock.page.used.percent %" PRIu64 " %f %s=%s\nticktock.ooo_page.count %" PRIu64 " %d %s=%s\nticktock.timer.pending_task.count %" PRIu64 " %zu %s=%s\n",
-            now, TcpListener::get_active_conn_count(), HOST_TAG_NAME, g_host_name.c_str(),
-            now, Tsdb::get_ts_count(), HOST_TAG_NAME, g_host_name.c_str(),
-            now, tsdb->get_page_percent_used(), HOST_TAG_NAME, g_host_name.c_str(),
-            now, Tsdb::get_page_count(true), HOST_TAG_NAME, g_host_name.c_str(),
-            now, Timer::inst()->m_scheduler.get_pending_task_count(counts), HOST_TAG_NAME, g_host_name.c_str());
+        char tmp[dp.c_size()];
+        len += snprintf(buff+len, size-len, "%s\n", dp.c_str(tmp));
     }
+
+    len += snprintf(buff+len, size-len,
+        "ticktock.connection.count %" PRIu64 " %d %s=%s\n",
+        now, TcpListener::get_active_conn_count(), HOST_TAG_NAME, g_host_name.c_str());
+
+    long ts_cnt = Tsdb::get_ts_count();
+    len += snprintf(buff+len, size-len,
+        "ticktock.time_series.count %" PRIu64 " %ld %s=%s\nticktock.time_series.memory %" PRIu64 " %ld %s=%s\n",
+        now, ts_cnt, HOST_TAG_NAME, g_host_name.c_str(),
+        now, ts_cnt*sizeof(TimeSeries), HOST_TAG_NAME, g_host_name.c_str());
+
+    len += snprintf(buff+len, size-len,
+        "ticktock.tsdb.active.count %" PRIu64 " %d %s=%s\n",
+        now, Tsdb::get_active_tsdb_count(), HOST_TAG_NAME, g_host_name.c_str());
+
+    std::vector<size_t> cnts;
+    len += snprintf(buff+len, size-len,
+        "ticktock.timer.pending_task.count %" PRIu64 " %zu %s=%s\n",
+        now, Timer::inst()->m_scheduler.get_pending_task_count(cnts), HOST_TAG_NAME, g_host_name.c_str());
 
     if ((0 < len) && (len < size))
         buff[len] = 0;

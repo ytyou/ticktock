@@ -42,11 +42,17 @@ bool g_cluster_enabled = false;
 bool g_self_meter_enabled = CFG_TSDB_SELF_METER_ENABLED_DEF;
 std::atomic<bool> g_shutdown_requested{false};
 
+#ifdef _DEBUG
+std::atomic<std::uint64_t> g_total_dps_count{0};
+std::atomic<std::uint64_t> g_total_page_count{0};
+#endif
+
 std::string g_config_file("tt.conf");
 thread_local std::string g_thread_id("unknown");
 std::atomic<std::thread::id> g_handler_thread_id;
 
-long int g_page_size;
+PageSize g_page_size;
+PageCount g_page_count;
 const long int g_sys_page_size = sysconf(_SC_PAGE_SIZE);
 
 

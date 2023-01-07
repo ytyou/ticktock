@@ -21,6 +21,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <chrono>
+#include <dirent.h>
 #include <glob.h>
 #include <string>
 #include <cstring>
@@ -38,6 +39,7 @@
 #include <cctype>
 #include "config.h"
 #include "global.h"
+#include "logger.h"
 #include "stats.h"
 #include "utils.h"
 
@@ -736,6 +738,112 @@ get_disk_available_blocks(const std::string& full_path)
     int rc = statvfs(full_path.c_str(), &st);
     if (rc != 0) return 0;
     return st.f_bavail;
+}
+
+// perform func() for all dirs at 'level'
+void
+for_all_dirs(const std::string& root, void (*func)(const std::string& dir), int level)
+{
+    if (level == 0)
+    {
+        (*func)(root);
+        return;
+    }
+
+    DIR *dir;
+    struct dirent *dir_ent;
+
+    dir = opendir(root.c_str());
+
+    if (dir != nullptr)
+    {
+        std::vector<std::string> entries;
+
+        while (dir_ent = readdir(dir))
+        {
+            if (dir_ent->d_type != DT_DIR)
+                continue;
+            if (dir_ent->d_name[0] == '.')
+                continue;
+            std::string dir_name(root + "/" + dir_ent->d_name);
+            entries.push_back(dir_name);
+            //for_all_dirs(dir_name, func, level-1);
+        }
+
+        std::sort(entries.begin(), entries.end());
+
+        for (auto entry: entries)
+            for_all_dirs(entry, func, level-1);
+    }
+
+    closedir(dir);
+}
+
+// find for all files matching 'pattern'
+void
+get_all_files(const std::string& pattern, std::vector<std::string>& files)
+{
+    glob_t glob_result;
+    unsigned int cnt;
+
+    glob(pattern.c_str(), GLOB_TILDE, nullptr, &glob_result);
+
+    for (cnt = 0; cnt < glob_result.gl_pathc; cnt++)
+        files.push_back(std::string(glob_result.gl_pathv[cnt]));
+
+    globfree(&glob_result);
+}
+
+int
+create_dir(std::string& path)
+{
+    if (path.length() >= PATH_MAX)
+    {
+        Logger::error("Path too long: %s", path.c_str());
+        return -1;
+    }
+
+    std::vector<std::string> dirs;
+    tokenize(path, dirs, '/');
+    if (dirs.size() <= 0) return -1;
+
+    char buff[PATH_MAX];
+    mode_t mode = S_IRWXU|S_IRGRP|S_IROTH;
+
+    buff[0] = 0;
+
+    for (int i = 0; i < dirs.size(); i++)
+    {
+        if (dirs[i].length() <= 0) continue;
+        std::strcat(buff, "/");
+        std::strcat(buff, dirs[i].c_str());
+
+        struct stat st;
+        if (stat(buff, &st) == 0)
+        {
+            if (S_ISDIR(st.st_mode))
+                continue;
+            Logger::error("File %s already exist", buff);
+            return -1;
+        }
+
+        if (mkdir(buff, mode) != 0)
+        {
+            Logger::error("Failed to create directory %s, errno = %d", buff, errno);
+            return -1;
+        }
+    }
+
+    return 0;
+}
+
+FileIndex
+get_file_suffix(const std::string& file_name)
+{
+    const char *dot = std::strrchr(file_name.c_str(), '.');
+    if (dot == nullptr) return TT_INVALID_FILE_INDEX;
+    ASSERT(std::isdigit(*(dot+1)));
+    return std::atoi(dot+1);
 }
 
 bool

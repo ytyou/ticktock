@@ -28,13 +28,9 @@
 
 #define CFG_APPEND_LOG_DIR                      "append.log.dir"
 #define CFG_APPEND_LOG_ENABLED                  "append.log.enabled"
-#define CFG_APPEND_LOG_ENABLED_DEF              false
+#define CFG_APPEND_LOG_ENABLED_DEF              true
 #define CFG_APPEND_LOG_FLUSH_FREQUENCY          "append.log.flush.frequency"
-#define CFG_APPEND_LOG_FLUSH_FREQUENCY_DEF      "2s"
-#define CFG_APPEND_LOG_ROTATION_FREQUENCY       "append.log.rotation.frequency"
-#define CFG_APPEND_LOG_ROTATION_FREQUENCY_DEF   "1h"
-#define CFG_APPEND_LOG_RETENTION_COUNT          "append.log.retention.count"
-#define CFG_APPEND_LOG_RETENTION_COUNT_DEF      2
+#define CFG_APPEND_LOG_FLUSH_FREQUENCY_DEF      "5min"
 #define CFG_CLUSTER_SERVERS                     "cluster.servers"
 #define CFG_CLUSTER_PARTITIONS                  "cluster.partitions"
 #define CFG_CLUSTER_BACKLOG_ROTATION_SIZE       "cluster.backlog.rotation.size"
@@ -96,6 +92,8 @@
 #define CFG_TIMER_QUEUE_SIZE_DEF                32
 #define CFG_TIMER_THREAD_COUNT                  "timer.thread.count"
 #define CFG_TIMER_THREAD_COUNT_DEF              1
+#define CFG_TS_LOCK_PROBABILITY                 "ts.lock.probability"
+#define CFG_TS_LOCK_PROBABILITY_DEF             0.01
 #define CFG_TSDB_ARCHIVE_THRESHOLD              "tsdb.archive.threshold"
 #define CFG_TSDB_ARCHIVE_THRESHOLD_DEF          "1w"
 #define CFG_TSDB_COMPACT_FREQUENCY              "tsdb.compact.frequency"
@@ -169,6 +167,11 @@ public:
         return bytes;
     }
 
+    inline float as_float() const
+    {
+        return std::stof(m_value);
+    }
+
     inline int as_int() const
     {
         return std::stoi(m_value);
@@ -218,6 +221,8 @@ public:
     static bool get_bool(const std::string& name, bool def_value);
     static int get_int(const std::string& name);
     static int get_int(const std::string& name, int def_value);
+    static float get_float(const std::string& name);
+    static float get_float(const std::string& name, float def_value);
     static const std::string& get_str(const std::string& name);
     static const std::string& get_str(const std::string& name, const std::string& def_value);
 

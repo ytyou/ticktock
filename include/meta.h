@@ -25,36 +25,33 @@ namespace tt
 {
 
 
-class PageInfo;
 class TimeSeries;
-class Tsdb;
 
 
-/* This file is used to store serialized version of various maps
- * that we use to locate TimeSeries, by looking up metric names
- * and tags.
+/* This is a singleton.
  */
 class MetaFile
 {
 public:
-    MetaFile(const std::string& file_name);
-    virtual ~MetaFile();
+    static void init(TimeSeries* (*restore_func)(std::string& metric, std::string& key, TimeSeriesId id));
+    static MetaFile *instance() { return m_instance; }
 
     void open();    // for append
     void close();
     void flush();
-    void reset();   // truncate the file to zero length
-
-    void append(TimeSeries *ts, PageInfo *info);
-    void append(TimeSeries *ts, unsigned int file_id, unsigned int from_id, unsigned int to_id);
-    void load(Tsdb *tsdb);
 
     inline bool is_open() const { return (m_file != nullptr); }
+    void add_ts(const char *metric, const char *key, TimeSeriesId id);
+    //void add_ts(TimeSeries *ts);
 
 private:
+    void restore(TimeSeries* (*restore_func)(std::string& metric, std::string& key, TimeSeriesId id));
+
     std::mutex m_lock;
     std::string m_name;
     std::FILE *m_file;
+
+    static MetaFile *m_instance;
 };
 
 

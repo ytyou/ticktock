@@ -39,8 +39,25 @@ BitSet::BitSet() :
     m_end(nullptr),
     m_start(0),
     m_cp_cursor(nullptr),
-    m_cp_start(0)
+    m_cp_start(0),
+    m_own_memory(false)
 {
+}
+
+BitSet::BitSet(size_t size_in_bits) :
+    BitSet()
+{
+    size_t size_in_bytes = (size_in_bits + 7) / 8;
+    uint8_t *base = (uint8_t*) std::malloc(size_in_bytes);
+    std::memset(base, 0, size_in_bytes);
+    m_own_memory = true;
+    init(base, size_in_bytes);
+}
+
+BitSet::~BitSet()
+{
+    if (m_own_memory && (m_bits != nullptr))
+        std::free(m_bits);
 }
 
 void
@@ -59,6 +76,15 @@ BitSet::init(uint8_t *base, size_t capacity_in_bytes)
     m_end = m_bits + capacity_in_bytes;
 }
 
+size_t
+BitSet::capacity()
+{
+    if ((m_bits == nullptr) || (m_end == nullptr))
+        return 0;
+    else
+        return m_end - m_bits;
+}
+
 void
 BitSet::recycle()
 {
@@ -66,6 +92,15 @@ BitSet::recycle()
     m_start = 0;
     m_cp_cursor = nullptr;
     m_cp_start = 0;
+}
+
+void
+BitSet::reset()
+{
+    recycle();
+    size_t size_in_bytes = capacity();
+    if ((size_in_bytes > 0) && (m_bits != nullptr))
+        std::memset(m_bits, 0, size_in_bytes);
 }
 
 void
@@ -91,6 +126,32 @@ BitSet::new_cursor()
         (BitSetCursor*)MemoryManager::alloc_recyclable(RecyclableType::RT_BITSET_CURSOR);
     cursor->init(this);
     return cursor;
+}
+
+void
+BitSet::set(size_t idx)
+{
+    if (m_bits == nullptr)
+        throw std::out_of_range("bitset not initialized yet");
+    size_t idx_byte = idx / 8;
+    unsigned int off = idx % 8;
+    uint8_t *cursor = m_bits + idx_byte;
+    if (cursor > m_end)
+        throw std::out_of_range("index out of range");
+    *cursor |= 1 << (7 - off);
+}
+
+bool
+BitSet::test(size_t idx)
+{
+    if (m_bits == nullptr)
+        throw std::out_of_range("bitset not initialized yet");
+    size_t idx_byte = idx / 8;
+    unsigned int off = idx % 8;
+    uint8_t *cursor = m_bits + idx_byte;
+    if (cursor > m_end)
+        throw std::out_of_range("index out of range");
+    return ((*cursor) & 1 << (7 - off)) != 0;
 }
 
 void
@@ -203,12 +264,12 @@ void
 BitSet::copy_from(uint8_t *base, int bytes, uint8_t start)
 {
     ASSERT(bytes > 0);
-    ASSERT(base != m_bits);
+    //ASSERT(base != m_bits);
 
     m_cursor = m_bits + bytes;
     m_start = start;
 
-    if (base != nullptr)
+    if ((base != nullptr) && (base != m_bits))
     {
         if (start != 0) bytes++;
         memcpy(m_bits, base, bytes);
@@ -347,6 +408,46 @@ BitSetCursor::init(BitSet *bitset)
 {
     m_cursor = bitset->m_bits;
     m_start = 0;
+}
+
+
+BitSet64::BitSet64(std::size_t size)
+{
+    m_capacity = (size + 63) / 64;
+    m_bits = (uint64_t*) calloc(size, sizeof(uint64_t));
+}
+
+BitSet64::BitSet64(BitSet64&& src) :
+    m_bits(src.m_bits),
+    m_capacity(src.m_capacity)
+{
+    src.m_bits = nullptr;
+}
+
+BitSet64::~BitSet64()
+{
+    if (m_bits != nullptr)
+        std::free(m_bits);
+}
+
+uint64_t
+BitSet64::get64(std::size_t idx)
+{
+    ASSERT(idx < m_capacity);
+    return m_bits[idx];
+}
+
+uint64_t
+BitSet64::pop64(std::size_t idx)
+{
+    ASSERT(idx < m_capacity);
+    return __builtin_popcountll(m_bits[idx]);
+}
+
+void
+BitSet64::reset()
+{
+    std::memset((void*)m_bits, 0, m_capacity*8);
 }
 
 

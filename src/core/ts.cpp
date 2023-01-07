@@ -16,671 +16,355 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+#include <algorithm>
 #include <cassert>
 #include <cstdint>
 #include "aggregate.h"
 #include "config.h"
 #include "down.h"
 #include "memmgr.h"
+#include "meter.h"
+#include "leak.h"
+#include "logger.h"
+#include "query.h"
 #include "ts.h"
 #include "tsdb.h"
-#include "meter.h"
-#include "logger.h"
 #include "utils.h"
-#include "leak.h"
 
 
 namespace tt
 {
 
 
-TimeSeries::TimeSeries() :
-    m_metric(nullptr),
-    m_key(nullptr),
-    m_buff(nullptr),
-    m_ooo_buff(nullptr),
-    TagOwner(true)
+std::atomic<TimeSeriesId> TimeSeries::m_next_id{0};
+uint32_t TimeSeries::m_lock_count;
+std::mutex *TimeSeries::m_locks;
+
+
+TimeSeries::TimeSeries(const char *metric, const char *key, Tag *tags) :
+    m_next(nullptr),
+    m_tags(tags)
 {
+    TimeSeriesId id = m_next_id.fetch_add(1);
+    init(id, metric, key, tags);
+    MetaFile::instance()->add_ts(metric, key, id);
 }
 
-void
-TimeSeries::init(const char *metric, const char *key, Tag *tags, Tsdb *tsdb, bool read_only)
+// called during restart/restore
+TimeSeries::TimeSeries(TimeSeriesId id, const char *metric, const char *key, Tag *tags) :
+    m_next(nullptr),
+    m_tags(tags)
 {
-    if (m_metric != nullptr)
-    {
-        FREE(m_metric);
-    }
+    init(id, metric, key, tags);
 
-    if (m_key != nullptr)
-    {
-        FREE(m_key);
-    }
-
-    m_metric = STRDUP(metric);
-    m_key = STRDUP(key);
-    m_tags = tags;
-    get_tsdb() = tsdb;
-    m_pages.clear();
-    m_buff = nullptr;
-    m_ooo_buff = nullptr;
-
-    ASSERT(tsdb != nullptr);
-    Logger::debug("ts of %T is loaded in read-only mode", tsdb);
+    if (m_next_id.load() <= id)
+        m_next_id = id + 1;
 }
 
 TimeSeries::~TimeSeries()
 {
-    if (m_key != nullptr)
+    if (m_buff != nullptr)
     {
-        FREE(m_key);
-        m_key = nullptr;
+        delete m_buff;
+        m_buff = nullptr;
     }
 
-    if (m_metric != nullptr)
+    if (m_ooo_buff != nullptr)
     {
-        FREE(m_metric);
-        m_metric = nullptr;
-    }
-}
-
-bool
-TimeSeries::recycle()
-{
-    std::lock_guard<std::mutex> guard(m_lock);
-
-    get_tsdb() = nullptr;
-
-    for (PageInfo *info: m_pages)
-    {
-        MemoryManager::free_recyclable(info);
-    }
-    m_pages.clear();
-    m_pages.shrink_to_fit();
-
-    for (PageInfo *info: m_ooo_pages)
-    {
-        MemoryManager::free_recyclable(info);
-    }
-    m_ooo_pages.clear();
-    m_ooo_pages.shrink_to_fit();
-
-    TagOwner::recycle();
-
-    if (m_metric != nullptr)
-    {
-        FREE(m_metric);
-        m_metric = nullptr;
+        delete m_ooo_buff;
+        m_ooo_buff = nullptr;
     }
 
-    if (m_key != nullptr)
-    {
-        FREE(m_key);
-        m_key = nullptr;
-    }
+    //if (m_tags != nullptr)
+    //{
+        //std::free(m_tags);
+        //m_tags = nullptr;
+    //}
 
-    return true;
+    //if (m_key != nullptr)
+    //{
+        //FREE(m_key);
+        //m_key = nullptr;
+    //}
+
+    //if (m_metric != nullptr)
+    //{
+        //FREE(m_metric);
+        //m_metric = nullptr;
+    //}
 }
 
 void
-TimeSeries::flush(bool accessed)
+TimeSeries::init()
 {
-    std::lock_guard<std::mutex> guard(m_lock);
-    Tsdb *tsdb = get_tsdb();
+    // Birthday Paradox - Square approximation method
+    int tcp_responders =
+        Config::get_int(CFG_TCP_LISTENER_COUNT, CFG_TCP_LISTENER_COUNT_DEF) *
+        Config::get_int(CFG_TCP_RESPONDERS_PER_LISTENER, CFG_TCP_RESPONDERS_PER_LISTENER_DEF);
+    int http_responders =
+        Config::get_int(CFG_HTTP_LISTENER_COUNT, CFG_HTTP_LISTENER_COUNT_DEF) *
+        Config::get_int(CFG_HTTP_RESPONDERS_PER_LISTENER, CFG_HTTP_RESPONDERS_PER_LISTENER_DEF);
+    float probability =
+        Config::get_float(CFG_TS_LOCK_PROBABILITY, CFG_TS_LOCK_PROBABILITY_DEF);
+    m_lock_count = std::max(tcp_responders, http_responders);
+    m_lock_count = (uint32_t)((float)(m_lock_count * m_lock_count) / (2.0 * probability));
+    m_locks = new std::mutex[m_lock_count];
+    Logger::info("number of ts locks: %u", m_lock_count);
+}
 
+void
+TimeSeries::init(TimeSeriesId id, const char *metric, const char *key, Tag *tags)
+{
+    m_id = id;
+    m_buff = nullptr;
+    m_ooo_buff = nullptr;
+
+    //m_metric = STRDUP(metric);
+    //m_key = STRDUP(key);
+    //m_tags = tags;
+}
+
+void
+TimeSeries::restore(Tsdb *tsdb, PageSize offset, uint8_t start, char *buff, bool is_ooo)
+{
+    ASSERT(tsdb != nullptr);
+
+    if (is_ooo)
+    {
+        ASSERT(m_ooo_buff == nullptr);
+        m_ooo_buff = new PageInMemory(m_id, tsdb, true);
+    }
+    else
+    {
+        ASSERT(m_buff == nullptr);
+        m_buff = new PageInMemory(m_id, tsdb, false);
+    }
+}
+
+void
+TimeSeries::flush(bool close)
+{
+    //std::lock_guard<std::mutex> guard(m_lock);
+    std::lock_guard<std::mutex> guard(m_locks[m_id % m_lock_count]);
+    flush_no_lock(close);
+}
+
+void
+TimeSeries::flush_no_lock(bool close)
+{
     if (m_buff != nullptr)
     {
-        PageInfo *info = m_buff->flush(accessed, tsdb);
+        m_buff->flush(m_id);
 
-        if (info != nullptr)
+        if (m_ooo_buff != nullptr)
+            m_ooo_buff->update_indices(m_buff);
+
+        if (close)
         {
-            ASSERT(m_buff == m_pages.back());
-            m_pages.back() = info;
-            tsdb->append_meta(this, info);
-            MemoryManager::free_recyclable(m_buff);
-            //m_buff = info;
+            delete m_buff;
             m_buff = nullptr;
+        }
+        else
+        {
+            m_buff->init(m_id, nullptr, false);
         }
     }
 
     if (m_ooo_buff != nullptr)
     {
-        PageInfo *info = m_ooo_buff->flush(accessed, tsdb);
+        m_ooo_buff->flush(m_id);
 
-        if (info != nullptr)
+        if (close)
         {
-            ASSERT(m_ooo_buff == m_ooo_pages.back());
-            m_ooo_pages.back() = info;
-            tsdb->append_meta(this, info);
-            MemoryManager::free_recyclable(m_ooo_buff);
-            //m_ooo_buff = info;
+            delete m_ooo_buff;
             m_ooo_buff = nullptr;
+        }
+        else if (m_buff != nullptr)
+        {
+            m_buff->update_indices(m_ooo_buff);
+            m_buff->init(m_id, nullptr, true);
         }
     }
 }
 
-PageInfo *
-TimeSeries::get_free_page_on_disk(bool is_out_of_order)
-{
-    PageInfo *info = get_tsdb_const()->get_free_page(is_out_of_order);
-
-    if (is_out_of_order)
-    {
-        m_ooo_pages.push_back(info);
-        get_tsdb()->append_meta(this, info);
-    }
-    else
-        m_pages.push_back(info);
-
-    return info;
-}
-
 void
-TimeSeries::add_page_info(PageInfo *page_info)
+TimeSeries::append(FILE *file)
 {
-    ASSERT(page_info != nullptr);
-
-    if (page_info->is_out_of_order())
-        m_ooo_pages.push_back(page_info);
-    else
-        m_pages.push_back(page_info);
+    ASSERT(file != nullptr);
+    //std::lock_guard<std::mutex> guard(m_lock);
+    std::lock_guard<std::mutex> guard(m_locks[m_id % m_lock_count]);
+    if (m_buff != nullptr) m_buff->append(m_id, file);
+    if (m_ooo_buff != nullptr) m_ooo_buff->append(m_id, file);
 }
 
 bool
 TimeSeries::add_data_point(DataPoint& dp)
 {
-    std::lock_guard<std::mutex> guard(m_lock);
+    const Timestamp tstamp = dp.get_timestamp();
+    //std::lock_guard<std::mutex> guard(m_lock);
+    std::lock_guard<std::mutex> guard(m_locks[m_id % m_lock_count]);
 
-    if (m_buff == nullptr)
+    // Make sure we have a valid m_buff (PageInMemory)
+    if (UNLIKELY(m_buff == nullptr))
     {
-        if (m_pages.empty())
-            m_buff = get_free_page_on_disk(false);
-        else
-        {
-            m_buff = m_pages.back();
-            m_buff->ensure_dp_available();
-        }
+        ASSERT(m_ooo_buff == nullptr);
+        Tsdb *tsdb = Tsdb::inst(tstamp, true);
+        m_buff = new PageInMemory(m_id, tsdb, false);
     }
-    else
-        m_buff->ensure_dp_available();
+    else if (m_buff->in_range(tstamp) != 0)
+    {
+        m_buff->flush(m_id);
+
+        if (m_ooo_buff != nullptr)
+            m_ooo_buff->update_indices(m_buff);
+
+        // reset the m_buff
+        Tsdb *tsdb = Tsdb::inst(tstamp, true);
+        m_buff->init(m_id, tsdb, false);
+    }
+
+    ASSERT(m_buff != nullptr);
+    ASSERT(m_buff->in_range(tstamp) == 0);
 
     Timestamp last_tstamp = m_buff->get_last_tstamp();
 
-    if ((dp.get_timestamp() <= last_tstamp) && (! m_buff->is_empty()))
+    if ((tstamp <= last_tstamp) && (! m_buff->is_empty()))
     {
         return add_ooo_data_point(dp);
     }
 
-    bool ok = m_buff->add_data_point(dp.get_timestamp(), dp.get_value());
+    bool ok = m_buff->add_data_point(tstamp, dp.get_value());
 
     if (! ok)
     {
         ASSERT(m_buff->is_full());
 
-        Tsdb *tsdb = get_tsdb();
-        PageInfo *info = m_buff->flush(false, tsdb);
-        if (info != nullptr)
-        {
-            ASSERT(m_buff == m_pages.back());
-            m_pages.back() = info;
-            tsdb->append_meta(this, info);
-            MemoryManager::free_recyclable(m_buff);
-        }
-        m_buff = get_free_page_on_disk(false);
+        m_buff->flush(m_id);
+        m_buff->init(m_id, nullptr, false);
+
+        if (m_ooo_buff != nullptr)
+            m_ooo_buff->update_indices(m_buff);
+
         ASSERT(m_buff->is_empty());
 
         // try again
-        ok = m_buff->add_data_point(dp.get_timestamp(), dp.get_value());
+        ok = m_buff->add_data_point(tstamp, dp.get_value());
         ASSERT(ok);
     }
 
     return ok;
-}
-
-bool
-TimeSeries::add_batch(DataPointSet& dps)
-{
-    std::lock_guard<std::mutex> guard(m_lock);
-    bool success = true;
-
-    if (m_buff == nullptr)
-    {
-        if (m_pages.empty())
-            m_buff = get_free_page_on_disk(false);
-        else
-        {
-            m_buff = m_pages.back();
-            m_buff->ensure_dp_available();
-        }
-    }
-
-    for (int i = 0; i < dps.get_dp_count(); i++)
-    {
-        Timestamp tstamp = dps.get_timestamp(i);
-        double value = dps.get_value(i);
-        Timestamp last_tstamp = m_buff->get_last_tstamp();
-
-        if (tstamp < last_tstamp)
-        {
-            DataPoint dp(tstamp, value);
-            success = add_ooo_data_point(dp) && success;
-            continue;
-        }
-
-        bool ok = m_buff->add_data_point(tstamp, value);
-
-        if (! ok)
-        {
-            ASSERT(m_buff->is_full());
-
-            m_buff->flush(false, get_tsdb());
-            m_buff = get_free_page_on_disk(false);
-            ASSERT(m_buff->is_empty());
-            ASSERT(m_buff->get_last_tstamp() == get_tsdb()->get_time_range().get_from());
-
-            // try again
-            ok = m_buff->add_data_point(tstamp, value);
-            ASSERT(ok);
-        }
-
-        success = ok && success;
-    }
-
-    return success;
 }
 
 // Lock is acquired in add_data_point() already!
 bool
 TimeSeries::add_ooo_data_point(DataPoint& dp)
 {
+    const Timestamp tstamp = dp.get_timestamp();
+
+    // Make sure we have a valid m_ooo_buff (PageInMemory)
     if (m_ooo_buff == nullptr)
     {
-        if (m_ooo_pages.empty())
-            m_ooo_buff = get_free_page_on_disk(true);
-        else
-        {
-            m_ooo_buff = m_ooo_pages.back();
-            m_ooo_buff->ensure_dp_available();
-        }
+        Tsdb *tsdb = Tsdb::inst(tstamp, true);
+        m_ooo_buff = new PageInMemory(m_id, tsdb, true);
     }
-    else
-        m_ooo_buff->ensure_dp_available();
+    else if (m_ooo_buff->in_range(tstamp) != 0)
+    {
+        m_ooo_buff->flush(m_id);
 
-    bool ok = m_ooo_buff->add_data_point(dp.get_timestamp(), dp.get_value());
+        if (m_buff != nullptr)
+            m_buff->update_indices(m_ooo_buff);
+
+        Tsdb *tsdb = Tsdb::inst(tstamp, true);
+        m_ooo_buff->init(m_id, tsdb, true);
+    }
+
+    bool ok = m_ooo_buff->add_data_point(tstamp, dp.get_value());
 
     if (! ok)
     {
         ASSERT(m_ooo_buff->is_full());
 
-        Tsdb *tsdb = get_tsdb();
-        PageInfo *info = m_ooo_buff->flush(false, tsdb);
-        if (info != nullptr)
-        {
-            ASSERT(m_ooo_buff == m_ooo_pages.back());
-            m_ooo_pages.back() = info;
-            tsdb->append_meta(this, info);
-            MemoryManager::free_recyclable(m_ooo_buff);
-        }
-        m_ooo_buff = get_free_page_on_disk(true);
+        m_ooo_buff->flush(m_id);
+        m_ooo_buff->init(m_id, nullptr, true);
+
         ASSERT(m_ooo_buff->is_empty());
         ASSERT(m_ooo_buff->is_out_of_order());
 
+        if (m_buff != nullptr)
+            m_buff->update_indices(m_ooo_buff);
+
         // try again
-        ok = m_ooo_buff->add_data_point(dp.get_timestamp(), dp.get_value());
+        ok = m_ooo_buff->add_data_point(tstamp, dp.get_value());
         ASSERT(ok);
     }
 
     return ok;
 }
 
+#if 0
 Tag *
 TimeSeries::find_tag_by_name(const char *name) const
 {
     if ((m_tags == nullptr) || (name == nullptr)) return nullptr;
     return Tag::get_key_value_pair(m_tags, name);
 }
+#endif
 
-void
-TimeSeries::query(TimeRange& range, Downsampler *downsampler, DataPointVector& dps)
-{
-    Meter meter(METRIC_TICKTOCK_QUERY_TS_LATENCY_MS);
-
-    if ((m_ooo_buff != nullptr) || (! m_ooo_pages.empty()))
-    {
-        query_with_ooo(range, downsampler, dps);
-    }
-    else
-    {
-        query_without_ooo(range, downsampler, dps);
-    }
-}
-
-void
-TimeSeries::query_with_ooo(TimeRange& range, Downsampler *downsampler, DataPointVector& dps)
-{
-    using container_it = std::pair<DataPointContainer*,int>;
-    auto container_cmp = [](const container_it &lhs, const container_it &rhs)
-    {
-        if (lhs.first->get_data_point(lhs.second).first > rhs.first->get_data_point(rhs.second).first)
-        {
-            return true;
-        }
-        else if (lhs.first->get_data_point(lhs.second).first == rhs.first->get_data_point(rhs.second).first)
-        {
-            if (lhs.first->is_out_of_order() && ! rhs.first->is_out_of_order())
-                return true;
-            else if (! lhs.first->is_out_of_order() && rhs.first->is_out_of_order())
-                return false;
-
-            if (lhs.first->get_page_index() == 0)
-                return true;
-            else if (rhs.first->get_page_index() == 0)
-                return false;
-            else
-                return (lhs.first->get_page_index() > rhs.first->get_page_index());
-        }
-        else
-        {
-            return false;
-        }
-    };
-    std::priority_queue<container_it, std::vector<container_it>, decltype(container_cmp)> pq(container_cmp);
-    size_t size = m_pages.size() + m_ooo_pages.size();
-    DataPointContainer containers[size];
-    size_t count = 0;
-    std::lock_guard<std::mutex> guard(m_lock);
-
-    for (PageInfo *page_info : m_pages)
-    {
-        ASSERT(! page_info->is_empty());
-
-        if (range.has_intersection(page_info->get_time_range()))
-        {
-            containers[count].init(page_info);
-            pq.emplace(&containers[count], 0);
-            count++;
-        }
-    }
-
-    for (PageInfo *page_info : m_ooo_pages)
-    {
-        ASSERT(! page_info->is_empty());
-
-        if (range.has_intersection(page_info->get_time_range()))
-        {
-            containers[count].init(page_info);
-            pq.emplace(&containers[count], 0);
-            count++;
-        }
-    }
-
-    while (! pq.empty())
-    {
-        auto top = pq.top();
-        pq.pop();
-
-        DataPointContainer *container = top.first;
-        int i = top.second;
-        DataPointPair& dp = container->get_data_point(i);
-
-        // TODO: these logic does not belong here.
-        if (range.in_range(dp.first))
-        {
-            // remove duplicates
-            if ((!dps.empty()) && (dps.back().first == dp.first))
-            {
-                dps.back().second = dp.second;
-            }
-            else if (downsampler == nullptr)
-            {
-                dps.push_back(dp);
-            }
-            else
-            {
-                downsampler->add_data_point(dp, dps);
-            }
-        }
-        else if (range.get_to() < dp.first)
-        {
-            break;
-        }
-
-        if ((i+1) < container->size())
-        {
-            pq.emplace(container, i+1);
-        }
-    }
-}
-
-void
-TimeSeries::query_without_ooo(TimeRange& range, Downsampler *downsampler, DataPointVector& dps)
-{
-    std::lock_guard<std::mutex> guard(m_lock);
-
-    for (PageInfo *page_info : m_pages)
-    {
-        this->query_without_ooo(range, downsampler, dps, page_info);
-    }
-
-    ASSERT(m_ooo_pages.empty());
-    Logger::debug("Found %d data points in ts %T", dps.size(), this);
-}
-
-void
-TimeSeries::query_without_ooo(TimeRange& range, Downsampler *downsampler, DataPointVector& dps, PageInfo *page_info)
-{
-    ASSERT(page_info != nullptr);
-
-    if (get_tsdb_const() == nullptr) return;
-
-    if (! range.has_intersection(page_info->get_time_range())) return;
-
-    // make sure data points are loaded and uncompressed
-    DataPointContainer container;
-    container.init(page_info);
-
-    for (int i = 0; i < container.size(); i++)
-    {
-        DataPointPair& dp = container.get_data_point(i);
-        ASSERT(page_info->get_time_range().in_range(dp.first));
-
-        // TODO: these logic does not belong here.
-        if (range.in_range(dp.first))
-        {
-            if (downsampler == nullptr)
-            {
-                dps.push_back(dp);
-            }
-            else
-            {
-                downsampler->add_data_point(dp, dps);
-            }
-        }
-        else if (range.get_to() < dp.first)
-        {
-            break;
-        }
-    }
-}
-
-void
-TimeSeries::add_data_point_with_dedup(DataPointPair &dp, DataPointPair &prev, PageInfo* &info)
-{
-    bool success = (info != nullptr);
-
-    if (success)
-    {
-        if ((prev.first != dp.first) && (prev.first != 0L))
-        {
-            success = info->add_data_point(prev.first, prev.second);
-        }
-    }
-
-    if (! success)
-    {
-        if (info != nullptr) info->persist();
-        info = get_free_page_on_disk(false);
-
-        if (prev.first != 0L)
-        {
-            success = info->add_data_point(prev.first, prev.second);
-            ASSERT(success);
-        }
-    }
-
-    prev.first = dp.first;
-    prev.second = dp.second;
-}
-
-// Compress all out-of-order pages in m_ooo_pages[], if any.
-// Return true if we actually compacted something.
 bool
-TimeSeries::compact(MetaFile& meta_file)
+TimeSeries::query_for_data(Tsdb *tsdb, TimeRange& range, std::vector<DataPointContainer*>& data)
 {
-    DataPointVector dps;
-    PageInfo *info = nullptr;
-    Tsdb *tsdb = get_tsdb();
-    TimeRange range = tsdb->get_time_range();
-    int id_from, id_to, file_id;
+    bool has_ooo = false;
+    //std::lock_guard<std::mutex> guard(m_lock);
+    std::lock_guard<std::mutex> guard(m_locks[m_id % m_lock_count]);
 
-    // get all data points
-    query_with_ooo(range, nullptr, dps);
-
-    Logger::trace("ts (%s, %s): Found %d dps to compact", m_metric, m_key, dps.size());
-
-    for (auto& dp : dps)
+    if ((m_buff != nullptr) && (! m_buff->is_empty()) && (m_buff->get_tsdb() == tsdb))
     {
-        ASSERT(range.in_range(dp.first));
-        Logger::trace("dp.first=%" PRIu64 ", dp.second=%f", dp.first, dp.second);
+        TimeRange r = m_buff->get_time_range();
 
-        if (info == nullptr)
+        if (range.has_intersection(r))
         {
-            info = tsdb->get_free_page_for_compaction();
-            meta_file.append(this, info);
-            file_id = info->get_file_id();
-            id_from = id_to = info->get_id();
-        }
+            PageIndex page_idx = 0;
 
-        bool ok = info->add_data_point(dp.first, dp.second);
-
-        if (! ok)
-        {
-            ASSERT(info->is_full());
-            info->flush(false, tsdb);
-            MemoryManager::free_recyclable(info);
-
-            info = tsdb->get_free_page_for_compaction();
-            meta_file.append(this, info);
-            ok = info->add_data_point(dp.first, dp.second);
-            ASSERT(ok);
-
-            if (info->get_file_id() == file_id)
+            if (! data.empty())
             {
-                id_to = info->get_id();
+                DataPointContainer *last = data.back();
+                page_idx = last->get_page_index() + 1;
             }
-            else
-            {
-                meta_file.append(this, file_id, id_from, id_to);
 
-                file_id = info->get_file_id();
-                id_from = id_to = info->get_id();
-            }
+            DataPointContainer *container = (DataPointContainer*)
+                MemoryManager::alloc_recyclable(RecyclableType::RT_DATA_POINT_CONTAINER);
+            container->collect_data(m_buff);
+            container->set_page_index(page_idx);
+            ASSERT(container->size() > 0);
+            data.push_back(container);
         }
     }
 
-    if (info != nullptr)
+    if ((m_ooo_buff != nullptr) && (! m_ooo_buff->is_empty()) && (m_ooo_buff->get_tsdb() == tsdb))
     {
-        info->shrink_to_fit();
-        MemoryManager::free_recyclable(info);
-        //meta_file.append(this, file_id, id_from, id_to);
+        TimeRange r = m_ooo_buff->get_time_range();
+
+        if (range.has_intersection(r))
+        {
+            PageIndex page_idx = 0;
+
+            if (! data.empty())
+            {
+                DataPointContainer *last = data.back();
+                page_idx = last->get_page_index() + 1;
+            }
+
+            DataPointContainer *container = (DataPointContainer*)
+                MemoryManager::alloc_recyclable(RecyclableType::RT_DATA_POINT_CONTAINER);
+            container->collect_data(m_ooo_buff);
+            container->set_page_index(page_idx);
+            ASSERT(container->size() > 0);
+            data.push_back(container);
+            has_ooo = true;
+        }
     }
 
-    return (! dps.empty());
-}
-
-void
-TimeSeries::get_all_pages(std::vector<PageInfo*>& pages)
-{
-    for (PageInfo *info: m_ooo_pages)
-    {
-        pages.push_back(info);
-    }
-
-    for (PageInfo *info: m_pages)
-    {
-        pages.push_back(info);
-    }
-}
-
-void
-TimeSeries::append_meta_all(MetaFile& meta)
-{
-    for (PageInfo *info: m_pages)
-    {
-        meta.append(this, info);
-    }
-
-    for (PageInfo *info: m_ooo_pages)
-    {
-        meta.append(this, info);
-    }
-}
-
-void
-TimeSeries::set_check_point()
-{
-    std::lock_guard<std::mutex> guard(m_lock);
-
-    if (m_buff != nullptr) m_buff->persist(true);
-    if (m_ooo_buff != nullptr) m_ooo_buff->persist(true);
-}
-
-const char*
-TimeSeries::c_str(char* buff) const
-{
-    ASSERT(m_key != nullptr);
-    ASSERT(m_metric != nullptr);
-
-    std::snprintf(buff, c_size(), "%s %s", m_metric, m_key);
-    return buff;
-}
-
-int
-TimeSeries::get_dp_count()
-{
-    int count = 0;
-    std::lock_guard<std::mutex> guard(m_lock);
-
-    for (PageInfo *info: m_pages)
-    {
-        count += info->get_dp_count();
-    }
-
-    for (PageInfo *info: m_ooo_pages)
-    {
-        count += info->get_dp_count();
-    }
-
-    return count;
-}
-
-int
-TimeSeries::get_page_count(bool ooo)
-{
-    int count = 0;
-    std::lock_guard<std::mutex> guard(m_lock);
-
-    if (ooo)
-    {
-        // count out-of-order pages
-        count += m_ooo_pages.size();
-    }
-    else
-    {
-        // count regular (non-out-of-order) pages
-        count += m_pages.size();
-    }
-
-    return count;
+    return has_ooo;
 }
 
 

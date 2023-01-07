@@ -122,6 +122,13 @@ public:
         return false;
     }
 
+    void flush_tsdb()
+    {
+        std::vector<tt::Tsdb*> tsdbs;
+        tt::Tsdb::insts(tt::TimeRange::MAX, tsdbs);
+        for (auto tsdb: tsdbs) tsdb->flush_for_test();
+    }
+
     void query_raw(const char *metric, tt::Timestamp start, tt::DataPointVector& results)
     {
         query_with_downsample(metric, nullptr, start, results);
@@ -206,6 +213,22 @@ public:
             for (int i = 1; i < cnt; i++)
                 dps.emplace_back(dps[i-1].first+rand_plus_minus(0,10)+30, dps[i-1].second+rand_plus_minus(0,50));
         }
+    }
+
+    static int gen_random_string(char *buff, int min, int max)
+    {
+        static const char alphanum[] =
+            "_=; "
+            "0123456789"
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+            "abcdefghijklmnopqrstuvwxyz";
+        int len = tt::random(min, max);
+
+        for (int i = 0; i < len; i++)
+            buff[i] = alphanum[tt::random(0, sizeof(alphanum)-2)];
+        buff[len] = 0;
+
+        return len + 1;
     }
 
     static void cleanup_data_dir()

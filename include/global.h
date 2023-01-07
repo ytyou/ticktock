@@ -21,6 +21,7 @@
 #include <string>
 #include <atomic>
 #include <thread>
+#include "type.h"
 
 
 namespace tt
@@ -28,7 +29,7 @@ namespace tt
 
 
 #define TT_MAJOR_VERSION    0
-#define TT_MINOR_VERSION    5
+#define TT_MINOR_VERSION    10
 #define TT_PATCH_VERSION    0
 
 class HttpServer;
@@ -47,7 +48,8 @@ extern thread_local std::string g_thread_id;
 extern HttpServer *http_server_ptr;
 extern TcpServer *tcp_server_ptr;
 extern UdpServer *udp_server_ptr;
-extern long int g_page_size;
+extern PageSize g_page_size;
+extern PageCount g_page_count;
 extern const long int g_sys_page_size;
 extern bool g_opt_reuse_port;       // reuse port when bind()?
 extern bool g_tstamp_resolution_ms;
@@ -55,6 +57,11 @@ extern bool g_cluster_enabled;
 extern bool g_self_meter_enabled;
 extern std::atomic<bool> g_shutdown_requested;
 extern std::atomic<std::thread::id> g_handler_thread_id;
+
+#ifdef _DEBUG
+extern std::atomic<std::uint64_t> g_total_dps_count;
+extern std::atomic<std::uint64_t> g_total_page_count;
+#endif
 
 
 }
