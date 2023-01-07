@@ -38,6 +38,7 @@ MiscTests::run()
     strbuf_tests();
     url_decode_tests();
     time_conv_tests();
+    parse_dp_tests();
 
     log("Finished %s", m_name);
 }
@@ -267,6 +268,39 @@ MiscTests::time_conv_tests()
     CONFIRM(convert_time(2, TimeUnit::YEAR, TimeUnit::MIN) == 2*365*24*60);
     CONFIRM(convert_time(2, TimeUnit::YEAR, TimeUnit::SEC) == 2*365*24*3600L);
     CONFIRM(convert_time(2, TimeUnit::YEAR, TimeUnit::MS) == (Timestamp)2*365*24*3600000L);
+
+    m_stats.add_passed(1);
+}
+
+void
+MiscTests::parse_dp_tests()
+{
+    char buff[1024];
+
+    {
+        DataPoint dp;
+        std::strcpy(buff, "city=seattle state=wa");
+        dp.set_raw_tags(buff);
+        CONFIRM(dp.parse_raw_tags());
+    }
+
+    {
+        // tags with spaces in them
+        DataPoint dp;
+        std::strcpy(buff, "city=long beach state=ny");
+        dp.set_raw_tags(buff);
+        CONFIRM(! dp.parse_raw_tags());
+    }
+
+    {
+        // tags with spaces in them
+        DataPoint dp;
+        std::strcpy(buff, "host name=host1 cpu=2");
+        dp.set_raw_tags(buff);
+        CONFIRM(! dp.parse_raw_tags());
+    }
+
+    m_stats.add_passed(1);
 }
 
 

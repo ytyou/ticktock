@@ -39,6 +39,7 @@ private:
     void strbuf_tests();
     void url_decode_tests();
     void time_conv_tests();
+    void parse_dp_tests();
 };
 
 

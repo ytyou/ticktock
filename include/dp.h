@@ -69,7 +69,7 @@ public:
     char* from_http(char* http);
     char* from_json(char* json);
     bool from_plain(char* &text);
-    void parse_raw_tags();
+    bool parse_raw_tags();
 
     inline const char *get_metric() { return m_metric; }
     inline char *get_raw_tags() { return m_raw_tags; }

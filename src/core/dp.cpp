@@ -267,24 +267,28 @@ DataPoint::next_tag(char* &text)
     return (tmp == ' ');
 }
 
-void
+bool
 DataPoint::parse_raw_tags()
 {
-    if (m_raw_tags == nullptr) return;
+    if (m_raw_tags == nullptr) return false;
 
     char *key, *val, *space, *eq;
 
     for (key = m_raw_tags; key != nullptr; key = space)
     {
         while (*key == ' ') key++;
-        eq = strchr(key, '=');
-        if (eq == nullptr) return;
+        //eq = strchr(key, '=');
+        for (eq = key; *eq != '=' && *eq != ' ' && *eq != 0; eq++)
+            /* do nothing */;
+        if (*eq != '=') return false;
         *eq = 0;
         val = eq + 1;
         space = strchr(val, ' ');
         if (space != nullptr) *space++ = 0;
         add_tag(key, val);
     }
+
+    return true;
 }
 
 const char *

@@ -117,7 +117,8 @@ Mapping::get_ts(DataPoint& dp)
         if (raw_tags != nullptr)
         {
             raw_tags = STRDUP(raw_tags);
-            dp.parse_raw_tags();
+            if (UNLIKELY(! dp.parse_raw_tags()))
+                return nullptr;
             //dp.set_raw_tags(raw_tags);
         }
 
