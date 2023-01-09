@@ -233,14 +233,11 @@ struct __attribute__ ((__packed__)) append_log_entry
 };
 
 
-class __attribute__ ((__packed__)) PageInfo
+class __attribute__ ((__packed__)) PageInMemory
 {
 public:
-    PageInfo();
-    ~PageInfo();
-
-    // init a page info representing an existing page on disk
-    //void init_from_disk(DataFile *df, struct page_info_on_disk *header, PageCount header_idx);
+    PageInMemory(TimeSeriesId id, Tsdb *tsdb, bool is_ooo, PageSize actual_size = 0);
+    ~PageInMemory();
 
     // prepare to be used to represent a different page
     bool is_full();
@@ -252,16 +249,9 @@ public:
     int in_range(Timestamp tstamp) const;
     inline Tsdb *get_tsdb() const { return m_tsdb; }
 
-    //inline PageIndex get_page_index() { return get_page_header()->m_page_index; }
-    //inline FileIndex get_next_file() { return get_page_header()->get_next_file(); }
-    //inline HeaderIndex get_next_header() { return get_page_header()->get_next_header(); }
-
     int get_dp_count() const;
     PageCount get_file_id() const;
     int get_page_order() const;
-
-    virtual struct page_info_on_disk *get_page_header() = 0;
-    virtual PageIndex get_global_page_index() = 0;
 
     // 'dps' will NOT be cleared first; data points will be accumulated
     // into 'dps';
@@ -270,11 +260,26 @@ public:
     // existing compressor, if any, will be destroyed, and new one created
     void setup_compressor(const TimeRange& range, PageSize page_size, int compressor_version);
 
-    void update_indices(PageInfo *info);
+    void update_indices(PageInMemory *info);
+
+    void init(TimeSeriesId id, Tsdb *tsdb, bool is_ooo, PageSize actual_size = 0);
+    PageSize flush(TimeSeriesId id, bool compact = false);  // return next page size
+    void append(TimeSeriesId id, FILE *file);
+
+    // return true if dp is added; false if page is full;
+    bool add_data_point(Timestamp tstamp, double value);
+    PageIndex get_global_page_index() { return TT_INVALID_PAGE_INDEX - 1; }
+
+    inline struct page_info_on_disk *get_page_header()
+    {
+        return &m_page_header;
+    }
 
 private:
     friend class DataFile;
     //friend class page_info_index_less;
+
+    struct page_info_on_disk m_page_header;
 
 protected:
     Tsdb *m_tsdb;
@@ -282,9 +287,10 @@ protected:
     Timestamp m_start;
     Compressor *m_compressor;
 
-};  // class PageInfo
+};  // class PageInMemory
 
 
+#if 0
 // This is used to write data.
 class __attribute__ ((__packed__)) PageInMemory : public PageInfo
 {
@@ -308,6 +314,7 @@ private:
 
     struct page_info_on_disk m_page_header;
 };
+#endif
 
 
 #if 0

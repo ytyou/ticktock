@@ -60,7 +60,7 @@ enum HttpContentType : unsigned char
 };
 
 
-class HttpResponse : public Serializable
+class __attribute__ ((__packed__)) HttpResponse : public Serializable
 {
 public:
     int response_size;
@@ -101,7 +101,7 @@ private:
 };
 
 
-class HttpRequest : public Serializable
+class __attribute__ ((__packed__)) HttpRequest : public Serializable
 {
 public:
     bool close;     // Connection: close

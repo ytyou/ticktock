@@ -689,12 +689,6 @@ Tsdb::shutdown()
     Logger::info("Tsdb::shutdown complete");
 }
 
-PageInfo *
-Tsdb::get_the_page_on_disk(PageCount id, PageCount header_index)
-{
-    return nullptr;     // TODO: implement it
-}
-
 void
 Tsdb::get_last_header_indices(TimeSeriesId id, FileIndex& file_idx, HeaderIndex& header_idx)
 {

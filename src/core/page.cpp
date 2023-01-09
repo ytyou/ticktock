@@ -42,22 +42,8 @@ namespace tt
 {
 
 
-PageInfo::PageInfo() :
-    m_compressor(nullptr),
-    m_page(nullptr),
-    m_tsdb(nullptr),
-    m_start(0)
-{
-}
-
-PageInfo::~PageInfo()
-{
-    if (m_page != nullptr)
-        std::free(m_page);
-}
-
 bool
-PageInfo::is_full()
+PageInMemory::is_full()
 {
     if (m_compressor != nullptr)
         return m_compressor->is_full();
@@ -66,7 +52,7 @@ PageInfo::is_full()
 }
 
 bool
-PageInfo::is_empty()
+PageInMemory::is_empty()
 {
     if (m_compressor != nullptr)
         return m_compressor->is_empty();
@@ -75,7 +61,7 @@ PageInfo::is_empty()
 }
 
 TimeRange
-PageInfo::get_time_range()
+PageInMemory::get_time_range()
 {
     struct page_info_on_disk *header = get_page_header();
     ASSERT(header != nullptr);
@@ -83,7 +69,7 @@ PageInfo::get_time_range()
 }
 
 int
-PageInfo::in_range(Timestamp tstamp) const
+PageInMemory::in_range(Timestamp tstamp) const
 {
     ASSERT(m_tsdb != nullptr);
     return m_tsdb->in_range(tstamp);
@@ -92,7 +78,7 @@ PageInfo::in_range(Timestamp tstamp) const
 /* 'range' should be the time range of the Tsdb.
  */
 void
-PageInfo::setup_compressor(const TimeRange& range, PageSize page_size, int compressor_version)
+PageInMemory::setup_compressor(const TimeRange& range, PageSize page_size, int compressor_version)
 {
     if (m_compressor != nullptr)
     {
@@ -107,7 +93,7 @@ PageInfo::setup_compressor(const TimeRange& range, PageSize page_size, int compr
 }
 
 void
-PageInfo::update_indices(PageInfo *info)
+PageInMemory::update_indices(PageInMemory *info)
 {
     ASSERT(info != nullptr);
 
@@ -122,31 +108,41 @@ PageInfo::update_indices(PageInfo *info)
 }
 
 Timestamp
-PageInfo::get_last_tstamp() const
+PageInMemory::get_last_tstamp() const
 {
     ASSERT(m_compressor != nullptr);
     return m_compressor->get_last_tstamp();
 }
 
 void
-PageInfo::get_all_data_points(DataPointVector& dps)
+PageInMemory::get_all_data_points(DataPointVector& dps)
 {
     ASSERT(m_compressor != nullptr);
     m_compressor->uncompress(dps);
 }
 
 int
-PageInfo::get_dp_count() const
+PageInMemory::get_dp_count() const
 {
     return (m_compressor == nullptr) ? 0 : m_compressor->get_dp_count();
 }
 
 
-PageInMemory::PageInMemory(TimeSeriesId id, Tsdb *tsdb, bool is_ooo, PageSize actual_size)
+PageInMemory::PageInMemory(TimeSeriesId id, Tsdb *tsdb, bool is_ooo, PageSize actual_size) :
+    m_compressor(nullptr),
+    m_page(nullptr),
+    m_tsdb(nullptr),
+    m_start(0)
 {
     m_page_header.init();
     ASSERT(m_page == nullptr);
     init(id, tsdb, is_ooo, actual_size);
+}
+
+PageInMemory::~PageInMemory()
+{
+    if (m_page != nullptr)
+        std::free(m_page);
 }
 
 void

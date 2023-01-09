@@ -106,7 +106,7 @@ private:
     //std::unordered_map<const char*,TimeSeries*,hash_func,eq_func> m_map;
 
     std::atomic<TimeSeries*> m_ts_head;
-    int m_tag_count;    // -1: uninitialized; -2: inconsistent;
+    int16_t m_tag_count;    // -1: uninitialized; -2: inconsistent;
 
     //Partition *m_partition;
 };
@@ -156,9 +156,6 @@ public:
                          void *page,
                          bool compact);
     HeaderFile *get_header_file(FileIndex file_idx);
-
-    // Caller should acquire m_pm_lock before calling this method
-    PageInfo *get_the_page_on_disk(PageCount id, PageCount header_index);
 
     inline const TimeRange& get_time_range() const
     {
