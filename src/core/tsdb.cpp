@@ -955,7 +955,9 @@ Tsdb::http_api_put_handler_json(HttpRequest& request, HttpResponse& response)
         return false;
     }
 
-    bool success = true;
+    //bool success = true;
+    int success = 0;
+    int failed = 0;
 
     while ((*curr != ']') && (*curr != 0))
     {
@@ -963,12 +965,17 @@ Tsdb::http_api_put_handler_json(HttpRequest& request, HttpResponse& response)
         curr = dp.from_json(curr+1);
         if (curr == nullptr) break;
 
-        success = add_data_point(dp, false) && success;
+        if (add_data_point(dp, false))
+            success++;
+        else
+            failed++;
         while (isspace(*curr)) curr++;
     }
 
-    response.init((success ? 200 : 500), HttpContentType::PLAIN);
-    return success;
+    char buff[64];
+    snprintf(buff, sizeof(buff), "{\"success\":%d,\"failed\":%d}", success, failed);
+    response.init(200, HttpContentType::JSON, std::strlen(buff), buff);
+    return true;
 }
 
 bool

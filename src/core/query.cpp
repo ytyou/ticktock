@@ -479,20 +479,23 @@ Query::create_query_results(std::vector<QueryTask*>& qtv, std::vector<QueryResul
         {
             // find the existing QueryResults ts belongs to, if any
             QueryResults *result = nullptr;
+            Tag_v2& qt_tags = qt->get_v2_tags();
 
             for (QueryResults *r: results)
             {
                 bool match = true;
-                Tag *tags = r->get_tags();
 
-                if (tags != nullptr)
+                for (Tag *tag = r->get_tags(); tag != nullptr; tag = tag->next())
                 {
-                    TagMatcher *matcher = (TagMatcher*)
-                        MemoryManager::alloc_recyclable(RecyclableType::RT_TAG_MATCHER);
-                    matcher->init(tags);
-                    if (! matcher->match(qt->get_v2_tags()))
+                    // skip those tags that are not queried
+                    if (find_by_key(tag->m_key) == nullptr) continue;
+
+                    //if (! Tag::match_value(qt->get_tags(), tag->m_key, tag->m_value))
+                    if (! qt_tags.match(tag->m_key, tag->m_value))
+                    {
                         match = false;
-                    MemoryManager::free_recyclable(matcher);
+                        break;
+                    }
                 }
 /*
                 bool match = true;

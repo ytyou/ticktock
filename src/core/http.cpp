@@ -269,6 +269,7 @@ HttpServer::recv_http_data(TaskData& data)
     {
         conn->buff = nullptr;
         MemoryManager::free_network_buffer(buff);
+        conn->response.recycle();
     }
 
     // closing the fd will deregister it from epoll
@@ -783,7 +784,8 @@ HttpResponse::init()
     status_code = 0;
     content_type = HttpContentType::JSON;
     content_length = 0;
-    response = buffer = MemoryManager::alloc_network_buffer();
+    response = buffer = nullptr;
+    //response = buffer = MemoryManager::alloc_network_buffer();
 }
 
 void
@@ -794,7 +796,12 @@ HttpResponse::init(uint16_t code, HttpContentType type)
     content_length = 0;
 
     if (response == nullptr)
-        response = buffer = MemoryManager::alloc_network_buffer();
+    {
+        response = buffer = MemoryManager::alloc_network_buffer_small();
+        buffer_size = MemoryManager::get_network_buffer_small_size();
+        //response = buffer = MemoryManager::alloc_network_buffer();
+        //buffer_size = MemoryManager::get_network_buffer_size();
+    }
 
     if (id == nullptr)
     {
@@ -819,7 +826,7 @@ HttpResponse::init(uint16_t code, HttpContentType type, size_t length)
     ASSERT((100 <= code) && (code <= 999));
 
     // prepend the HTTP headers
-    char *body = get_buffer();
+    char *body = get_buffer(length);
     char first = *body; // save
     size_t size = buffer - body;
     size_t digits = std::to_string(length).size();
@@ -871,10 +878,7 @@ HttpResponse::init(uint16_t code, HttpContentType type, size_t length, const cha
     content_type = type;
     content_length = length;
 
-    if (response == nullptr)
-    {
-        response = buffer = MemoryManager::alloc_network_buffer();
-    }
+    get_buffer(length); // make sure buffer is allocated
 
     if (id == nullptr)
     {
@@ -911,7 +915,10 @@ HttpResponse::recycle()
 {
     if (buffer != nullptr)
     {
-        MemoryManager::free_network_buffer(buffer);
+        if (buffer_size == MemoryManager::get_network_buffer_size())
+            MemoryManager::free_network_buffer(buffer);
+        else
+            MemoryManager::free_network_buffer_small(buffer);
         response = buffer = nullptr;
     }
     else if (response != nullptr)
@@ -919,6 +926,35 @@ HttpResponse::recycle()
         free(response);
         response = nullptr;
     }
+}
+
+char *
+HttpResponse::get_buffer()
+{
+    return get_buffer(MemoryManager::get_network_buffer_size());
+}
+
+char *
+HttpResponse::get_buffer(std::size_t length)
+{
+    if ((buffer != nullptr) && (buffer_size <= length))
+        recycle();
+
+    if (buffer == nullptr)
+    {
+        if (MAX_SMALL_PAYLOAD <= length)
+        {
+            response = buffer = MemoryManager::alloc_network_buffer();
+            buffer_size = MemoryManager::get_network_buffer_size();
+        }
+        else
+        {
+            response = buffer = MemoryManager::alloc_network_buffer_small();
+            buffer_size = MemoryManager::get_network_buffer_small_size();
+        }
+    }
+
+    return buffer + MAX_HEADER_SIZE;
 }
 
 char *

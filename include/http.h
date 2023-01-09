@@ -50,6 +50,7 @@ extern const char *HTTP_API_VERSION;
 #define MAX_CONTENT_TYPE_SIZE   32
 // This can only accommodate Content-Type, Content-Length, and X-Request-ID.
 #define MAX_HEADER_SIZE         (70 + MAX_ID_SIZE + MAX_REASON_SIZE + MAX_CONTENT_TYPE_SIZE)
+#define MAX_SMALL_PAYLOAD       128
 
 enum HttpContentType : unsigned char
 {
@@ -76,8 +77,9 @@ public:
     //          global/static/live-forever variables with no content/body.
     HttpResponse(uint16_t code, HttpContentType type);
 
-    inline char *get_buffer() { ASSERT(buffer != nullptr); return buffer + MAX_HEADER_SIZE; }
-    inline size_t get_buffer_size() const { return MemoryManager::get_network_buffer_size() - MAX_HEADER_SIZE; }
+    char *get_buffer();
+    char *get_buffer(std::size_t length);
+    inline size_t get_buffer_size() const { return buffer_size - MAX_HEADER_SIZE; }
 
     void init();
     void init(uint16_t code, HttpContentType type = HttpContentType::JSON);
@@ -93,6 +95,7 @@ public:
 
 private:
     char *buffer;       // original raw buffer
+    uint32_t buffer_size;
 
     static const char *status_code_to_reason(uint16_t status_code);
 };

@@ -126,6 +126,7 @@ public:
     bool match(TagId key_id);
     bool match(TagId key_id, const char *value);
     bool match(TagId key_id, std::vector<TagId> value_ids);
+    bool match(const char *key, const char *value);
 
     Tag *get_v1_tags() const;
     Tag *get_cloned_v1_tags(StringBuffer& strbuf) const;

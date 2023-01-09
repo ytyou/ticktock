@@ -297,6 +297,46 @@ Tag_v2::match(TagId key_id, std::vector<TagId> value_ids)
     return false;
 }
 
+bool
+Tag_v2::match(const char *key, const char *value)
+{
+    ASSERT(key != nullptr);
+    ASSERT(value != nullptr);
+    ASSERT(std::strchr(value, '|') == nullptr);
+
+    TagId kid = get_id(key);
+    if (TT_INVALID_TAG_ID == kid) return false;
+
+    TagId vid = get_value_id(kid);
+    if (TT_INVALID_TAG_ID == vid) return false;
+
+    const char *vname = get_name(vid);
+    ASSERT(vname != nullptr);
+
+    if (std::strchr(value, '|') != nullptr)
+    {
+        char buff[std::strlen(value)+1];
+        std::strcpy(buff, value);
+        std::vector<char*> tokens;
+        tokenize(buff, '|', tokens);
+        for (char *v: tokens)
+        {
+            if (std::strcmp(vname, v) == 0)
+                return true;
+        }
+        return false;
+    }
+    else if (ends_with(value, '*'))
+    {
+        size_t len = std::strlen(value) - 1;
+        return (std::strncmp(vname, value, len) == 0);
+    }
+    else
+    {
+        return (std::strcmp(vname, value) == 0);
+    }
+}
+
 Tag *
 Tag_v2::get_v1_tags() const
 {

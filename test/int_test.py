@@ -118,6 +118,10 @@ class DataPoints(object):
 
         self._dps = []
         self._start = start
+        self._end = 0
+
+        if metric_count == 0:
+            return
 
         tstamp = self._start
 
@@ -142,6 +146,13 @@ class DataPoints(object):
                 tstamp = tstamp + random.randint(0, 1000)
 
         self._end = tstamp + 1;
+
+    def add_dp(self, dp):
+        self._dps.append(dp)
+        if self._start > dp.get_timestamp():
+            self._start = dp.get_timestamp()
+        if self._end < dp.get_timestamp():
+            self._end = dp.get_timestamp()
 
     def get_dps(self):
         return self._dps
@@ -980,6 +991,66 @@ class Advanced_Query_With_Fill_Tests(Test):
             self.wait_for_tt(self._options.timeout)
 
 
+class Advanced_Query_With_Aggregation(Test):
+
+    def __init__(self, options, prefix="aq", tcp_socket=None):
+        super(Advanced_Query_With_Aggregation, self).__init__(options, prefix, tcp_socket)
+
+    def __call__(self, run_tt=False, via_tcp=False):
+
+        if run_tt:
+            # generate config
+            config = TickTockConfig(self._options)
+            #config.add_entry("tsdb.read_only.sec", "20");
+            config()    # generate config
+
+            # start tt
+            self.start_tt()
+
+        # insert some dps
+        dps = DataPoints("notused", 0, metric_count=0)
+
+        tags = {}
+        tags["tag1"] = "val1"
+        tags["tag2"] = "val2"
+        tags["tag3"] = "val3"
+        dp = DataPoint(self._prefix+"_metric_agg", self._options.start, random.uniform(0,100), tags)
+        dps.add_dp(dp)
+
+        tags = {}
+        tags["tag1"] = "val1"
+        tags["tag2"] = "val3"
+        tags["tag3"] = "val2"
+        dp = DataPoint(self._prefix+"_metric_agg", self._options.start, random.uniform(0,100), tags)
+        dps.add_dp(dp)
+
+        tags = {}
+        tags["tag1"] = "val1"
+        tags["tag2"] = "val2"
+        tags["tag3"] = "val4"
+        dp = DataPoint(self._prefix+"_metric_agg", self._options.start, random.uniform(0,100), tags)
+        dps.add_dp(dp)
+
+        if via_tcp:
+            self.send_data_tcp(dps)
+        else:
+            self.send_data(dps)
+        time.sleep(2)
+
+        tags = {}
+        tags["tag1"] = "val1"
+        tags["tag2"] = "*"
+        query = Query(metric=self._prefix+"_metric_agg", start=self._options.start, end=dps._end+99999, downsampler="1h-avg", aggregator="sum", tags=tags)
+        self.query_and_verify(query)
+
+        if run_tt:
+            # stop tt
+            self.stop_tt()
+
+            # make sure tt stopped
+            self.wait_for_tt(self._options.timeout)
+
+
 class Query_Tests(Test):
 
     def __init__(self, options, metric_count=2, metric_cardinality=2, tag_cardinality=2):
@@ -1018,6 +1089,12 @@ class Query_Tests(Test):
 
         self.start_tt()
         self.connect_to_tcp()
+
+        print "Running Advanced_Query_With_Aggregation()..."
+        test = Advanced_Query_With_Aggregation(self._options, prefix=prefix)
+        test(run_tt=False)
+        if test._failed > 0:
+            print "[FAIL] Advanced_Query_With_Aggregation() failed"
 
         for metric_cnt in range(2, self._metric_count+1):
             for metric_card in range(2, self._metric_cardinality+1):
@@ -1725,6 +1802,9 @@ class TestRunner(object):
 
             try:
                 test()
+            except Exception as e:
+                test._failed = test._failed + 1
+                print(e)
             except:
                 test._failed = test._failed + 1
                 sys.stderr.write("Unexpected error: %s\n" % sys.exc_info()[0])

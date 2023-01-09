@@ -364,7 +364,7 @@ HeaderFile::HeaderFile(const std::string& file_name, FileIndex id, PageCount pag
 HeaderFile::HeaderFile(FileIndex id, const std::string& file_name) :
     MmapFile(file_name),
     m_id(id),
-    m_page_count(0)
+    m_page_count(g_page_count)
 {
 }
 
@@ -412,9 +412,23 @@ HeaderFile::restore(const std::string& file_name)
 void
 HeaderFile::open(bool for_read)
 {
-    off_t length =
-        sizeof(struct tsdb_header) + m_page_count * sizeof(struct page_info_on_disk);
-    MmapFile::open(length, for_read, false, true);
+    bool is_new = ! exists();
+    if (is_new && for_read) return;
+
+    if (is_new)
+    {
+        ASSERT(m_page_count > 0);
+        off_t length =
+            sizeof(struct tsdb_header) + m_page_count * sizeof(struct page_info_on_disk);
+        MmapFile::open(length, for_read, false, true);
+    }
+    else
+    {
+        MmapFile::open_existing(for_read, false);
+        struct tsdb_header *header = get_tsdb_header();
+        m_page_count = header->m_page_count;
+        ASSERT(m_page_count > 0);
+    }
 }
 
 PageSize

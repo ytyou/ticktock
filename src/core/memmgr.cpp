@@ -43,6 +43,7 @@ namespace tt
 
 bool MemoryManager::m_initialized = false;
 uint64_t MemoryManager::m_network_buffer_len = 0;
+uint64_t MemoryManager::m_network_buffer_small_len = 0;
 
 std::mutex MemoryManager::m_page_lock;
 void *MemoryManager::m_page_free_list = nullptr;
@@ -50,14 +51,17 @@ void *MemoryManager::m_page_free_list = nullptr;
 std::mutex MemoryManager::m_network_lock;
 char *MemoryManager::m_network_buffer_free_list = nullptr;
 
+std::mutex MemoryManager::m_network_small_lock;
+char *MemoryManager::m_network_buffer_small_free_list = nullptr;
+
 std::mutex MemoryManager::m_locks[RecyclableType::RT_COUNT];
 Recyclable * MemoryManager::m_free_lists[RecyclableType::RT_COUNT];
 
-std::atomic<int> MemoryManager::m_free[RecyclableType::RT_COUNT+2];
-std::atomic<int> MemoryManager::m_total[RecyclableType::RT_COUNT+2];
+std::atomic<int> MemoryManager::m_free[RecyclableType::RT_COUNT+3];
+std::atomic<int> MemoryManager::m_total[RecyclableType::RT_COUNT+3];
 
 std::mutex MemoryManager::m_garbage_lock;
-int MemoryManager::m_max_usage[RecyclableType::RT_COUNT+2][MAX_USAGE_SIZE];
+int MemoryManager::m_max_usage[RecyclableType::RT_COUNT+3][MAX_USAGE_SIZE];
 int MemoryManager::m_max_usage_idx;
 
 #ifdef _DEBUG
@@ -123,6 +127,51 @@ MemoryManager::free_network_buffer(char* buff)
     m_free[RecyclableType::RT_COUNT]++;
 }
 
+char *
+MemoryManager::alloc_network_buffer_small()
+{
+    char* buff = nullptr;
+
+    {
+        std::lock_guard<std::mutex> guard(m_network_small_lock);
+        buff = m_network_buffer_small_free_list;
+        if (buff != nullptr)
+        {
+            m_network_buffer_small_free_list = *((char**)buff);
+            m_free[RecyclableType::RT_COUNT+1]--;
+        }
+    }
+
+    ASSERT(m_initialized);
+
+    if (buff == nullptr)
+    {
+        // TODO: check if we have enough memory
+        buff =
+            static_cast<char*>(malloc(m_network_buffer_small_len));
+        if (buff == nullptr)
+            throw std::runtime_error("Out of memory");
+        m_total[RecyclableType::RT_COUNT+1]++;
+    }
+
+    return buff;
+}
+
+void
+MemoryManager::free_network_buffer_small(char* buff)
+{
+    if (UNLIKELY(buff == nullptr))
+    {
+        Logger::error("Passing nullptr to MemoryManager::free_network_buffer()");
+        return;
+    }
+
+    std::lock_guard<std::mutex> guard(m_network_small_lock);
+    *((char**)buff) = m_network_buffer_small_free_list;
+    m_network_buffer_small_free_list = buff;
+    m_free[RecyclableType::RT_COUNT+1]++;
+}
+
 void *
 MemoryManager::alloc_memory_page()
 {
@@ -134,7 +183,7 @@ MemoryManager::alloc_memory_page()
         if (page != nullptr)
         {
             m_page_free_list = *((char**)page);
-            m_free[RecyclableType::RT_COUNT+1]--;
+            m_free[RecyclableType::RT_COUNT+2]--;
         }
     }
 
@@ -146,7 +195,7 @@ MemoryManager::alloc_memory_page()
         page = std::malloc(g_page_size);
         if (page == nullptr)
             throw std::runtime_error("Out of memory");
-        m_total[RecyclableType::RT_COUNT+1]++;
+        m_total[RecyclableType::RT_COUNT+2]++;
     }
 
     return page;
@@ -164,7 +213,7 @@ MemoryManager::free_memory_page(void* page)
     std::lock_guard<std::mutex> guard(m_page_lock);
     *((void**)page) = m_page_free_list;
     m_page_free_list = page;
-    m_free[RecyclableType::RT_COUNT+1]++;
+    m_free[RecyclableType::RT_COUNT+2]++;
 }
 
 void
@@ -183,20 +232,24 @@ MemoryManager::init()
     Logger::info("mm::page-size = %u", g_page_size);
     g_page_count = Config::get_int(CFG_TSDB_PAGE_COUNT, CFG_TSDB_PAGE_COUNT_DEF);
 
+    m_network_buffer_small_len = MAX_HEADER_SIZE + MAX_SMALL_PAYLOAD;
     m_network_buffer_len = Config::get_bytes(CFG_TCP_BUFFER_SIZE, CFG_TCP_BUFFER_SIZE_DEF);
-    if (m_network_buffer_len < g_page_size) m_network_buffer_len = g_page_size;
-    // make sure it's multiple of g_page_size
-    m_network_buffer_len = ((long)m_network_buffer_len / g_page_size) * g_page_size;
-    Logger::info("mm::m_network_buffer_len = %d", m_network_buffer_len);
+    if (m_network_buffer_len < g_sys_page_size) m_network_buffer_len = g_sys_page_size;
+    // make sure it's multiple of g_sys_page_size
+    m_network_buffer_len = ((long)m_network_buffer_len / g_sys_page_size) * g_sys_page_size;
+    Logger::info("mm::m_network_buffer_len = %" PRIu64, m_network_buffer_len);
     ASSERT(m_network_buffer_len > 0);
+    if (m_network_buffer_small_len > m_network_buffer_len)
+        m_network_buffer_small_len = m_network_buffer_len;
+    Logger::info("mm::m_network_buffer_small_len = %" PRIu64, m_network_buffer_small_len);
     for (int i = 0; i < RecyclableType::RT_COUNT; i++)
         m_free_lists[i] = nullptr;
-    for (int i = 0; i <= RecyclableType::RT_COUNT+1; i++)
+    for (int i = 0; i <= RecyclableType::RT_COUNT+2; i++)
         m_free[i] = m_total[i] = 0;
     m_initialized = true;
 
     m_max_usage_idx = 0;
-    for (int i = 0; i <= RecyclableType::RT_COUNT+1; i++)
+    for (int i = 0; i <= RecyclableType::RT_COUNT+2; i++)
     {
         for (int j = 0; j < MAX_USAGE_SIZE; j++)
             m_max_usage[i][j] = 0;
@@ -267,7 +320,8 @@ MemoryManager::collect_stats(Timestamp ts, std::vector<DataPoint> &dps)
     COLLECT_STATS_FOR(RT_TAG_MATCHER, "tag_matcher", sizeof(TagMatcher))
     COLLECT_STATS_FOR(RT_TCP_CONNECTION, "tcp_connection", sizeof(TcpConnection))
     COLLECT_STATS_FOR(RT_COUNT, "network_buffer", m_network_buffer_len)
-    COLLECT_STATS_FOR(RT_COUNT+1, "memory_page", g_page_size)
+    COLLECT_STATS_FOR(RT_COUNT+1, "network_buffer_small", m_network_buffer_small_len)
+    COLLECT_STATS_FOR(RT_COUNT+2, "memory_page", g_page_size)
 
     float total = 0;
     total += m_total[RT_AGGREGATOR_AVG] * sizeof(AggregatorAvg);
@@ -303,7 +357,8 @@ MemoryManager::collect_stats(Timestamp ts, std::vector<DataPoint> &dps)
     total += m_total[RT_TAG_MATCHER] * sizeof(TagMatcher);
     total += m_total[RT_TCP_CONNECTION] * sizeof(TcpConnection);
     total += m_total[RT_COUNT] * m_network_buffer_len;
-    total += m_total[RT_COUNT+1] * g_page_size;
+    total += m_total[RT_COUNT+1] * m_network_buffer_small_len;
+    total += m_total[RT_COUNT+2] * g_page_size;
 
     dps.emplace_back(ts, total);
     auto& dp = dps.back();
@@ -908,7 +963,7 @@ MemoryManager::collect_garbage(TaskData& data)
     bool gc = (data.integer != 0);
 
     // record usage stats
-    for (int i = 0; i <= RecyclableType::RT_COUNT+1; i++)
+    for (int i = 0; i <= RecyclableType::RT_COUNT+2; i++)
     {
         m_max_usage[i][m_max_usage_idx] =
             m_total[i].load(std::memory_order_relaxed) - m_free[i].load(std::memory_order_relaxed);
@@ -977,7 +1032,7 @@ MemoryManager::collect_garbage(TaskData& data)
             }
         }
 
-        // collect memory pages
+        // collect network buffers (small)
         {
             int max_usage = 0;
 
@@ -986,19 +1041,45 @@ MemoryManager::collect_garbage(TaskData& data)
 
             if (max_usage < m_total[RecyclableType::RT_COUNT+1].load(std::memory_order_relaxed))
             {
-                Logger::debug("[gc] Trying to GC of memory page from %d to %d",
+                Logger::debug("[gc] Trying to GC of network buffer (small) from %d to %d",
                               m_total[RecyclableType::RT_COUNT+1].load(std::memory_order_relaxed), max_usage);
+
+                std::lock_guard<std::mutex> guard(m_network_small_lock);
+
+                while (max_usage < m_total[RecyclableType::RT_COUNT+1].load())
+                {
+                    char *buff = m_network_buffer_small_free_list;
+                    if (buff == nullptr) break;
+                    m_network_buffer_small_free_list = *((char**)buff);
+                    std::free(buff);
+                    m_free[RecyclableType::RT_COUNT+1]--;
+                    m_total[RecyclableType::RT_COUNT+1]--;
+                }
+            }
+        }
+
+        // collect memory pages
+        {
+            int max_usage = 0;
+
+            for (int j = 0; j < MAX_USAGE_SIZE; j++)
+                max_usage = std::max(max_usage, m_max_usage[RecyclableType::RT_COUNT+2][j]);
+
+            if (max_usage < m_total[RecyclableType::RT_COUNT+2].load(std::memory_order_relaxed))
+            {
+                Logger::debug("[gc] Trying to GC of memory page from %d to %d",
+                              m_total[RecyclableType::RT_COUNT+2].load(std::memory_order_relaxed), max_usage);
 
                 std::lock_guard<std::mutex> guard(m_page_lock);
 
-                while (max_usage < m_total[RecyclableType::RT_COUNT+1].load())
+                while (max_usage < m_total[RecyclableType::RT_COUNT+2].load())
                 {
                     void *page = m_page_free_list;
                     if (page == nullptr) break;
                     m_page_free_list = *((void**)page);
                     std::free(page);
-                    m_free[RecyclableType::RT_COUNT+1]--;
-                    m_total[RecyclableType::RT_COUNT+1]--;
+                    m_free[RecyclableType::RT_COUNT+2]--;
+                    m_total[RecyclableType::RT_COUNT+2]--;
                 }
             }
         }
