@@ -59,10 +59,6 @@ public:
     inline static uint64_t get_network_buffer_small_size()
     { return m_network_buffer_small_len; }
 
-    // in-memory page
-    static void *alloc_memory_page();
-    static void free_memory_page(void *page);
-
     static Recyclable *alloc_recyclable(RecyclableType type);
     static void free_recyclable(Recyclable *r);
     static void free_recyclables(Recyclable *r);
@@ -84,20 +80,17 @@ private:
     static std::mutex m_network_small_lock;
     static char *m_network_buffer_small_free_list;
 
-    static std::mutex m_page_lock;
-    static void *m_page_free_list;
-
     static std::mutex m_locks[RecyclableType::RT_COUNT];
     static Recyclable *m_free_lists[RecyclableType::RT_COUNT];
 
     // keep track of number of reusable objects,
     // both free and in total
-    static std::atomic<int> m_free[RecyclableType::RT_COUNT+3];
-    static std::atomic<int> m_total[RecyclableType::RT_COUNT+3];
+    static std::atomic<int> m_free[RecyclableType::RT_COUNT+2];
+    static std::atomic<int> m_total[RecyclableType::RT_COUNT+2];
 
     // garbage collector
     static std::mutex m_garbage_lock;   // to prevent multi-invoke of collect_garbage()
-    static int m_max_usage[RecyclableType::RT_COUNT+3][MAX_USAGE_SIZE];
+    static int m_max_usage[RecyclableType::RT_COUNT+2][MAX_USAGE_SIZE];
     static int m_max_usage_idx;
 
 #ifdef _DEBUG

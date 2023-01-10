@@ -30,21 +30,19 @@ namespace tt
 StringBuffer::StringBuffer() :
     m_cursor(0)
 {
-    m_buffs.push_back((char*)MemoryManager::alloc_memory_page());
+    m_buffs.push_back(MemoryManager::alloc_network_buffer_small());
 }
 
 StringBuffer::~StringBuffer()
 {
     for (char *buff: m_buffs)
-    {
-        MemoryManager::free_memory_page((void*)buff);
-    }
+        MemoryManager::free_network_buffer_small(buff);
 }
 
 char *
 StringBuffer::strdup(const char *str)
 {
-    size_t buff_size = g_page_size - 1;
+    size_t buff_size = MemoryManager::get_network_buffer_small_size() - 1;
 
     ASSERT(str != nullptr);
     ASSERT(std::strlen(str) < buff_size);
@@ -60,7 +58,7 @@ StringBuffer::strdup(const char *str)
     if ((m_cursor + len) >= buff_size)
     {
         m_cursor = 0;
-        m_buffs.push_back((char*)MemoryManager::alloc_memory_page());
+        m_buffs.push_back(MemoryManager::alloc_network_buffer_small());
     }
 
     char *buff = m_buffs.back() + m_cursor;
