@@ -443,20 +443,20 @@ Query::calculate_rate(std::vector<QueryResults*>& results)
 void
 Query::create_query_results(std::vector<QueryTask*>& qtv, std::vector<QueryResults*>& results, StringBuffer& strbuf)
 {
-    std::vector<const char*> star_tags;
+    bool star_tags = false;
 
     for (Tag *tag = m_tags; tag != nullptr; tag = tag->next())
     {
-        //if (std::strcmp(tag->m_value, "*") == 0)
-        if (ends_with(tag->m_value, '*'))
+        if (ends_with(tag->m_value, '*') || (std::strchr(tag->m_value, '|') != nullptr))
         {
-            star_tags.push_back(tag->m_key);
+            star_tags = true;
+            break;
         }
     }
 
-    Logger::debug("There are %d star'ed tags", star_tags.size());
+    Logger::debug("There are star'ed or multiple-choice tags");
 
-    if (star_tags.empty())
+    if (! star_tags)
     {
         // in this case there can be only one QueryResults
         QueryResults *result =
@@ -1125,7 +1125,7 @@ QueryResults::add_query_task(QueryTask *qt, StringBuffer& strbuf)
                 add_tag(strbuf.strdup(tag->m_key), strbuf.strdup(tag->m_value));
             }
         }
-        else if (ends_with(match->m_value, '*'))
+        else if (ends_with(match->m_value, '*') || ((std::strchr(match->m_value, '|') != nullptr)))
         {
             // move it from tags to aggregate_tags
             remove_tag(match->m_key);

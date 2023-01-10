@@ -1027,7 +1027,7 @@ class Advanced_Query_With_Aggregation(Test):
         tags = {}
         tags["tag1"] = "val1"
         tags["tag2"] = "val2"
-        tags["tag3"] = "val4"
+        tags["tag3"] = "val24"
         dp = DataPoint(self._prefix+"_metric_agg", self._options.start, random.uniform(0,100), tags)
         dps.add_dp(dp)
 
@@ -1040,6 +1040,18 @@ class Advanced_Query_With_Aggregation(Test):
         tags = {}
         tags["tag1"] = "val1"
         tags["tag2"] = "*"
+        query = Query(metric=self._prefix+"_metric_agg", start=self._options.start, end=dps._end+99999, downsampler="1h-avg", aggregator="sum", tags=tags)
+        self.query_and_verify(query)
+
+        tags = {}
+        tags["tag1"] = "val1"
+        tags["tag3"] = "val2|val24"
+        query = Query(metric=self._prefix+"_metric_agg", start=self._options.start, end=dps._end+99999, downsampler="1h-avg", aggregator="sum", tags=tags)
+        self.query_and_verify(query)
+
+        tags = {}
+        tags["tag1"] = "val1"
+        tags["tag3"] = "val2*"
         query = Query(metric=self._prefix+"_metric_agg", start=self._options.start, end=dps._end+99999, downsampler="1h-avg", aggregator="sum", tags=tags)
         self.query_and_verify(query)
 

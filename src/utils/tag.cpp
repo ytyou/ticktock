@@ -302,7 +302,7 @@ Tag_v2::match(const char *key, const char *value)
 {
     ASSERT(key != nullptr);
     ASSERT(value != nullptr);
-    ASSERT(std::strchr(value, '|') == nullptr);
+    //ASSERT(std::strchr(value, '|') == nullptr);
 
     TagId kid = get_id(key);
     if (TT_INVALID_TAG_ID == kid) return false;
@@ -418,7 +418,11 @@ TagMatcher::init(Tag *tags)
         std::vector<char*> tokens;
         tokenize(buff, '|', tokens);
         for (char *v: tokens)
-            m_value_ids.push_back(Tag_v2::get_id(v));
+        {
+            TagId id = Tag_v2::get_id(v);
+            if (id != TT_INVALID_TAG_ID)
+                m_value_ids.push_back(id);
+        }
     }
     else if (ends_with(tags->m_value, '*'))
     {
