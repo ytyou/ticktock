@@ -42,6 +42,7 @@ class Tsdb;
 class __attribute__ ((__packed__)) TimeSeries
 {
 public:
+    TimeSeries(TagBuilder& builder);
     TimeSeries(const char *metric, const char *key, Tag *tags);
     TimeSeries(TimeSeriesId id, const char *metric, const char *key, Tag *tags);
     ~TimeSeries();
@@ -66,6 +67,7 @@ public:
     inline Tag *get_tags() const { return m_tags.get_v1_tags(); }
     inline Tag *get_cloned_tags(StringBuffer& strbuf) const
     { return m_tags.get_cloned_v1_tags(strbuf); }
+    inline TagCount get_tag_count() const { return m_tags.get_count(); }
 
     inline Tag_v2& get_v2_tags() { return m_tags; }
 

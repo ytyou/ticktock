@@ -59,6 +59,132 @@ tsl::robin_map<const char*,Mapping*,hash_func,eq_func> g_metric_map;
 thread_local tsl::robin_map<const char*, Mapping*, hash_func, eq_func> thread_local_cache;
 
 
+Measurement::Measurement() :
+    m_ts_count(0),
+    m_time_series(nullptr)
+{
+}
+
+Measurement::Measurement(uint32_t ts_count) :
+    m_ts_count(ts_count)
+{
+    m_time_series = (TimeSeries**)calloc(ts_count, sizeof(TimeSeries*));
+    std::memset(m_time_series, 0, ts_count*sizeof(TimeSeries*));
+}
+
+Measurement::~Measurement()
+{
+    if (m_time_series != nullptr)
+        std::free(m_time_series);
+}
+
+void
+Measurement::set_ts_count(uint32_t ts_count)
+{
+    ASSERT(ts_count > 0);
+
+    m_ts_count = ts_count;
+
+    if (m_time_series != nullptr)
+        std::free(m_time_series);
+
+    m_time_series = (TimeSeries**)calloc(ts_count, sizeof(TimeSeries*));
+    std::memset(m_time_series, 0, ts_count*sizeof(TimeSeries*));
+}
+
+void
+Measurement::add_ts(int idx, TimeSeries *ts)
+{
+    ASSERT(idx < m_ts_count);
+    ASSERT(ts != nullptr);
+    ASSERT(m_time_series[idx] == nullptr);
+
+    m_time_series[idx] = ts;
+}
+
+TimeSeries *
+Measurement::add_ts(const char *field, Mapping *mapping)
+{
+    ASSERT(m_ts_count > 0);
+
+    m_ts_count++;
+    TimeSeries **tmp = m_time_series;
+    m_time_series = (TimeSeries**)calloc(m_ts_count, sizeof(TimeSeries*));
+    std::memcpy(m_time_series, tmp, (m_ts_count-1)*sizeof(TimeSeries*));
+    std::free(tmp);
+
+    TimeSeries *ts0 = m_time_series[0];
+    TagCount tag_cnt = ts0->get_tag_count();
+    TagId ids[tag_cnt];
+    TagBuilder builder(tag_cnt, ids);
+    builder.update_last(TT_FIELD_TAG_ID, field);
+    TimeSeries *ts = new TimeSeries(builder);
+    mapping->add_ts(ts);
+    m_time_series[m_ts_count-1] = ts;
+    return ts;
+}
+
+TimeSeries *
+Measurement::get_ts(int idx, const char *field)
+{
+    ASSERT(field != nullptr);
+
+    TimeSeries *ts = nullptr;
+    TagId vid = Tag_v2::get_or_set_id(field);
+
+    if (idx < m_ts_count)
+    {
+        // try this one first
+        ts = m_time_series[idx];
+        Tag_v2& tags = ts->get_v2_tags();
+        if (tags.match_last(TT_FIELD_TAG_ID, vid))
+            return ts;
+    }
+
+    // look for it
+    for (int i = 0; i < m_ts_count; i++)
+    {
+        ts = m_time_series[i];
+        Tag_v2& tags = ts->get_v2_tags();
+        if (tags.match_last(TT_FIELD_TAG_ID, vid))
+        {
+            // swap m_time_series[i] & m_time_series[idx]
+            if (idx < m_ts_count)
+            {
+                m_time_series[i] = m_time_series[idx];
+                m_time_series[idx] = ts;
+            }
+            return ts;
+        }
+    }
+
+    return nullptr;
+}
+
+bool
+Measurement::add_data_points(std::vector<DataPoint*>& dps, Timestamp tstamp, Mapping *mapping)
+{
+    int i = 0;
+    bool success = true;
+
+    for (auto dp: dps)
+    {
+        TimeSeries *ts = get_ts(i++, dp->get_raw_tags());
+
+        if (ts == nullptr)
+        {
+            success = false;
+            ts = add_ts(dp->get_raw_tags(), mapping);
+        }
+
+        dp->set_timestamp(tstamp);
+        ts->add_data_point(*dp);
+    }
+
+    return success;
+}
+
+
 Mapping::Mapping(const char *name) :
     //m_partition(nullptr),
     m_ts_head(nullptr),
@@ -138,9 +264,7 @@ Mapping::get_ts(DataPoint& dp)
             ts = new TimeSeries(m_metric, buff, dp.get_tags());
             m_map[STRDUP(buff)] = ts;
 
-            ts->m_next = m_ts_head.load();
-            m_ts_head = ts;
-
+            add_ts(ts);
             set_tag_count(dp.get_tag_count());
         }
 
@@ -154,6 +278,67 @@ Mapping::get_ts(DataPoint& dp)
     }
 
     return ts;
+}
+
+Measurement *
+Mapping::get_measurement(char *raw_tags, TagOwner& owner)
+{
+    ASSERT(raw_tags != nullptr);
+    Measurement *mm = nullptr;
+
+    {
+        ReadLock guard(m_lock2);
+        auto result = m_map2.find(raw_tags);
+        if (result != m_map2.end())
+            mm = result->second;
+    }
+
+    if (mm == nullptr)
+    {
+        char buff[MAX_TOTAL_TAG_LENGTH];
+        char *dup_tags = STRDUP(raw_tags);
+
+        if (raw_tags[1] == 0)   // no tags
+        {
+            buff[0] = raw_tags[0];
+            buff[1] = 0;
+        }
+        else
+        {
+            // parse raw tags...
+            if (! owner.parse(raw_tags))
+                return nullptr;
+            owner.get_ordered_tags(buff, MAX_TOTAL_TAG_LENGTH);
+        }
+
+        WriteLock guard(m_lock2);
+
+        {
+            auto result = m_map2.find(buff);
+            if (result != m_map2.end())
+                mm = result->second;
+        }
+
+        if (mm == nullptr)
+        {
+            mm = new Measurement();
+            m_map2[STRDUP(buff)] = mm;
+        }
+
+        if (std::strcmp(dup_tags, buff) != 0)
+            m_map2[dup_tags] = mm;
+        else
+            FREE(dup_tags);
+    }
+
+    return mm;
+}
+
+void
+Mapping::add_ts(TimeSeries *ts)
+{
+    ASSERT(ts != nullptr);
+    ts->m_next = m_ts_head.exchange(ts);
 }
 
 void
@@ -193,6 +378,60 @@ Mapping::add_data_point(DataPoint& dp, bool forward)
 
     return success;
 #endif
+}
+
+bool
+Mapping::add_data_points(const char *measurement, char *tags, Timestamp ts, std::vector<DataPoint*>& dps)
+{
+    ASSERT(! dps.empty());
+
+    char buff[8];
+
+    if (tags == nullptr)
+    {
+        buff[0] = ';';
+        buff[1] = 0;
+        tags = &buff[0];
+    }
+
+    TagOwner owner(false);
+    Measurement *mm = get_measurement(tags, owner);
+
+    if (UNLIKELY(mm == nullptr))
+        return false;
+
+    {
+        std::lock_guard<std::mutex> guard(mm->m_lock);
+        if (mm->is_initialized())
+            return mm->add_data_points(dps, ts, this);
+    }
+
+    std::lock_guard<std::mutex> guard(mm->m_lock);
+
+    if (mm->is_initialized())
+        return mm->add_data_points(dps, ts, this);
+
+    TagCount count = owner.get_tag_count() + 1;
+    TagId ids[2 * count];
+    TagBuilder builder(count, ids);
+
+    set_tag_count(count);
+    builder.init(owner.get_tags());
+    mm->set_ts_count(dps.size());
+
+    int i = 0;
+
+    for (auto dp: dps)
+    {
+        builder.update_last(TT_FIELD_TAG_ID, dp->get_raw_tags());
+        TimeSeries *ts = new TimeSeries(builder);
+        add_ts(ts);
+        mm->add_ts(i++, ts);
+    }
+
+    // write meta-file
+
+    return mm->add_data_points(dps, ts, this);
 }
 
 void
@@ -248,8 +487,7 @@ Mapping::restore_ts(std::string& metric, std::string& keys, TimeSeriesId id)
     Tag *tags = Tag::parse_multiple(keys);
     TimeSeries *ts = new TimeSeries(id, metric.c_str(), keys.c_str(), tags);
     m_map[STRDUP(keys.c_str())] = ts;
-    ts->m_next = m_ts_head.load();
-    m_ts_head = ts;
+    add_ts(ts);
     set_tag_count(std::count(keys.begin(), keys.end(), ';'));
     return ts;
 }
@@ -486,9 +724,9 @@ Tsdb::get_range(Timestamp tstamp, TimeRange& range)
 }
 
 Mapping *
-Tsdb::get_or_add_mapping(DataPoint& dp)
+Tsdb::get_or_add_mapping(const char *metric)
 {
-    const char *metric = dp.get_metric();
+    //const char *metric = dp.get_metric();
     ASSERT(metric != nullptr);
 
     auto result = thread_local_cache.find(metric);
@@ -523,7 +761,7 @@ bool
 Tsdb::add(DataPoint& dp)
 {
     ASSERT(m_time_range.in_range(dp.get_timestamp()) == 0);
-    Mapping *mapping = get_or_add_mapping(dp);
+    Mapping *mapping = get_or_add_mapping(dp.get_metric());
     if (mapping == nullptr) return false;
     return mapping->add(dp);
 }
@@ -531,9 +769,18 @@ Tsdb::add(DataPoint& dp)
 bool
 Tsdb::add_data_point(DataPoint& dp, bool forward)
 {
-    Mapping *mapping = get_or_add_mapping(dp);
+    Mapping *mapping = get_or_add_mapping(dp.get_metric());
     if (mapping == nullptr) return false;
     return mapping->add_data_point(dp, forward);
+}
+
+bool
+Tsdb::add_data_points(const char *measurement, char *tags, Timestamp ts, std::vector<DataPoint*>& dps)
+{
+    ASSERT(measurement != nullptr);
+    Mapping *mapping = get_or_add_mapping(measurement);
+    if (mapping == nullptr) return false;
+    return mapping->add_data_points(measurement, tags, ts, dps);
 }
 
 TimeSeries *
@@ -1067,6 +1314,51 @@ Tsdb::http_api_put_handler_plain(HttpRequest& request, HttpResponse& response)
     return success;
 }
 
+/* Data format:
+ *  <measurement>[,<tag_key>=<tag_value>[,<tag_key>=<tag_value>]] <field_key>=<field_value>[,<field_key>=<field_value>] [<timestamp>]
+ *
+ * See: docs.influxdata.com/influxdb/v2.5/reference/syntax/line-protocol/
+ */
+bool
+Tsdb::http_api_write_handler(HttpRequest& request, HttpResponse& response)
+{
+    Logger::trace("Entered http_api_put_handler_influx()...");
+
+    char *curr = request.content;
+    bool success = true;
+    std::vector<DataPoint*> dps;
+    std::vector<DataPoint*> tmp;
+    Timestamp now = ts_now();
+
+    // safety measure
+    curr[request.length] = 0;
+    curr[request.length+1] = ' ';
+    curr[request.length+2] = '=';
+    curr[request.length+3] = '\n';
+    curr[request.length+4] = '0';
+
+    while ((curr != nullptr) && (*curr != 0))
+    {
+        const char *measurement;
+        char *tags = nullptr;
+        Timestamp ts = 0;
+
+        bool ok = parse_line(curr, measurement, tags, ts, dps, tmp);
+        if (! ok) { success = false; break; }
+
+        if (ts == 0) ts = now;
+        success = add_data_points(measurement, tags, ts, dps) && success;
+
+        for (auto dp: dps) tmp.push_back(dp);
+        dps.clear();
+    }
+
+    for (auto dp: tmp) MemoryManager::free_recyclable(dp);
+
+    response.init((success ? 200 : 500), HttpContentType::PLAIN);
+    return success;
+}
+
 bool
 Tsdb::http_get_api_suggest_handler(HttpRequest& request, HttpResponse& response)
 {
@@ -1164,6 +1456,67 @@ Tsdb::http_get_api_suggest_handler(HttpRequest& request, HttpResponse& response)
     int n = JsonParser::to_json(suggestions, buff, buff_size);
     response.init(200, HttpContentType::JSON, n, buff);
     MemoryManager::free_network_buffer(buff);
+
+    return true;
+}
+
+bool
+Tsdb::parse_line(char* &line, const char* &measurement, char* &tags, Timestamp& ts, std::vector<DataPoint*>& dps, std::vector<DataPoint*>& tmp)
+{
+    measurement = line;
+
+    // look for first comma or space
+    do { line++; }
+    while ((*line != ',' || *(line-1) == '\\') && (*line != ' ' || *(line-1) == '\\'));
+
+    if (*line == ',')
+    {
+        *line = 0;  // end of measurement
+        tags = ++line;
+
+        do { line++; }
+        while (*line != ' ' || *(line-1) == '\\');
+    }
+
+    *line = 0;
+
+    // ' <field_key>=<field_value>[,<field_key>=<field_value>] [<timestamp>]'
+    do
+    {
+        DataPoint *dp;
+        char *field = ++line;
+
+        if (tmp.empty())
+        {
+            dp = (DataPoint*)MemoryManager::alloc_recyclable(RecyclableType::RT_DATA_POINT);
+        }
+        else
+        {
+            dp = tmp.back();
+            tmp.pop_back();
+        }
+
+        // look for first equal sign
+        while (*line != '=' || *(line-1) == '\\')
+            line++;
+        *line++ = 0;  // end of field name
+        dp->set_raw_tags(field);    // use raw_tags to remember field name
+        dp->set_value(std::atof(line));
+        dps.push_back(dp);
+
+        while ((*line != ',' || *line == '\\') && (*line != ' ' || *(line-1) == '\\') && (*line != '\n') && (*line != 0))
+            line++;
+    } while (*line == ',');
+
+    if (*line == ' ') line++;
+    if (*line == '\n')
+        line++;
+    else if (*line != 0)
+    {
+        ts = std::atoll(line);
+        while (*line != '\n' && *line != 0) line++;
+        if (*line == '\n') line++;
+    }
 
     return true;
 }

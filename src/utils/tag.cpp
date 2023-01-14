@@ -32,9 +32,10 @@ namespace tt
 {
 
 
-TagId Tag_v2::m_next_id = 0;
+TagId Tag_v2::m_next_id = TT_FIELD_TAG_ID+1;
 default_contention_free_shared_mutex Tag_v2::m_lock;
-std::unordered_map<const char*,TagId,hash_func,eq_func> Tag_v2::m_map;
+std::unordered_map<const char*,TagId,hash_func,eq_func> Tag_v2::m_map =
+    {{TT_FIELD_TAG_NAME, TT_FIELD_TAG_ID}};
 const char **Tag_v2::m_names = nullptr;
 uint32_t Tag_v2::m_names_capacity = 0;
 
@@ -72,6 +73,36 @@ TagOwner::recycle()
         Tag::free_list(m_tags, m_own_mem);
         m_tags = nullptr;
     }
+}
+
+/* Format: tag1=value1,tag2=value2,...
+ *   Comma, Equals Sign, Space are allowed, as long as
+ *   they are escaped with a '\'.
+ * We assume there's at least 1 tag present.
+ */
+bool
+TagOwner::parse(char *tags)
+{
+    ASSERT(tags != nullptr);
+
+    do
+    {
+        const char *key = tags;
+
+        while (*tags != '=' || *(tags-1) == '\\')
+            tags++;
+        *tags++ = 0;
+
+        const char *value = tags;
+
+        while ((*tags != ',' || *(tags-1) == '\\') && (*tags != 0))
+            tags++;
+        if (*tags != 0) *tags++ = 0;
+
+        add_tag(key, value);
+    } while (*tags != 0);
+
+    return true;
 }
 
 void
@@ -160,7 +191,7 @@ Tag_v2::Tag_v2(Tag *tags)
     else
     {
         ASSERT(TagOwner::get_tag_count(tags) <= UINT16_MAX);
-        m_count = (uint16_t)TagOwner::get_tag_count(tags);
+        m_count = (TagCount)TagOwner::get_tag_count(tags);
         if (m_count > 0)
         {
             m_tags = (TagId*) calloc(2 * m_count, sizeof(TagId));
@@ -176,6 +207,33 @@ Tag_v2::Tag_v2(Tag *tags)
         }
         else
             m_tags = nullptr;
+    }
+}
+
+Tag_v2::Tag_v2(TagBuilder& builder)
+{
+    m_count = builder.get_count();
+
+    if (m_count == 0)
+        m_tags = nullptr;
+    else
+    {
+        m_tags = (TagId*) calloc(2 * m_count, sizeof(TagId));
+        std::memcpy(m_tags, builder.get_ids(), 2*m_count*sizeof(TagId));
+    }
+}
+
+Tag_v2::Tag_v2(Tag_v2& tags) :
+    m_count(tags.m_count),
+    m_tags(tags.m_tags)
+{
+    if (m_count == 0)
+        m_tags = nullptr;
+    else
+    {
+        ASSERT(tags.m_tags != nullptr);
+        m_tags = (TagId*) calloc(2 * m_count, sizeof(TagId));
+        std::memcpy(m_tags, tags.m_tags, 2*m_count*sizeof(TagId));
     }
 }
 
@@ -225,8 +283,9 @@ Tag_v2::set_name(TagId id, const char *name)
         const char **tmp = (const char **) calloc(new_capacity, sizeof(const char*));
         std::memcpy(tmp, m_names, m_names_capacity * sizeof(const char *));
         std::memset(&tmp[m_names_capacity], 0, (new_capacity-m_names_capacity) * sizeof(const char *));
-        std::free(m_names);
+        if (m_names != nullptr) std::free(m_names);
         m_names = tmp;
+        if (m_names_capacity == 0) m_names[0] = TT_FIELD_TAG_NAME;
         m_names_capacity = new_capacity;
     }
 
@@ -337,6 +396,14 @@ Tag_v2::match(const char *key, const char *value)
     }
 }
 
+bool
+Tag_v2::match_last(TagId key_id, TagId value_id)
+{
+    if (m_count == 0) return false;
+    TagCount cnt = 2 * m_count;
+    return (m_tags[cnt-2] == key_id) && (m_tags[cnt-1] == value_id);
+}
+
 Tag *
 Tag_v2::get_v1_tags() const
 {
@@ -385,6 +452,45 @@ Tag_v2::get_values(std::set<std::string>& values) const
 {
     for (int i = 1; i < 2*m_count; i += 2)
         values.insert(get_name(m_tags[i]));
+}
+
+
+TagBuilder::TagBuilder(TagCount capacity, TagId *tags) :
+    m_count(0),
+    m_capacity(capacity),
+    m_tags(tags)
+{
+}
+
+void
+TagBuilder::init(Tag *tags)
+{
+    if (tags == nullptr)
+        m_count = 0;
+    else
+    {
+        int i = 0;
+
+        for (Tag *tag = tags; tag != nullptr; tag = tag->next())
+        {
+            ASSERT((i + 1) < (2 * m_capacity));
+            m_tags[i++] = Tag_v2::get_or_set_id(tag->m_key);
+            m_tags[i++] = Tag_v2::get_or_set_id(tag->m_value);
+        }
+
+        m_count = i / 2;
+        ASSERT(i == (2 * (m_capacity - 1)));
+    }
+}
+
+void
+TagBuilder::update_last(TagId kid, const char *value)
+{
+    ASSERT(value != nullptr);
+
+    m_count = m_capacity;
+    m_tags[2*m_capacity-2] = kid;
+    m_tags[2*m_capacity-1] = Tag_v2::get_or_set_id(value);
 }
 
 

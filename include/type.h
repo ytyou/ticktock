@@ -37,6 +37,7 @@ typedef uint16_t FileIndex;
 typedef uint32_t PageIndex;
 typedef uint32_t HeaderIndex;
 typedef uint32_t TagId;
+typedef uint16_t TagCount;
 
 #define TT_INVALID_FILE_INDEX   UINT16_MAX
 #define TT_INVALID_HEADER_INDEX UINT32_MAX

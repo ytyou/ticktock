@@ -71,7 +71,32 @@ namespace tt
 
 
 class Tsdb;
+class Mapping;
 class DataPointContainer;
+
+
+class Measurement
+{
+public:
+    Measurement();
+    Measurement(uint32_t ts_count);
+    ~Measurement();
+
+    void add_ts(int idx, TimeSeries *ts);
+    TimeSeries *add_ts(const char *field, Mapping *mapping);
+    bool add_data_points(std::vector<DataPoint*>& dps, Timestamp ts, Mapping *mapping);
+    TimeSeries *get_ts(int idx, const char *field);
+    inline uint32_t get_ts_count() const { return m_ts_count; }
+    inline void set_ts_count(uint32_t ts_count);
+    inline bool is_initialized() const { return m_time_series != nullptr; }
+
+    std::mutex m_lock;
+
+private:
+    TimeSeries **m_time_series;
+    uint32_t m_ts_count;
+};
+
 
 // one per metric
 class Mapping
@@ -79,6 +104,7 @@ class Mapping
 public:
     char *get_metric() { return m_metric; }
     void get_all_ts(std::vector<TimeSeries*>& tsv);
+    void add_ts(TimeSeries *ts);    // add 'ts' to the list headed by 'm_ts_head'
 
     friend class Tsdb;
 
@@ -91,7 +117,9 @@ private:
     char *m_metric;
     bool add(DataPoint& dp);
     bool add_data_point(DataPoint& dp, bool forward);
+    bool add_data_points(const char *measurement, char *tags, Timestamp ts, std::vector<DataPoint*>& dps);
     TimeSeries *get_ts(DataPoint& dp);
+    Measurement *get_measurement(char *raw_tags, TagOwner& owner);
     void query_for_ts(Tag *tags, std::unordered_set<TimeSeries*>& tsv, const char *key);
     TimeSeries *restore_ts(std::string& metric, std::string& key, TimeSeriesId id);
     void set_tag_count(int tag_count);
@@ -104,6 +132,9 @@ private:
     default_contention_free_shared_mutex m_lock;
     tsl::robin_map<const char*,TimeSeries*,hash_func,eq_func> m_map;
     //std::unordered_map<const char*,TimeSeries*,hash_func,eq_func> m_map;
+
+    default_contention_free_shared_mutex m_lock2;
+    tsl::robin_map<const char*,Measurement*,hash_func,eq_func> m_map2;
 
     std::atomic<TimeSeries*> m_ts_head;
     int16_t m_tag_count;    // -1: uninitialized; -2: inconsistent;
@@ -190,7 +221,12 @@ public:
     // http add data-point request handler
     static bool http_api_put_handler_json(HttpRequest& request, HttpResponse& response);
     static bool http_api_put_handler_plain(HttpRequest& request, HttpResponse& response);
+    static bool http_api_write_handler(HttpRequest& request, HttpResponse& response);
     static bool http_get_api_suggest_handler(HttpRequest& request, HttpResponse& response);
+
+    // parse 1-line of the InfluxDB line protocol
+    static bool parse_line(char* &line, const char* &measurement, char* &tags, Timestamp& ts, std::vector<DataPoint*>& dps, std::vector<DataPoint*>& tmp);
+    static bool add_data_points(const char *measurement, char *tags, Timestamp ts, std::vector<DataPoint*>& dps);
 
     static int get_metrics_count();
     static int get_dp_count();
@@ -219,7 +255,7 @@ private:
 
     struct page_info_on_disk *get_page_header(FileIndex file_idx, PageIndex page_idx);
 
-    static Mapping *get_or_add_mapping(DataPoint& dp);
+    static Mapping *get_or_add_mapping(const char *metric);
     static bool rotate(TaskData& data);
     static void get_range(Timestamp tstamp, TimeRange& range);
     static Tsdb *create(TimeRange& range, bool existing, const char *suffix = nullptr); // caller needs to acquire m_tsdb_lock!

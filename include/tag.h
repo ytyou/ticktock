@@ -34,6 +34,10 @@ namespace tt
 {
 
 
+#define TT_FIELD_TAG_ID     0
+#define TT_FIELD_TAG_NAME   "_field"
+
+class TagBuilder;
 typedef KeyValuePair Tag;
 
 
@@ -47,6 +51,8 @@ public:
 
     void init(bool own_mem);
     void recycle();
+
+    bool parse(char *tags);
 
     Tag *find_by_key(const char *key);
 
@@ -121,12 +127,15 @@ class __attribute__ ((__packed__)) Tag_v2
 {
 public:
     Tag_v2(Tag *tags);
+    Tag_v2(Tag_v2& tags);   // copy constructor
+    Tag_v2(TagBuilder& builder);
     ~Tag_v2();
 
     bool match(TagId key_id);
     bool match(TagId key_id, const char *value);
     bool match(TagId key_id, std::vector<TagId> value_ids);
     bool match(const char *key, const char *value);
+    bool match_last(TagId key_id, TagId value_id);
 
     Tag *get_v1_tags() const;
     Tag *get_cloned_v1_tags(StringBuffer& strbuf) const;
@@ -134,7 +143,10 @@ public:
     void get_keys(std::set<std::string>& keys) const;
     void get_values(std::set<std::string>& values) const;
 
+    inline TagCount get_count() const { return m_count; }
+
     static TagId get_id(const char *name);
+    static TagId get_or_set_id(const char *name);
 
 private:
     static const char *get_value(TagId value_id);
@@ -144,15 +156,30 @@ private:
     static const char *set_name(TagId id, const char *name);
 
     TagId *m_tags;
-    uint16_t m_count;
-
-    static TagId get_or_set_id(const char *name);
+    TagCount m_count;
 
     static TagId m_next_id;
     static default_contention_free_shared_mutex m_lock;
     static std::unordered_map<const char*,TagId,hash_func,eq_func> m_map;
     static const char **m_names;    // indexed by id
     static uint32_t m_names_capacity;
+};
+
+
+class TagBuilder
+{
+public:
+    TagBuilder(TagCount capacity, TagId *tags);
+    void init(Tag *tags);
+    void update_last(TagId kid, const char *value);
+
+    inline TagCount get_count() const { return m_count; }
+    inline TagId *get_ids() const { return m_tags; }
+
+private:
+    TagCount m_count;
+    TagCount m_capacity;
+    TagId *m_tags;
 };
 
 

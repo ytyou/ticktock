@@ -62,6 +62,7 @@ const char *HTTP_API_QUERY = "/api/query";
 const char *HTTP_API_STATS = "/api/stats";
 const char *HTTP_API_SUGGEST = "/api/suggest";
 const char *HTTP_API_VERSION = "/api/version";
+const char *HTTP_API_WRITE = "/api/write";
 
 
 // These strings can't be longer than MAX_CONTENT_TYPE_SIZE (32)
@@ -112,6 +113,7 @@ HttpServer::init()
         add_post_handler(HTTP_API_PUT, &Tsdb::http_api_put_handler_plain);
     }
 
+    add_post_handler(HTTP_API_WRITE, &Tsdb::http_api_write_handler);
     add_post_handler(HTTP_API_QUERY, &QueryExecutor::http_post_api_query_handler);
     add_post_handler(HTTP_API_ADMIN, &Admin::http_post_api_admin_handler);
 }

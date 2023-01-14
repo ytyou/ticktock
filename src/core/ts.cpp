@@ -43,11 +43,24 @@ std::mutex *TimeSeries::m_locks;
 
 TimeSeries::TimeSeries(const char *metric, const char *key, Tag *tags) :
     m_next(nullptr),
-    m_tags(tags)
+    m_tags(tags),
+    m_buff(nullptr),
+    m_ooo_buff(nullptr)
 {
-    TimeSeriesId id = m_next_id.fetch_add(1);
-    init(id, metric, key, tags);
-    MetaFile::instance()->add_ts(metric, key, id);
+    ASSERT(metric != nullptr);
+    ASSERT(key != nullptr);
+
+    m_id = m_next_id.fetch_add(1);
+    MetaFile::instance()->add_ts(metric, key, m_id);
+}
+
+TimeSeries::TimeSeries(TagBuilder& builder) :
+    m_next(nullptr),
+    m_tags(builder),
+    m_buff(nullptr),
+    m_ooo_buff(nullptr)
+{
+    m_id = m_next_id.fetch_add(1);
 }
 
 // called during restart/restore

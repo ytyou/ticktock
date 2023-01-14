@@ -271,6 +271,7 @@ bool
 DataPoint::parse_raw_tags()
 {
     if (m_raw_tags == nullptr) return false;
+    if (m_raw_tags[1] == 0 && m_raw_tags[0] == ';') return true;
 
     char *key, *val, *space, *eq;
 
