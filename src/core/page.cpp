@@ -141,6 +141,9 @@ PageInMemory::PageInMemory(TimeSeriesId id, Tsdb *tsdb, bool is_ooo, PageSize ac
 
 PageInMemory::~PageInMemory()
 {
+    if (m_compressor != nullptr)
+        MemoryManager::free_recyclable(m_compressor);
+
     if (m_page != nullptr)
         std::free(m_page);
 }

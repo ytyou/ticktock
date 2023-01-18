@@ -79,6 +79,7 @@ class Mapping
 public:
     char *get_metric() { return m_metric; }
     void get_all_ts(std::vector<TimeSeries*>& tsv);
+    void add_ts(TimeSeries *ts);    // add 'ts' to the list headed by 'm_ts_head'
 
     friend class Tsdb;
 
@@ -221,6 +222,7 @@ private:
 
     static Mapping *get_or_add_mapping(DataPoint& dp);
     static bool rotate(TaskData& data);
+    static bool archive_ts(TaskData& data);
     static void get_range(Timestamp tstamp, TimeRange& range);
     static Tsdb *create(TimeRange& range, bool existing, const char *suffix = nullptr); // caller needs to acquire m_tsdb_lock!
     static void restore_tsdb(const std::string& dir);

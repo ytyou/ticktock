@@ -197,7 +197,7 @@ MmapFile::close()
 {
     if (m_pages != nullptr)
     {
-        flush(true);
+        if (! m_read_only) flush(true);
         munmap(m_pages, m_length);
         m_pages = nullptr;
         Logger::info("closing %s", m_name.c_str());
@@ -273,6 +273,7 @@ IndexFile::open(bool for_read)
         MmapFile::open_existing(for_read, false);
 
     Logger::debug("index file %s length: %lu", m_name.c_str(), get_length());
+    Logger::info("opening %s for %s", m_name.c_str(), for_read?"read":"write");
 }
 
 bool
@@ -429,6 +430,8 @@ HeaderFile::open(bool for_read)
         m_page_count = header->m_page_count;
         ASSERT(m_page_count > 0);
     }
+
+    Logger::info("opening %s for %s", m_name.c_str(), for_read?"read":"write");
 }
 
 PageSize

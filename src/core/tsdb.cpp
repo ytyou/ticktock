@@ -137,10 +137,7 @@ Mapping::get_ts(DataPoint& dp)
         {
             ts = new TimeSeries(m_metric, buff, dp.get_tags());
             m_map[STRDUP(buff)] = ts;
-
-            ts->m_next = m_ts_head.load();
-            m_ts_head = ts;
-
+            add_ts(ts);
             set_tag_count(dp.get_tag_count());
         }
 
@@ -154,6 +151,13 @@ Mapping::get_ts(DataPoint& dp)
     }
 
     return ts;
+}
+
+void
+Mapping::add_ts(TimeSeries *ts)
+{
+    ASSERT(ts != nullptr);
+    ts->m_next = m_ts_head.exchange(ts);
 }
 
 void
@@ -1248,10 +1252,21 @@ Tsdb::init()
 
     Task task;
     task.doit = &Tsdb::rotate;
+    task.data.integer = 0;
     int freq_sec = Config::get_time(CFG_TSDB_FLUSH_FREQUENCY, TimeUnit::SEC, CFG_TSDB_FLUSH_FREQUENCY_DEF);
     if (freq_sec < 1) freq_sec = 1;
     Timer::inst()->add_task(task, freq_sec, "tsdb_flush");
     Logger::info("Will try to rotate tsdb every %d secs.", freq_sec);
+
+    task.doit = &Tsdb::archive_ts;
+    task.data.integer = 0;
+    freq_sec = Config::get_time(CFG_TS_ARCHIVE_THRESHOLD, TimeUnit::SEC, CFG_TS_ARCHIVE_THRESHOLD_DEF);
+    if (freq_sec > 0)
+    {
+        freq_sec /= 2;
+        if (freq_sec <= 0) freq_sec = 1;
+        Timer::inst()->add_task(task, freq_sec, "ts_archive");
+    }
 
     task.doit = &Tsdb::compact;
     task.data.integer = 0;  // indicates this is from scheduled task (vs. interactive cmd)
@@ -1526,19 +1541,15 @@ Tsdb::rotate(TaskData& data)
             {
                 Timestamp last_write = data_file->get_last_write();
                 if (((int64_t)now_sec - (int64_t)last_write) > (int64_t)thrashing_threshold)
-                {
-                    data_file->close(2);    // close write
-
-                    if (! data_file->is_open(true))
-                    {
-                        // close the header file as well
-                        FileIndex id = data_file->get_id();
-                        HeaderFile *header_file = tsdb->m_header_files[id];
-                        header_file->close();
-                    }
-                }
+                    data_file->close(2);    // close for write
                 else
                     all_closed = false;
+            }
+            else
+            {
+                FileIndex id = data_file->get_id();
+                HeaderFile *header_file = tsdb->m_header_files[id];
+                header_file->close();
             }
         }
 
@@ -1588,6 +1599,28 @@ Tsdb::rotate(TaskData& data)
 
     if (Config::exists(CFG_TSDB_RETENTION_THRESHOLD))
         purge_oldest(Config::get_int(CFG_TSDB_RETENTION_THRESHOLD));
+
+    return false;
+}
+
+bool
+Tsdb::archive_ts(TaskData& data)
+{
+    Timestamp threshold_sec =
+        Config::get_time(CFG_TS_ARCHIVE_THRESHOLD, TimeUnit::SEC, CFG_TS_ARCHIVE_THRESHOLD_DEF);
+    Timestamp now_sec = ts_now_sec();
+    std::lock_guard<std::mutex> guard(g_metric_lock);
+
+    for (auto it = g_metric_map.begin(); it != g_metric_map.end(); it++)
+    {
+        Mapping *mapping = it->second;
+        ASSERT(it->first == mapping->m_metric);
+
+        //ReadLock mapping_guard(mapping->m_lock);
+
+        for (TimeSeries *ts = mapping->get_ts_head(); ts != nullptr; ts = ts->m_next)
+            ts->archive(now_sec, threshold_sec);
+    }
 
     return false;
 }
