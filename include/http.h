@@ -105,6 +105,7 @@ class __attribute__ ((__packed__)) HttpRequest : public Serializable
 {
 public:
     bool close;     // Connection: close
+    char encoding;  // supported: deflate, gzip, x-gzip; unsupported: compress, br
     const char *method;   // GET, POST, etc.
     const char *path;     // /status
     char *params;   // q=abc
@@ -123,6 +124,7 @@ public:
 
     void init();
     void parse_params(JsonMap& pairs);
+    bool uncompress(char *buff, size_t size);
 
     inline size_t c_size() const override { return 4096; }
     const char *c_str(char *buff) const override;
