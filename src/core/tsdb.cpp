@@ -212,7 +212,7 @@ Mapping::flush(bool close)
 
     for (TimeSeries *ts = m_ts_head.load(); ts != nullptr; ts = ts->m_next)
     {
-        Logger::trace("Flushing ts: %T", ts);
+        Logger::trace("Flushing ts: %u", ts->get_id());
         ts->flush(close);
     }
 }
