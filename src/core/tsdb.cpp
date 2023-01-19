@@ -1339,6 +1339,13 @@ Tsdb::http_api_write_handler(HttpRequest& request, HttpResponse& response)
 
     while ((curr != nullptr) && (*curr != 0))
     {
+        if (UNLIKELY(*curr == '#'))
+        {
+            curr = strchr(curr, '\n');
+            curr++;
+            continue;
+        }
+
         const char *measurement;
         char *tags = nullptr;
         Timestamp ts = 0;
