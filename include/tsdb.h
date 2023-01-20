@@ -79,6 +79,7 @@ class Mapping
 public:
     char *get_metric() { return m_metric; }
     void get_all_ts(std::vector<TimeSeries*>& tsv);
+    void add_ts(TimeSeries *ts);    // add 'ts' to the list headed by 'm_ts_head'
 
     friend class Tsdb;
 

@@ -137,10 +137,7 @@ Mapping::get_ts(DataPoint& dp)
         {
             ts = new TimeSeries(m_metric, buff, dp.get_tags());
             m_map[STRDUP(buff)] = ts;
-
-            ts->m_next = m_ts_head.load();
-            m_ts_head = ts;
-
+            add_ts(ts);
             set_tag_count(dp.get_tag_count());
         }
 
@@ -154,6 +151,13 @@ Mapping::get_ts(DataPoint& dp)
     }
 
     return ts;
+}
+
+void
+Mapping::add_ts(TimeSeries *ts)
+{
+    ASSERT(ts != nullptr);
+    ts->m_next = m_ts_head.exchange(ts);
 }
 
 void
