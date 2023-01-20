@@ -1012,9 +1012,9 @@ Tsdb::http_api_put_handler_plain(HttpRequest& request, HttpResponse& response)
     response.content_length = 0;
 
     // safety measure
-    curr[request.length] = ' ';
-    curr[request.length+1] = '\n';
-    curr[request.length+2] = '0';
+    curr[request.length] = '\n';
+    curr[request.length+1] = ' ';
+    curr[request.length+2] = 0;
 
     while ((curr != nullptr) && (*curr != 0))
     {
