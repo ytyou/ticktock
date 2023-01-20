@@ -353,9 +353,13 @@ Query::get_query_tasks(std::vector<QueryTask*>& qtv, std::vector<Tsdb*> *tsdbs)
     if (m_downsample != nullptr)
     {
         Downsampler *downsampler = Downsampler::create(m_downsample, m_time_range, m_ms);
-        Timestamp start = downsampler->step_down(m_time_range.get_from());
-        m_time_range.set_from(start);
-        MemoryManager::free_recyclable(downsampler);
+
+        if (downsampler != nullptr)
+        {
+            Timestamp start = downsampler->step_down(m_time_range.get_from());
+            m_time_range.set_from(start);
+            MemoryManager::free_recyclable(downsampler);
+        }
     }
 
     Tsdb::insts(m_time_range, *tsdbs);
