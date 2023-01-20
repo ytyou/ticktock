@@ -56,8 +56,9 @@ public:
 
     void flush(bool close = false);
     void flush_no_lock(bool close = false);
-    bool compact(MetaFile& meta_file);
+    //bool compact(MetaFile& meta_file);
     void set_check_point();
+    void archive(Timestamp now_sec, Timestamp threshold_sec);
 
     bool add_data_point(DataPoint& dp);
     bool add_ooo_data_point(DataPoint& dp);

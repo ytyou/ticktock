@@ -314,15 +314,6 @@ TimeSeries::add_ooo_data_point(DataPoint& dp)
     return ok;
 }
 
-#if 0
-Tag *
-TimeSeries::find_tag_by_name(const char *name) const
-{
-    if ((m_tags == nullptr) || (name == nullptr)) return nullptr;
-    return Tag::get_key_value_pair(m_tags, name);
-}
-#endif
-
 bool
 TimeSeries::query_for_data(Tsdb *tsdb, TimeRange& range, std::vector<DataPointContainer*>& data)
 {
@@ -378,6 +369,28 @@ TimeSeries::query_for_data(Tsdb *tsdb, TimeRange& range, std::vector<DataPointCo
     }
 
     return has_ooo;
+}
+
+void
+TimeSeries::archive(Timestamp now_sec, Timestamp threshold_sec)
+{
+    std::lock_guard<std::mutex> guard(m_locks[m_id % m_lock_count]);
+
+    if (m_buff != nullptr)
+    {
+        if (m_buff->is_empty())
+        {
+            delete m_buff;
+            m_buff = nullptr;
+        }
+        else if (((int64_t)now_sec - (int64_t)to_sec(m_buff->get_last_tstamp())) > (int64_t)threshold_sec)
+        {
+            flush_no_lock(true);
+        }
+    }
+
+    if ((m_ooo_buff != nullptr) && (m_buff == nullptr))
+        flush_no_lock(true);
 }
 
 

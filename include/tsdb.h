@@ -257,6 +257,7 @@ private:
 
     static Mapping *get_or_add_mapping(const char *metric);
     static bool rotate(TaskData& data);
+    static bool archive_ts(TaskData& data);
     static void get_range(Timestamp tstamp, TimeRange& range);
     static Tsdb *create(TimeRange& range, bool existing, const char *suffix = nullptr); // caller needs to acquire m_tsdb_lock!
     static void restore_tsdb(const std::string& dir);

@@ -31,6 +31,7 @@
 #include "leak.h"
 #include "query.h"
 #include "stats.h"
+#include "zlib/zlib.h"
 
 
 namespace tt
@@ -630,6 +631,11 @@ HttpServer::parse_header(char *buff, int len, HttpRequest& request)
                 for (curr1 = curr1+15; *curr1 == ' '; curr1++) /* do nothing */;
                 request.length = atoi(curr1);
             }
+            else if (strncmp(curr1, "Content-Encoding:", 17) == 0)
+            {
+                for (curr1 = curr1+17; *curr1 == ' '; curr1++) /* do nothing */;
+                request.encoding = *curr1;
+            }
             else if (strncmp(curr1, "Connection:", 11) == 0)
             {
                 for (curr1 = curr1+11; *curr1 == ' '; curr1++) /* do nothing */;
@@ -688,8 +694,18 @@ HttpServer::process_request(HttpRequest& request, HttpResponse& response)
 
     if (handler != nullptr)
     {
+        char *buff = nullptr;
+
         try
         {
+            if (request.encoding != 0)
+            {
+                buff = MemoryManager::alloc_network_buffer();
+                if (! request.uncompress(buff, MemoryManager::get_network_buffer_size()))
+                    throw std::runtime_error("failed to uncompress content");
+                Logger::http("%s", 0, request.content);
+            }
+
             return (*handler)(request, response);
         }
         catch (const std::exception& ex)
@@ -706,6 +722,9 @@ HttpServer::process_request(HttpRequest& request, HttpResponse& response)
             response.init(400, HttpContentType::PLAIN);
             Logger::debug("Failed to process http request with unknown exception");
         }
+
+        if (buff != nullptr)
+            MemoryManager::free_network_buffer(buff);
 
         return false;
     }
@@ -1012,6 +1031,7 @@ HttpRequest::init()
     path = nullptr;
     params = nullptr;
     version = nullptr;
+    encoding = 0;
     content = nullptr;
     id = nullptr;
     length = 0;
@@ -1042,6 +1062,65 @@ HttpRequest::parse_params(JsonMap& pairs)
             Logger::warn("Failed to parse uri query params: %s", token);
         }
     }
+}
+
+bool
+HttpRequest::uncompress(char *buff, size_t size)
+{
+    if (encoding == 0)
+        return true;    // nothing to do
+    if (encoding != 'd' && encoding != 'g' && encoding != 'x')
+        throw std::runtime_error("unsupported encoding");
+
+    int ret;
+    unsigned cnt;
+    z_stream strm;
+
+    // allocate inflate state
+    strm.zalloc = Z_NULL;
+    strm.zfree = Z_NULL;
+    strm.opaque = Z_NULL;
+    strm.avail_in = 0;
+    strm.next_in = Z_NULL;
+
+    if (encoding == 'd')
+        ret = inflateInit(&strm);
+    else
+        ret = inflateInit2(&strm, 16+MAX_WBITS);
+
+    if (ret != Z_OK) return false;
+
+    {
+        strm.avail_in = length;
+        strm.next_in = (unsigned char*)content;
+
+        /* run inflate() on input until output buffer not full */
+        strm.avail_out = size;
+        strm.next_out = (unsigned char*)&buff[0];
+        ret = inflate(&strm, Z_NO_FLUSH);
+        ASSERT(ret != Z_STREAM_ERROR);  /* state not clobbered */
+
+        switch (ret)
+        {
+            case Z_NEED_DICT:
+                ret = Z_DATA_ERROR;     /* and fall through */
+            case Z_DATA_ERROR:
+            case Z_MEM_ERROR:
+                inflateEnd(&strm);
+                return false;
+        }
+
+        if (strm.avail_in != 0)
+            return false;
+
+        length = size - strm.avail_out;
+        content = buff;
+        content[length] = 0;
+    }
+
+    /* clean up and return */
+    inflateEnd(&strm);
+    return ret == Z_STREAM_END;
 }
 
 const char *
