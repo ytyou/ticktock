@@ -294,26 +294,28 @@ Mapping::get_measurement(char *raw_tags, TagOwner& owner)
 
     if (mm == nullptr)
     {
-        char buff[MAX_TOTAL_TAG_LENGTH];
-        char *dup_tags = STRDUP(raw_tags);
+        char ordered[MAX_TOTAL_TAG_LENGTH];
+        char original[MAX_TOTAL_TAG_LENGTH];
+
+        std::strncpy(original, raw_tags, MAX_TOTAL_TAG_LENGTH);
 
         if (raw_tags[1] == 0)   // no tags
         {
-            buff[0] = raw_tags[0];
-            buff[1] = 0;
+            ordered[0] = raw_tags[0];
+            ordered[1] = 0;
         }
         else
         {
             // parse raw tags...
-            if (! owner.parse(raw_tags))
+            if (! owner.parse(original))
                 return nullptr;
-            owner.get_ordered_tags(buff, MAX_TOTAL_TAG_LENGTH);
+            owner.get_ordered_tags(ordered, MAX_TOTAL_TAG_LENGTH);
         }
 
         WriteLock guard(m_lock2);
 
         {
-            auto result = m_map2.find(buff);
+            auto result = m_map2.find(ordered);
             if (result != m_map2.end())
                 mm = result->second;
         }
@@ -321,23 +323,14 @@ Mapping::get_measurement(char *raw_tags, TagOwner& owner)
         if (mm == nullptr)
         {
             mm = new Measurement();
-            m_map2[STRDUP(buff)] = mm;
+            m_map2[STRDUP(ordered)] = mm;
         }
 
-        if (std::strcmp(dup_tags, buff) != 0)
-            m_map2[dup_tags] = mm;
-        else
-            FREE(dup_tags);
+        if (std::strcmp(raw_tags, ordered) != 0)
+            m_map2[raw_tags] = mm;
     }
 
     return mm;
-}
-
-void
-Mapping::add_ts(TimeSeries *ts)
-{
-    ASSERT(ts != nullptr);
-    ts->m_next = m_ts_head.exchange(ts);
 }
 
 void
@@ -389,6 +382,8 @@ Mapping::add_data_point(DataPoint& dp, bool forward)
 bool
 Mapping::add_data_points(const char *measurement, char *tags, Timestamp ts, std::vector<DataPoint*>& dps)
 {
+    ASSERT(measurement != nullptr);
+    ASSERT(tags != nullptr);
     ASSERT(! dps.empty());
 
     char buff[8];
@@ -426,6 +421,7 @@ Mapping::add_data_points(const char *measurement, char *tags, Timestamp ts, std:
     mm->set_ts_count(dps.size());
 
     int i = 0;
+    std::vector<std::pair<const char*,TimeSeriesId>> fields;
 
     for (auto dp: dps)
     {
@@ -433,9 +429,11 @@ Mapping::add_data_points(const char *measurement, char *tags, Timestamp ts, std:
         TimeSeries *ts = new TimeSeries(builder);
         add_ts(ts);
         mm->add_ts(i++, ts);
+        fields.emplace_back(dp->get_raw_tags(), ts->get_id());
     }
 
     // write meta-file
+    MetaFile::instance()->add_measurement(measurement, tags, fields);
 
     return mm->add_data_points(dps, ts, this);
 }
@@ -496,6 +494,43 @@ Mapping::restore_ts(std::string& metric, std::string& keys, TimeSeriesId id)
     add_ts(ts);
     set_tag_count(std::count(keys.begin(), keys.end(), ';'));
     return ts;
+}
+
+void
+Mapping::restore_measurement(std::string& measurement, std::string& tags, std::vector<std::pair<std::string,TimeSeriesId>>& fields, std::vector<TimeSeries*>& tsv)
+{
+    TagOwner owner(false);
+    char* buff = MemoryManager::alloc_network_buffer();
+    int len = tags.length();
+
+    if (len >= MemoryManager::get_network_buffer_size())
+    {
+        Logger::error("Failed to restore measurement: %s,%s", measurement.c_str(), tags.c_str());
+        return;
+    }
+
+    tags.copy(buff, len);
+    buff[len] = 0;
+
+    Measurement *mm = get_measurement(buff, owner);
+    TagCount count = owner.get_tag_count() + 1;
+    TagId ids[2 * count];
+    TagBuilder builder(count, ids);
+
+    set_tag_count(count);
+    builder.init(owner.get_tags());
+    mm->set_ts_count(fields.size());
+
+    int i = 0;
+
+    for (auto field: fields)
+    {
+        builder.update_last(TT_FIELD_TAG_ID, field.first.c_str());
+        TimeSeries *ts = new TimeSeries(builder);
+        add_ts(ts);
+        mm->add_ts(i++, ts);
+        tsv.push_back(ts);
+    }
 }
 
 void
@@ -808,6 +843,16 @@ Tsdb::restore_ts(std::string& metric, std::string& key, TimeSeriesId id)
     }
 
     return mapping->restore_ts(metric, key, id);
+}
+
+void
+Tsdb::restore_measurement(std::string& measurement, std::string& tags, std::vector<std::pair<std::string,TimeSeriesId>>& fields, std::vector<TimeSeries*>& tsv)
+{
+    Mapping *mapping = get_or_add_mapping(measurement.c_str());
+    if (mapping != nullptr)
+        mapping->restore_measurement(measurement, tags, fields, tsv);
+    else
+        Logger::warn("restore failed for: %s,%s", measurement.c_str(), tags.c_str());
 }
 
 void
@@ -1570,7 +1615,7 @@ Tsdb::init()
     std::sort(m_tsdbs.begin(), m_tsdbs.end(), tsdb_less());
     Logger::debug("%d Tsdbs restored", m_tsdbs.size());
 
-    MetaFile::init(Tsdb::restore_ts);
+    MetaFile::init(Tsdb::restore_ts, Tsdb::restore_measurement);
 
     compact2();
 

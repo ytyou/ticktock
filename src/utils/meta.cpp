@@ -23,10 +23,12 @@
 #include "append.h"
 #include "config.h"
 #include "fd.h"
+#include "limit.h"
 #include "logger.h"
 #include "meta.h"
 #include "ts.h"
 #include "type.h"
+#include "utils.h"
 
 
 namespace tt
@@ -37,14 +39,16 @@ MetaFile * MetaFile::m_instance;    // Singleton instance
 
 
 void
-MetaFile::init(TimeSeries* (*restore_func)(std::string& metric, std::string& key, TimeSeriesId id))
+MetaFile::init(TimeSeries* (*restore_ts)(std::string& metric, std::string& key, TimeSeriesId id),
+               void (*restore_measurement)(std::string& measurement, std::string& tags, std::vector<std::pair<std::string,TimeSeriesId>>& fields, std::vector<TimeSeries*>& tsv))
 {
     m_instance = new MetaFile();            // create the Singleton
-    m_instance->restore(restore_func);      // restore from it
+    m_instance->restore(restore_ts, restore_measurement);
 }
 
 void
-MetaFile::restore(TimeSeries* (*restore_func)(std::string& metric, std::string& key, TimeSeriesId id))
+MetaFile::restore(TimeSeries* (*restore_ts)(std::string& metric, std::string& key, TimeSeriesId id),
+                  void (*restore_measurement)(std::string& measurement, std::string& tags, std::vector<std::pair<std::string,TimeSeriesId>>& fields, std::vector<TimeSeries*>& tsv))
 {
     char buff[PATH_MAX];
     snprintf(buff, sizeof(buff), "%s/ticktock.meta",
@@ -64,30 +68,56 @@ MetaFile::restore(TimeSeries* (*restore_func)(std::string& metric, std::string& 
 
         while (std::getline(is, line))
         {
+            std::vector<TimeSeries*> tsv2;
             std::vector<std::string> tokens;
             tokenize(line, tokens, ' ');
 
-            if (tokens.size() != 3)
+            if (tokens.size() < 3)
             {
                 Logger::error("Bad line in %s: %s", m_name.c_str(), line.c_str());
                 continue;
             }
 
-            std::string metric = tokens[0]; // metric
-            std::string tags = tokens[1];   // tags
-            TimeSeriesId id = std::stoi(tokens[2]);
+            if ((tokens.size() == 3) && (tokens[2].find_first_of('=') == std::string::npos))
+            {
+                // Opentsdb format: metric tag1=val1;tag2=val2; id
+                std::string metric = tokens[0]; // metric
+                std::string tags = tokens[1];   // tags
+                TimeSeriesId id = std::stoi(tokens[2]);
 
-            TimeSeries *ts = (*restore_func)(metric, tags, id);
+                TimeSeries *ts = (*restore_ts)(metric, tags, id);
+                tsv2.push_back(ts);
+            }
+            else
+            {
+                // InfluxDB format: measurement tag1=val1,tag2=val2 field1=id1 field2=id2
+                std::string measurement = tokens[0]; // metric
+                std::string tags = tokens[1];   // tags
+                std::vector<std::pair<std::string,TimeSeriesId>> fields;
+
+                for (int i = 2; i < tokens.size(); i++)
+                {
+                    std::tuple<std::string,std::string> kv;
+                    if (tokenize(tokens[i], kv, '='))
+                        fields.emplace_back(std::get<0>(kv), std::stoi(std::get<1>(kv)));
+                }
+
+                (*restore_measurement)(measurement, tags, fields, tsv2);
+            }
 
             if (restore_needed)
             {
-                // make sure tsv[] has enough capacity
-                std::vector<TimeSeries*>::size_type cap = tsv.capacity();
-                while (cap <= id) cap *= 2;
-                if (tsv.capacity() < cap) tsv.reserve(cap);
-                auto pos = tsv.begin() + id;
-                tsv.insert(pos, ts);
-                //tsv[id] = ts;
+                // TODO: optimize this
+                for (auto ts: tsv2)
+                {
+                    // make sure tsv[] has enough capacity
+                    TimeSeriesId id = ts->get_id();
+                    std::vector<TimeSeries*>::size_type cap = tsv.capacity();
+                    while (cap <= id) cap *= 2;
+                    if (tsv.capacity() < cap) tsv.reserve(cap);
+                    auto pos = tsv.begin() + id;
+                    tsv.insert(pos, ts);
+                }
             }
         }
     }
@@ -157,6 +187,39 @@ MetaFile::add_ts(const char *metric, const char *key, TimeSeriesId id)
 
     std::lock_guard<std::mutex> guard(m_lock);
     fprintf(m_file, "%s %s %u\n", metric, key, id);
+}
+
+void
+MetaFile::add_measurement(const char *measurement, char *tags, std::vector<std::pair<const char*,TimeSeriesId>>& fields)
+{
+    ASSERT(measurement != nullptr);
+    ASSERT(tags != nullptr);
+    ASSERT(m_file != nullptr);
+
+    char buff[MAX_TOTAL_TAG_LENGTH];
+    int n = snprintf(buff, MAX_TOTAL_TAG_LENGTH, "%s %s", measurement, tags);
+
+    if (UNLIKELY(n >= MAX_TOTAL_TAG_LENGTH))
+    {
+        Logger::error("tags too long: %s,%s", measurement, tags);
+        return;
+    }
+
+    for (auto field: fields)
+    {
+        n += snprintf(&buff[n], MAX_TOTAL_TAG_LENGTH-n, " %s=%u", field.first, field.second);
+
+        if (UNLIKELY(n >= MAX_TOTAL_TAG_LENGTH))
+        {
+            Logger::error("tags too long: %s,%s", measurement, tags);
+            return;
+        }
+    }
+
+    buff[n] = 0;
+
+    std::lock_guard<std::mutex> guard(m_lock);
+    fprintf(m_file, "%s\n", buff);
 }
 
 

@@ -122,6 +122,7 @@ private:
     Measurement *get_measurement(char *raw_tags, TagOwner& owner);
     void query_for_ts(Tag *tags, std::unordered_set<TimeSeries*>& tsv, const char *key);
     TimeSeries *restore_ts(std::string& metric, std::string& key, TimeSeriesId id);
+    void restore_measurement(std::string& measurement, std::string& tags, std::vector<std::pair<std::string,TimeSeriesId>>& fields, std::vector<TimeSeries*>& tsv);
     void set_tag_count(int tag_count);
     TimeSeries *get_ts_head();
 
@@ -161,6 +162,7 @@ public:
     static void compact2(); // last compaction step
     static bool add_data_point(DataPoint& dp, bool forward);
     static TimeSeries *restore_ts(std::string& metric, std::string& key, TimeSeriesId id);
+    static void restore_measurement(std::string& measurement, std::string& tags, std::vector<std::pair<std::string,TimeSeriesId>>& fields, std::vector<TimeSeries*>& tsv);
     static void get_all_ts(std::vector<TimeSeries*>& tsv);
     static void get_all_mappings(std::vector<Mapping*>& mappings);
 

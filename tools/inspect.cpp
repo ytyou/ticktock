@@ -383,10 +383,12 @@ main(int argc, char *argv[])
     std::locale loc("");
     std::cerr.imbue(loc);
 
+    MemoryManager::init();
+
     if (! g_data_dir.empty())
     {
         Config::set_value(CFG_TSDB_DATA_DIR, g_data_dir);
-        MetaFile::init(Tsdb::restore_ts);
+        MetaFile::init(Tsdb::restore_ts, Tsdb::restore_measurement);
         Tsdb::get_all_ts(g_time_series);
         std::cerr << "Total number of time series: " << g_time_series.size() << std::endl;
     }

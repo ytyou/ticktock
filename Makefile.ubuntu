@@ -72,7 +72,7 @@ bin/backfill: objs/tools/backfill.o
 	@mkdir -p $(@D)
 	$(LINK) $(LFLAGS) -o $@ $< $(LIBS)
 
-bin/inspect: objs/tools/inspect.o
+bin/inspect: objs/tools/inspect.o $(OBJI)
 	@mkdir -p $(@D)
 	$(LINK) $(LFLAGS) -o $@ $< $(OBJI) $(LIBS)
 
