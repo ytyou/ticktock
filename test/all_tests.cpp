@@ -49,14 +49,15 @@ static TestCase *tests[] =
 int
 main(int argc, char *argv[])
 {
+    long seed;
+
     if (argc > 1)
-        std::srand(std::atoi(argv[1]));
+        seed = std::atoi(argv[1]);
     else
-    {
-        long seed = std::time(0);
-        std::srand(seed);
-        printf("rand() seed used: %ld\n", seed);
-    }
+        seed = std::time(0);
+
+    std::srand(seed);
+    printf("rand() seed used: %ld\n", seed);
 
     // update g_config_file to point to our test config
     tt::g_config_file = TestCase::str_join(TEST_ROOT, "test.conf");
@@ -88,6 +89,6 @@ main(int argc, char *argv[])
         stats.add(tests[i]->get_stats());
     }
 
-    printf("PASSED: %d, FAILED: %d, TOTAL: %d\n", stats.get_passed(), stats.get_failed(), stats.get_total());
+    printf("PASSED: %d, FAILED: %d, TOTAL: %d, SEED-USED: %ld\n", stats.get_passed(), stats.get_failed(), stats.get_total(), seed);
     return 0;
 }

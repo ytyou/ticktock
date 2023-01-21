@@ -24,6 +24,7 @@
 #include <inttypes.h>
 #include <stdexcept>
 #include "compress.h"
+#include "config.h"
 #include "logger.h"
 #include "memmgr.h"
 #include "utils.h"
@@ -52,6 +53,8 @@ static uint64_t TRAILING_ZEROS[64] =
     0x00000000000000FF, 0x00000000000000FE, 0x00000000000000FC, 0x00000000000000F8,
     0x00000000000000F0, 0x00000000000000E0, 0x00000000000000C0, 0x0000000000000080
 };
+
+double Compressor_v3::m_precision;
 
 
 Compressor::Compressor()
@@ -127,6 +130,19 @@ Compressor_v3::Compressor_v3()
     m_is_full = false;
 
     ASSERT(get_start_tstamp() <= m_prev_tstamp);
+}
+
+void
+Compressor_v3::initialize()
+{
+    int p = Config::get_int(CFG_TSDB_COMPRESSOR_PRECISION, CFG_TSDB_COMPRESSOR_PRECISION_DEF);
+    if ((p < 0) || (p > 20))
+    {
+        Logger::warn("config %s of %d ignored, using default %d",
+            CFG_TSDB_COMPRESSOR_PRECISION, p, CFG_TSDB_COMPRESSOR_PRECISION_DEF);
+        p = CFG_TSDB_COMPRESSOR_PRECISION_DEF;
+    }
+    m_precision = std::pow(10, p);
 }
 
 void
@@ -256,7 +272,7 @@ Compressor_v3::compress(double v)
     {
         uint8_t one_zero = 0x80;
         m_bitset.append(reinterpret_cast<uint8_t*>(&one_zero), 1, 0);
-        compress((int64_t)std::lround(v * 1000.0));
+        compress((int64_t)std::lround(v * m_precision));
     }
 }
 
@@ -364,8 +380,8 @@ Compressor_v3::uncompress(DataPointVector& dps, bool restore)
             timestamp += delta;
 
             // value
-            delta_of_delta = uncompress_f(cursor);
-            value += delta_of_delta;
+            double delta_of_delta_v = uncompress_f(cursor);
+            value += delta_of_delta_v;
             dps.emplace_back(timestamp, value);
         }
         catch (const std::out_of_range& ex)
@@ -401,7 +417,7 @@ Compressor_v3::uncompress_f(BitSetCursor *cursor)
     else
     {
         int64_t v = uncompress_i(cursor);
-        return ((double)v) / 1000.0;
+        return ((double)v) / m_precision;
     }
 }
 
