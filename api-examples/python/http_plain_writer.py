@@ -1,4 +1,5 @@
 import sys
+import requests
 
 PY3 = sys.version_info[0] > 2
 if PY3:
@@ -25,6 +26,12 @@ try:
 
     response = urlopen(req, put_req.encode())
     print("Received response:", response.getcode()) 
+
+    print("To query:");
+    url = "http://%s:%s/api/query?start=1633412100&m=avg:1m-avg:http.cpu.usr{host=foo}" % (HOST, PORT)
+    res = requests.get(url)
+    print(res.text)
+    print(res.url)
 except HTTPError as e1:
     print("HTTP Exception:", e1)
 except URLError as e2:
