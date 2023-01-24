@@ -327,7 +327,7 @@ Mapping::get_measurement(char *raw_tags, TagOwner& owner)
         }
 
         if (std::strcmp(raw_tags, ordered) != 0)
-            m_map2[raw_tags] = mm;
+            m_map2[STRDUP(raw_tags)] = mm;
     }
 
     return mm;
