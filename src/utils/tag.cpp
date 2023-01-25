@@ -89,7 +89,7 @@ TagOwner::parse(char *tags)
     {
         const char *key = tags;
 
-        while (*tags != '=' || *(tags-1) == '\\')
+        while ((*tags != '=' || *(tags-1) == '\\') && (*tags != '\n') && (*tags != 0))
             tags++;
         if (UNLIKELY(*tags != '=')) return false;
         *tags++ = 0;

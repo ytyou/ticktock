@@ -1916,7 +1916,7 @@ Tsdb::rotate(TaskData& data)
 
         if (! (tsdb->m_mode & TSDB_MODE_READ))
         {
-            Logger::info("[rotate] %T already archived!", tsdb);
+            Logger::debug("[rotate] %T already archived!", tsdb);
             continue;    // already archived
         }
 
