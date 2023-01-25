@@ -91,6 +91,7 @@ TagOwner::parse(char *tags)
 
         while (*tags != '=' || *(tags-1) == '\\')
             tags++;
+        if (UNLIKELY(*tags != '=')) return false;
         *tags++ = 0;
 
         const char *value = tags;
