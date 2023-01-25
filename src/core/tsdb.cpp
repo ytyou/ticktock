@@ -308,7 +308,7 @@ Mapping::get_measurement(char *raw_tags, TagOwner& owner)
         else
         {
             // parse raw tags...
-            if (! owner.parse(original))
+            if (! owner.parse(&original[1]))
                 return nullptr;
             owner.get_ordered_tags(ordered, MAX_TOTAL_TAG_LENGTH);
         }
