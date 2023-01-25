@@ -295,9 +295,10 @@ Mapping::get_measurement(char *raw_tags, TagOwner& owner)
     if (mm == nullptr)
     {
         char ordered[MAX_TOTAL_TAG_LENGTH];
-        char original[MAX_TOTAL_TAG_LENGTH];
+        char original[MAX_TOTAL_TAG_LENGTH+1];
 
-        std::strncpy(original, raw_tags, MAX_TOTAL_TAG_LENGTH);
+        original[0] = 0;    // owner.parse() may check this
+        std::strncpy(&original[1], raw_tags, MAX_TOTAL_TAG_LENGTH);
 
         if (raw_tags[1] == 0)   // no tags
         {
