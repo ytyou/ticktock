@@ -1361,7 +1361,7 @@ Tsdb::http_api_put_handler_plain(HttpRequest& request, HttpResponse& response)
     // TODO: Now what???
     //if (forward && (tsdb != nullptr))
         //success = tsdb->submit_data_points() && success; // flush
-    response.init((success ? 200 : 500), HttpContentType::PLAIN);
+    response.init((success ? 200 : 400), HttpContentType::PLAIN);
 
     return success;
 }
@@ -1414,7 +1414,7 @@ Tsdb::http_api_write_handler(HttpRequest& request, HttpResponse& response)
 
     for (auto dp: tmp) MemoryManager::free_recyclable(dp);
 
-    response.init((success ? 200 : 500), HttpContentType::PLAIN);
+    response.init((success ? 200 : 400), HttpContentType::PLAIN);
     return success;
 }
 
