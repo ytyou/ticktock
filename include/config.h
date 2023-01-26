@@ -81,6 +81,8 @@
 #define CFG_TCP_RESPONDERS_PER_LISTENER_DEF     1
 #define CFG_TCP_RESPONDERS_QUEUE_SIZE           "tcp.responders.queue.size"
 #define CFG_TCP_RESPONDERS_QUEUE_SIZE_DEF       128
+#define CFG_TCP_SERVER_ENABLED                  "tcp.server.enabled"
+#define CFG_TCP_SERVER_ENABLED_DEF              true
 #define CFG_TCP_SERVER_PORT                     "tcp.server.port"
 #define CFG_TCP_SERVER_PORT_DEF                 6181
 #define CFG_TCP_SOCKET_RCVBUF_SIZE              "tcp.socket.rcvbuf.size"
