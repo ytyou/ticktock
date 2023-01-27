@@ -39,7 +39,7 @@ class Downsampler;
 class Tsdb;
 
 
-class __attribute__ ((__packed__)) TimeSeries
+class __attribute__ ((__packed__)) TimeSeries : public BaseType
 {
 public:
     TimeSeries(TagBuilder& builder);
@@ -76,6 +76,9 @@ public:
     void get_values(std::set<std::string>& values) const { m_tags.get_values(values); }
 
     bool query_for_data(Tsdb *tsdb, TimeRange& range, std::vector<DataPointContainer*>& data);
+
+    inline bool is_type(int type) const override
+    { return TT_TYPE_TIME_SERIES == type; }
 
     TimeSeries *m_next;
 

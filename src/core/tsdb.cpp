@@ -95,9 +95,21 @@ Measurement::set_ts_count(uint32_t ts_count)
 void
 Measurement::add_ts(int idx, TimeSeries *ts)
 {
-    ASSERT(idx < m_ts_count);
+    ASSERT(idx >= 0);
     ASSERT(ts != nullptr);
-    ASSERT(m_time_series[idx] == nullptr);
+
+    if (idx >= m_ts_count)
+    {
+        ASSERT(m_time_series != nullptr);
+        m_ts_count = idx + 1;
+        TimeSeries **tmp = m_time_series;
+        m_time_series = (TimeSeries**)calloc(m_ts_count, sizeof(TimeSeries*));
+        if (tmp != nullptr)
+        {
+            std::memcpy(m_time_series, tmp, (m_ts_count-1)*sizeof(TimeSeries*));
+            std::free(tmp);
+        }
+    }
 
     m_time_series[idx] = ts;
 }
@@ -159,6 +171,21 @@ Measurement::get_ts(int idx, const char *field)
     }
 
     return nullptr;
+}
+
+// get or add the TimeSeries that has no field name
+TimeSeries *
+Measurement::get_ts(bool add, Mapping *mapping)
+{
+    TimeSeries *ts = get_ts(m_ts_count-1, TT_FIELD_VALUE);
+
+    if ((ts == nullptr) && add)
+    {
+        ASSERT(mapping != nullptr);
+        ts = add_ts(TT_FIELD_VALUE, mapping);
+    }
+
+    return ts;
 }
 
 bool
@@ -226,6 +253,7 @@ Mapping::get_ts_head()
 TimeSeries *
 Mapping::get_ts(DataPoint& dp)
 {
+    BaseType *bt = nullptr;
     TimeSeries *ts = nullptr;
     char *raw_tags = dp.get_raw_tags();
     //std::lock_guard<std::mutex> guard(m_lock);
@@ -235,10 +263,10 @@ Mapping::get_ts(DataPoint& dp)
         ReadLock guard(m_lock);
         auto result = m_map.find(raw_tags);
         if (result != m_map.end())
-            ts = result->second;
+            bt = result->second;
     }
 
-    if (ts == nullptr)
+    if (bt == nullptr)
     {
         if (raw_tags != nullptr)
         {
@@ -256,13 +284,14 @@ Mapping::get_ts(DataPoint& dp)
         {
             auto result = m_map.find(buff);
             if (result != m_map.end())
-                ts = result->second;
+                bt = result->second;
         }
 
-        if (ts == nullptr)
+        if (bt == nullptr)
         {
             ts = new TimeSeries(m_metric, buff, dp.get_tags());
-            m_map[STRDUP(buff)] = ts;
+            bt = dynamic_cast<BaseType*>(ts);
+            m_map[STRDUP(buff)] = bt;
             add_ts(ts);
             set_tag_count(dp.get_tag_count());
         }
@@ -270,11 +299,16 @@ Mapping::get_ts(DataPoint& dp)
         if (raw_tags != nullptr)
         {
             if (std::strcmp(raw_tags, buff) != 0)
-                m_map[raw_tags] = ts;
+                m_map[raw_tags] = bt;
             else
                 FREE(raw_tags);
         }
     }
+
+    if (bt->is_type(TT_TYPE_MEASUREMENT))
+        ts = (dynamic_cast<Measurement*>(bt))->get_ts(true, this);
+    else
+        ts = dynamic_cast<TimeSeries*>(bt);
 
     return ts;
 }
@@ -283,16 +317,23 @@ Measurement *
 Mapping::get_measurement(char *raw_tags, TagOwner& owner)
 {
     ASSERT(raw_tags != nullptr);
-    Measurement *mm = nullptr;
+    BaseType *bt = nullptr;
+    TimeSeries *ts = nullptr;
 
     {
-        ReadLock guard(m_lock2);
-        auto result = m_map2.find(raw_tags);
-        if (result != m_map2.end())
-            mm = result->second;
+        ReadLock guard(m_lock);
+        auto result = m_map.find(raw_tags);
+        if (result != m_map.end())
+            bt = result->second;
     }
 
-    if (mm == nullptr)
+    if ((bt != nullptr) && (UNLIKELY(bt->is_type(TT_TYPE_TIME_SERIES))))
+    {
+        ts = dynamic_cast<TimeSeries*>(bt);
+        bt = nullptr;
+    }
+
+    if (bt == nullptr)
     {
         char ordered[MAX_TOTAL_TAG_LENGTH];
         char original[MAX_TOTAL_TAG_LENGTH+1];
@@ -313,25 +354,38 @@ Mapping::get_measurement(char *raw_tags, TagOwner& owner)
             owner.get_ordered_tags(ordered, MAX_TOTAL_TAG_LENGTH);
         }
 
-        WriteLock guard(m_lock2);
+        WriteLock guard(m_lock);
 
         {
-            auto result = m_map2.find(ordered);
-            if (result != m_map2.end())
-                mm = result->second;
+            auto result = m_map.find(ordered);
+            if (result != m_map.end())
+                bt = result->second;
         }
 
-        if (mm == nullptr)
+        if ((bt != nullptr) && (UNLIKELY(bt->is_type(TT_TYPE_TIME_SERIES))))
+        {
+            ts = dynamic_cast<TimeSeries*>(bt);
+            bt = nullptr;
+        }
+
+        Measurement *mm = nullptr;
+
+        if (bt == nullptr)
         {
             mm = new Measurement();
-            m_map2[STRDUP(ordered)] = mm;
+            bt = dynamic_cast<BaseType*>(mm);
+            m_map[STRDUP(ordered)] = bt;
         }
 
         if (std::strcmp(raw_tags, ordered) != 0)
-            m_map2[STRDUP(raw_tags)] = mm;
+            m_map[STRDUP(raw_tags)] = bt;
+
+        if ((ts != nullptr) && (mm != nullptr))
+            mm->add_ts(0, ts);
     }
 
-    return mm;
+    ASSERT(bt->is_type(TT_TYPE_MEASUREMENT));
+    return dynamic_cast<Measurement*>(bt);
 }
 
 void
@@ -449,7 +503,16 @@ Mapping::query_for_ts(Tag *tags, std::unordered_set<TimeSeries*>& tsv, const cha
         ReadLock guard(m_lock);
         auto result = m_map.find(key);
         if (result != m_map.end())
-            tsv.insert(result->second);
+        {
+            TimeSeries *ts = nullptr;
+            BaseType *bt = result->second;
+
+            if (bt->is_type(TT_TYPE_MEASUREMENT))
+                ts = (dynamic_cast<Measurement*>(bt))->get_ts(false, this);
+            else
+                ts = dynamic_cast<TimeSeries*>(bt);
+            tsv.insert(ts);
+        }
     }
 
     if (tsv.empty())

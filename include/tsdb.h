@@ -75,7 +75,7 @@ class Mapping;
 class DataPointContainer;
 
 
-class Measurement
+class Measurement : public BaseType
 {
 public:
     Measurement();
@@ -83,12 +83,16 @@ public:
     ~Measurement();
 
     void add_ts(int idx, TimeSeries *ts);
+    TimeSeries *get_ts(bool add, Mapping *mapping);
     TimeSeries *add_ts(const char *field, Mapping *mapping);
     bool add_data_points(std::vector<DataPoint*>& dps, Timestamp ts, Mapping *mapping);
     TimeSeries *get_ts(int idx, const char *field);
     inline uint32_t get_ts_count() const { return m_ts_count; }
     inline void set_ts_count(uint32_t ts_count);
     inline bool is_initialized() const { return m_time_series != nullptr; }
+
+    inline bool is_type(int type) const override
+    { return TT_TYPE_MEASUREMENT == type; }
 
     std::mutex m_lock;
 
@@ -131,11 +135,11 @@ private:
 
     //std::mutex m_lock;
     default_contention_free_shared_mutex m_lock;
-    tsl::robin_map<const char*,TimeSeries*,hash_func,eq_func> m_map;
-    //std::unordered_map<const char*,TimeSeries*,hash_func,eq_func> m_map;
+    tsl::robin_map<const char*,BaseType*,hash_func,eq_func> m_map;
+    //std::unordered_map<const char*,BaseType*,hash_func,eq_func> m_map;
 
-    default_contention_free_shared_mutex m_lock2;
-    tsl::robin_map<const char*,Measurement*,hash_func,eq_func> m_map2;
+    //default_contention_free_shared_mutex m_lock2;
+    //tsl::robin_map<const char*,Measurement*,hash_func,eq_func> m_map2;
 
     std::atomic<TimeSeries*> m_ts_head;
     int16_t m_tag_count;    // -1: uninitialized; -2: inconsistent;

@@ -34,8 +34,10 @@ namespace tt
 {
 
 
+// TT_FIELD_VALUE is used when there's NO field
 #define TT_FIELD_TAG_ID     0
 #define TT_FIELD_TAG_NAME   "_field"
+#define TT_FIELD_VALUE      "_"
 
 class TagBuilder;
 typedef KeyValuePair Tag;

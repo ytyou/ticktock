@@ -71,4 +71,14 @@ enum TimeUnit : unsigned char
 };
 
 
+#define TT_TYPE_TIME_SERIES     1
+#define TT_TYPE_MEASUREMENT     2
+
+class __attribute__ ((__packed__)) BaseType
+{
+public:
+    virtual bool is_type(int type) const = 0;
+};
+
+
 }
