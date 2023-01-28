@@ -1010,7 +1010,7 @@ MemoryManager::collect_garbage(TaskData& data)
         }
     }
 
-#ifdef _DEBUG
+#ifdef TT_STATS
     log_stats();
 #endif
 

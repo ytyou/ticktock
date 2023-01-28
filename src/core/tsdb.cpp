@@ -119,6 +119,8 @@ Measurement::add_ts(const char *field, Mapping *mapping)
 {
     ASSERT(m_ts_count > 0);
 
+    WriteLock guard(m_lock);
+
     m_ts_count++;
     TimeSeries **tmp = m_time_series;
     m_time_series = (TimeSeries**)calloc(m_ts_count, sizeof(TimeSeries*));
@@ -141,17 +143,24 @@ Measurement::get_ts(int idx, const char *field)
 {
     ASSERT(field != nullptr);
 
+    TagId vid;
     TimeSeries *ts = nullptr;
-    TagId vid = Tag_v2::get_or_set_id(field);
 
-    if (idx < m_ts_count)
     {
-        // try this one first
-        ts = m_time_series[idx];
-        Tag_v2& tags = ts->get_v2_tags();
-        if (tags.match_last(TT_FIELD_TAG_ID, vid))
-            return ts;
+        ReadLock guard(m_lock);
+        vid = Tag_v2::get_or_set_id(field);
+
+        if (idx < m_ts_count)
+        {
+            // try this one first
+            ts = m_time_series[idx];
+            Tag_v2& tags = ts->get_v2_tags();
+            if (tags.match_last(TT_FIELD_TAG_ID, vid))
+                return ts;
+        }
     }
+
+    WriteLock guard(m_lock);
 
     // look for it
     for (int i = 0; i < m_ts_count; i++)
@@ -189,23 +198,64 @@ Measurement::get_ts(bool add, Mapping *mapping)
 }
 
 bool
+Measurement::get_ts(std::vector<DataPoint*>& dps, std::vector<TimeSeries*>& tsv)
+{
+    ReadLock guard(m_lock);
+
+    if (dps.size() != m_ts_count) return false;
+
+    for (int i = 0; i < dps.size(); i++)
+    {
+        DataPoint *dp = dps[i];
+        const char *field = dp->get_raw_tags();
+        TagId vid = Tag_v2::get_or_set_id(field);
+        TimeSeries *ts = m_time_series[i];
+        Tag_v2& tags = ts->get_v2_tags();
+        if (! tags.match_last(TT_FIELD_TAG_ID, vid))
+            return false;
+        tsv.push_back(ts);
+    }
+
+    return true;
+}
+
+bool
 Measurement::add_data_points(std::vector<DataPoint*>& dps, Timestamp tstamp, Mapping *mapping)
 {
-    int i = 0;
-    bool success = true;
+    bool success;
+    std::vector<TimeSeries*> tsv;
 
-    for (auto dp: dps)
+    tsv.reserve(dps.size());
+    success = get_ts(dps, tsv);
+
+    if (LIKELY(success))
     {
-        TimeSeries *ts = get_ts(i++, dp->get_raw_tags());
+        ASSERT(tsv.size() == dps.size());
 
-        if (ts == nullptr)
+        for (int i = 0; i < dps.size(); i++)
         {
-            success = false;
-            ts = add_ts(dp->get_raw_tags(), mapping);
+            TimeSeries *ts = tsv[i];    //get_ts(i++, dp->get_raw_tags());
+            DataPoint *dp = dps[i];
+            dp->set_timestamp(tstamp);
+            ts->add_data_point(*dp);
+        }
+    }
+    else
+    {
+        int i = 0;
+
+        for (auto dp: dps)
+        {
+            TimeSeries *ts = get_ts(i++, dp->get_raw_tags());
+
+            if (ts == nullptr)
+                ts = add_ts(dp->get_raw_tags(), mapping);
+
+            dp->set_timestamp(tstamp);
+            ts->add_data_point(*dp);
         }
 
-        dp->set_timestamp(tstamp);
-        ts->add_data_point(*dp);
+        success = true;
     }
 
     return success;
@@ -314,7 +364,7 @@ Mapping::get_ts(DataPoint& dp)
 }
 
 Measurement *
-Mapping::get_measurement(char *raw_tags, TagOwner& owner)
+Mapping::get_measurement(char *raw_tags, TagOwner& owner, const char *measurement, std::vector<DataPoint*>& dps)
 {
     ASSERT(raw_tags != nullptr);
     BaseType *bt = nullptr;
@@ -327,13 +377,13 @@ Mapping::get_measurement(char *raw_tags, TagOwner& owner)
             bt = result->second;
     }
 
-    if ((bt != nullptr) && (UNLIKELY(bt->is_type(TT_TYPE_TIME_SERIES))))
+    if (UNLIKELY(bt != nullptr) && UNLIKELY(bt->is_type(TT_TYPE_TIME_SERIES)))
     {
         ts = dynamic_cast<TimeSeries*>(bt);
         bt = nullptr;
     }
 
-    if (bt == nullptr)
+    if (UNLIKELY(bt == nullptr))
     {
         char ordered[MAX_TOTAL_TAG_LENGTH];
         char original[MAX_TOTAL_TAG_LENGTH+1];
@@ -373,6 +423,7 @@ Mapping::get_measurement(char *raw_tags, TagOwner& owner)
         if (bt == nullptr)
         {
             mm = new Measurement();
+            init_measurement(mm, measurement, raw_tags, owner, dps);
             bt = dynamic_cast<BaseType*>(mm);
             m_map[STRDUP(ordered)] = bt;
         }
@@ -451,21 +502,19 @@ Mapping::add_data_points(const char *measurement, char *tags, Timestamp ts, std:
     }
 
     TagOwner owner(false);
-    Measurement *mm = get_measurement(tags, owner);
+    Measurement *mm = get_measurement(tags, owner, measurement, dps);
 
     if (UNLIKELY(mm == nullptr))
         return false;
 
-    {
-        std::lock_guard<std::mutex> guard(mm->m_lock);
-        if (mm->is_initialized())
-            return mm->add_data_points(dps, ts, this);
-    }
+    ASSERT(mm->is_initialized());
+    return mm->add_data_points(dps, ts, this);
+}
 
-    std::lock_guard<std::mutex> guard(mm->m_lock);
-
-    if (mm->is_initialized())
-        return mm->add_data_points(dps, ts, this);
+void
+Mapping::init_measurement(Measurement *mm, const char *measurement, char *tags, TagOwner& owner, std::vector<DataPoint*>& dps)
+{
+    if (dps.empty()) return;
 
     TagCount count = owner.get_tag_count() + 1;
     TagId ids[2 * count];
@@ -489,8 +538,6 @@ Mapping::add_data_points(const char *measurement, char *tags, Timestamp ts, std:
 
     // write meta-file
     MetaFile::instance()->add_measurement(measurement, tags, fields);
-
-    return mm->add_data_points(dps, ts, this);
 }
 
 void
@@ -575,8 +622,9 @@ Mapping::restore_measurement(std::string& measurement, std::string& tags, std::v
 
     tags.copy(buff, len);
     buff[len] = 0;
+    std::vector<DataPoint*> dps;
 
-    Measurement *mm = get_measurement(buff, owner);
+    Measurement *mm = get_measurement(buff, owner, measurement.c_str(), dps);
     TagCount count = owner.get_tag_count() + 1;
     TagId ids[2 * count];
     TagBuilder builder(count, ids);
