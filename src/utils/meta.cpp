@@ -25,6 +25,7 @@
 #include "fd.h"
 #include "limit.h"
 #include "logger.h"
+#include "memmgr.h"
 #include "meta.h"
 #include "ts.h"
 #include "type.h"
@@ -196,30 +197,38 @@ MetaFile::add_measurement(const char *measurement, char *tags, std::vector<std::
     ASSERT(tags != nullptr);
     ASSERT(m_file != nullptr);
 
-    char buff[MAX_TOTAL_TAG_LENGTH];
-    int n = snprintf(buff, MAX_TOTAL_TAG_LENGTH, "%s %s", measurement, tags);
+    //char buff[MAX_TOTAL_TAG_LENGTH];
+    char *buff = MemoryManager::alloc_network_buffer();
+    uint64_t size = MemoryManager::get_network_buffer_size();
+    int n = snprintf(buff, size, "%s %s", measurement, tags);
 
-    if (UNLIKELY(n >= MAX_TOTAL_TAG_LENGTH))
+    if (UNLIKELY(n >= size))
     {
         Logger::error("tags too long: %s,%s", measurement, tags);
+        MemoryManager::free_network_buffer(buff);
         return;
     }
 
     for (auto field: fields)
     {
-        n += snprintf(&buff[n], MAX_TOTAL_TAG_LENGTH-n, " %s=%u", field.first, field.second);
+        n += snprintf(&buff[n], size-n, " %s=%u", field.first, field.second);
 
-        if (UNLIKELY(n >= MAX_TOTAL_TAG_LENGTH))
+        if (UNLIKELY(n >= size))
         {
             Logger::error("tags too long: %s,%s", measurement, tags);
+            MemoryManager::free_network_buffer(buff);
             return;
         }
     }
 
     buff[n] = 0;
 
-    std::lock_guard<std::mutex> guard(m_lock);
-    fprintf(m_file, "%s\n", buff);
+    {
+        std::lock_guard<std::mutex> guard(m_lock);
+        fprintf(m_file, "%s\n", buff);
+    }
+
+    MemoryManager::free_network_buffer(buff);
 }
 
 

@@ -208,15 +208,13 @@ MemoryManager::init()
             m_max_usage[i][j] = 0;
     }
 
-    if (Config::exists(CFG_TSDB_GC_FREQUENCY))
-    {
-        int freq = (int)Config::get_time(CFG_TSDB_GC_FREQUENCY, TimeUnit::SEC);
-        Task task;
-        task.doit = &MemoryManager::collect_garbage;
-        task.data.integer = 0;  // indicates this is from scheduled task (vs. interactive cmd)
-        Timer::inst()->add_task(task, freq, "gc");
-        Logger::info("GC Freq: %d secs", freq);
-    }
+    int freq = (int)Config::get_time(CFG_TSDB_GC_FREQUENCY, TimeUnit::SEC, CFG_TSDB_GC_FREQUENCY_DEF);
+    if (freq < 10) freq = 10;   // min GC freq
+    Task task;
+    task.doit = &MemoryManager::collect_garbage;
+    task.data.integer = 0;  // indicates this is from scheduled task (vs. interactive cmd)
+    Timer::inst()->add_task(task, freq, "gc");
+    Logger::info("GC Freq: %d secs", freq);
 }
 
 void

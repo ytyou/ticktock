@@ -116,6 +116,7 @@
 #define CFG_TSDB_FLUSH_FREQUENCY                "tsdb.flush.frequency"
 #define CFG_TSDB_FLUSH_FREQUENCY_DEF            "5min"
 #define CFG_TSDB_GC_FREQUENCY                   "tsdb.gc.frequency"
+#define CFG_TSDB_GC_FREQUENCY_DEF               "1d"
 #define CFG_TSDB_MAX_DP_LINE                    "tsdb.max.dp.line"
 #define CFG_TSDB_MAX_DP_LINE_DEF                256
 #define CFG_TSDB_MIN_DISK_SPACE                 "tsdb.min.disk.space"
