@@ -78,6 +78,9 @@ class DataPoint(object):
         self._value = value
         self._tags = tags
 
+    def get_metric(self):
+        return self._metric
+
     def get_timestamp(self):
         return self._timestamp
 
@@ -292,6 +295,10 @@ class Test(object):
             response = requests.post("http://"+self._options.ip+":"+str(self._options.port)+"/api/admin?cmd=cp")
         response.raise_for_status()
         return response.json()
+
+    def do_compaction(self):
+        response = requests.post("http://"+self._options.ip+":"+str(self._options.port)+"/api/admin?cmd=compact")
+        response.raise_for_status()
 
     def metric_name(self, idx, prefix=None):
         if not prefix:
@@ -580,6 +587,58 @@ class Test(object):
         os.mkdir(os.path.join(self._options.root,"append"))
         os.mkdir(os.path.join(self._options.root,"append0"))
         os.mkdir(os.path.join(self._options.root,"append1"))
+
+
+class Compaction_Tests(Test):
+
+    def __init__(self, options, prefix="compact"):
+        super(Compaction_Tests, self).__init__(options, prefix)
+
+    def __call__(self):
+
+        config = TickTockConfig(self._options)
+        config.add_entry("log.level", "TRACE")
+        config()    # generate config
+
+        self.start_tt()
+
+        dps = DataPoints(self._prefix, self._options.start, metric_count=32, metric_cardinality=2, tag_cardinality=2)
+        self.send_data(dps)
+
+        # query every dp...
+        for dp in dps.get_dps():
+            query = Query(metric=dp.get_metric(), start=dp.get_timestamp(), end=dp.get_timestamp()+1, tags=dp.get_tags())
+            self.query_and_verify(query)
+
+        # shutdown and restart
+        self.stop_tt()
+        self.wait_for_tt(self._options.timeout)
+        time.sleep(2)
+
+        config()    # generate config
+        self.start_tt()
+
+        # query every dp...
+        for dp in dps.get_dps():
+            query = Query(metric=dp.get_metric(), start=dp.get_timestamp(), end=dp.get_timestamp()+1, tags=dp.get_tags())
+            self.query_and_verify(query)
+
+        # do compaction
+        print "perform compaction..."
+        self.do_compaction()
+
+        # shutdown and restart
+        self.stop_tt()
+        self.wait_for_tt(self._options.timeout)
+        time.sleep(2)
+
+        config()    # generate config
+        self.start_tt()
+
+        # query every dp, again...
+        for dp in dps.get_dps():
+            query = Query(metric=dp.get_metric(), start=dp.get_timestamp(), end=dp.get_timestamp()+1, tags=dp.get_tags())
+            self.query_and_verify(query)
 
 
 class Multi_Thread_Tests(Test):
@@ -1851,6 +1910,7 @@ def main(argv):
     if options.leak:
         tests.append(Memory_Leak_Tests(options))
     else:
+        tests.append(Compaction_Tests(options))
         tests.append(Multi_Thread_Tests(options))
         #tests.append(Backfill_Tests(options))
         tests.append(Stop_Restart_Tests(options))

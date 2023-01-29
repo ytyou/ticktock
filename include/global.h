@@ -30,7 +30,7 @@ namespace tt
 
 #define TT_MAJOR_VERSION    0
 #define TT_MINOR_VERSION    10
-#define TT_PATCH_VERSION    3
+#define TT_PATCH_VERSION    4
 
 class HttpServer;
 class TcpServer;

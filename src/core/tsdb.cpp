@@ -1686,7 +1686,9 @@ Tsdb::compact(TaskData& data)
             //WriteLock guard((*it)->m_lock);
 
             // also make sure it's not readable nor writable while we are compacting
-            if ((*it)->m_mode & (TSDB_MODE_COMPACTED | TSDB_MODE_READ_WRITE))
+            //if ((*it)->m_mode & (TSDB_MODE_COMPACTED | TSDB_MODE_READ_WRITE))
+            if (((*it)->m_mode & TSDB_MODE_COMPACTED) ||
+                (((*it)->m_mode & TSDB_MODE_READ_WRITE) && (data.integer == 0)))
                 continue;
 
             tsdb = *it;
@@ -1730,7 +1732,7 @@ Tsdb::compact(TaskData& data)
             for (TimeSeriesId id = 0; id < max_id; id++)
             {
                 // collect dps
-                query->init(&tsdbs);
+                query->init(&tsdbs, tsdb->get_time_range());
                 query->perform(id);
 
                 // save into temp tsdb
@@ -1762,6 +1764,9 @@ Tsdb::compact(TaskData& data)
             }
 
             MemoryManager::free_recyclable(query);
+            compacted->unload_no_lock();
+            delete compacted;
+            tsdb->unload_no_lock();
 
             // rename to indicate compaction was successful
             std::string temp_name = get_tsdb_dir_name(range, TEMP_SUFFIX);
@@ -1771,7 +1776,6 @@ Tsdb::compact(TaskData& data)
 
             // mark it as compacted
             tsdb->m_mode |= TSDB_MODE_COMPACTED;
-            tsdb->unload_no_lock();
             Logger::info("[compact] 1 Tsdb compacted");
         }
         catch (const std::exception& ex)
