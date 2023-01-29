@@ -640,6 +640,11 @@ class Compaction_Tests(Test):
             query = Query(metric=dp.get_metric(), start=dp.get_timestamp(), end=dp.get_timestamp()+1, tags=dp.get_tags())
             self.query_and_verify(query)
 
+        # shutdown and restart
+        self.stop_tt()
+        self.wait_for_tt(self._options.timeout)
+        time.sleep(2)
+
 
 class Multi_Thread_Tests(Test):
 
