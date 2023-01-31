@@ -67,6 +67,8 @@
 #define CFG_STATS_FREQUENCY_DEF                 "30s"
 #define CFG_TCP_CONNECTION_IDLE_TIMEOUT         "tcp.connection.idle.timeout"
 #define CFG_TCP_CONNECTION_IDLE_TIMEOUT_DEF     "10min"
+#define CFG_TCP_LINE_PROTOCOL                   "tcp.line.protocol"
+#define CFG_TCP_LINE_PROTOCOL_DEF               "opentsdb"
 #define CFG_TCP_LISTENER_COUNT                  "tcp.listener.count"
 #define CFG_TCP_LISTENER_COUNT_DEF              std::thread::hardware_concurrency()
 #define CFG_TCP_MAX_EPOLL_EVENTS                "tcp.max.epoll.events"

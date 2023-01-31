@@ -24,6 +24,7 @@
 #include <inttypes.h>
 #include <iostream>
 #include <locale>
+#include <mutex>
 #include <string.h>
 #include <unistd.h>
 #include <sys/mman.h>
@@ -45,6 +46,8 @@ std::vector<TimeSeries*> g_time_series;
 std::atomic<uint64_t> g_total_dps_cnt{0};
 std::atomic<long> g_total_page_cnt{0};
 bool g_verbose = false;
+std::atomic<bool> g_new_line{false};
+std::mutex g_mutex; // protect std::cerr
 TaskScheduler inspector("inspector", std::thread::hardware_concurrency()+1, 128);
 
 
@@ -225,7 +228,15 @@ inspect_index_file(const std::string& file_name)
 void
 inspect_tsdb_internal(const std::string& dir)
 {
-    fprintf(stderr, "Inspecting tsdb %s...\n", dir.c_str());
+    {
+        std::lock_guard<std::mutex> guard(g_mutex);
+        if (g_new_line)
+        {
+            std::cerr << std::endl;
+            g_new_line = false;
+        }
+        std::cerr << "Inspecting tsdb " << dir << "..." << std::endl;
+    }
 
     // dump all headers first...
     uint64_t tsdb_dps = 0;
@@ -317,7 +328,8 @@ inspect_tsdb_internal(const std::string& dir)
 
             if (page_header->is_out_of_order()) ooo_page_cnt++;
 
-            tsdb_dps += inspect_page(file_idx, header_idx, tsdb_header, page_header, data_base);
+            tsdb_dps = inspect_page(file_idx, header_idx, tsdb_header, page_header, data_base);
+            g_total_dps_cnt.fetch_add(tsdb_dps, std::memory_order_relaxed);
 
             if (file_idx != page_header->m_next_file)
             {
@@ -338,12 +350,12 @@ inspect_tsdb_internal(const std::string& dir)
     }
 
     close_mmap(index_file_fd, index_base, index_file_size);
-    g_total_dps_cnt.fetch_add(tsdb_dps, std::memory_order_relaxed);
+    //g_total_dps_cnt.fetch_add(tsdb_dps, std::memory_order_relaxed);
 
-    if (ooo_page_cnt > 0)
-        std::cerr << "tsdb dps = " << tsdb_dps << "; pages = " << g_total_page_cnt.load() << "; total dps = " << g_total_dps_cnt.load() << "; ooo pages = " << ooo_page_cnt << std::endl;
-    else
-        std::cerr << "tsdb dps = " << tsdb_dps << "; pages = " << g_total_page_cnt.load() << "; total dps = " << g_total_dps_cnt.load() << std::endl;
+    //if (ooo_page_cnt > 0)
+        //std::cerr << "tsdb dps = " << tsdb_dps << "; pages = " << g_total_page_cnt.load() << "; total dps = " << g_total_dps_cnt.load() << "; ooo pages = " << ooo_page_cnt << std::endl;
+    //else
+        //std::cerr << "tsdb dps = " << tsdb_dps << "; pages = " << g_total_page_cnt.load() << "; total dps = " << g_total_dps_cnt.load() << std::endl;
     //fprintf(stderr, "tsdb dps = %" PRIu64 "; total dps = %" PRIu64 "\n",
         //tsdb_dps, g_total_dps_cnt);
 }
@@ -393,6 +405,8 @@ main(int argc, char *argv[])
         std::cerr << "Total number of time series: " << g_time_series.size() << std::endl;
     }
 
+    uint64_t total_cnt = 0;
+
     if (g_tsdb_dir.empty())
     {
         // data directory structure:
@@ -401,11 +415,20 @@ main(int argc, char *argv[])
         for_all_dirs(g_data_dir, inspect_tsdb, 3);
 
         std::vector<size_t> counts;
-        while (inspector.get_pending_task_count(counts) > 0)
+        while ((inspector.get_pending_task_count(counts) > 0) ||
+               (total_cnt != g_total_dps_cnt.load()))
         {
+            total_cnt = g_total_dps_cnt.load();
             counts.clear();
             std::this_thread::sleep_for(std::chrono::seconds(5));
+            std::lock_guard<std::mutex> guard(g_mutex);
+            g_new_line = true;
+            std::cerr << "\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\bTotal dps = " << g_total_dps_cnt.load();
         }
+
+        std::lock_guard<std::mutex> guard(g_mutex);
+        if (g_new_line.load())
+            std::cerr << std::endl;
     }
     else
     {

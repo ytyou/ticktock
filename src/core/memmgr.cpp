@@ -175,8 +175,8 @@ MemoryManager::init()
     if (Config::exists(CFG_TSDB_PAGE_SIZE))
     {
         g_page_size = Config::get_bytes(CFG_TSDB_PAGE_SIZE);
-        if (g_page_size < 128)
-            g_page_size = 128;
+        if (g_page_size < 64)
+            g_page_size = 64;   // min page size
         else if (g_page_size > UINT16_MAX)
             g_page_size = ((long)UINT16_MAX / 128) * 128;
     }

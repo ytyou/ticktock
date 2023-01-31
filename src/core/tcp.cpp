@@ -40,6 +40,8 @@ namespace tt
 std::mutex TcpListener::m_lock;
 std::map<int,TcpConnection*> TcpListener::m_all_conn_map;
 
+static bool (*s_http_request_handler)(HttpRequest& request, HttpResponse& response);
+
 
 void
 TcpConnection::close()
@@ -68,8 +70,17 @@ TcpServer::TcpServer(int listener_count) :
     ASSERT(m_listeners != nullptr);
     std::memset(m_listeners, 0, size);
 
+    const std::string& protocol =
+        Config::get_str(CFG_TCP_LINE_PROTOCOL, CFG_TCP_LINE_PROTOCOL_DEF);
+
+    if (protocol[0] == 'o' || protocol[0] == 'O')   // OpenTSDB telnet style?
+        s_http_request_handler = &Tsdb::http_api_put_handler_plain;
+    else    // assume InfluxDB Line Protocol style
+        s_http_request_handler = &Tsdb::http_api_write_handler;
+
     Logger::info("TCP m_listener_count = %d", m_listener_count);
     Logger::info("TCP m_max_conns_per_listener = %d", m_max_conns_per_listener);
+    Logger::info("TCP line protocol = %s", protocol.c_str());
 }
 
 TcpServer::~TcpServer()
@@ -516,7 +527,7 @@ TcpServer::process_data(TcpConnection *conn, char *data, int len)
 
         Logger::tcp("Recved:\n%s", conn->fd, data);
 
-        Tsdb::http_api_put_handler_plain(request, response);
+        (*s_http_request_handler)(request, response);
 
         if (response.content_length > 0)
         {

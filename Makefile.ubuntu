@@ -32,7 +32,7 @@ OBJT = $(patsubst %.cpp,%.o,$(TMPT))
 
 TARGET = bin/tt
 TESTS = bin/all_tests
-TOOLS = bin/backfill bin/inspect
+TOOLS = bin/inspect
 
 build: $(TARGET)
 
@@ -68,9 +68,9 @@ bin/all_tests: $(OBJI) $(TOBJS)
 tools: $(TOOLS)
 UOBJS = $(wildcard objs/tools/*.o)
 
-bin/backfill: objs/tools/backfill.o
-	@mkdir -p $(@D)
-	$(LINK) $(LFLAGS) -o $@ $< $(LIBS)
+#bin/backfill: objs/tools/backfill.o
+#	@mkdir -p $(@D)
+#	$(LINK) $(LFLAGS) -o $@ $< $(LIBS)
 
 bin/inspect: objs/tools/inspect.o $(OBJI)
 	@mkdir -p $(@D)
