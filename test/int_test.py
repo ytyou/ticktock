@@ -1990,6 +1990,9 @@ def get_options(argv):
     parser.add_option('-t', '--ticktock', dest='tt',
                       default=defaults['tt'],
                       help='The TickTock binary to be tested.')
+    parser.add_option('-u', '--timeout', dest='timeout',
+                      default=defaults['timeout'],
+                      help='Timeout in seconds when sending requests to TickTock.')
     parser.add_option('-v', '--verbose', dest='verbose', action='store_true',
                       default=defaults['verbose'],
                       help='Print more debug info.')
