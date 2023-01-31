@@ -1999,7 +1999,7 @@ def get_options(argv):
 
     (options, args) = parser.parse_args(args=argv[1:])
 
-    options.opentsdbip = defaults['opentsdbip']
+    # options.opentsdbip = defaults['opentsdbip']
     options.opentsdbport = defaults['opentsdbport']
 
     return options, args
