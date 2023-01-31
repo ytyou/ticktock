@@ -1501,11 +1501,11 @@ Tsdb::rotate(TaskData& data)
             continue;    // already archived
         }
 
-        uint32_t mode = tsdb->mode_of();
+//        uint32_t mode = tsdb->mode_of();
 //        uint64_t load_time = tsdb->m_load_time;
 
-        if (disk_avail < 100000000L)    // TODO: get it from config
-            mode &= ~TSDB_MODE_WRITE;
+//        if (disk_avail < 100000000L)    // TODO: get it from config
+//            mode &= ~TSDB_MODE_WRITE;
 
         bool all_closed = true;
 
@@ -1667,13 +1667,16 @@ Tsdb::purge_oldest(int threshold)
 bool
 Tsdb::compact(TaskData& data)
 {
-    Tsdb *tsdb = nullptr;
-    Meter meter(METRIC_TICKTOCK_TSDB_COMPACT_MS);
-
     // called from scheduled task? if so, enforce off-hour rule;
     if ((data.integer == 0) && ! is_off_hour()) return false;
 
+    Meter meter(METRIC_TICKTOCK_TSDB_COMPACT_MS);
+    Tsdb *tsdb = nullptr;
+    Timestamp compact_threshold =
+        Config::get_time(CFG_TSDB_COMPACT_THRESHOLD, TimeUnit::SEC, CFG_TSDB_COMPACT_THRESHOLD_DEF);
+
     Logger::info("[compact] Finding tsdbs to compact...");
+    compact_threshold = ts_now_sec() - compact_threshold;
 
     // Go through all the Tsdbs, from the oldest to the newest,
     // to find the first uncompacted Tsdb to compact.
@@ -1682,6 +1685,9 @@ Tsdb::compact(TaskData& data)
 
         for (auto it = m_tsdbs.begin(); it != m_tsdbs.end(); it++)
         {
+            if (! (*it)->get_time_range().older_than_sec(compact_threshold))
+                continue;
+
             std::lock_guard<std::mutex> guard((*it)->m_lock);
             //WriteLock guard((*it)->m_lock);
 
