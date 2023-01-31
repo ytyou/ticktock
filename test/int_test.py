@@ -314,7 +314,7 @@ class Test(object):
             print "send_data(): " + json.dumps(payload)
         # send to opentsdb
         start = time.time()
-        response = requests.post("http://"+self._options.ip+":"+str(self._options.opentsdbport)+"/api/put?details", json=payload["metrics"], timeout=self._options.timeout)
+        response = requests.post("http://"+self._options.opentsdbip+":"+str(self._options.opentsdbport)+"/api/put?details", json=payload["metrics"], timeout=self._options.timeout)
         self._opentsdb_time += time.time() - start
         response.raise_for_status()
 
@@ -424,7 +424,7 @@ class Test(object):
     def query_opentsdb(self, query):
         payload = query.to_json()
         start = time.time()
-        response = requests.post("http://"+self._options.ip+":"+str(self._options.opentsdbport)+"/api/query", json=payload, timeout=self._options.timeout)
+        response = requests.post("http://"+self._options.opentsdbip+":"+str(self._options.opentsdbport)+"/api/query", json=payload, timeout=self._options.timeout)
         self._opentsdb_time += time.time() - start
         #if self._options.verbose:
         #    print "opentsdb-response: " + response.text #str(response.status_code)
@@ -1975,9 +1975,9 @@ def get_options(argv):
     parser.add_option('-m', '--method', dest='method',
                       default=defaults['method'],
                       help='HTTP method to use when querying TickTock.')
-    parser.add_option('-o', '--timeout', dest='timeout',
-                      default=defaults['timeout'],
-                      help='Timeout in seconds when sending requests to TickTock.')
+    parser.add_option('-o', '--opentsdb', dest='opentsdbip',
+                      default=defaults['opentsdbip'],
+                      help='IP of the host on which OpenTSDB runs.')
     parser.add_option('-p', '--port', dest='port',
                       default=defaults['port'],
                       help='The port number to be used by TickTock during test.')
@@ -1996,6 +1996,7 @@ def get_options(argv):
 
     (options, args) = parser.parse_args(args=argv[1:])
 
+    options.opentsdbip = defaults['opentsdbip']
     options.opentsdbport = defaults['opentsdbport']
 
     return options, args
@@ -2010,6 +2011,7 @@ def get_defaults():
         'method': 'post',
         'port': 7182,
         'dataport': 7181,
+        'opentsdbip': '127.0.0.1',
         'opentsdbport': 4242,
         'root': '/tmp/tt_i',
         'start': 1569859200000,
