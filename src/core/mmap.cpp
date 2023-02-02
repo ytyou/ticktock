@@ -394,7 +394,7 @@ HeaderFile::init_tsdb_header(Tsdb *tsdb)
     header->m_start_tstamp = tsdb->get_time_range().get_from();
     header->m_end_tstamp = tsdb->get_time_range().get_to();
     header->m_actual_pg_cnt = m_page_count;
-    header->m_page_size = g_page_size;
+    header->m_page_size = tsdb->get_page_size();
 
     ASSERT(header->m_page_count > 0);
     ASSERT(header->m_actual_pg_cnt > 0);

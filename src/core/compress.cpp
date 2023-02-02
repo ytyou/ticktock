@@ -262,7 +262,7 @@ Compressor_v3::compress(double v)
 
     f = std::modf(v, &i);
 
-    if (std::abs(f) < 0.001)
+    if (std::abs(f) < (1.0 / m_precision))
     {
         uint8_t one_zero = 0x00;
         m_bitset.append(reinterpret_cast<uint8_t*>(&one_zero), 1, 0);
