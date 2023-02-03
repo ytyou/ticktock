@@ -258,6 +258,52 @@ Config::get_override(const std::string& name)
     return search->second;
 }
 
+std::string
+Config::get_data_dir()
+{
+    // if 'tsdb.data.dir' is specified, use it
+    if (exists(CFG_TSDB_DATA_DIR))
+        return get_str(CFG_TSDB_DATA_DIR);
+
+    // if 'ticktock.home' is specified, use <ticktock.home>/data
+    if (exists(CFG_TICKTOCK_HOME))
+        return get_str(CFG_TICKTOCK_HOME) + "/data";
+
+    // use 'cwd'/data
+    return g_working_dir + "/data";
+}
+
+std::string
+Config::get_log_dir()
+{
+    // if 'log.file' is specified, use it to find the log dir
+    if (exists(CFG_LOG_FILE))
+    {
+        std::string log_file = Config::get_str(CFG_LOG_FILE);
+        auto const pos = log_file.find_last_of('/');
+        if (pos == std::string::npos)
+            return g_working_dir;
+        return log_file.substr(0, pos);
+    }
+
+    // if 'ticktock.home' is specified, use <ticktock.home>/log
+    if (exists(CFG_TICKTOCK_HOME))
+        return get_str(CFG_TICKTOCK_HOME) + "/log";
+
+    // use 'cwd'/log
+    return g_working_dir + "/log";
+}
+
+std::string
+Config::get_log_file()
+{
+    // if 'log.file' is specified, use it
+    if (exists(CFG_LOG_FILE))
+        return Config::get_str(CFG_LOG_FILE);
+
+    return get_log_dir() + "/ticktock.log";
+}
+
 const char *
 Config::c_str(char *buff, size_t size)
 {

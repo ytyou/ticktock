@@ -29,8 +29,8 @@ namespace tt
 
 
 #define TT_MAJOR_VERSION    0
-#define TT_MINOR_VERSION    10
-#define TT_PATCH_VERSION    2
+#define TT_MINOR_VERSION    11
+#define TT_PATCH_VERSION    0
 
 class HttpServer;
 class TcpServer;
@@ -57,6 +57,7 @@ extern bool g_cluster_enabled;
 extern bool g_self_meter_enabled;
 extern std::atomic<bool> g_shutdown_requested;
 extern std::atomic<std::thread::id> g_handler_thread_id;
+extern std::string g_working_dir;
 
 #ifdef _DEBUG
 extern std::atomic<std::uint64_t> g_total_dps_count;

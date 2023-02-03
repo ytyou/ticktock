@@ -50,7 +50,6 @@
 #define CFG_HTTP_SERVER_PORT                    "http.server.port"
 #define CFG_HTTP_SERVER_PORT_DEF                6182
 #define CFG_LOG_FILE                            "log.file"
-#define CFG_LOG_FILE_DEF                        "/var/log/ticktock.log"
 #define CFG_LOG_LEVEL                           "log.level"
 #define CFG_LOG_LEVEL_DEF                       "INFO"
 #define CFG_LOG_RETENTION_COUNT                 "log.retention.count"
@@ -90,6 +89,7 @@
 #define CFG_TCP_SOCKET_RCVBUF_SIZE              "tcp.socket.rcvbuf.size"
 #define CFG_TCP_SOCKET_RCVBUF_SIZE_DEF          "106496b"
 #define CFG_TCP_SOCKET_SNDBUF_SIZE              "tcp.socket.sndbuf.size"
+#define CFG_TICKTOCK_HOME                       "ticktock.home"
 #define CFG_TIMER_GRANULARITY                   "timer.granularity"
 #define CFG_TIMER_GRANULARITY_DEF               "1s"
 #define CFG_TIMER_QUEUE_SIZE                    "timer.queue.size"
@@ -107,7 +107,6 @@
 #define CFG_TSDB_COMPRESSOR_VERSION             "tsdb.compressor.version"
 #define CFG_TSDB_COMPRESSOR_VERSION_DEF         3
 #define CFG_TSDB_DATA_DIR                       "tsdb.data.dir"
-#define CFG_TSDB_DATA_DIR_DEF                   "/tmp"
 #define CFG_TSDB_OFF_HOUR_BEGIN                 "tsdb.off_hour.begin"
 #define CFG_TSDB_OFF_HOUR_BEGIN_DEF             0
 #define CFG_TSDB_OFF_HOUR_END                   "tsdb.off_hour.end"
@@ -115,6 +114,7 @@
 #define CFG_TSDB_PAGE_COUNT                     "tsdb.page.count"
 #define CFG_TSDB_PAGE_COUNT_DEF                 32768
 #define CFG_TSDB_PAGE_SIZE                      "tsdb.page.size"
+#define CFG_TSDB_PAGE_SIZE_DEF                  "128b"
 #define CFG_TSDB_FLUSH_FREQUENCY                "tsdb.flush.frequency"
 #define CFG_TSDB_FLUSH_FREQUENCY_DEF            "5min"
 #define CFG_TSDB_GC_FREQUENCY                   "tsdb.gc.frequency"
@@ -241,6 +241,10 @@ public:
     // will override existing value, if any
     static void set_value(const std::string& name, const std::string& value);
     static void set_value_no_lock(const std::string& name, const std::string& value);
+
+    static std::string get_data_dir();
+    static std::string get_log_dir();
+    static std::string get_log_file();
 
     static void add_override(const char *name, const char *value);
     static const char *c_str(char *buff, size_t size);

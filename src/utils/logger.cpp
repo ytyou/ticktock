@@ -137,17 +137,19 @@ Logger::get_instance(int fd)
 std::string
 Logger::get_log_file(int fd)
 {
-    std::string log_file = Config::get_str(CFG_LOG_FILE,CFG_LOG_FILE_DEF);
+    std::string log_file;
 
     if (fd > 0)
     {
-        auto const pos = log_file.find_last_of('/');
-        ASSERT(pos != std::string::npos);
-        log_file = log_file.substr(0, pos+1);
-        log_file += "conn-";
+        //auto const pos = log_file.find_last_of('/');
+        //ASSERT(pos != std::string::npos);
+        log_file = Config::get_log_dir();
+        log_file += "/conn-";
         log_file += std::to_string(fd);
         log_file += ".log";
     }
+    else
+        log_file = Config::get_log_file();
 
     return log_file;
 }
@@ -218,7 +220,7 @@ Logger::rotate(TaskData& data)
 
             // cleanup main log file, if necessary
             int retention_count = Config::get_int(CFG_LOG_RETENTION_COUNT, CFG_LOG_RETENTION_COUNT_DEF);
-            std::string log_file = Config::get_str(CFG_LOG_FILE, CFG_LOG_FILE_DEF);
+            std::string log_file = Config::get_log_file();
             std::string log_pattern = log_file + ".*";
             rotate_files(log_pattern, retention_count);
 
@@ -251,7 +253,7 @@ void
 Logger::rename()
 {
     long now = ts_now_sec();
-    std::string log_file = Config::get_str(CFG_LOG_FILE,CFG_LOG_FILE_DEF);
+    std::string log_file = Config::get_log_file();
     std::string new_file = log_file + "." + std::to_string(now);
 
     if (std::rename(log_file.c_str(), new_file.c_str()))

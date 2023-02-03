@@ -504,7 +504,7 @@ uint64_t
 Stats::get_disk_avail()
 {
     struct statvfs buff;
-    std::string data_dir = Config::get_str(CFG_TSDB_DATA_DIR, CFG_TSDB_DATA_DIR_DEF);
+    std::string data_dir = Config::get_data_dir();
     int rc = statvfs(data_dir.c_str(), &buff);
     if (rc != 0) return -1;
     return ((uint64_t)buff.f_bsize * (uint64_t)buff.f_bavail);

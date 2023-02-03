@@ -50,6 +50,7 @@ std::atomic<std::uint64_t> g_total_page_count{0};
 std::string g_config_file("tt.conf");
 thread_local std::string g_thread_id("unknown");
 std::atomic<std::thread::id> g_handler_thread_id;
+std::string g_working_dir;  // our current working directory
 
 PageSize g_page_size;
 PageCount g_page_count;

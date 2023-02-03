@@ -28,6 +28,9 @@
 #include <execinfo.h>
 #include <fcntl.h>
 #include <getopt.h>
+#ifdef __GLIBC__
+#include <gnu/libc-version.h>
+#endif
 #include "admin.h"
 #include "config.h"
 #include "append.h"
@@ -309,11 +312,12 @@ initialize()
     char buff[PATH_MAX];
     gethostname(buff, sizeof(buff));
     g_host_name.assign(buff);
+    getcwd(buff, sizeof(buff)); // get current working dir
+    g_working_dir = buff;
 
     if (g_run_as_daemon)
     {
         // get our working directory
-        getcwd(buff, sizeof(buff));
         daemonize(buff);
     }
     else
@@ -328,9 +332,20 @@ initialize()
 
     Config::init();
     FileDescriptorManager::init();
+
+    // make sure folders exist
+    std::string data_dir = Config::get_data_dir();
+    std::string log_dir = Config::get_log_dir();
+    create_dir(data_dir);
+    create_dir(log_dir);
+
     Logger::init();
     Logger::info("TickTock version: %d.%d.%d, on %s, pid: %d",
         TT_MAJOR_VERSION, TT_MINOR_VERSION, TT_PATCH_VERSION, g_host_name.c_str(), getpid());
+#ifdef __GLIBC__
+    Logger::info("GNU libc compile-time version: %u.%u", __GLIBC__, __GLIBC_MINOR__);
+    Logger::info("GNU libc runtime version: %s", gnu_get_libc_version());
+#endif
     MemoryManager::init();
     Tsdb::init();
     AppendLog::init();

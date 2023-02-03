@@ -172,16 +172,11 @@ MemoryManager::free_network_buffer_small(char* buff)
 void
 MemoryManager::init()
 {
-    if (Config::exists(CFG_TSDB_PAGE_SIZE))
-    {
-        g_page_size = Config::get_bytes(CFG_TSDB_PAGE_SIZE);
-        if (g_page_size < 64)
-            g_page_size = 64;   // min page size
-        else if (g_page_size > UINT16_MAX)
-            g_page_size = ((long)UINT16_MAX / 128) * 128;
-    }
-    else
-        g_page_size = sysconf(_SC_PAGE_SIZE);
+    g_page_size = Config::get_bytes(CFG_TSDB_PAGE_SIZE, CFG_TSDB_PAGE_SIZE_DEF);
+    if (g_page_size < 64)
+        g_page_size = 64;   // min page size
+    else if (g_page_size > UINT16_MAX)
+        g_page_size = ((long)UINT16_MAX / 128) * 128;
     Logger::info("mm::page-size = %u", g_page_size);
     g_page_count = Config::get_int(CFG_TSDB_PAGE_COUNT, CFG_TSDB_PAGE_COUNT_DEF);
 

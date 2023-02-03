@@ -52,8 +52,7 @@ MetaFile::restore(TimeSeries* (*restore_ts)(std::string& metric, std::string& ke
                   void (*restore_measurement)(std::string& measurement, std::string& tags, std::vector<std::pair<std::string,TimeSeriesId>>& fields, std::vector<TimeSeries*>& tsv))
 {
     char buff[PATH_MAX];
-    snprintf(buff, sizeof(buff), "%s/ticktock.meta",
-        Config::get_str(CFG_TSDB_DATA_DIR, CFG_TSDB_DATA_DIR_DEF).c_str());
+    snprintf(buff, sizeof(buff), "%s/ticktock.meta", Config::get_data_dir().c_str());
     m_name.assign(buff);
     m_file = nullptr;
 

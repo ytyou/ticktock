@@ -1694,7 +1694,7 @@ Tsdb::parse_line(char* &line, const char* &measurement, char* &tags, Timestamp& 
 void
 Tsdb::init()
 {
-    std::string data_dir = Config::get_str(CFG_TSDB_DATA_DIR, CFG_TSDB_DATA_DIR_DEF);
+    std::string data_dir = Config::get_data_dir();
     Logger::info("Loading data from %s", data_dir.c_str());
 
     CheckPointManager::init();
@@ -1805,7 +1805,7 @@ Tsdb::get_tsdb_dir_name(const TimeRange& range, const char *suffix)
     localtime_r(&sec, &timeinfo);
     char buff[PATH_MAX];
     snprintf(buff, sizeof(buff), "%s/%d/%d/%" PRIu64 ".%" PRIu64 "%s",
-        Config::get_str(CFG_TSDB_DATA_DIR,CFG_TSDB_DATA_DIR_DEF).c_str(),
+        Config::get_data_dir().c_str(),
         timeinfo.tm_year+1900,
         timeinfo.tm_mon+1,
         range.get_from_sec(),
@@ -2343,7 +2343,7 @@ void
 Tsdb::compact2()
 {
     glob_t result;
-    std::string pattern = Config::get_str(CFG_TSDB_DATA_DIR, CFG_TSDB_DATA_DIR_DEF);
+    std::string pattern = Config::get_data_dir();
 
     pattern.append("/*/*/*");
     pattern.append(DONE_SUFFIX);

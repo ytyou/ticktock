@@ -40,7 +40,7 @@ void
 CheckPointManager::init()
 {
     // load from disk
-    std::string pattern = Config::get_str(CFG_TSDB_DATA_DIR,CFG_TSDB_DATA_DIR_DEF) + "/*.cp";
+    std::string pattern = Config::get_data_dir() + "/*.cp";
     std::string file_name = last_file(pattern);
     if (file_name.empty()) return;
     std::ifstream is(file_name);
@@ -201,7 +201,7 @@ CheckPointManager::persist_to_file()
         return true;
 
     Timestamp ts = ts_now_sec();
-    std::string file_name = Config::get_str(CFG_TSDB_DATA_DIR,CFG_TSDB_DATA_DIR_DEF) + "/" + std::to_string(ts) + ".cp";
+    std::string file_name = Config::get_data_dir() + "/" + std::to_string(ts) + ".cp";
     int fd = ::open(file_name.c_str(), O_CREAT|O_WRONLY|O_TRUNC|O_NONBLOCK, S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH);
 
     fd = FileDescriptorManager::dup_fd(fd, FileDescriptorType::FD_FILE);
@@ -231,7 +231,7 @@ CheckPointManager::persist_to_file()
     std::fflush(fp);
     std::fclose(fp);
 
-    std::string pattern = Config::get_str(CFG_TSDB_DATA_DIR,CFG_TSDB_DATA_DIR_DEF) + "/*.cp";
+    std::string pattern = Config::get_data_dir() + "/*.cp";
     rotate_files(pattern, 10);
     return true;
 }
