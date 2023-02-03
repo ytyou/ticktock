@@ -32,6 +32,7 @@
 #include <gnu/libc-version.h>
 #endif
 #include "admin.h"
+#include "compress.h"
 #include "config.h"
 #include "append.h"
 #include "fd.h"
@@ -347,6 +348,7 @@ initialize()
     Logger::info("GNU libc runtime version: %s", gnu_get_libc_version());
 #endif
     MemoryManager::init();
+    Compressor_v3::initialize();
     Tsdb::init();
     AppendLog::init();
     Stats::init();

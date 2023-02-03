@@ -709,6 +709,7 @@ Tsdb::create(TimeRange& range, bool existing, const char *suffix)
             tsdb->m_page_size = tsdb_header->m_page_size;
             tsdb->m_page_count = tsdb_header->m_page_count;
             tsdb->m_compressor_version = tsdb_header->get_compressor_version();
+            // TODO: This is not accurate! Other headers could be different.
             if (tsdb_header->is_compacted())
                 tsdb->m_mode |= TSDB_MODE_COMPACTED;
             header_file->close();
@@ -1099,6 +1100,7 @@ Tsdb::shutdown()
     Logger::info("Tsdb::shutdown complete");
 }
 
+// this is only called when writing data points
 void
 Tsdb::get_last_header_indices(TimeSeriesId id, FileIndex& file_idx, HeaderIndex& header_idx)
 {
@@ -1112,6 +1114,7 @@ Tsdb::get_last_header_indices(TimeSeriesId id, FileIndex& file_idx, HeaderIndex&
     std::lock_guard<std::mutex> guard(m_lock);
 
     m_mode |= TSDB_MODE_READ;
+    m_mode &= ~TSDB_MODE_COMPACTED; // in case it's already compacted
     m_index_file.ensure_open(false);
     m_index_file.get_indices(id, fidx, hidx);
 
@@ -1218,9 +1221,7 @@ Tsdb::append_page(TimeSeriesId id, FileIndex prev_file_idx, HeaderIndex prev_hea
 
     if (tsdb_header->m_page_index < header->m_page_index)
         tsdb_header->m_page_index = header->m_page_index;
-
-    if (UNLIKELY(compact))
-        tsdb_header->set_compacted(true);
+    tsdb_header->set_compacted(compact);
 
     HeaderIndex header_idx = header_file->new_header_index(this);
     ASSERT(header_idx != TT_INVALID_HEADER_INDEX);
@@ -2031,11 +2032,11 @@ Tsdb::rotate(TaskData& data)
             continue;    // already archived
         }
 
-        uint32_t mode = tsdb->mode_of();
+//        uint32_t mode = tsdb->mode_of();
 //        uint64_t load_time = tsdb->m_load_time;
 
-        if (disk_avail < 100000000L)    // TODO: get it from config
-            mode &= ~TSDB_MODE_WRITE;
+//        if (disk_avail < 100000000L)    // TODO: get it from config
+//            mode &= ~TSDB_MODE_WRITE;
 
         bool all_closed = true;
 
@@ -2215,13 +2216,16 @@ Tsdb::purge_oldest(int threshold)
 bool
 Tsdb::compact(TaskData& data)
 {
-    Tsdb *tsdb = nullptr;
-    Meter meter(METRIC_TICKTOCK_TSDB_COMPACT_MS);
-
     // called from scheduled task? if so, enforce off-hour rule;
     if ((data.integer == 0) && ! is_off_hour()) return false;
 
+    Meter meter(METRIC_TICKTOCK_TSDB_COMPACT_MS);
+    Tsdb *tsdb = nullptr;
+    Timestamp compact_threshold =
+        Config::get_time(CFG_TSDB_COMPACT_THRESHOLD, TimeUnit::SEC, CFG_TSDB_COMPACT_THRESHOLD_DEF);
+
     Logger::info("[compact] Finding tsdbs to compact...");
+    compact_threshold = ts_now_sec() - compact_threshold;
 
     // Go through all the Tsdbs, from the oldest to the newest,
     // to find the first uncompacted Tsdb to compact.
@@ -2230,11 +2234,16 @@ Tsdb::compact(TaskData& data)
 
         for (auto it = m_tsdbs.begin(); it != m_tsdbs.end(); it++)
         {
+            if (! (*it)->get_time_range().older_than_sec(compact_threshold))
+                continue;
+
             std::lock_guard<std::mutex> guard((*it)->m_lock);
             //WriteLock guard((*it)->m_lock);
 
             // also make sure it's not readable nor writable while we are compacting
-            if ((*it)->m_mode & (TSDB_MODE_COMPACTED | TSDB_MODE_READ_WRITE))
+            //if ((*it)->m_mode & (TSDB_MODE_COMPACTED | TSDB_MODE_READ_WRITE))
+            if (((*it)->m_mode & TSDB_MODE_COMPACTED) ||
+                (((*it)->m_mode & TSDB_MODE_READ_WRITE) && (data.integer == 0)))
                 continue;
 
             tsdb = *it;
@@ -2278,7 +2287,7 @@ Tsdb::compact(TaskData& data)
             for (TimeSeriesId id = 0; id < max_id; id++)
             {
                 // collect dps
-                query->init(&tsdbs);
+                query->init(&tsdbs, tsdb->get_time_range());
                 query->perform(id);
 
                 // save into temp tsdb
@@ -2310,6 +2319,9 @@ Tsdb::compact(TaskData& data)
             }
 
             MemoryManager::free_recyclable(query);
+            compacted->unload_no_lock();
+            delete compacted;
+            tsdb->unload_no_lock();
 
             // rename to indicate compaction was successful
             std::string temp_name = get_tsdb_dir_name(range, TEMP_SUFFIX);
@@ -2319,7 +2331,6 @@ Tsdb::compact(TaskData& data)
 
             // mark it as compacted
             tsdb->m_mode |= TSDB_MODE_COMPACTED;
-            tsdb->unload_no_lock();
             Logger::info("[compact] 1 Tsdb compacted");
         }
         catch (const std::exception& ex)

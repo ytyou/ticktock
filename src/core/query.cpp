@@ -857,10 +857,11 @@ QueryTask::init()
 }
 
 void
-QueryTask::init(std::vector<Tsdb*> *tsdbs)
+QueryTask::init(std::vector<Tsdb*> *tsdbs, const TimeRange& range)
 {
     ASSERT(tsdbs != nullptr);
     m_tsdbs = tsdbs;
+    m_time_range.init(range);
 }
 
 bool

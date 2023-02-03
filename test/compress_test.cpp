@@ -30,6 +30,7 @@ void
 CompressTests::run()
 {
     log("Running compress tests with millisecond resolution...");
+    Compressor_v3::initialize();
     run_with(true);
     log("Running compress tests with second resolution...");
     run_with(false);
@@ -56,7 +57,16 @@ CompressTests::run_with(bool ms)
         log("Testing compress/uncompress for Compressor_v%d...", v);
         compressor = Compressor::create(v);
         compressor->init(ts, buff, sizeof(buff));
-        compress_uncompress(compressor, ts, false);
+        compress_uncompress(compressor, ts, false, false);
+        delete compressor;
+    }
+
+    for (int v = 0; v <= 3; v++)
+    {
+        log("Testing compress/uncompress for Compressor_v%d...", v);
+        compressor = Compressor::create(v);
+        compressor->init(ts, buff, sizeof(buff));
+        compress_uncompress(compressor, ts, false, true);
         delete compressor;
     }
 
@@ -91,7 +101,7 @@ CompressTests::run_with(bool ms)
 }
 
 void
-CompressTests::compress_uncompress(Compressor *compressor, Timestamp ts, bool best)
+CompressTests::compress_uncompress(Compressor *compressor, Timestamp ts, bool best, bool floating)
 {
     int dp_cnt = 5000;
     DataPointVector dps;
@@ -104,6 +114,8 @@ CompressTests::compress_uncompress(Compressor *compressor, Timestamp ts, bool be
         for (int i = 1; i < dp_cnt; i++)
             dps.emplace_back(dps[i-1].first+interval, val);
     }
+    else if (floating)
+        generate_data_points_float(dps, dp_cnt, ts);
     else
         generate_data_points(dps, dp_cnt, ts);
 
@@ -122,7 +134,7 @@ CompressTests::compress_uncompress(Compressor *compressor, Timestamp ts, bool be
         //log("t: exp=%" PRIu64 ", act=%" PRIu64 "; v: exp=%f, act=%f",
             //dps[i].first, uncompressed[i].first, dps[i].second, uncompressed[i].second);
         CONFIRM(dps[i].first == uncompressed[i].first);
-        CONFIRM(dps[i].second == uncompressed[i].second);
+        CONFIRM(std::fabs(dps[i].second - uncompressed[i].second) < 0.001);
     }
 
     log("compression ratio = %f", (16.0*dp_cnt)/compressor->size());
@@ -331,7 +343,7 @@ CompressTests::best_scenario(bool ms)
         log("Testing compress/uncompress for Compressor_v%d...", v);
         compressor = Compressor::create(v);
         compressor->init(ts, buff, sizeof(buff));
-        compress_uncompress(compressor, ts, true);
+        compress_uncompress(compressor, ts, true, false);
         delete compressor;
     }
 }

@@ -263,6 +263,7 @@ IndexFile::open(bool for_read)
     {
         MmapFile::open(TT_SIZE_INCREMENT, for_read, false, true);
         struct index_entry *entries = (struct index_entry*)get_pages();
+        ASSERT(entries != nullptr);
         uint64_t max_idx = get_length() / TT_INDEX_SIZE;
 
         // TODO: memcpy()?
@@ -270,7 +271,10 @@ IndexFile::open(bool for_read)
             entries[i].file_index = TT_INVALID_FILE_INDEX;
     }
     else
+    {
         MmapFile::open_existing(for_read, false);
+        ASSERT(get_pages() != nullptr);
+    }
 
     Logger::debug("index file %s length: %lu", m_name.c_str(), get_length());
     Logger::info("opening %s for %s", m_name.c_str(), for_read?"read":"write");
@@ -391,7 +395,7 @@ HeaderFile::init_tsdb_header(Tsdb *tsdb)
     header->m_start_tstamp = tsdb->get_time_range().get_from();
     header->m_end_tstamp = tsdb->get_time_range().get_to();
     header->m_actual_pg_cnt = m_page_count;
-    header->m_page_size = g_page_size;
+    header->m_page_size = tsdb->get_page_size();
 
     ASSERT(header->m_page_count > 0);
     ASSERT(header->m_actual_pg_cnt > 0);
@@ -422,11 +426,13 @@ HeaderFile::open(bool for_read)
         off_t length =
             sizeof(struct tsdb_header) + m_page_count * sizeof(struct page_info_on_disk);
         MmapFile::open(length, for_read, false, true);
+        ASSERT(get_pages() != nullptr);
     }
     else
     {
         MmapFile::open_existing(for_read, false);
         struct tsdb_header *header = get_tsdb_header();
+        ASSERT(header != nullptr);
         m_page_count = header->m_page_count;
         ASSERT(m_page_count > 0);
     }
