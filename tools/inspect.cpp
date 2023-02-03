@@ -275,7 +275,7 @@ inspect_tsdb_internal(const std::string& dir)
         if (index_entries[id].file_index == TT_INVALID_FILE_INDEX) continue;
 
         if (g_verbose)
-            printf("ts-id = %4u\n", id);
+            printf("ts-id = %u\n", id);
         //inspect_page(dir, index_entries[id].file_index, index_entries[id].header_index);
 
         FileIndex file_idx = index_entries[id].file_index;

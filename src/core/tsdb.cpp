@@ -322,6 +322,7 @@ Tsdb::create(TimeRange& range, bool existing, const char *suffix)
             tsdb->m_page_size = tsdb_header->m_page_size;
             tsdb->m_page_count = tsdb_header->m_page_count;
             tsdb->m_compressor_version = tsdb_header->get_compressor_version();
+            // TODO: This is not accurate! Other headers could be different.
             if (tsdb_header->is_compacted())
                 tsdb->m_mode |= TSDB_MODE_COMPACTED;
             header_file->close();
@@ -693,6 +694,7 @@ Tsdb::shutdown()
     Logger::info("Tsdb::shutdown complete");
 }
 
+// this is only called when writing data points
 void
 Tsdb::get_last_header_indices(TimeSeriesId id, FileIndex& file_idx, HeaderIndex& header_idx)
 {
@@ -706,6 +708,7 @@ Tsdb::get_last_header_indices(TimeSeriesId id, FileIndex& file_idx, HeaderIndex&
     std::lock_guard<std::mutex> guard(m_lock);
 
     m_mode |= TSDB_MODE_READ;
+    m_mode &= ~TSDB_MODE_COMPACTED; // in case it's already compacted
     m_index_file.ensure_open(false);
     m_index_file.get_indices(id, fidx, hidx);
 
@@ -812,9 +815,7 @@ Tsdb::append_page(TimeSeriesId id, FileIndex prev_file_idx, HeaderIndex prev_hea
 
     if (tsdb_header->m_page_index < header->m_page_index)
         tsdb_header->m_page_index = header->m_page_index;
-
-    if (UNLIKELY(compact))
-        tsdb_header->set_compacted(true);
+    tsdb_header->set_compacted(compact);
 
     HeaderIndex header_idx = header_file->new_header_index(this);
     ASSERT(header_idx != TT_INVALID_HEADER_INDEX);
