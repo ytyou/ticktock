@@ -221,7 +221,7 @@ public:
     void perform();
     void perform(TimeSeriesId id);
 
-    void init(std::vector<Tsdb*> *tsdbs);   // used by Tsdb::compact()
+    void init(std::vector<Tsdb*> *tsdbs, const TimeRange& range);   // used by Tsdb::compact()
 
     Tag *get_tags();
     Tag_v2& get_v2_tags();

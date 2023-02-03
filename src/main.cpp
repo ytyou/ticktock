@@ -29,6 +29,7 @@
 #include <fcntl.h>
 #include <getopt.h>
 #include "admin.h"
+#include "compress.h"
 #include "config.h"
 #include "append.h"
 #include "fd.h"
@@ -332,6 +333,7 @@ initialize()
     Logger::info("TickTock version: %d.%d.%d, on %s, pid: %d",
         TT_MAJOR_VERSION, TT_MINOR_VERSION, TT_PATCH_VERSION, g_host_name.c_str(), getpid());
     MemoryManager::init();
+    Compressor_v3::initialize();
     Tsdb::init();
     AppendLog::init();
     Stats::init();

@@ -100,6 +100,10 @@
 #define CFG_TSDB_ARCHIVE_THRESHOLD_DEF          "1w"
 #define CFG_TSDB_COMPACT_FREQUENCY              "tsdb.compact.frequency"
 #define CFG_TSDB_COMPACT_FREQUENCY_DEF          "2h"
+#define CFG_TSDB_COMPACT_THRESHOLD              "tsdb.compact.threshold"
+#define CFG_TSDB_COMPACT_THRESHOLD_DEF          "1w"
+#define CFG_TSDB_COMPRESSOR_PRECISION           "tsdb.compressor.precision"
+#define CFG_TSDB_COMPRESSOR_PRECISION_DEF       5
 #define CFG_TSDB_COMPRESSOR_VERSION             "tsdb.compressor.version"
 #define CFG_TSDB_COMPRESSOR_VERSION_DEF         3
 #define CFG_TSDB_DATA_DIR                       "tsdb.data.dir"

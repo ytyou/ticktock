@@ -127,6 +127,7 @@ protected:
 class __attribute__ ((__packed__)) Compressor_v3 : public Compressor
 {
 public:
+    static void initialize();
     void init(Timestamp start, uint8_t *base, size_t size);
     void restore(DataPointVector& dps, CompressorPosition& position, uint8_t *base);
     void save(CompressorPosition& position);
@@ -198,6 +199,8 @@ private:
     Timestamp m_prev_tstamp;
     double m_prev_value;
     bool m_is_full;
+
+    static double m_precision;
 };
 
 

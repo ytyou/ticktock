@@ -215,6 +215,22 @@ public:
         }
     }
 
+    static void generate_data_points_float(tt::DataPointVector& dps, int cnt, tt::Timestamp ts)
+    {
+        if (tt::g_tstamp_resolution_ms)
+        {
+            dps.emplace_back(ts+tt::random(0,5000), (double)tt::random(0,100)/101.0);
+            for (int i = 1; i < cnt; i++)
+                dps.emplace_back(dps[i-1].first+rand_plus_minus(0,5000)+30000, dps[i-1].second+(double)rand_plus_minus(0,50)/101.0);
+        }
+        else
+        {
+            dps.emplace_back(ts+tt::random(0,10), tt::random(0,100));
+            for (int i = 1; i < cnt; i++)
+                dps.emplace_back(dps[i-1].first+rand_plus_minus(0,10)+30, dps[i-1].second+(double)rand_plus_minus(0,50)/101.0);
+        }
+    }
+
     static int gen_random_string(char *buff, int min, int max)
     {
         static const char alphanum[] =
