@@ -649,7 +649,7 @@ TcpServer::get_pending_task_count(std::vector<std::vector<size_t>> &counts) cons
 
         if (m_listeners[i] != nullptr)
         {
-            count += m_listeners[i]->get_pending_task_count(counts[i]);
+            count += m_listeners[i]->get_pending_task_count(counts[i-2]);
         }
     }
 
@@ -1020,7 +1020,8 @@ TcpListener::listener0()
                 {
                     Logger::debug("cmd:%s; pipe_reader:%T;", cmd, &pipe_reader);
 
-                    m_server->instruct1(cmd, strlen(cmd));
+                    if (cmd[0] != PIPE_CMD_SET_STOPPED[0])
+                        m_server->instruct1(cmd, strlen(cmd));
 
                     switch (cmd[0])
                     {
