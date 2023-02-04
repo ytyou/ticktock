@@ -110,13 +110,10 @@ MetaFile::restore(TimeSeries* (*restore_ts)(std::string& metric, std::string& ke
                 // TODO: optimize this
                 for (auto ts: tsv2)
                 {
-                    // make sure tsv[] has enough capacity
+                    // collect all ts into tsv[] such that tsv[ts->get_id()] == ts;
                     TimeSeriesId id = ts->get_id();
-                    std::vector<TimeSeries*>::size_type cap = tsv.capacity();
-                    while (cap <= id) cap *= 2;
-                    if (tsv.capacity() < cap) tsv.reserve(cap);
-                    auto pos = tsv.begin() + id;
-                    tsv.insert(pos, ts);
+                    while (tsv.size() <= id) tsv.push_back(nullptr);
+                    tsv[id] = ts;
                 }
             }
         }

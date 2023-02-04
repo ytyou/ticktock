@@ -55,6 +55,7 @@ class TcpListener;
 #define TCS_ERROR       0x00000002
 #define TCS_CLOSED      0x00000004
 #define TCS_NEW         0x00000008
+#define TCS_INFLUXDB    0x80000000
 
 #define INVALID_WORKER_ID   (-1)
 
@@ -153,8 +154,8 @@ class TcpListener : public Stoppable
 {
 public:
     TcpListener();             // this c'tor will not create listening thread
-    TcpListener(TcpServer *server, int fd, size_t max_conn);  // level 0
-    TcpListener(TcpServer *server, int fd, size_t max_conn, int id);  // level 1
+    TcpListener(TcpServer *server, int fd, char protocol);  // level 0
+    TcpListener(TcpServer *server, int fd, int id);         // level 1
     virtual ~TcpListener();
 
     void shutdown(ShutdownRequest request = ShutdownRequest::ASAP);
@@ -201,7 +202,7 @@ private:
     void disconnect();
 
     void new_conn0();
-    void new_conn2(int fd);
+    void new_conn2(int fd, char protocol);
 
     void close_conn(int fd);
     void resubmit(char c, int fd);
@@ -225,7 +226,7 @@ private:
     std::atomic<TcpListener*> m_least_conn_listener;
     std::atomic<TcpConnection*> m_conn_in_transit;
 
-    size_t m_max_conns;         // max number of connections allowed
+    //size_t m_max_conns;         // max number of connections allowed
     size_t m_max_events;        // max number of epoll events per epoll_wait()
     size_t m_conn_timeout_secs; // timeout for idle connections
 
@@ -244,7 +245,7 @@ private:
 
     TcpConnection *m_live_conns; // list (double-linked) of live connections
     TcpConnection *m_free_conns; // stack of available connections
-    TcpConnection *m_conns;    // TODO: is this needed? save this so we can delete it
+    TcpConnection *m_conns;     // TODO: is this needed? save this so we can delete it
 
     int m_socket_fd;            // main socket we listen on
     int m_epoll_fd;             // epoll socket for the event loop
@@ -256,6 +257,8 @@ private:
 
     TaskScheduler m_responders; // threads to handle http requests
     std::thread m_listener;     // the thread that goes into the event loop
+
+    char m_protocol;            // 'o': OpenTSDB protocol; 'i': InfluxDB protocol
 
     //std::atomic<bool> m_resend; // true if m_resend_queue is not empty
     //std::mutex m_resend_mutex;  // to guard m_resend_queue
@@ -270,12 +273,12 @@ public:
     TcpServer(int listener_count);
     virtual ~TcpServer();
 
-    bool start(int port);
+    bool start(const std::string& ports);
     void shutdown(ShutdownRequest request = ShutdownRequest::ASAP);
     void wait(size_t timeout_secs); // BLOCKING CALL!
     void close_conns();
     bool is_stopped() const;
-    void instruct0(const char *instruction, int size);
+    //void instruct0(const char *instruction, int size);
 
     TcpListener* next_listener();  // listener to receive new connection
     void get_level1_listeners(std::vector<TcpListener*>& listeners) const;
@@ -302,6 +305,7 @@ private:
     static bool process_data(TcpConnection *conn, char *data, int len);
     static void send_response(int fd, char *content, int len);
 
+    int listen(int port);       // return fd
     void instruct1(const char *instruction, int size);
 
     TcpListener *get_least_conn_listener() const;
@@ -312,7 +316,8 @@ private:
     TcpListener **m_listeners;  // threads that go into the event loop
 
     size_t m_max_conns_per_listener;
-    int m_socket_fd;            // main socket we listen on
+    int m_socket_fd0;           // main socket we listen on for OpenTSDB traffic
+    int m_socket_fd1;           // main socket we listen on for InfluxDB traffic
 };
 
 

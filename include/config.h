@@ -48,7 +48,7 @@
 #define CFG_HTTP_RESPONDERS_PER_LISTENER        "http.responders.per.listener"
 #define CFG_HTTP_RESPONDERS_PER_LISTENER_DEF    1
 #define CFG_HTTP_SERVER_PORT                    "http.server.port"
-#define CFG_HTTP_SERVER_PORT_DEF                6182
+#define CFG_HTTP_SERVER_PORT_DEF                "6182"
 #define CFG_LOG_FILE                            "log.file"
 #define CFG_LOG_LEVEL                           "log.level"
 #define CFG_LOG_LEVEL_DEF                       "INFO"
@@ -66,8 +66,6 @@
 #define CFG_STATS_FREQUENCY_DEF                 "30s"
 #define CFG_TCP_CONNECTION_IDLE_TIMEOUT         "tcp.connection.idle.timeout"
 #define CFG_TCP_CONNECTION_IDLE_TIMEOUT_DEF     "10min"
-#define CFG_TCP_LINE_PROTOCOL                   "tcp.line.protocol"
-#define CFG_TCP_LINE_PROTOCOL_DEF               "opentsdb"
 #define CFG_TCP_LISTENER_COUNT                  "tcp.listener.count"
 #define CFG_TCP_LISTENER_COUNT_DEF              std::thread::hardware_concurrency()
 #define CFG_TCP_MAX_EPOLL_EVENTS                "tcp.max.epoll.events"
@@ -85,7 +83,7 @@
 #define CFG_TCP_SERVER_ENABLED                  "tcp.server.enabled"
 #define CFG_TCP_SERVER_ENABLED_DEF              true
 #define CFG_TCP_SERVER_PORT                     "tcp.server.port"
-#define CFG_TCP_SERVER_PORT_DEF                 6181
+#define CFG_TCP_SERVER_PORT_DEF                 "6181,6180"
 #define CFG_TCP_SOCKET_RCVBUF_SIZE              "tcp.socket.rcvbuf.size"
 #define CFG_TCP_SOCKET_RCVBUF_SIZE_DEF          "106496b"
 #define CFG_TCP_SOCKET_SNDBUF_SIZE              "tcp.socket.sndbuf.size"

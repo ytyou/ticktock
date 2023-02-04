@@ -232,7 +232,7 @@ PartitionServer::PartitionServer(int id, std::string address, int tcp_port, int 
     m_fd(-1),
     m_stop_requested(false)
 {
-    m_self = is_my_ip(address) && (m_tcp_port == Config::get_int(CFG_TCP_SERVER_PORT, CFG_TCP_SERVER_PORT_DEF));
+    m_self = is_my_ip(address); //  && (m_tcp_port == Config::get_int(CFG_TCP_SERVER_PORT, CFG_TCP_SERVER_PORT_DEF));
 
     // TODO: allow more than one thread?
     m_worker = std::thread(&PartitionServer::do_work, this);
@@ -710,7 +710,7 @@ PartitionManager::init()
             address = search->second->to_string();
 
             // tcp_port
-            int tcp_port = CFG_TCP_SERVER_PORT_DEF;
+            int tcp_port = 6181;    // CFG_TCP_SERVER_PORT_DEF;
             search = map.find("tcp_port");
             if (search != map.end())
             {
@@ -718,7 +718,7 @@ PartitionManager::init()
             }
 
             // http_port
-            int http_port = CFG_HTTP_SERVER_PORT_DEF;
+            int http_port = 6182;   // CFG_HTTP_SERVER_PORT_DEF;
             search = map.find("http_port");
             if (search != map.end())
             {

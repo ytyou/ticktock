@@ -40,8 +40,6 @@ namespace tt
 std::mutex TcpListener::m_lock;
 std::map<int,TcpConnection*> TcpListener::m_all_conn_map;
 
-static bool (*s_http_request_handler)(HttpRequest& request, HttpResponse& response);
-
 
 void
 TcpConnection::close()
@@ -54,14 +52,15 @@ TcpConnection::close()
 /* TcpServer Implementation
  */
 TcpServer::TcpServer() :
-    TcpServer(Config::get_int(CFG_TCP_LISTENER_COUNT, CFG_TCP_LISTENER_COUNT_DEF)+1)
+    TcpServer(Config::get_int(CFG_TCP_LISTENER_COUNT, CFG_TCP_LISTENER_COUNT_DEF)+2)
 {
 }
 
 TcpServer::TcpServer(int listener_count) :
-    m_socket_fd(-1),
+    m_socket_fd0(-1),
+    m_socket_fd1(-1),
     m_max_conns_per_listener(512),
-    m_next_listener(0),
+    m_next_listener(1),
     m_listener_count(listener_count),
     m_fd_type(FileDescriptorType::FD_TCP)
 {
@@ -70,17 +69,8 @@ TcpServer::TcpServer(int listener_count) :
     ASSERT(m_listeners != nullptr);
     std::memset(m_listeners, 0, size);
 
-    const std::string& protocol =
-        Config::get_str(CFG_TCP_LINE_PROTOCOL, CFG_TCP_LINE_PROTOCOL_DEF);
-
-    if (protocol[0] == 'o' || protocol[0] == 'O')   // OpenTSDB telnet style?
-        s_http_request_handler = &Tsdb::http_api_put_handler_plain;
-    else    // assume InfluxDB Line Protocol style
-        s_http_request_handler = &Tsdb::http_api_write_handler;
-
     Logger::info("TCP m_listener_count = %d", m_listener_count);
     Logger::info("TCP m_max_conns_per_listener = %d", m_max_conns_per_listener);
-    Logger::info("TCP line protocol = %s", protocol.c_str());
 }
 
 TcpServer::~TcpServer()
@@ -113,38 +103,42 @@ TcpServer::close_conns()
         }
     }
 
-    if (m_socket_fd > 0)
+    if (m_socket_fd0 > 0)
     {
-        close(m_socket_fd);
-        m_socket_fd = -1;
+        close(m_socket_fd0);
+        m_socket_fd0 = -1;
+    }
+
+    if (m_socket_fd1 > 0)
+    {
+        close(m_socket_fd1);
+        m_socket_fd1 = -1;
     }
 }
 
-bool
-TcpServer::start(int port)
+int
+TcpServer::listen(int port)
 {
-    Logger::info("Starting TCP Server on port %d...", port);
-
     // 1. create and bind the socket
-    m_socket_fd = socket(AF_INET6, SOCK_STREAM, IPPROTO_TCP);
-    if (m_socket_fd == -1) return false;
+    int fd = socket(AF_INET6, SOCK_STREAM, IPPROTO_TCP);
+    if (fd == -1) return -1;
 
     // enable IPv4
     int off = false;
-    int retval = setsockopt(m_socket_fd, IPPROTO_IPV6, IPV6_V6ONLY, (const void*)&off, sizeof(off));
+    int retval = setsockopt(fd, IPPROTO_IPV6, IPV6_V6ONLY, (const void*)&off, sizeof(off));
     if (retval < 0) Logger::error("Failed to setsockopt(IPV6_V6ONLY), errno: %d", errno);
 
     if (g_opt_reuse_port)
     {
         int enable = 1;
-        retval = setsockopt(m_socket_fd, SOL_SOCKET, SO_REUSEPORT, &enable, sizeof(int));
+        retval = setsockopt(fd, SOL_SOCKET, SO_REUSEPORT, &enable, sizeof(int));
         if (retval < 0) Logger::error("Failed to setsockopt, errno: %d", errno);
     }
 
     // adjust TCP window size
     int opt;
     socklen_t optlen = sizeof(opt);
-    retval = getsockopt(m_socket_fd, SOL_SOCKET, SO_RCVBUF, &opt, &optlen);
+    retval = getsockopt(fd, SOL_SOCKET, SO_RCVBUF, &opt, &optlen);
 
     if (retval == 0)
         Logger::info("Original SO_RCVBUF = %d", opt);
@@ -154,13 +148,13 @@ TcpServer::start(int port)
     uint64_t opt64 = Config::get_bytes(CFG_TCP_SOCKET_RCVBUF_SIZE, CFG_TCP_SOCKET_RCVBUF_SIZE_DEF);
     if (opt64 > INT_MAX) opt64 = INT_MAX;
     opt = (int)opt64;
-    retval = setsockopt(m_socket_fd, SOL_SOCKET, SO_RCVBUF, &opt, optlen);
+    retval = setsockopt(fd, SOL_SOCKET, SO_RCVBUF, &opt, optlen);
     if (retval != 0)
         Logger::warn("setsockopt(RCVBUF) failed, errno = %d", errno);
     else
         Logger::info("SO_RCVBUF set to %d", opt);
 
-    retval = getsockopt(m_socket_fd, SOL_SOCKET, SO_SNDBUF, &opt, &optlen);
+    retval = getsockopt(fd, SOL_SOCKET, SO_SNDBUF, &opt, &optlen);
 
     if (retval == 0)
         Logger::info("Original SO_SNDBUF = %d", opt);
@@ -172,7 +166,7 @@ TcpServer::start(int port)
         opt64 = Config::get_bytes(CFG_TCP_SOCKET_SNDBUF_SIZE);
         if (opt64 > INT_MAX) opt64 = INT_MAX;
         opt = (int)opt64;
-        retval = setsockopt(m_socket_fd, SOL_SOCKET, SO_SNDBUF, &opt, optlen);
+        retval = setsockopt(fd, SOL_SOCKET, SO_SNDBUF, &opt, optlen);
         if (retval != 0)
             Logger::warn("setsockopt(SNDBUF) failed, errno = %d", errno);
         else
@@ -184,103 +178,21 @@ TcpServer::start(int port)
     addr.sin6_port = htons(port);
     addr.sin6_addr = in6addr_any;
 
-    retval = bind(m_socket_fd, (sockaddr*)&addr, sizeof(addr));
+    retval = bind(fd, (sockaddr*)&addr, sizeof(addr));
 
     if (retval < 0)
     {
-        close(m_socket_fd);
+        close(fd);
         Logger::error("Failed to bind to any network interfaces, errno=%d", errno);
-        return false;
+        return -1;
     }
-
-#if 0
-    struct addrinfo hints;
-    struct addrinfo *result = nullptr, *ap;
-
-    std::memset(&hints, 0, sizeof(hints));
-    hints.ai_family = AF_UNSPEC;        // both IPv4 and IPv6 are ok
-    hints.ai_socktype = SOCK_STREAM;    // TCP socket
-    hints.ai_flags = AI_PASSIVE;
-
-    int retval = getaddrinfo(nullptr, std::to_string(port).c_str(), &hints, &result);
-
-    if (retval != 0)
-    {
-        Logger::error("Failed to start TCP server: %s", gai_strerror(retval));
-        return false;
-    }
-
-    ASSERT(result != nullptr);
-
-    for (ap = result; ap != nullptr; ap = ap->ai_next)
-    {
-        m_socket_fd = socket(ap->ai_family, ap->ai_socktype, ap->ai_protocol);
-        if (m_socket_fd == -1) continue;
-
-        if (g_opt_reuse_port)
-        {
-            int enable = 1;
-            retval = setsockopt(m_socket_fd, SOL_SOCKET, SO_REUSEPORT, &enable, sizeof(int));
-            if (retval < 0) Logger::error("Failed to setsockopt, errno: %d", errno);
-        }
-
-        // adjust TCP window size
-        int opt;
-        socklen_t optlen = sizeof(opt);
-        retval = getsockopt(m_socket_fd, SOL_SOCKET, SO_RCVBUF, &opt, &optlen);
-
-        if (retval == 0)
-            Logger::info("Original SO_RCVBUF = %d", opt);
-        else
-            Logger::info("getsockopt(SO_RCVBUF) failed, errno = %d", errno);
-
-        if (Config::exists(CFG_TCP_SOCKET_RCVBUF_SIZE))
-        {
-            opt = Config::get_bytes(CFG_TCP_SOCKET_RCVBUF_SIZE);
-            retval = setsockopt(m_socket_fd, SOL_SOCKET, SO_RCVBUF, &opt, optlen);
-            if (retval != 0)
-                Logger::warn("setsockopt(RCVBUF) failed, errno = %d", errno);
-            else
-                Logger::info("SO_RCVBUF set to %d", opt);
-        }
-
-        retval = getsockopt(m_socket_fd, SOL_SOCKET, SO_SNDBUF, &opt, &optlen);
-
-        if (retval == 0)
-            Logger::info("Original SO_SNDBUF = %d", opt);
-        else
-            Logger::info("getsockopt(SO_SNDBUF) failed, errno = %d", errno);
-
-        if (Config::exists(CFG_TCP_SOCKET_SNDBUF_SIZE))
-        {
-            opt = Config::get_bytes(CFG_TCP_SOCKET_SNDBUF_SIZE);
-            retval = setsockopt(m_socket_fd, SOL_SOCKET, SO_SNDBUF, &opt, optlen);
-            if (retval != 0)
-                Logger::warn("setsockopt(SNDBUF) failed, errno = %d", errno);
-            else
-                Logger::info("SO_SNDBUF set to %d", opt);
-        }
-
-        retval = bind(m_socket_fd, ap->ai_addr, ap->ai_addrlen);
-        if (retval == 0) break; // take the first successful bind
-        close(m_socket_fd);
-    }
-
-    if (ap == nullptr)
-    {
-        Logger::error("Failed to bind to any network interfaces");
-        return false;
-    }
-
-    freeaddrinfo(result);
-#endif
 
     // collect socket info (options)
     {
         char dev[IFNAMSIZ];
 
         optlen = sizeof(dev);
-        retval = getsockopt(m_socket_fd, SOL_SOCKET, SO_BINDTODEVICE, dev, &optlen);
+        retval = getsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, dev, &optlen);
         if (retval == 0)
         {
             if ((0 <= optlen) && (optlen < IFNAMSIZ))
@@ -293,70 +205,70 @@ TcpServer::start(int port)
             Logger::info("SO_BINDTODEVICE: errno = %d", errno);
 
         optlen = sizeof(opt);
-        retval = getsockopt(m_socket_fd, SOL_SOCKET, SO_DEBUG, &opt, &optlen);
+        retval = getsockopt(fd, SOL_SOCKET, SO_DEBUG, &opt, &optlen);
         if (retval == 0)
             Logger::info("SO_DEBUG = %d", opt);
         else
             Logger::info("SO_DEBUG: errno = %d", errno);
 
         optlen = sizeof(opt);
-        retval = getsockopt(m_socket_fd, SOL_SOCKET, SO_DONTROUTE, &opt, &optlen);
+        retval = getsockopt(fd, SOL_SOCKET, SO_DONTROUTE, &opt, &optlen);
         if (retval == 0)
             Logger::info("SO_DONTROUTE = %d", opt);
         else
             Logger::info("SO_DONTROUTE: errno = %d", errno);
 
         optlen = sizeof(opt);
-        retval = getsockopt(m_socket_fd, SOL_SOCKET, SO_KEEPALIVE, &opt, &optlen);
+        retval = getsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, &opt, &optlen);
         if (retval == 0)
             Logger::info("SO_KEEPALIVE = %d", opt);
         else
             Logger::info("SO_KEEPALIVE: errno = %d", errno);
 
         optlen = sizeof(opt);
-        retval = getsockopt(m_socket_fd, SOL_SOCKET, SO_PRIORITY, &opt, &optlen);
+        retval = getsockopt(fd, SOL_SOCKET, SO_PRIORITY, &opt, &optlen);
         if (retval == 0)
             Logger::info("SO_PRIORITY = %d", opt);
         else
             Logger::info("SO_PRIORITY: errno = %d", errno);
 
         optlen = sizeof(opt);
-        retval = getsockopt(m_socket_fd, SOL_SOCKET, SO_RCVBUF, &opt, &optlen);
+        retval = getsockopt(fd, SOL_SOCKET, SO_RCVBUF, &opt, &optlen);
         if (retval == 0)
             Logger::info("SO_RCVBUF = %d", opt);
         else
             Logger::info("SO_RCVBUF: errno = %d", errno);
 
         optlen = sizeof(opt);
-        retval = getsockopt(m_socket_fd, SOL_SOCKET, SO_RCVBUFFORCE, &opt, &optlen);
+        retval = getsockopt(fd, SOL_SOCKET, SO_RCVBUFFORCE, &opt, &optlen);
         if (retval == 0)
             Logger::info("SO_RCVBUFFORCE = %d", opt);
         else
             Logger::info("SO_RCVBUFFORCE: errno = %d", errno);
 
         optlen = sizeof(opt);
-        retval = getsockopt(m_socket_fd, SOL_SOCKET, SO_RCVLOWAT, &opt, &optlen);
+        retval = getsockopt(fd, SOL_SOCKET, SO_RCVLOWAT, &opt, &optlen);
         if (retval == 0)
             Logger::info("SO_RCVLOWAT = %d", opt);
         else
             Logger::info("SO_RCVLOWAT: errno = %d", errno);
 
         optlen = sizeof(opt);
-        retval = getsockopt(m_socket_fd, SOL_SOCKET, SO_SNDBUF, &opt, &optlen);
+        retval = getsockopt(fd, SOL_SOCKET, SO_SNDBUF, &opt, &optlen);
         if (retval == 0)
             Logger::info("SO_SNDBUF = %d", opt);
         else
             Logger::info("SO_SNDBUF: errno = %d", errno);
 
         optlen = sizeof(opt);
-        retval = getsockopt(m_socket_fd, SOL_SOCKET, SO_SNDBUFFORCE, &opt, &optlen);
+        retval = getsockopt(fd, SOL_SOCKET, SO_SNDBUFFORCE, &opt, &optlen);
         if (retval == 0)
             Logger::info("SO_SNDBUFFORCE = %d", opt);
         else
             Logger::info("SO_SNDBUFFORCE: errno = %d", errno);
 
         optlen = sizeof(opt);
-        retval = getsockopt(m_socket_fd, SOL_SOCKET, SO_SNDLOWAT, &opt, &optlen);
+        retval = getsockopt(fd, SOL_SOCKET, SO_SNDLOWAT, &opt, &optlen);
         if (retval == 0)
             Logger::info("SO_SNDLOWAT = %d", opt);
         else
@@ -364,28 +276,58 @@ TcpServer::start(int port)
     }
 
     // 2. make socket non-blocking
-    if (! set_flags(m_socket_fd, O_NONBLOCK)) return false;
+    if (! set_flags(fd, O_NONBLOCK))
+    {
+        close(fd);
+        Logger::error("Failed to socket non-blocking, errno=%d", errno);
+        return -1;
+    }
 
     // 3. listen on the socket
-    retval = listen(m_socket_fd, m_max_conns_per_listener * m_listener_count);
+    retval = ::listen(fd, m_max_conns_per_listener * m_listener_count);
 
     if (retval == -1)
     {
+        close(fd);
         Logger::error("Failed to listen on socket, errno: %d", errno);
-        return false;
+        return -1;
     }
 
-    // 4. create threads to handle epoll events
-    //    Create all the level 1 listeners before creating level 0 listener so
-    //    that when level 0 listener is ready to send msgs to level 1 listeners
-    //    they are already created and ready.
-    for (int i = 1; i < m_listener_count; i++)
-    {
-        m_listeners[i] = new TcpListener(this, m_socket_fd, m_max_conns_per_listener, i);
-    }
+    return fd;
+}
+
+/* 'ports' should be in the following format:
+ *   6181,6180
+ * where the first port will be used to receive OpenTSDB Telnet format data;
+ * and the second port will be used to receive InfluxDB's line protocol format data;
+ * If one of them is not used, just leave it out, like this:
+ *   ,6180
+ */
+bool
+TcpServer::start(const std::string& ports)
+{
+    Logger::info("Starting TCP Server on ports %s...", ports.c_str());
+
+    std::tuple<std::string,std::string> pair;
+    if (! tokenize(ports, pair, ','))
+        std::get<0>(pair) = ports;
+
+    if (! std::get<0>(pair).empty())
+        m_socket_fd0 = this->listen(std::stoi(std::get<0>(pair)));
+    if (! std::get<1>(pair).empty())
+        m_socket_fd1 = this->listen(std::stoi(std::get<1>(pair)));
+
+    // Create all the level 1 listeners before creating level 0 listener so
+    // that when level 0 listener is ready to send msgs to level 1 listeners
+    // they are already created and ready.
+    for (int i = 2; i < m_listener_count; i++)
+        m_listeners[i] = new TcpListener(this, -1, i);
 
     // 5. create the level 0 listener
-    m_listeners[0] = new TcpListener(this, m_socket_fd, m_max_conns_per_listener);
+    if (m_socket_fd0 > 0)
+        m_listeners[0] = new TcpListener(this, m_socket_fd0, 'o');
+    if (m_socket_fd1 > 0)
+        m_listeners[1] = new TcpListener(this, m_socket_fd1, 'i');
 
     return true;
 }
@@ -527,7 +469,10 @@ TcpServer::process_data(TcpConnection *conn, char *data, int len)
 
         Logger::tcp("Recved:\n%s", conn->fd, data);
 
-        (*s_http_request_handler)(request, response);
+        if (conn->state.load(std::memory_order_relaxed) & TCS_INFLUXDB)
+            Tsdb::http_api_write_handler(request, response);
+        else
+            Tsdb::http_api_put_handler_plain(request, response);
 
         if (response.content_length > 0)
         {
@@ -629,7 +574,7 @@ TcpServer::is_stopped() const
 void
 TcpServer::get_level1_listeners(std::vector<TcpListener*>& listeners) const
 {
-    for (size_t i = 1; i < m_listener_count; i++)
+    for (size_t i = 2; i < m_listener_count; i++)
     {
         if ((m_listeners[i] != nullptr) && (! m_listeners[i]->is_stopped()))
         {
@@ -642,7 +587,7 @@ TcpListener *
 TcpServer::next_listener()
 {
     m_next_listener++;
-    if (m_next_listener >= m_listener_count) m_next_listener = 1;
+    if (m_next_listener >= m_listener_count) m_next_listener = 2;
     Logger::debug("m_next_listener = %d", m_next_listener);
     return m_listeners[m_next_listener];
 }
@@ -653,7 +598,7 @@ TcpServer::get_least_conn_listener() const
     TcpListener *listener = nullptr;
     size_t conn_cnt = m_max_conns_per_listener + 1;
 
-    for (size_t i = 1; i < m_listener_count; i++)
+    for (size_t i = 2; i < m_listener_count; i++)
     {
         if ((m_listeners[i] != nullptr) && (! m_listeners[i]->is_stopped()))
         {
@@ -676,7 +621,7 @@ TcpServer::get_most_conn_listener() const
     TcpListener *listener = nullptr;
     int conn_cnt = -1;
 
-    for (size_t i = 1; i < m_listener_count; i++)
+    for (size_t i = 2; i < m_listener_count; i++)
     {
         if ((m_listeners[i] != nullptr) && (! m_listeners[i]->is_stopped()))
         {
@@ -698,7 +643,7 @@ TcpServer::get_pending_task_count(std::vector<std::vector<size_t>> &counts) cons
 {
     size_t count = 0;
 
-    for (size_t i = 0; i < m_listener_count; i++)
+    for (size_t i = 2; i < m_listener_count; i++)
     {
         counts.push_back(std::vector<size_t>());
 
@@ -716,7 +661,7 @@ TcpServer::get_total_task_count(size_t counts[], int size) const
 {
     int i = 0;
 
-    for (int l = 0; l < m_listener_count; l++)
+    for (int l = 2; l < m_listener_count; l++)
     {
         int n = m_listeners[l]->get_total_task_count(&counts[i], size);
 
@@ -732,12 +677,13 @@ TcpServer::get_active_conn_count() const
 {
     int count = 0;
 
-    for (size_t i = 0; i < m_listener_count; i++)
+    for (size_t i = 2; i < m_listener_count; i++)
     {
         if (m_listeners[i] != nullptr)
         {
             count += m_listeners[i]->get_active_conn_count();
             Logger::debug("listener %d: active connection count = %d", i, m_listeners[i]->get_active_conn_count());
+            break;
         }
     }
 
@@ -768,6 +714,7 @@ TcpServer::set_flags(int fd, int flags)
     return true;
 }
 
+/*
 void
 TcpServer::instruct0(const char *instruction, int size)
 {
@@ -776,11 +723,12 @@ TcpServer::instruct0(const char *instruction, int size)
         m_listeners[0]->instruct(instruction, size);
     }
 }
+*/
 
 void
 TcpServer::instruct1(const char *instruction, int size)
 {
-    for (int i = 1; i < m_listener_count; i++)
+    for (int i = 2; i < m_listener_count; i++)
     {
         if (m_listeners[i] != nullptr)
         {
@@ -816,15 +764,15 @@ TcpServer::get_responders_per_listener() const
 
 /* Constructing a level 0 listener
  */
-TcpListener::TcpListener(TcpServer *server, int fd, size_t max_conns) :
+TcpListener::TcpListener(TcpServer *server, int fd, char protocol) :
     m_id(0),
     m_server(server),
-    m_max_conns(max_conns),
     m_max_events(Config::get_int(CFG_TCP_MAX_EPOLL_EVENTS, CFG_TCP_MAX_EPOLL_EVENTS_DEF)),
     m_socket_fd(fd),
     m_epoll_fd(-1),
     m_pipe_fds{-1,-1},
     m_conns(nullptr),
+    m_protocol(protocol),
     m_live_conns(nullptr),
     m_free_conns(nullptr),
     m_least_conn_listener(nullptr),
@@ -839,15 +787,15 @@ TcpListener::TcpListener(TcpServer *server, int fd, size_t max_conns) :
 
 /* Constructing a level 1 listener to handle tcp traffic
  */
-TcpListener::TcpListener(TcpServer *server, int fd, size_t max_conns, int id) :
+TcpListener::TcpListener(TcpServer *server, int fd, int id) :
     m_id(id),
     m_server(server),
-    m_max_conns(max_conns),
     m_max_events(Config::get_int(CFG_TCP_MAX_EPOLL_EVENTS, CFG_TCP_MAX_EPOLL_EVENTS_DEF)),
     m_socket_fd(fd),
     m_epoll_fd(-1),
     m_pipe_fds{-1,-1},
     m_conns(nullptr),
+    m_protocol(0),
     m_live_conns(nullptr),
     m_free_conns(nullptr),
     m_least_conn_listener(nullptr),
@@ -866,7 +814,6 @@ TcpListener::TcpListener(TcpServer *server, int fd, size_t max_conns, int id) :
 // do not create listening thread here
 TcpListener::TcpListener() :
     m_server(nullptr),
-    m_max_conns(0),
     m_max_events(0),
     m_socket_fd(-1),
     m_epoll_fd(-1),
@@ -1148,7 +1095,7 @@ TcpListener::listener1()
                     switch (cmd[0])
                     {
                         case PIPE_CMD_REBALANCE_CONN[0]:    rebalance1(); break;
-                        case PIPE_CMD_NEW_CONN[0]:          new_conn2(std::atoi(cmd+2)); break;
+                        case PIPE_CMD_NEW_CONN[0]:          new_conn2(std::atoi(cmd+4), cmd[2]); break;
                         case PIPE_CMD_CLOSE_CONN[0]:        close_conn(std::atoi(cmd+2)); break;
                         case PIPE_CMD_DISCONNECT_CONN[0]:   disconnect(); break;
                         case PIPE_CMD_RESUBMIT[0]:          resubmit(cmd[2], std::atoi(cmd+4)); break; // r [h|t] <fd>
@@ -1290,7 +1237,7 @@ TcpListener::new_conn0()
         }
 
         char buff[32];
-        snprintf(buff, 30, "%c %d\n", PIPE_CMD_NEW_CONN[0], fd);
+        snprintf(buff, 30, "%c %c %d\n", PIPE_CMD_NEW_CONN[0], m_protocol, fd);
         write_pipe(listener1->m_pipe_fds[1], buff);
     }
 
@@ -1300,7 +1247,7 @@ TcpListener::new_conn0()
 // called by level 1 listeners;
 // accept just one connection at a time;
 void
-TcpListener::new_conn2(int fd)
+TcpListener::new_conn2(int fd, char protocol)
 {
     Logger::trace("new_conn2(%d)", fd);
 
@@ -1314,6 +1261,9 @@ TcpListener::new_conn2(int fd)
 
         ASSERT(fd == conn->fd);
         conn->state &= ~(TCS_ERROR | TCS_CLOSED);   // start new, clear these flags
+
+        if (protocol == 'i')
+            conn->state |= TCS_INFLUXDB;
 
         //if (conn->state & TCS_REGISTERED)
             //deregister_with_epoll(fd);
@@ -1590,6 +1540,7 @@ TcpListener::instruct(const char *instruction, int size)
 {
     if (m_pipe_fds[1] != -1)
     {
+        // BUG: this could be stuck forever!
         write(m_pipe_fds[1], instruction, size);
     }
 }
