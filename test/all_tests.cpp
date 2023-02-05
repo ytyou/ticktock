@@ -49,6 +49,13 @@ static TestCase *tests[] =
 int
 main(int argc, char *argv[])
 {
+    // Make sure test home is clean
+    if (file_exists(TEST_ROOT))
+    {
+        printf("Please remove %s before running tests\n", TEST_ROOT);
+        exit(1);
+    }
+
     long seed;
 
     if (argc > 1)

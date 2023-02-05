@@ -180,6 +180,8 @@ public:
     static void create_config(const char *key, const char *value)
     {
         std::ofstream stream(tt::g_config_file);
+        stream << "ticktock.home = /tmp/tt_u" << std::endl;
+        stream << "tsdb.page.size = 4096b" << std::endl;
         stream << key << " = " << value << std::endl;
         stream.close();
     }
@@ -187,6 +189,8 @@ public:
     static void create_config(std::vector<std::pair<const char*, const char*> >& configs)
     {
         std::ofstream stream(tt::g_config_file);
+        stream << "ticktock.home = /tmp/tt_u" << std::endl;
+        stream << "tsdb.page.size = 4096b" << std::endl;
         for (auto& config : configs)
             stream << config.first << " = " << config.second << std::endl;
         stream.close();

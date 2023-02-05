@@ -85,9 +85,9 @@ public:
     void add_ts(int idx, TimeSeries *ts);
     TimeSeries *get_ts(bool add, Mapping *mapping);
     TimeSeries *add_ts(const char *field, Mapping *mapping);
-    bool add_data_points(std::vector<DataPoint*>& dps, Timestamp ts, Mapping *mapping);
+    bool add_data_points(std::vector<DataPoint>& dps, Timestamp ts, Mapping *mapping);
     TimeSeries *get_ts(int idx, const char *field);
-    bool get_ts(std::vector<DataPoint*>& dps, std::vector<TimeSeries*>& tsv);
+    bool get_ts(std::vector<DataPoint>& dps, std::vector<TimeSeries*>& tsv);
     inline uint32_t get_ts_count() const { return m_ts_count; }
     inline void set_ts_count(uint32_t ts_count);
     inline bool is_initialized() const { return m_time_series != nullptr; }
@@ -123,10 +123,10 @@ private:
     char *m_metric;
     bool add(DataPoint& dp);
     bool add_data_point(DataPoint& dp, bool forward);
-    bool add_data_points(const char *measurement, char *tags, Timestamp ts, std::vector<DataPoint*>& dps);
+    bool add_data_points(const char *measurement, char *tags, Timestamp ts, std::vector<DataPoint>& dps);
     TimeSeries *get_ts(DataPoint& dp);
-    Measurement *get_measurement(char *raw_tags, TagOwner& owner, const char *measurement, std::vector<DataPoint*>& dps);
-    void init_measurement(Measurement *mm, const char *measurement, char *tags, TagOwner& owner, std::vector<DataPoint*>& dps);
+    Measurement *get_measurement(char *raw_tags, TagOwner& owner, const char *measurement, std::vector<DataPoint>& dps);
+    void init_measurement(Measurement *mm, const char *measurement, char *tags, TagOwner& owner, std::vector<DataPoint>& dps);
     void query_for_ts(Tag *tags, std::unordered_set<TimeSeries*>& tsv, const char *key);
     TimeSeries *restore_ts(std::string& metric, std::string& key, TimeSeriesId id);
     void restore_measurement(std::string& measurement, std::string& tags, std::vector<std::pair<std::string,TimeSeriesId>>& fields, std::vector<TimeSeries*>& tsv);
@@ -234,8 +234,8 @@ public:
     static bool http_get_api_suggest_handler(HttpRequest& request, HttpResponse& response);
 
     // parse 1-line of the InfluxDB line protocol
-    static bool parse_line(char* &line, const char* &measurement, char* &tags, Timestamp& ts, std::vector<DataPoint*>& dps, std::vector<DataPoint*>& tmp);
-    static bool add_data_points(const char *measurement, char *tags, Timestamp ts, std::vector<DataPoint*>& dps);
+    static bool parse_line(char* &line, const char* &measurement, char* &tags, Timestamp& ts, std::vector<DataPoint>& dps);
+    static bool add_data_points(const char *measurement, char *tags, Timestamp ts, std::vector<DataPoint>& dps);
 
     static int get_metrics_count();
     static int get_dp_count();

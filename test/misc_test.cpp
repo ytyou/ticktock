@@ -303,7 +303,6 @@ MiscTests::parse_dp_tests()
     {
         char buff[1024];
         char *curr = &buff[0];
-        std::vector<DataPoint*> tmp;
 
         buff[0] = 0;
         std::strcat(curr, "measurement1,tag1=val1 f=1 1234567890\n");   // line1
@@ -318,20 +317,18 @@ MiscTests::parse_dp_tests()
             const char *measurement;
             char *tags = nullptr;
             Timestamp ts = 0;
-            std::vector<DataPoint*> dps;
+            std::vector<DataPoint> dps;
 
-            bool success = Tsdb::parse_line(curr, measurement, tags, ts, dps, tmp);
+            bool success = Tsdb::parse_line(curr, measurement, tags, ts, dps);
             CONFIRM(success);
             CONFIRM(std::strcmp("measurement1", measurement) == 0);
             CONFIRM(std::strcmp("tag1=val1", tags) == 0);
             CONFIRM(ts == 1234567890L);
             CONFIRM(dps.size() == 1);
 
-            DataPoint *dp = dps.back();
-            CONFIRM(std::strcmp("f", dp->get_raw_tags()) == 0);
-            CONFIRM(dp->get_value() == 1.0);
-
-            for (auto dp: dps) tmp.push_back(dp);
+            DataPoint& dp = dps.back();
+            CONFIRM(std::strcmp("f", dp.get_raw_tags()) == 0);
+            CONFIRM(dp.get_value() == 1.0);
         }
 
         // line 2
@@ -339,24 +336,22 @@ MiscTests::parse_dp_tests()
             const char *measurement;
             char *tags = nullptr;
             Timestamp ts = 0;
-            std::vector<DataPoint*> dps;
+            std::vector<DataPoint> dps;
 
-            bool success = Tsdb::parse_line(curr, measurement, tags, ts, dps, tmp);
+            bool success = Tsdb::parse_line(curr, measurement, tags, ts, dps);
             CONFIRM(success);
             CONFIRM(std::strcmp("measurement2", measurement) == 0);
             CONFIRM(tags == nullptr);
             CONFIRM(ts == 9876543210L);
             CONFIRM(dps.size() == 2);
 
-            DataPoint *dp = dps.front();
-            CONFIRM(std::strcmp("f1", dp->get_raw_tags()) == 0);
-            CONFIRM(dp->get_value() == 1.0);
+            DataPoint& dpf = dps.front();
+            CONFIRM(std::strcmp("f1", dpf.get_raw_tags()) == 0);
+            CONFIRM(dpf.get_value() == 1.0);
 
-            dp = dps.back();
-            CONFIRM(std::strcmp("f2", dp->get_raw_tags()) == 0);
-            CONFIRM(dp->get_value() == 2.0);
-
-            for (auto dp: dps) tmp.push_back(dp);
+            DataPoint& dpb = dps.back();
+            CONFIRM(std::strcmp("f2", dpb.get_raw_tags()) == 0);
+            CONFIRM(dpb.get_value() == 2.0);
         }
 
         // line 3
@@ -364,20 +359,18 @@ MiscTests::parse_dp_tests()
             const char *measurement;
             char *tags = nullptr;
             Timestamp ts = 0;
-            std::vector<DataPoint*> dps;
+            std::vector<DataPoint> dps;
 
-            bool success = Tsdb::parse_line(curr, measurement, tags, ts, dps, tmp);
+            bool success = Tsdb::parse_line(curr, measurement, tags, ts, dps);
             CONFIRM(success);
             CONFIRM(std::strcmp("measurement3", measurement) == 0);
             CONFIRM(tags == nullptr);
             CONFIRM(ts == 0L);
             CONFIRM(dps.size() == 1);
 
-            DataPoint *dp = dps.front();
-            CONFIRM(std::strcmp("f3", dp->get_raw_tags()) == 0);
-            CONFIRM(dp->get_value() == 3.0);
-
-            for (auto dp: dps) tmp.push_back(dp);
+            DataPoint& dp = dps.front();
+            CONFIRM(std::strcmp("f3", dp.get_raw_tags()) == 0);
+            CONFIRM(dp.get_value() == 3.0);
         }
 
         // line 4
@@ -385,24 +378,22 @@ MiscTests::parse_dp_tests()
             const char *measurement;
             char *tags = nullptr;
             Timestamp ts = 0;
-            std::vector<DataPoint*> dps;
+            std::vector<DataPoint> dps;
 
-            bool success = Tsdb::parse_line(curr, measurement, tags, ts, dps, tmp);
+            bool success = Tsdb::parse_line(curr, measurement, tags, ts, dps);
             CONFIRM(success);
             CONFIRM(std::strcmp("measure\\,ment4", measurement) == 0);
             CONFIRM(std::strcmp("tag4=val4,tag\\ 5=val5", tags) == 0);
             CONFIRM(ts == 1234567890L);
             CONFIRM(dps.size() == 2);
 
-            DataPoint *dp = dps.front();
-            CONFIRM(std::strcmp("f4", dp->get_raw_tags()) == 0);
-            CONFIRM(dp->get_value() == 4.0);
+            DataPoint& dpf = dps.front();
+            CONFIRM(std::strcmp("f4", dpf.get_raw_tags()) == 0);
+            CONFIRM(dpf.get_value() == 4.0);
 
-            dp = dps.back();
-            CONFIRM(std::strcmp("f5", dp->get_raw_tags()) == 0);
-            CONFIRM(dp->get_value() == 5.1);
-
-            for (auto dp: dps) tmp.push_back(dp);
+            DataPoint& dpb = dps.back();
+            CONFIRM(std::strcmp("f5", dpb.get_raw_tags()) == 0);
+            CONFIRM(dpb.get_value() == 5.1);
         }
 
         // line 5
@@ -410,24 +401,22 @@ MiscTests::parse_dp_tests()
             const char *measurement;
             char *tags = nullptr;
             Timestamp ts = 0;
-            std::vector<DataPoint*> dps;
+            std::vector<DataPoint> dps;
 
-            bool success = Tsdb::parse_line(curr, measurement, tags, ts, dps, tmp);
+            bool success = Tsdb::parse_line(curr, measurement, tags, ts, dps);
             CONFIRM(success);
             CONFIRM(std::strcmp("measurement\\ 5", measurement) == 0);
             CONFIRM(std::strcmp("tag\\=5=val\\ 5,tag\\,6=val\\,5", tags) == 0);
             CONFIRM(ts == 1234567890L);
             CONFIRM(dps.size() == 2);
 
-            DataPoint *dp = dps.front();
-            CONFIRM(std::strcmp("f\\=4", dp->get_raw_tags()) == 0);
-            CONFIRM(dp->get_value() == 4.0);
+            DataPoint& dpf = dps.front();
+            CONFIRM(std::strcmp("f\\=4", dpf.get_raw_tags()) == 0);
+            CONFIRM(dpf.get_value() == 4.0);
 
-            dp = dps.back();
-            CONFIRM(std::strcmp("f\\,5", dp->get_raw_tags()) == 0);
-            CONFIRM(dp->get_value() == 5.1);
-
-            for (auto dp: dps) tmp.push_back(dp);
+            DataPoint& dpb = dps.back();
+            CONFIRM(std::strcmp("f\\,5", dpb.get_raw_tags()) == 0);
+            CONFIRM(dpb.get_value() == 5.1);
         }
 
         // line 6
@@ -435,28 +424,25 @@ MiscTests::parse_dp_tests()
             const char *measurement;
             char *tags = nullptr;
             Timestamp ts = 0;
-            std::vector<DataPoint*> dps;
+            std::vector<DataPoint> dps;
 
-            bool success = Tsdb::parse_line(curr, measurement, tags, ts, dps, tmp);
+            bool success = Tsdb::parse_line(curr, measurement, tags, ts, dps);
             CONFIRM(success);
             CONFIRM(std::strcmp("test.measurement", measurement) == 0);
             CONFIRM(std::strcmp("host=host1,sensor=sensor1", tags) == 0);
             CONFIRM(ts == 0);
             CONFIRM(dps.size() == 3);
 
-            DataPoint *dp = dps.front();
-            CONFIRM(std::strcmp("field1", dp->get_raw_tags()) == 0);
-            CONFIRM(dp->get_value() == 1.0);
+            DataPoint& dpf = dps.front();
+            CONFIRM(std::strcmp("field1", dpf.get_raw_tags()) == 0);
+            CONFIRM(dpf.get_value() == 1.0);
 
-            dp = dps.back();
-            CONFIRM(std::strcmp("field3", dp->get_raw_tags()) == 0);
-            CONFIRM(dp->get_value() == 3.0);
-
-            for (auto dp: dps) tmp.push_back(dp);
+            DataPoint& dpb = dps.back();
+            CONFIRM(std::strcmp("field3", dpb.get_raw_tags()) == 0);
+            CONFIRM(dpb.get_value() == 3.0);
         }
 
         CONFIRM(*curr == 0);
-        CONFIRM(tmp.size() == 3);
     }
 
     m_stats.add_passed(1);

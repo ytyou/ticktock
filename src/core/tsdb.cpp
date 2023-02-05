@@ -198,7 +198,7 @@ Measurement::get_ts(bool add, Mapping *mapping)
 }
 
 bool
-Measurement::get_ts(std::vector<DataPoint*>& dps, std::vector<TimeSeries*>& tsv)
+Measurement::get_ts(std::vector<DataPoint>& dps, std::vector<TimeSeries*>& tsv)
 {
     ReadLock guard(m_lock);
 
@@ -206,8 +206,8 @@ Measurement::get_ts(std::vector<DataPoint*>& dps, std::vector<TimeSeries*>& tsv)
 
     for (int i = 0; i < dps.size(); i++)
     {
-        DataPoint *dp = dps[i];
-        const char *field = dp->get_raw_tags();
+        DataPoint& dp = dps[i];
+        const char *field = dp.get_raw_tags();
         TagId vid = Tag_v2::get_or_set_id(field);
         TimeSeries *ts = m_time_series[i];
         Tag_v2& tags = ts->get_v2_tags();
@@ -220,7 +220,7 @@ Measurement::get_ts(std::vector<DataPoint*>& dps, std::vector<TimeSeries*>& tsv)
 }
 
 bool
-Measurement::add_data_points(std::vector<DataPoint*>& dps, Timestamp tstamp, Mapping *mapping)
+Measurement::add_data_points(std::vector<DataPoint>& dps, Timestamp tstamp, Mapping *mapping)
 {
     bool success;
     std::vector<TimeSeries*> tsv;
@@ -235,27 +235,26 @@ Measurement::add_data_points(std::vector<DataPoint*>& dps, Timestamp tstamp, Map
         for (int i = 0; i < dps.size(); i++)
         {
             TimeSeries *ts = tsv[i];    //get_ts(i++, dp->get_raw_tags());
-            DataPoint *dp = dps[i];
-            dp->set_timestamp(tstamp);
-            ts->add_data_point(*dp);
+            DataPoint& dp = dps[i];
+            dp.set_timestamp(tstamp);
+            success = ts->add_data_point(dp) && success;
         }
     }
     else
     {
         int i = 0;
+        success = true;
 
-        for (auto dp: dps)
+        for (DataPoint& dp: dps)
         {
-            TimeSeries *ts = get_ts(i++, dp->get_raw_tags());
+            TimeSeries *ts = get_ts(i++, dp.get_raw_tags());
 
             if (ts == nullptr)
-                ts = add_ts(dp->get_raw_tags(), mapping);
+                ts = add_ts(dp.get_raw_tags(), mapping);
 
-            dp->set_timestamp(tstamp);
-            ts->add_data_point(*dp);
+            dp.set_timestamp(tstamp);
+            success = ts->add_data_point(dp) && success;
         }
-
-        success = true;
     }
 
     return success;
@@ -364,7 +363,7 @@ Mapping::get_ts(DataPoint& dp)
 }
 
 Measurement *
-Mapping::get_measurement(char *raw_tags, TagOwner& owner, const char *measurement, std::vector<DataPoint*>& dps)
+Mapping::get_measurement(char *raw_tags, TagOwner& owner, const char *measurement, std::vector<DataPoint>& dps)
 {
     ASSERT(raw_tags != nullptr);
     BaseType *bt = nullptr;
@@ -486,7 +485,7 @@ Mapping::add_data_point(DataPoint& dp, bool forward)
 }
 
 bool
-Mapping::add_data_points(const char *measurement, char *tags, Timestamp ts, std::vector<DataPoint*>& dps)
+Mapping::add_data_points(const char *measurement, char *tags, Timestamp ts, std::vector<DataPoint>& dps)
 {
     ASSERT(measurement != nullptr);
     ASSERT(tags != nullptr);
@@ -512,7 +511,7 @@ Mapping::add_data_points(const char *measurement, char *tags, Timestamp ts, std:
 }
 
 void
-Mapping::init_measurement(Measurement *mm, const char *measurement, char *tags, TagOwner& owner, std::vector<DataPoint*>& dps)
+Mapping::init_measurement(Measurement *mm, const char *measurement, char *tags, TagOwner& owner, std::vector<DataPoint>& dps)
 {
     if (dps.empty()) return;
 
@@ -527,13 +526,13 @@ Mapping::init_measurement(Measurement *mm, const char *measurement, char *tags, 
     int i = 0;
     std::vector<std::pair<const char*,TimeSeriesId>> fields;
 
-    for (auto dp: dps)
+    for (DataPoint& dp: dps)
     {
-        builder.update_last(TT_FIELD_TAG_ID, dp->get_raw_tags());
+        builder.update_last(TT_FIELD_TAG_ID, dp.get_raw_tags());
         TimeSeries *ts = new TimeSeries(builder);
         add_ts(ts);
         mm->add_ts(i++, ts);
-        fields.emplace_back(dp->get_raw_tags(), ts->get_id());
+        fields.emplace_back(dp.get_raw_tags(), ts->get_id());
     }
 
     // write meta-file
@@ -622,7 +621,7 @@ Mapping::restore_measurement(std::string& measurement, std::string& tags, std::v
 
     tags.copy(buff, len);
     buff[len] = 0;
-    std::vector<DataPoint*> dps;
+    std::vector<DataPoint> dps;
 
     Measurement *mm = get_measurement(buff, owner, measurement.c_str(), dps);
     TagCount count = owner.get_tag_count() + 1;
@@ -929,7 +928,7 @@ Tsdb::add_data_point(DataPoint& dp, bool forward)
 }
 
 bool
-Tsdb::add_data_points(const char *measurement, char *tags, Timestamp ts, std::vector<DataPoint*>& dps)
+Tsdb::add_data_points(const char *measurement, char *tags, Timestamp ts, std::vector<DataPoint>& dps)
 {
     ASSERT(measurement != nullptr);
     Mapping *mapping = get_or_add_mapping(measurement);
@@ -1490,8 +1489,7 @@ Tsdb::http_api_write_handler(HttpRequest& request, HttpResponse& response)
 
     char *curr = request.content;
     bool success = true;
-    std::vector<DataPoint*> dps;
-    std::vector<DataPoint*> tmp;
+    std::vector<DataPoint> dps;
     Timestamp now = ts_now();
 
     // safety measure
@@ -1514,17 +1512,14 @@ Tsdb::http_api_write_handler(HttpRequest& request, HttpResponse& response)
         char *tags = nullptr;
         Timestamp ts = 0;
 
-        bool ok = parse_line(curr, measurement, tags, ts, dps, tmp);
+        bool ok = parse_line(curr, measurement, tags, ts, dps);
         if (! ok) { success = false; break; }
 
         if (ts == 0) ts = now;
         success = add_data_points(measurement, tags, ts, dps) && success;
 
-        for (auto dp: dps) tmp.push_back(dp);
         dps.clear();
     }
-
-    for (auto dp: tmp) MemoryManager::free_recyclable(dp);
 
     response.init((success ? 200 : 400), HttpContentType::PLAIN);
     return success;
@@ -1632,7 +1627,7 @@ Tsdb::http_get_api_suggest_handler(HttpRequest& request, HttpResponse& response)
 }
 
 bool
-Tsdb::parse_line(char* &line, const char* &measurement, char* &tags, Timestamp& ts, std::vector<DataPoint*>& dps, std::vector<DataPoint*>& tmp)
+Tsdb::parse_line(char* &line, const char* &measurement, char* &tags, Timestamp& ts, std::vector<DataPoint>& dps)
 {
     measurement = line;
 
@@ -1654,26 +1649,17 @@ Tsdb::parse_line(char* &line, const char* &measurement, char* &tags, Timestamp& 
     // ' <field_key>=<field_value>[,<field_key>=<field_value>] [<timestamp>]'
     do
     {
-        DataPoint *dp;
-        char *field = ++line;
+        dps.emplace_back();
 
-        if (tmp.empty())
-        {
-            dp = (DataPoint*)MemoryManager::alloc_recyclable(RecyclableType::RT_DATA_POINT);
-        }
-        else
-        {
-            dp = tmp.back();
-            tmp.pop_back();
-        }
+        DataPoint& dp = dps.back();
+        char *field = ++line;
 
         // look for first equal sign
         while (*line != '=' || *(line-1) == '\\')
             line++;
         *line++ = 0;  // end of field name
-        dp->set_raw_tags(field);    // use raw_tags to remember field name
-        dp->set_value(std::atof(line));
-        dps.push_back(dp);
+        dp.set_raw_tags(field);    // use raw_tags to remember field name
+        dp.set_value(std::atof(line));
 
         while ((*line != ',' || *line == '\\') && (*line != ' ' || *(line-1) == '\\') && (*line != '\n') && (*line != 0))
             line++;
