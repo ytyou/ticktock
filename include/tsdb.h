@@ -138,6 +138,11 @@ private:
 
     //std::mutex m_lock;
     default_contention_free_shared_mutex m_lock;
+
+    // Keys of the m_map are of the following format:
+    //  <tag1>=<val1>,<tag2>=<val2>,...,<tagN>=<valN>
+    // One special key, consisting of just a semicolon (";"),
+    // reprensets the case where there's no tag at all.
     tsl::robin_map<const char*,BaseType*,hash_func,eq_func> m_map;
     //std::unordered_map<const char*,BaseType*,hash_func,eq_func> m_map;
 

@@ -134,7 +134,7 @@ TagOwner::get_ordered_tags(char *buff, size_t size) const
     {
         //if (strcmp(tag->m_key, METRIC_TAG_NAME) == 0) continue;
         ASSERT(strcmp(tag->m_key, METRIC_TAG_NAME) != 0);
-        n = std::snprintf(curr, size, "%s=%s;", tag->m_key, tag->m_value);
+        n = std::snprintf(curr, size, "%s=%s,", tag->m_key, tag->m_value);
         if (size <= n) break;
         size -= n;
         curr += n;
@@ -145,6 +145,13 @@ TagOwner::get_ordered_tags(char *buff, size_t size) const
     {
         buff[0] = ';';
         buff[1] = 0;
+    }
+    else
+    {
+        ASSERT(*curr == 0);
+        curr--;
+        ASSERT(*curr == ',');
+        *curr = 0;  // remove last comma
     }
 
     return buff;

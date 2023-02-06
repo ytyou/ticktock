@@ -344,12 +344,17 @@ KeyValuePair::parse_in_place(char *buff, char delim)
     return list;
 }
 
-// input: key1=val1;key2=val2;key3=val3;...
+// input: key1=val1,key2=val2,key3=val3,...
 KeyValuePair *
 KeyValuePair::parse_multiple(std::string& buff)
 {
     std::vector<std::string> tokens;
-    tokenize(buff, tokens, ';');
+
+    // to be backwards compatible
+    if (buff.find_first_of(';') != std::string::npos)   // old style?
+        tokenize(buff, tokens, ';');
+    else
+        tokenize(buff, tokens, ',');
 
     Tag *kvs = nullptr;
 

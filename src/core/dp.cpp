@@ -180,7 +180,14 @@ DataPoint::from_plain(char* &text)
     while ((*text != ' ') && (*text != '\n')) text++;
     if (*text == '\n') { text++; return true; }
     m_raw_tags = ++text;
-    text = (char*)rawmemchr((void*)text, '\n');
+    //text = (char*)rawmemchr((void*)text, '\n');
+    // Converting <tag1>=<val1> <tag2=<val2> ... into
+    // <tag1>=<val1>,<tag2>=<val2>,..., to match the InfluxDB line protocol
+    while ((*text != '\n') && (*text != 0))
+    {
+        if (*text == ' ') *text = ',';
+        text++;
+    }
     *text++ = 0;
     if (UNLIKELY(*(text-2) == '\r')) *(text-2) = 0;
     return true;
@@ -273,9 +280,9 @@ DataPoint::parse_raw_tags()
     if (m_raw_tags == nullptr) return false;
     if (m_raw_tags[1] == 0 && m_raw_tags[0] == ';') return true;
 
-    char *key, *val, *space, *eq;
+    char *key, *val, *comma, *eq;
 
-    for (key = m_raw_tags; key != nullptr; key = space)
+    for (key = m_raw_tags; key != nullptr; key = comma)
     {
         while (*key == ' ') key++;
         //eq = strchr(key, '=');
@@ -284,8 +291,8 @@ DataPoint::parse_raw_tags()
         if (*eq != '=') return false;
         *eq = 0;
         val = eq + 1;
-        space = strchr(val, ' ');
-        if (space != nullptr) *space++ = 0;
+        comma = strchr(val, ',');
+        if (comma != nullptr) *comma++ = 0;
         add_tag(key, val);
     }
 

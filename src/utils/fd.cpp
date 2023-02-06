@@ -41,8 +41,8 @@ FileDescriptorManager::init()
 {
     m_min_step = Config::get_int(CFG_TCP_MIN_HTTP_STEP, CFG_TCP_MIN_HTTP_STEP_DEF);
     if (m_min_step < 1) m_min_step = 1;
-    m_min_file = 6 * Config::get_int(CFG_HTTP_LISTENER_COUNT, CFG_HTTP_LISTENER_COUNT_DEF) + 
-                 6 * Config::get_int(CFG_TCP_LISTENER_COUNT, CFG_TCP_LISTENER_COUNT_DEF) +
+    m_min_file = 8 * (Config::get_int(CFG_HTTP_LISTENER_COUNT, CFG_HTTP_LISTENER_COUNT_DEF) +
+                 Config::get_int(CFG_TCP_LISTENER_COUNT, CFG_TCP_LISTENER_COUNT_DEF)) +
                  Config::get_int(CFG_TCP_MIN_FILE_DESCRIPTOR, CFG_TCP_MIN_FILE_DESCRIPTOR_DEF);
     if (m_min_file < 10) m_min_file = 10;
     m_max_tcp = m_min_file;

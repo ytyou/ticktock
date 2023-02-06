@@ -602,7 +602,11 @@ Mapping::restore_ts(std::string& metric, std::string& keys, TimeSeriesId id)
     TimeSeries *ts = new TimeSeries(id, metric.c_str(), keys.c_str(), tags);
     m_map[STRDUP(keys.c_str())] = ts;
     add_ts(ts);
-    set_tag_count(std::count(keys.begin(), keys.end(), ';'));
+    // for backwards compatibility, tags can be separated by either ',' or ';'
+    if (keys.find_first_of(';') != std::string::npos)   // old style?
+        set_tag_count(std::count(keys.begin(), keys.end(), ';'));
+    else
+        set_tag_count(std::count(keys.begin(), keys.end(), ',')+1);
     return ts;
 }
 

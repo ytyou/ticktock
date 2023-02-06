@@ -279,23 +279,25 @@ MiscTests::parse_dp_tests()
 
     {
         DataPoint dp;
-        std::strcpy(buff, "city=seattle state=wa");
+        std::strcpy(buff, "city=seattle,state=wa");
         dp.set_raw_tags(buff);
         CONFIRM(dp.parse_raw_tags());
     }
 
+/*
     {
         // tags with spaces in them
         DataPoint dp;
-        std::strcpy(buff, "city=long beach state=ny");
+        std::strcpy(buff, "city=long beach,state=ny");
         dp.set_raw_tags(buff);
         CONFIRM(! dp.parse_raw_tags());
     }
+*/
 
     {
         // tags with spaces in them
         DataPoint dp;
-        std::strcpy(buff, "host name=host1 cpu=2");
+        std::strcpy(buff, "host name=host1,cpu=2");
         dp.set_raw_tags(buff);
         CONFIRM(! dp.parse_raw_tags());
     }

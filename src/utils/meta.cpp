@@ -80,7 +80,7 @@ MetaFile::restore(TimeSeries* (*restore_ts)(std::string& metric, std::string& ke
 
             if ((tokens.size() == 3) && (tokens[2].find_first_of('=') == std::string::npos))
             {
-                // Opentsdb format: metric tag1=val1;tag2=val2; id
+                // Updated OpenTSDB format: metric tag1=val1,tag2=val2 id
                 std::string metric = tokens[0]; // metric
                 std::string tags = tokens[1];   // tags
                 TimeSeriesId id = std::stoi(tokens[2]);
