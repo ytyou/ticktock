@@ -39,7 +39,8 @@ class Downsampler;
 class Tsdb;
 
 
-class __attribute__ ((__packed__)) TimeSeries : public BaseType
+//class __attribute__ ((__packed__)) TimeSeries : public BaseType
+class TimeSeries : public BaseType
 {
 public:
     TimeSeries(TagBuilder& builder);
@@ -84,7 +85,7 @@ public:
 
 private:
     //char *m_key;            // this uniquely defines the time-series
-    //std::mutex m_lock;
+    std::mutex m_lock;
 
     PageInMemory *m_buff;   // in-memory buffer; if m_id is 0, it's contents are
                             // not on disk; otherwise it's contents are at least

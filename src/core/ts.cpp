@@ -121,7 +121,7 @@ TimeSeries::init()
         Config::get_float(CFG_TS_LOCK_PROBABILITY, CFG_TS_LOCK_PROBABILITY_DEF);
     m_lock_count = std::max(tcp_responders, http_responders);
     m_lock_count = (uint32_t)((float)(m_lock_count * m_lock_count) / (2.0 * probability));
-    m_locks = new std::mutex[m_lock_count];
+    //m_locks = new std::mutex[m_lock_count];
     Logger::info("number of ts locks: %u", m_lock_count);
 }
 
@@ -157,8 +157,8 @@ TimeSeries::restore(Tsdb *tsdb, PageSize offset, uint8_t start, char *buff, bool
 void
 TimeSeries::flush(bool close)
 {
-    //std::lock_guard<std::mutex> guard(m_lock);
-    std::lock_guard<std::mutex> guard(m_locks[m_id % m_lock_count]);
+    std::lock_guard<std::mutex> guard(m_lock);
+    //std::lock_guard<std::mutex> guard(m_locks[m_id % m_lock_count]);
     flush_no_lock(close);
 }
 
@@ -204,8 +204,8 @@ void
 TimeSeries::append(FILE *file)
 {
     ASSERT(file != nullptr);
-    //std::lock_guard<std::mutex> guard(m_lock);
-    std::lock_guard<std::mutex> guard(m_locks[m_id % m_lock_count]);
+    std::lock_guard<std::mutex> guard(m_lock);
+    //std::lock_guard<std::mutex> guard(m_locks[m_id % m_lock_count]);
     if (m_buff != nullptr) m_buff->append(m_id, file);
     if (m_ooo_buff != nullptr) m_ooo_buff->append(m_id, file);
 }
@@ -214,8 +214,8 @@ bool
 TimeSeries::add_data_point(DataPoint& dp)
 {
     const Timestamp tstamp = dp.get_timestamp();
-    //std::lock_guard<std::mutex> guard(m_lock);
-    std::lock_guard<std::mutex> guard(m_locks[m_id % m_lock_count]);
+    std::lock_guard<std::mutex> guard(m_lock);
+    //std::lock_guard<std::mutex> guard(m_locks[m_id % m_lock_count]);
 
     // Make sure we have a valid m_buff (PageInMemory)
     if (UNLIKELY(m_buff == nullptr))
@@ -318,8 +318,8 @@ bool
 TimeSeries::query_for_data(Tsdb *tsdb, TimeRange& range, std::vector<DataPointContainer*>& data)
 {
     bool has_ooo = false;
-    //std::lock_guard<std::mutex> guard(m_lock);
-    std::lock_guard<std::mutex> guard(m_locks[m_id % m_lock_count]);
+    std::lock_guard<std::mutex> guard(m_lock);
+    //std::lock_guard<std::mutex> guard(m_locks[m_id % m_lock_count]);
 
     if ((m_buff != nullptr) && (! m_buff->is_empty()) && (m_buff->get_tsdb() == tsdb))
     {
@@ -374,7 +374,8 @@ TimeSeries::query_for_data(Tsdb *tsdb, TimeRange& range, std::vector<DataPointCo
 void
 TimeSeries::archive(Timestamp now_sec, Timestamp threshold_sec)
 {
-    std::lock_guard<std::mutex> guard(m_locks[m_id % m_lock_count]);
+    std::lock_guard<std::mutex> guard(m_lock);
+    //std::lock_guard<std::mutex> guard(m_locks[m_id % m_lock_count]);
 
     if (m_buff != nullptr)
     {
