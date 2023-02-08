@@ -1636,16 +1636,56 @@ Tsdb::parse_line(char* &line, const char* &measurement, char* &tags, Timestamp& 
     measurement = line;
 
     // look for first comma or space
-    do { line++; }
-    while ((*line != ',' || *(line-1) == '\\') && (*line != ' ' || *(line-1) == '\\'));
+    for ( ; ; )
+    {
+        if (*line == '\\')
+        {
+            *line++ = '_';
+            switch (*line)
+            {
+                case ',':   *line = 'C'; break;
+                case '=':   *line = 'E'; break;
+                case ' ':   *line = 'S'; break;
+                default:    *line = '_'; break;
+            }
+            line++;
+        }
+        else if ((*line == ',') || (*line == ' '))
+            break;
+        else
+            line++;
+    }
+
+    //do { line++; }
+    //while ((*line != ',' || *(line-1) == '\\') && (*line != ' ' || *(line-1) == '\\'));
 
     if (*line == ',')
     {
         *line = 0;  // end of measurement
         tags = ++line;
 
-        do { line++; }
-        while (*line != ' ' || *(line-1) == '\\');
+        for ( ; ; )
+        {
+            if (*line == '\\')
+            {
+                *line++ = '_';
+                switch (*line)
+                {
+                    case ',':   *line = 'C'; break;
+                    case '=':   *line = 'E'; break;
+                    case ' ':   *line = 'S'; break;
+                    default:    *line = '_'; break;
+                }
+                line++;
+            }
+            else if (*line == ' ')
+                break;
+            else
+                line++;
+        }
+
+        //do { line++; }
+        //while (*line != ' ' || *(line-1) == '\\');
     }
 
     *line = 0;
@@ -1659,8 +1699,27 @@ Tsdb::parse_line(char* &line, const char* &measurement, char* &tags, Timestamp& 
         char *field = ++line;
 
         // look for first equal sign
-        while (*line != '=' || *(line-1) == '\\')
-            line++;
+        for ( ; ; )
+        {
+            if (*line == '\\')
+            {
+                *line++ = '_';
+                switch (*line)
+                {
+                    case ',':   *line = 'C'; break;
+                    case '=':   *line = 'E'; break;
+                    case ' ':   *line = 'S'; break;
+                    default:    *line = '_'; break;
+                }
+                line++;
+            }
+            else if (*line == '=')
+                break;
+            else
+                line++;
+        }
+        //while (*line != '=' || *(line-1) == '\\')
+            //line++;
         *line++ = 0;  // end of field name
         dp.set_raw_tags(field);    // use raw_tags to remember field name
         dp.set_value(std::atof(line));

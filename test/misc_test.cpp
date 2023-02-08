@@ -384,8 +384,8 @@ MiscTests::parse_dp_tests()
 
             bool success = Tsdb::parse_line(curr, measurement, tags, ts, dps);
             CONFIRM(success);
-            CONFIRM(std::strcmp("measure\\,ment4", measurement) == 0);
-            CONFIRM(std::strcmp("tag4=val4,tag\\ 5=val5", tags) == 0);
+            CONFIRM(std::strcmp("measure_Cment4", measurement) == 0);
+            CONFIRM(std::strcmp("tag4=val4,tag_S5=val5", tags) == 0);
             CONFIRM(ts == 1234567890L);
             CONFIRM(dps.size() == 2);
 
@@ -407,17 +407,17 @@ MiscTests::parse_dp_tests()
 
             bool success = Tsdb::parse_line(curr, measurement, tags, ts, dps);
             CONFIRM(success);
-            CONFIRM(std::strcmp("measurement\\ 5", measurement) == 0);
-            CONFIRM(std::strcmp("tag\\=5=val\\ 5,tag\\,6=val\\,5", tags) == 0);
+            CONFIRM(std::strcmp("measurement_S5", measurement) == 0);
+            CONFIRM(std::strcmp("tag_E5=val_S5,tag_C6=val_C5", tags) == 0);
             CONFIRM(ts == 1234567890L);
             CONFIRM(dps.size() == 2);
 
             DataPoint& dpf = dps.front();
-            CONFIRM(std::strcmp("f\\=4", dpf.get_raw_tags()) == 0);
+            CONFIRM(std::strcmp("f_E4", dpf.get_raw_tags()) == 0);
             CONFIRM(dpf.get_value() == 4.0);
 
             DataPoint& dpb = dps.back();
-            CONFIRM(std::strcmp("f\\,5", dpb.get_raw_tags()) == 0);
+            CONFIRM(std::strcmp("f_C5", dpb.get_raw_tags()) == 0);
             CONFIRM(dpb.get_value() == 5.1);
         }
 
