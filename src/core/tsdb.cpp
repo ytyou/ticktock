@@ -1226,6 +1226,15 @@ Tsdb::append_page(TimeSeriesId id, FileIndex prev_file_idx, HeaderIndex prev_hea
         tsdb_header->m_page_index = header->m_page_index;
     tsdb_header->set_compacted(compact);
 
+    // adjust range in tsdb_header
+    Timestamp from = m_time_range.get_from() + header->m_tstamp_from;
+    Timestamp to = m_time_range.get_from() + header->m_tstamp_to;
+
+    if (tsdb_header->m_start_tstamp > from)
+        tsdb_header->m_start_tstamp = from;
+    if (tsdb_header->m_end_tstamp < to)
+        tsdb_header->m_end_tstamp = to;
+
     HeaderIndex header_idx = header_file->new_header_index(this);
     ASSERT(header_idx != TT_INVALID_HEADER_INDEX);
     struct page_info_on_disk *new_header = header_file->get_page_header(header_idx);

@@ -400,8 +400,8 @@ HeaderFile::init_tsdb_header(Tsdb *tsdb)
     header->m_page_count = m_page_count;
     header->m_header_index = 0;
     header->m_page_index = 0;
-    header->m_start_tstamp = tsdb->get_time_range().get_from();
-    header->m_end_tstamp = tsdb->get_time_range().get_to();
+    header->m_start_tstamp = TimeRange::MAX.get_to();   //tsdb->get_time_range().get_from();
+    header->m_end_tstamp = TimeRange::MAX.get_from();   //tsdb->get_time_range().get_to();
     header->m_actual_pg_cnt = m_page_count;
     header->m_page_size = tsdb->get_page_size();
 
