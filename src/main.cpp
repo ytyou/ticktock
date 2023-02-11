@@ -130,7 +130,6 @@ process_cmdline_opts(int argc, char *argv[])
     static struct option long_options[] =
     {
         // ALL options should require argument
-        { CFG_APPEND_LOG_DIR,                       required_argument,  0,  0 },
         { CFG_APPEND_LOG_ENABLED,                   required_argument,  0,  0 },
         { CFG_APPEND_LOG_FLUSH_FREQUENCY,           required_argument,  0,  0 },
         { CFG_CONFIG_RELOAD_ENABLED,                required_argument,  0,  0 },
