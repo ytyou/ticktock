@@ -67,6 +67,8 @@ MmapFile::open(off_t length, bool read_only, bool append_only, bool resize)
     if (m_fd == -1)
     {
         Logger::error("Failed to open file %s, errno = %d", m_name.c_str(), errno);
+        if (ENOMEM == errno)
+            throw std::runtime_error("Out of memory");
         return;
     }
 
@@ -97,6 +99,8 @@ MmapFile::open(off_t length, bool read_only, bool append_only, bool resize)
             m_fd = -1;
         }
 
+        if (ENOMEM == errno)
+            throw std::runtime_error("Out of memory");
         return;
     }
 
@@ -122,6 +126,8 @@ MmapFile::open_existing(bool read_only, bool append_only)
     if (m_fd == -1)
     {
         Logger::error("Failed to open file %s, errno = %d", m_name.c_str(), errno);
+        if (ENOMEM == errno)
+            throw std::runtime_error("Out of memory");
         return;
     }
 
@@ -151,6 +157,8 @@ MmapFile::open_existing(bool read_only, bool append_only)
             m_fd = -1;
         }
 
+        if (ENOMEM == errno)
+            throw std::runtime_error("Out of memory");
         return;
     }
 
@@ -276,7 +284,7 @@ IndexFile::open(bool for_read)
         ASSERT(get_pages() != nullptr);
     }
 
-    Logger::debug("index file %s length: %lu", m_name.c_str(), get_length());
+    Logger::debug("index file %s length: %" PRIu64, m_name.c_str(), get_length());
     Logger::info("opening %s for %s", m_name.c_str(), for_read?"read":"write");
 }
 
@@ -299,7 +307,7 @@ IndexFile::expand(off_t new_len)
     for ( ; old_idx < new_idx; old_idx++)
         entries[old_idx].file_index = TT_INVALID_FILE_INDEX;
 
-    Logger::debug("index file %s length: %lu", m_name.c_str(), get_length());
+    Logger::debug("index file %s length: %" PRIu64, m_name.c_str(), get_length());
 
     return true;
 }
@@ -617,7 +625,7 @@ DataFile::close()
         m_file = nullptr;
     }
 
-    Logger::info("closing data file %s (for both read & write), length = %lu", m_name.c_str(), get_length());
+    Logger::info("closing data file %s (for both read & write), length = %" PRIu64, m_name.c_str(), get_length());
     MmapFile::close();
 }
 

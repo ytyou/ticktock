@@ -361,6 +361,9 @@ MemoryManager::log_stats()
         fprintf(file, "ticktock.open.index_file.count %" PRIu64 " %d mode=write %s=%s\n",
             ts, Tsdb::get_open_index_file_count(false), HOST_TAG_NAME, g_host_name.c_str());
 
+        fprintf(file, "ticktock.query.dp.count %" PRIu64 " %" PRIu64 " %s=%s\n",
+            ts, Query::get_dp_count(), HOST_TAG_NAME, g_host_name.c_str());
+
         fprintf(file, "ticktock.connection.count %" PRIu64 " %d %s=%s\n",
             ts, TcpListener::get_active_conn_count(), HOST_TAG_NAME, g_host_name.c_str());
 

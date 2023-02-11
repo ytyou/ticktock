@@ -80,7 +80,7 @@ ld_stats(const char *msg)
         Logger::info("mem-leak: %s", msg);
     }
 
-    unsigned long total = 0;
+    uint64_t total = 0;
     std::lock_guard<std::mutex> guard(mem_lock);
 
     for (const auto& mem: mem_map)
@@ -100,7 +100,7 @@ ld_stats(const char *msg)
         }
     }
 
-    Logger::info("mem-leak: Total of %lu bytes allocated", total);
+    Logger::info("mem-leak: Total of %" PRIu64 " bytes allocated", total);
     return total;
 }
 

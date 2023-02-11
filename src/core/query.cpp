@@ -41,6 +41,7 @@ namespace tt
 {
 
 
+static std::atomic<uint64_t> s_dp_count {0};
 QueryExecutor *QueryExecutor::m_instance = nullptr;
 
 
@@ -616,6 +617,12 @@ Query::execute_in_parallel(std::vector<QueryResults*>& results, StringBuffer& st
         //tsdb->dec_count();
 }
 
+uint64_t
+Query::get_dp_count()
+{
+    return s_dp_count.load(std::memory_order_relaxed);
+}
+
 const char *
 Query::c_str(char *buff) const
 {
@@ -727,40 +734,15 @@ QueryTask::query_with_ooo(std::vector<DataPointContainer*>& data)
         }
     };
     std::priority_queue<container_it, std::vector<container_it>, decltype(container_cmp)> pq(container_cmp);
-
-/*
-    size_t size = m_pages.size() + m_ooo_pages.size();
-    DataPointContainer containers[size];
-    size_t count = 0;
-    std::lock_guard<std::mutex> guard(m_lock);
-
-    for (PageInfo *page_info : m_pages)
-    {
-        ASSERT(! page_info->is_empty());
-
-        if (range.has_intersection(page_info->get_time_range()))
-        {
-            containers[count].init(page_info);
-            pq.emplace(&containers[count], 0);
-            count++;
-        }
-    }
-
-    for (PageInfo *page_info : m_ooo_pages)
-    {
-        ASSERT(! page_info->is_empty());
-
-        if (range.has_intersection(page_info->get_time_range()))
-        {
-            containers[count].init(page_info);
-            pq.emplace(&containers[count], 0);
-            count++;
-        }
-    }
-*/
+    uint64_t dp_count = 0;
 
     for (auto container: data)
+    {
+        dp_count += container->size();
         pq.emplace(container, 0);
+    }
+
+    s_dp_count.fetch_add(dp_count, std::memory_order_relaxed);
 
     while (! pq.empty())
     {
@@ -803,8 +785,12 @@ QueryTask::query_with_ooo(std::vector<DataPointContainer*>& data)
 void
 QueryTask::query_without_ooo(std::vector<DataPointContainer*>& data)
 {
+    uint64_t dp_count = 0;
+
     for (DataPointContainer *container: data)
     {
+        dp_count += container->size();
+
         for (int i = 0; i < container->size(); i++)
         {
             DataPointPair& dp = container->get_data_point(i);
@@ -823,6 +809,8 @@ QueryTask::query_without_ooo(std::vector<DataPointContainer*>& data)
             }
         }
     }
+
+    s_dp_count.fetch_add(dp_count, std::memory_order_relaxed);
 }
 
 Tag *

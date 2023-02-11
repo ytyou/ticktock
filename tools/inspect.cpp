@@ -254,7 +254,7 @@ inspect_tsdb_internal(const std::string& dir)
         struct tsdb_header *tsdb_header = (struct tsdb_header*)base_hdr;
         if (g_verbose)
         {
-            printf("%s: [major=%u, minor=%u, flags=%x, page_cnt=%u, header_idx=%u, page_idx=%u, start=%lu, end=%lu, actual=%u, size=%u]\n",
+            printf("%s: [major=%u, minor=%u, flags=%x, page_cnt=%u, header_idx=%u, page_idx=%u, start=%" PRIu64 ", end=%" PRIu64 ", actual=%u, size=%u]\n",
                 header_file.c_str(),
                 tsdb_header->m_major_version,
                 tsdb_header->m_minor_version,

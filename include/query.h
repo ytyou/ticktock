@@ -187,6 +187,8 @@ public:
     void execute(std::vector<QueryResults*>& results, StringBuffer& strbuf);
     void execute_in_parallel(std::vector<QueryResults*>& results, StringBuffer& strbuf);
 
+    static uint64_t get_dp_count();
+
     inline size_t c_size() const override { return 1024; }
     const char *c_str(char *buff) const override;
 

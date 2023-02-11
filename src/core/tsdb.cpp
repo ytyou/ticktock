@@ -2091,11 +2091,17 @@ Tsdb::rotate(TaskData& data)
 
         for (DataFile *data_file: tsdb->m_data_files)
         {
+            FileIndex id = data_file->get_id();
+            HeaderFile *header_file = tsdb->m_header_files[id];
+
             if (data_file->is_open(true))
             {
                 Timestamp last_read = data_file->get_last_read();
                 if (((int64_t)now_sec - (int64_t)last_read) > (int64_t)thrashing_threshold)
+                {
                     data_file->close(1);    // close read
+                    header_file->close();
+                }
                 else
                 {
                     all_closed = false;
@@ -2110,16 +2116,15 @@ Tsdb::rotate(TaskData& data)
             {
                 Timestamp last_write = data_file->get_last_write();
                 if (((int64_t)now_sec - (int64_t)last_write) > (int64_t)thrashing_threshold)
+                {
                     data_file->close(2);    // close for write
+                    header_file->close();
+                }
                 else
                     all_closed = false;
             }
             else
-            {
-                FileIndex id = data_file->get_id();
-                HeaderFile *header_file = tsdb->m_header_files[id];
                 header_file->close();
-            }
         }
 
         tsdb->flush(true);
