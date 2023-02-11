@@ -155,6 +155,7 @@ process_cmdline_opts(int argc, char *argv[])
         { CFG_TCP_SERVER_PORT,                      required_argument,  0,  0 },
         { CFG_TCP_SOCKET_RCVBUF_SIZE,               required_argument,  0,  0 },
         { CFG_TCP_SOCKET_SNDBUF_SIZE,               required_argument,  0,  0 },
+        { CFG_TICKTOCK_HOME,                        required_argument,  0,  0 },
         { CFG_TIMER_GRANULARITY,                    required_argument,  0,  0 },
         { CFG_TIMER_QUEUE_SIZE,                     required_argument,  0,  0 },
         { CFG_TIMER_THREAD_COUNT,                   required_argument,  0,  0 },
