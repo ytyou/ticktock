@@ -265,6 +265,7 @@ TimeSeries::add_data_point(DataPoint& dp)
         ASSERT(ok);
     }
 
+    ASSERT(! m_buff->is_full());
     return ok;
 }
 

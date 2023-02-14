@@ -695,6 +695,7 @@ HttpServer::process_request(HttpRequest& request, HttpResponse& response)
     if (handler != nullptr)
     {
         char *buff = nullptr;
+        bool success = false;
 
         try
         {
@@ -706,7 +707,7 @@ HttpServer::process_request(HttpRequest& request, HttpResponse& response)
                 Logger::http("%s", 0, request.content);
             }
 
-            return (*handler)(request, response);
+            success = (*handler)(request, response);
         }
         catch (const std::exception& ex)
         {
@@ -726,7 +727,7 @@ HttpServer::process_request(HttpRequest& request, HttpResponse& response)
         if (buff != nullptr)
             MemoryManager::free_network_buffer(buff);
 
-        return false;
+        return success;
     }
     else
     {
