@@ -1161,6 +1161,13 @@ Tsdb::set_indices(TimeSeriesId id, FileIndex prev_file_idx, HeaderIndex prev_hea
 HeaderFile *
 Tsdb::get_header_file(FileIndex file_idx)
 {
+    if (LIKELY(file_idx < m_header_files.size()))
+    {
+        HeaderFile *file = m_header_files[file_idx];
+        if (file->get_id() == file_idx)
+            return file;
+    }
+
     for (auto file: m_header_files)
     {
         if (file->get_id() == file_idx)
