@@ -31,6 +31,7 @@
 #ifdef __GLIBC__
 #include <gnu/libc-version.h>
 #endif
+#include <unistd.h>
 #include "admin.h"
 #include "compress.h"
 #include "config.h"
@@ -230,6 +231,10 @@ process_cmdline_opts(int argc, char *argv[])
 static void
 daemonize(const char *cwd)
 {
+    if (daemon(1, 0) != 0)
+        fprintf(stderr, "daemon() failed: errno = %d\n", errno);
+
+#if 0
     pid_t pid;
 
     // fork off the parent process
@@ -284,6 +289,7 @@ daemonize(const char *cwd)
     sprintf(buff, "%d\n", getpid());
     write(fd, buff, strlen(buff));
     close(fd);
+#endif
 }
 
 // one time initialization, at the beginning of the execution
