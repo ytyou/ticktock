@@ -8,8 +8,6 @@ TickTockDB is an open source Time Series DataBase (TSDB) for DevOps, Internet of
   - At least 10X better than OpenTSDB, competitive to the best TSDBs like InfluxDB.
 * **Easy to install and maintain:** 
   - Many TSDBs are built on top of other DBs, e.g., OpenTSDB on HBase, Timescaledb on Postgresql, Clickhouse and Druid on relational DBs. This incurs complexity in installation and maintenance besides performance overhead. TickTockDB is natively developed in C++ and has a single process only. It doesn't require additional expertise like HBase for OpenTSDB in maintence. It doesn't have painful Garbage Collection issues to deal with in high load scenarios.
-* **Replication and Scalability supports:**
-  - TickTockDB provides replication and partition features in its open source versions.
 * **Compatible with OpenTSDB APIs:** 
   - OpenTSDB is one of the most widely used TSDBs. TickTockDB includes storing and querying APIs compatible with [OpenTSDB](http://opentsdb.net). You can use OpenTSDB's [TCollector](https://github.com/OpenTSDB/tcollector) to collect data and use [Grafana](https://grafana.com) to visualize data.
 
@@ -17,12 +15,10 @@ TickTockDB is an open source Time Series DataBase (TSDB) for DevOps, Internet of
 
 * **High Performance** 
   - High write throughput, low query latency. In our performance testing with some public available benchmarks, TickTockDB is at least 50X better than Opentsdb, 10X than InfluxDB.
-* **Replication** 
-  - Write to any server in the cluster, get replicated to any other servers.
-* **Scalability** 
-  - Partition the database by metric names.
+  - Run well even in RaspBerryPI with ARMv6, 32bit OS.
 * **Compatibility** 
   - Compatible with OpenTSDB enough that you can use TCollector to send data to it; use Grafana to query it.
+  - Compatible with InfluxDB line write protocol to maximize write throughput.
 * **No Dependencies** 
   - No runtime dependencies.
 * **Simplicity** 
