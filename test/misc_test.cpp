@@ -269,6 +269,51 @@ MiscTests::time_conv_tests()
     CONFIRM(convert_time(2, TimeUnit::YEAR, TimeUnit::SEC) == 2*365*24*3600L);
     CONFIRM(convert_time(2, TimeUnit::YEAR, TimeUnit::MS) == (Timestamp)2*365*24*3600000L);
 
+    JsonValue value;
+    char buff[20];
+
+    std::strcpy(buff, "1m-ago");
+    value.set_value(buff);
+    if (g_tstamp_resolution_ms)
+        CONFIRM(parse_ts(&value, 60*1000+1) == 1);
+    else
+        CONFIRM(parse_ts(&value, 61) == 1);
+
+    std::strcpy(buff, "1h-ago");
+    value.set_value(buff);
+    if (g_tstamp_resolution_ms)
+        CONFIRM(parse_ts(&value, 3600*1000+1) == 1);
+    else
+        CONFIRM(parse_ts(&value, 3601) == 1);
+
+    std::strcpy(buff, "1d-ago");
+    value.set_value(buff);
+    if (g_tstamp_resolution_ms)
+        CONFIRM(parse_ts(&value, 24*3600*1000+1) == 1);
+    else
+        CONFIRM(parse_ts(&value, 24*3600+1) == 1);
+
+    std::strcpy(buff, "1w-ago");
+    value.set_value(buff);
+    if (g_tstamp_resolution_ms)
+        CONFIRM(parse_ts(&value, 7*24*3600*1000+1) == 1);
+    else
+        CONFIRM(parse_ts(&value, 7*24*3600+1) == 1);
+
+    std::strcpy(buff, "1month-ago");
+    value.set_value(buff);
+    if (g_tstamp_resolution_ms)
+        CONFIRM(parse_ts(&value, (Timestamp)30*24*3600*1000+1) == 1);
+    else
+        CONFIRM(parse_ts(&value, 30*24*3600+1) == 1);
+
+    std::strcpy(buff, "1n-ago");
+    value.set_value(buff);
+    if (g_tstamp_resolution_ms)
+        CONFIRM(parse_ts(&value, (Timestamp)30*24*3600*1000+1) == 1);
+    else
+        CONFIRM(parse_ts(&value, 30*24*3600+1) == 1);
+
     m_stats.add_passed(1);
 }
 
