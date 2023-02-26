@@ -2093,7 +2093,13 @@ Tsdb::rotate(TaskData& data)
 
         if (! (tsdb->m_mode & TSDB_MODE_READ))
         {
+#ifdef _DEBUG
+            for (DataFile *data_file: tsdb->m_data_files)
+                ASSERT(! (data_file->is_open(true) || data_file->is_open(false)));
+            for (HeaderFile *header_file: tsdb->m_header_files)
+                ASSERT(! (header_file->is_open(true) || header_file->is_open(false)));
             Logger::debug("[rotate] %T already archived!", tsdb);
+#endif
             continue;    // already archived
         }
 

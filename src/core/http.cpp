@@ -770,7 +770,7 @@ bool
 HttpServer::http_get_api_version_handler(HttpRequest& request, HttpResponse& response)
 {
     char buff[32];
-    sprintf(buff, "TickTock version: %d.%d.%d", TT_MAJOR_VERSION, TT_MINOR_VERSION, TT_PATCH_VERSION);
+    sprintf(buff, "TickTockDB version: %d.%d.%d", TT_MAJOR_VERSION, TT_MINOR_VERSION, TT_PATCH_VERSION);
     response.init(200, HttpContentType::PLAIN, std::strlen(buff), buff);
     return true;
 }

@@ -306,7 +306,7 @@ to_time_unit(const char *str, size_t len)
                         case 'i':   unit = TimeUnit::MIN;   break;
                         case 'o':   unit = TimeUnit::MONTH; break;
                         case 's':   unit = TimeUnit::MS;    break;
-                        default:                            break;
+                        default:    unit = TimeUnit::MIN;   break;
                     }
                 }
                 else

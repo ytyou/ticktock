@@ -31,6 +31,7 @@
 #ifdef __GLIBC__
 #include <gnu/libc-version.h>
 #endif
+#include <unistd.h>
 #include "admin.h"
 #include "compress.h"
 #include "config.h"
@@ -230,6 +231,10 @@ process_cmdline_opts(int argc, char *argv[])
 static void
 daemonize(const char *cwd)
 {
+    if (daemon(1, 0) != 0)
+        fprintf(stderr, "daemon() failed: errno = %d\n", errno);
+
+#if 0
     pid_t pid;
 
     // fork off the parent process
@@ -284,6 +289,7 @@ daemonize(const char *cwd)
     sprintf(buff, "%d\n", getpid());
     write(fd, buff, strlen(buff));
     close(fd);
+#endif
 }
 
 // one time initialization, at the beginning of the execution
@@ -307,7 +313,7 @@ initialize()
     }
     else
     {
-        printf(" TickTock v%d.%d.%d,  Maintained by\n"
+        printf(" TickTockDB v%d.%d.%d,  Maintained by\n"
                " Yongtao You (yongtao.you@gmail.com) and Yi Lin (ylin30@gmail.com).\n"
                " This program comes with ABSOLUTELY NO WARRANTY. It is free software,\n"
                " and you are welcome to redistribute it under certain conditions.\n"
@@ -325,7 +331,7 @@ initialize()
     create_dir(log_dir);
 
     Logger::init();
-    Logger::info("TickTock version: %d.%d.%d, on %s, pid: %d",
+    Logger::info("TickTockDB version: %d.%d.%d, on %s, pid: %d",
         TT_MAJOR_VERSION, TT_MINOR_VERSION, TT_PATCH_VERSION, g_host_name.c_str(), getpid());
 #ifdef __GLIBC__
     Logger::info("GNU libc compile-time version: %u.%u", __GLIBC__, __GLIBC_MINOR__);
@@ -348,6 +354,8 @@ initialize()
     Logger::info("sys-page-size = %d", sysconf(_SC_PAGE_SIZE));
     Logger::info("Using config file: %s", g_config_file.c_str());
     Logger::info("Timestamp resolution: %s", (g_tstamp_resolution_ms ? "millisecond" : "second"));
+    if (g_run_as_daemon)
+        Logger::info("Running TickTockDB as daemon");
 }
 
 static void
