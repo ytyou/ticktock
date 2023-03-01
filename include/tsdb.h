@@ -278,6 +278,7 @@ private:
 
     void restore_data(const std::string& file);
     void restore_header(const std::string& file);
+    void reload_header_data_files(const std::string& dir);
 
     static std::string get_tsdb_dir_name(const TimeRange& range, const char *suffix = nullptr);
     static std::string get_index_file_name(const TimeRange& range, const char *suffix = nullptr);

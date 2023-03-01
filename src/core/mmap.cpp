@@ -381,6 +381,11 @@ HeaderFile::HeaderFile(FileIndex id, const std::string& file_name) :
 {
 }
 
+HeaderFile::~HeaderFile()
+{
+    this->close();
+}
+
 void
 HeaderFile::init_tsdb_header(Tsdb *tsdb)
 {
@@ -578,6 +583,11 @@ DataFile::DataFile(const std::string& file_name, FileIndex id, PageSize size, Pa
     m_last_read(0),
     m_last_write(0)
 {
+}
+
+DataFile::~DataFile()
+{
+    this->close();
 }
 
 /*

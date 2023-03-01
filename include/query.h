@@ -318,7 +318,7 @@ public:
     void init() override
     {
         m_dps.clear();
-        m_dps.reserve(700);
+        m_dps.reserve(g_page_size / 4);
         m_out_of_order = false;
         m_page_index = 0;
     }

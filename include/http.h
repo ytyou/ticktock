@@ -106,8 +106,8 @@ class __attribute__ ((__packed__)) HttpRequest : public Serializable
 public:
     bool close;     // Connection: close
     char encoding;  // supported: deflate, gzip, x-gzip; unsupported: compress, br
-    const char *method;   // GET, POST, etc.
-    const char *path;     // /status
+    char *method;   // GET, POST, etc.
+    char *path;     // /status
     char *params;   // q=abc
     char *version;  // HTTP/1.1
     char *content;  // body
@@ -192,6 +192,7 @@ protected:
     static bool recv_http_data_cont(HttpConnection *conn);
 
 private:
+    static void undo_header(HttpRequest& request);
     static bool parse_header(char *buff, int len, HttpRequest& request);
     static bool process_request(HttpRequest& request, HttpResponse& response);
     static bool send_response(HttpConnection *conn);

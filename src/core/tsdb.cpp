@@ -696,6 +696,8 @@ Tsdb::create(TimeRange& range, bool existing, const char *suffix)
 
     if (existing)
     {
+        tsdb->reload_header_data_files(dir);
+/*
         // restore Header/Data files...
         std::vector<std::string> files;
         get_all_files(dir + "/header.*", files);
@@ -734,6 +736,7 @@ Tsdb::create(TimeRange& range, bool existing, const char *suffix)
             if ((tsdb->m_mode & TSDB_MODE_READ_WRITE) == 0)
                 header_file->close();
         }
+*/
     }
     else    // new one
     {
@@ -776,6 +779,56 @@ Tsdb::restore_tsdb(const std::string& dir)
 
     TimeRange range(start, end);
     Tsdb *tsdb = Tsdb::create(range, true);
+}
+
+void
+Tsdb::reload_header_data_files(const std::string& dir)
+{
+    for (DataFile *file: m_data_files) delete file;
+    m_data_files.clear();
+    for (HeaderFile *file: m_header_files) delete file;
+    m_header_files.clear();
+
+    // restore Header/Data files...
+    std::vector<std::string> files;
+    get_all_files(dir + "/header.*", files);
+    for (auto file: files) restore_header(file);
+    std::sort(m_header_files.begin(), m_header_files.end(), header_less());
+
+    // restore page-size & page-count
+    if (! m_header_files.empty())
+    {
+        HeaderFile *header_file = m_header_files.front();
+        header_file->ensure_open(true);
+        struct tsdb_header *tsdb_header = header_file->get_tsdb_header();
+        ASSERT(tsdb_header != nullptr);
+        m_page_size = tsdb_header->m_page_size;
+        m_page_count = tsdb_header->m_page_count;
+        m_compressor_version = tsdb_header->get_compressor_version();
+        // TODO: This is not accurate! Other headers could be different.
+        if (tsdb_header->is_compacted())
+            m_mode |= TSDB_MODE_COMPACTED;
+        header_file->close();
+    }
+
+    files.clear();
+    get_all_files(dir + "/data.*", files);
+    for (auto file: files) restore_data(file);
+    std::sort(m_data_files.begin(), m_data_files.end(), data_less());
+
+/*
+    // restore page-size/page-count
+    if (! m_header_files.empty())
+    {
+        HeaderFile *header_file = m_header_files.front();
+        header_file->ensure_open(true);
+        m_page_size = header_file->get_page_size();
+        m_page_count = header_file->get_page_count();
+
+        if ((m_mode & TSDB_MODE_READ_WRITE) == 0)
+            header_file->close();
+    }
+*/
 }
 
 void
@@ -1787,6 +1840,12 @@ Tsdb::init()
     {
         Logger::warn("Low disk space at %s", data_dir.c_str());
     }
+#ifndef __x86_64__
+    else if (524288 < page_count)
+    {
+        Logger::warn("tsdb.page.count too large: %u", page_count);
+    }
+#endif
 
     // restore all tsdbs
     for_all_dirs(data_dir, Tsdb::restore_tsdb, 3);
@@ -2345,10 +2404,7 @@ Tsdb::compact(TaskData& data)
             // cleanup existing temporary tsdb, if any
             std::string dir = get_tsdb_dir_name(range, TEMP_SUFFIX);
             if (ends_with(dir, TEMP_SUFFIX)) // safty check
-            {
-                rm_all_files(dir + "/*");
-                rm_file(dir);   // will do empty dir as well
-            }
+                rm_dir(dir);
 
             // create a temporary tsdb to compact data into
             Tsdb *compacted = Tsdb::create(range, false, TEMP_SUFFIX);
@@ -2402,11 +2458,14 @@ Tsdb::compact(TaskData& data)
             // rename to indicate compaction was successful
             std::string temp_name = get_tsdb_dir_name(range, TEMP_SUFFIX);
             std::string done_name = get_tsdb_dir_name(range, DONE_SUFFIX);
+            rm_dir(done_name);  // in case it already exists
             int rc = std::rename(temp_name.c_str(), done_name.c_str());
             compact2();
 
             // mark it as compacted
             tsdb->m_mode |= TSDB_MODE_COMPACTED;
+            dir = get_tsdb_dir_name(range);
+            tsdb->reload_header_data_files(dir);
             Logger::info("[compact] 1 Tsdb compacted");
         }
         catch (const std::exception& ex)
@@ -2447,12 +2506,14 @@ Tsdb::compact2()
 
     for (auto& done_dir: done_dirs)
     {
-        Logger::info("Found %s done compactions", done_dir.c_str());
+        Logger::info("[compact] Found %s done compactions", done_dir.c_str());
 
         // format: <data-directory>/<year>/<month>/1614009600.1614038400.done
         ASSERT(ends_with(done_dir, DONE_SUFFIX));
         std::string base = done_dir.substr(0, done_dir.size()-std::strlen(DONE_SUFFIX));
         std::string back = base + BACK_SUFFIX;
+
+        rm_dir(back);   // in case it exists
 
         // mv 1614009600.1614038400 to 1614009600.1614038400.back
         if (file_exists(base))
@@ -2465,8 +2526,7 @@ Tsdb::compact2()
         if (file_exists(base) && file_exists(back))
         {
             // TODO: enable this
-            //rm_all_files(back + "/*");
-            //rm_file(back);  // will do empty dir as well
+            //rm_dir(back);
         }
     }
 }
