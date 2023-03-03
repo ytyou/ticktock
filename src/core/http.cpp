@@ -219,23 +219,21 @@ HttpServer::recv_http_data(TaskData& data)
         Logger::http("Recved request on %p: len=%d\n%s", fd, conn, len, buff);
 
         conn->request.init();
+        parse_header(buff, len, conn->request);
 
-        if (! parse_header(buff, len, conn->request))
+        if (conn->request.header_ok)
         {
-            HttpServer::send_response(conn, 400);
-            conn_error = true;
-            Logger::http("parse_header failed, will close connection", fd);
-        }
-        else if (conn->request.length < 0)
-        {
-            HttpServer::send_response(conn, 411);
-            conn_error = true;
-            Logger::debug("request length negative, will close connection: %d", fd);
-        }
-        else if (conn->request.close)
-        {
-            conn_error = true;
-            Logger::debug("will close connection %d", fd);
+            if (UNLIKELY(conn->request.length < 0))
+            {
+                HttpServer::send_response(conn, 411);
+                conn_error = true;
+                Logger::http("request length negative, will close connection", fd);
+            }
+            else if (conn->request.close)
+            {
+                conn_error = true;
+                Logger::http("will close connection", fd);
+            }
         }
 
         conn->response.id = conn->request.id;
