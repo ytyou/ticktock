@@ -671,6 +671,16 @@ rm_all_files(const std::string& pattern)
     return (int)cnt;
 }
 
+void
+rm_dir(const std::string& full_path)
+{
+    if (file_exists(full_path))
+    {
+        rm_all_files(full_path + "/*");
+        rm_file(full_path); // will do empty dir as well
+    }
+}
+
 int
 rotate_files(const std::string& pattern, int retain_count)
 {

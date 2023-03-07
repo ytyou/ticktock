@@ -93,6 +93,7 @@ class HeaderFile : public MmapFile
 {
 public:
     HeaderFile(const std::string& file_name, FileIndex id, PageCount page_count, Tsdb *tsdb);
+    ~HeaderFile();
 
     void init_tsdb_header(Tsdb *tsdb);
     void open(bool for_read) override;
@@ -125,6 +126,7 @@ class DataFile : public MmapFile
 {
 public:
     DataFile(const std::string& file_name, FileIndex id, PageSize size, PageCount count);
+    ~DataFile();
 
     void open(bool read_only) override;
     void close() override;

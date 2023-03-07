@@ -346,11 +346,11 @@ Compressor_v3::uncompress(DataPointVector& dps, bool restore)
     Timestamp timestamp;
     double value = 0.0;
 
-    uint64_t value_be;
+    //uint64_t value_be;
 
-    uint8_t leading_zeros = 0;
-    uint8_t trailing_zeros = 0;
-    uint8_t none_zeros = 0;
+    //uint8_t leading_zeros = 0;
+    //uint8_t trailing_zeros = 0;
+    //uint8_t none_zeros = 0;
 
     BitSetCursor *cursor = m_bitset.new_cursor();
 
@@ -364,9 +364,9 @@ Compressor_v3::uncompress(DataPointVector& dps, bool restore)
     ASSERT(get_start_tstamp() <= timestamp);
     dps.emplace_back(timestamp, value);
 
-    value_be = htobe64(*reinterpret_cast<uint64_t*>(&value));
+    //value_be = htobe64(*reinterpret_cast<uint64_t*>(&value));
 
-    uint64_t y = *reinterpret_cast<uint64_t*>(&value);
+    //uint64_t y = *reinterpret_cast<uint64_t*>(&value);
 
     while (true)
     {

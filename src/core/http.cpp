@@ -219,23 +219,21 @@ HttpServer::recv_http_data(TaskData& data)
         Logger::http("Recved request on %p: len=%d\n%s", fd, conn, len, buff);
 
         conn->request.init();
+        parse_header(buff, len, conn->request);
 
-        if (! parse_header(buff, len, conn->request))
+        if (conn->request.header_ok)
         {
-            HttpServer::send_response(conn, 400);
-            conn_error = true;
-            Logger::http("parse_header failed, will close connection", fd);
-        }
-        else if (conn->request.length < 0)
-        {
-            HttpServer::send_response(conn, 411);
-            conn_error = true;
-            Logger::debug("request length negative, will close connection: %d", fd);
-        }
-        else if (conn->request.close)
-        {
-            conn_error = true;
-            Logger::debug("will close connection %d", fd);
+            if (UNLIKELY(conn->request.length < 0))
+            {
+                HttpServer::send_response(conn, 411);
+                conn_error = true;
+                Logger::http("request length negative, will close connection", fd);
+            }
+            else if (conn->request.close)
+            {
+                conn_error = true;
+                Logger::http("will close connection", fd);
+            }
         }
 
         conn->response.id = conn->request.id;
@@ -365,38 +363,42 @@ HttpServer::recv_http_data_cont(HttpConnection *conn)
         }
 
         if (! conn->request.header_ok)
+        {
+            undo_header(conn->request);
+            Logger::http("Re-parse request: %s", fd, buff);
             parse_header(buff, len, conn->request);
+        }
 
         conn->response.id = conn->request.id;
-        conn->request.complete =
-            (conn->request.length <= ((uint64_t)&buff[len] - (uint64_t)conn->request.content));
+
+        if (conn->request.header_ok)
+        {
+            conn->request.complete =
+                (conn->request.length <= ((uint64_t)&buff[len] - (uint64_t)conn->request.content));
+        }
 
         // Check if we have recv'ed the complete request.
         // If not, we need to stop right here, and inform
         // the listener to forward the rest of the request
         // our way.
-        if (conn->request.is_complete())
-        {
-            //HttpResponse response;
-
-            Logger::debug("request is finally complete");
-
-            if (! process_request(conn->request, conn->response))
-                conn_error = true;
-
-            free_buff = HttpServer::send_response(conn);
-
-            // This needs to be done AFTER send_response(),
-            // or you are risking 2 threads both sending responses on the same fd.
-            //conn->buff = nullptr;
-        }
-        else
+        if (UNLIKELY(! conn->request.is_complete()))
         {
             free_buff = false;
             //conn->buff = buff;
             conn->offset = len;
             Logger::http("request.length = %d, len = %d, offset = %d", fd,
                 conn->request.length, len, conn->offset);
+        }
+        else if (UNLIKELY(! conn->request.header_ok))
+        {
+            free_buff = HttpServer::send_response(conn, 400);
+        }
+        else
+        {
+            Logger::debug("request is finally complete");
+            if (! process_request(conn->request, conn->response))
+                conn_error = true;
+            free_buff = HttpServer::send_response(conn);
         }
     }
     else
@@ -615,7 +617,7 @@ HttpServer::parse_header(char *buff, int len, HttpRequest& request)
 
     request.version = curr1;
     curr2 = strchr(curr1, '\r');
-    if (curr2 == nullptr) return false;
+    if (curr2 == nullptr) { request.version = nullptr; return false; }
     *curr2 = 0;
     curr1 = curr2 + 1;
     if (*curr1 == '\n') curr1++;
@@ -647,7 +649,7 @@ HttpServer::parse_header(char *buff, int len, HttpRequest& request)
             for (curr1 = curr1+13; *curr1 == ' '; curr1++) /* do nothing */;
             request.id = curr1;
             curr1 = strchr(curr1, '\r');
-            if (curr1 == nullptr) return false; // bad request
+            if (curr1 == nullptr) { request.id = nullptr; return false; }   // bad request
             *curr1 = 0;
             if ((curr1 - request.id) > MAX_ID_SIZE) request.id[MAX_ID_SIZE] = 0;
             curr1++;
@@ -662,17 +664,58 @@ HttpServer::parse_header(char *buff, int len, HttpRequest& request)
     if (*curr1 == '\n') { curr1++; request.header_ok = true; }
 
     // parse body
-    if (request.length > 0)
+    if (request.header_ok)
     {
-        request.content = curr1;
-        request.complete = ((len - ((uint64_t)curr1 - (uint64_t)buff)) >= request.length);
+        if (request.length > 0)
+        {
+            request.content = curr1;
+            request.complete = ((len - ((uint64_t)curr1 - (uint64_t)buff)) >= request.length);
+        }
+        else
+        {
+            request.complete = true;
+        }
     }
     else
-    {
-        request.complete = true;
-    }
+        request.complete = false;
 
     return true;
+}
+
+void
+HttpServer::undo_header(HttpRequest& request)
+{
+    if (request.method != nullptr)
+    {
+        request.method[std::strlen(request.method)] = ' ';
+        request.method = nullptr;
+    }
+
+    if (request.params != nullptr)
+    {
+        *(request.params-1) = '?';
+        request.params = nullptr;
+    }
+
+    if (request.path != nullptr)
+    {
+        request.path[std::strlen(request.path)] = ' ';
+        request.path = nullptr;
+    }
+
+    if (request.version != nullptr)
+    {
+        char *p;
+        for (p = request.version; *p != 0; p++) /* do nothing */;
+        *p = '\r';
+        request.version = nullptr;
+    }
+
+    if (request.id != nullptr)
+    {
+        request.id[std::strlen(request.id)] = '\r';
+        request.id = nullptr;
+    }
 }
 
 bool

@@ -98,6 +98,7 @@ extern bool file_exists(const std::string& full_path);
 extern void get_all_files(const std::string& pattern, std::vector<std::string>& file_names);
 extern int rm_file(const std::string& full_path);
 extern int rm_all_files(const std::string& pattern);
+extern void rm_dir(const std::string& full_path);   // rm all files one-level down as well
 extern int rotate_files(const std::string& pattern, int retain_count);
 extern std::string last_file(const std::string& pattern);
 extern uint64_t get_disk_block_size(const std::string& full_path);
