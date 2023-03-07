@@ -2,11 +2,11 @@
 
 TARGET_BRANCH="main"
 TAGL="latest"
-TAGV="v0.2"
-DOCKERFILE="docker/Dockerfile.dev"
+TAGV="v0.3"
+DOCKERFILE="../Dockerfile.dev"
 
 # make sure we are at the root of repo
-if ! test -f "$DOCKERFILE"; then
+if ! test -f "Makefile.docker"; then
     echo "[ERROR] Not at root of repo"
     exit 2
 fi
@@ -20,26 +20,27 @@ if [ "$GIT_BRANCH" != "$TARGET_BRANCH" ]; then
 fi
 
 # make sure there are no local changes
-if [[ `git status --porcelain` ]]; then
-    echo "[ERROR] Repo not clean"
-    exit 1
-fi
+#if [[ `git status --porcelain` ]]; then
+#    echo "[ERROR] Repo not clean"
+#    exit 1
+#fi
 
 # create build directory
-rm -rf docker/dev
-mkdir -p docker/dev
+rm -rf docker/dev-$TAGV
+mkdir -p docker/dev-$TAGV/opt/ticktock/scripts
 
 # prepare for docker build
-cp docker/limits.conf docker/dev/
-cp docker/tcollector docker/dev/
-cp -r /opt/tcollector.docker docker/dev/opt/tcollector
-cp -r /opt/grafana-9.3.2.docker docker/dev/opt/grafana-9.3.2
-pushd docker/dev/opt
+cp docker/limits.conf docker/dev-$TAGV/
+cp docker/tcollector docker/dev-$TAGV/
+cp docker/entrypoint-dev.sh docker/dev-$TAGV/opt/ticktock/scripts/entrypoint.sh
+cp -r /opt/tcollector.docker docker/dev-$TAGV/opt/tcollector
+cp -r /opt/grafana-9.3.2.docker docker/dev-$TAGV/opt/grafana-9.3.2
+pushd docker/dev-$TAGV/opt
 ln -s grafana-9.3.2 grafana
 popd
 
 # build
-pushd docker/dev
+pushd docker/dev-$TAGV
 docker build -f $DOCKERFILE --tag ytyou/tt-dev:${TAGV} --tag ytyou/tt-dev:${TAGL} \
     --build-arg BUILD_DATE=$(date -u +'%Y-%m-%dT%H:%M:%SZ') \
     --build-arg GIT_COMMIT=$(git log -1 --pretty=format:%h) \
