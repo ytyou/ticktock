@@ -73,6 +73,7 @@ CompactTests::two_partial_with_ooo1(int dps_cnt, int ooo_cnt, DataPointVector dp
         DataPoint dp(dpp.first, dpp.second);
         dp.set_metric(metric);
         tsdb->add(dp);
+        tsdb->dec_ref_count();
     }
 
     for (DataPointPair& dpp: ooo_dps)
@@ -81,6 +82,7 @@ CompactTests::two_partial_with_ooo1(int dps_cnt, int ooo_cnt, DataPointVector dp
         DataPoint dp(dpp.first, dpp.second);
         dp.set_metric(metric);
         tsdb->add(dp);
+        tsdb->dec_ref_count();
     }
 
     flush_tsdb();
@@ -121,7 +123,9 @@ CompactTests::two_partial_with_ooo3()
     update_config(3600000); // make sure pages are loaded in archive mode
     Config::init();
     Tsdb::init();
-    CONFIRM(Tsdb::inst(start)->is_archived());
+    Tsdb *tsdb = Tsdb::inst(start);
+    CONFIRM(tsdb->is_archived());
+    tsdb->dec_ref_count();
     TaskData data;
     data.integer = 1;
     Tsdb::compact(data);
@@ -262,7 +266,9 @@ CompactTests::one_full_two_partial_with_ooo3()
     update_config(3600000); // make sure pages are loaded in archive mode
     Config::init();
     Tsdb::init();
-    CONFIRM(Tsdb::inst(start)->is_archived());
+    Tsdb *tsdb = Tsdb::inst(start);
+    CONFIRM(tsdb->is_archived());
+    tsdb->dec_ref_count();
     TaskData data;
     data.integer = 1;
     Tsdb::compact(data);
@@ -391,7 +397,9 @@ CompactTests::three_partial_with_ooo3()
     update_config(3600000); // make sure pages are loaded in archive mode
     Config::init();
     Tsdb::init();
-    CONFIRM(Tsdb::inst(start)->is_archived());
+    Tsdb *tsdb = Tsdb::inst(start);
+    CONFIRM(tsdb->is_archived());
+    tsdb->dec_ref_count();
     TaskData data;
     data.integer = 1;
     Tsdb::compact(data);
@@ -521,7 +529,9 @@ CompactTests::need_to_fill_empty_page3()
     update_config(3600000); // make sure pages are loaded in archive mode
     Config::init();
     Tsdb::init();
-    CONFIRM(Tsdb::inst(start)->is_archived());
+    Tsdb *tsdb = Tsdb::inst(start);
+    CONFIRM(tsdb->is_archived());
+    tsdb->dec_ref_count();
     TaskData data;
     data.integer = 1;
     Tsdb::compact(data);
@@ -641,7 +651,9 @@ CompactTests::need_to_fill_empty_page_again3(int compressor, int dps_cnt, DataPo
     update_config(3600000, compressor); // make sure pages are loaded in archive mode
     Config::init();
     Tsdb::init();
-    CONFIRM(Tsdb::inst(start)->is_archived());
+    Tsdb *tsdb = Tsdb::inst(start);
+    CONFIRM(tsdb->is_archived());
+    tsdb->dec_ref_count();
     TaskData data;
     data.integer = 1;
     Tsdb::compact(data);
@@ -792,7 +804,9 @@ CompactTests::remove_duplicates3()
     update_config(3600000); // make sure pages are loaded in archive mode
     Config::init();
     Tsdb::init();
-    CONFIRM(Tsdb::inst(start)->is_archived());
+    Tsdb *tsdb = Tsdb::inst(start);
+    CONFIRM(tsdb->is_archived());
+    tsdb->dec_ref_count();
     TaskData data;
     data.integer = 1;
     Tsdb::compact(data);
