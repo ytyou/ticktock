@@ -226,6 +226,8 @@ Stats::inject_metrics(TaskData& data)
         // memory leak detection stats
         write_leak_stat(now, tsdb);
 #endif
+
+        tsdb->dec_ref_count();
     }
 
     return false;

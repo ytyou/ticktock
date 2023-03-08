@@ -141,6 +141,9 @@ PageInMemory::PageInMemory(TimeSeriesId id, Tsdb *tsdb, bool is_ooo, PageSize ac
 
 PageInMemory::~PageInMemory()
 {
+    if (m_tsdb != nullptr)
+        m_tsdb->dec_ref_count();
+
     if (m_compressor != nullptr)
         MemoryManager::free_recyclable(m_compressor);
 
@@ -170,6 +173,9 @@ PageInMemory::init(TimeSeriesId id, Tsdb *tsdb, bool is_ooo, PageSize actual_siz
     }
     else
     {
+        if (m_tsdb != nullptr)
+            m_tsdb->dec_ref_count();
+
         m_tsdb = tsdb;
         m_start = from;
 

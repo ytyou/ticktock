@@ -665,6 +665,7 @@ Mapping::get_ts_count()
 
 
 Tsdb::Tsdb(TimeRange& range, bool existing, const char *suffix) :
+    m_ref_count(0),
     m_time_range(range),
     m_index_file(Tsdb::get_index_file_name(range, suffix)),
     m_page_size(g_page_size),
@@ -1156,6 +1157,29 @@ Tsdb::shutdown()
     Logger::info("Tsdb::shutdown complete");
 }
 
+void
+Tsdb::dec_ref_count()
+{
+    std::lock_guard<std::mutex> guard(m_lock);
+    m_ref_count--;
+    ASSERT(m_ref_count >= 0);
+}
+
+void
+Tsdb::dec_ref_count_no_lock()
+{
+    m_ref_count--;
+    ASSERT(m_ref_count >= 0);
+}
+
+void
+Tsdb::inc_ref_count()
+{
+    std::lock_guard<std::mutex> guard(m_lock);
+    m_ref_count++;
+    ASSERT(m_ref_count > 0);
+}
+
 // this is only called when writing data points
 void
 Tsdb::get_last_header_indices(TimeSeriesId id, FileIndex& file_idx, HeaderIndex& header_idx)
@@ -1338,10 +1362,7 @@ Tsdb::inst(Timestamp tstamp, bool create)
         tsdb = Tsdb::search(tstamp);
     }
 
-    if (tsdb != nullptr) return tsdb;
-
-    // create one
-    if (create)
+    if ((tsdb == nullptr) && create)
     {
         WriteLock guard(m_tsdb_lock);
         tsdb = Tsdb::search(tstamp);  // search again to avoid race condition
@@ -1354,6 +1375,9 @@ Tsdb::inst(Timestamp tstamp, bool create)
             ASSERT(Tsdb::search(tstamp) == tsdb);
         }
     }
+
+    if (tsdb != nullptr)
+        tsdb->inc_ref_count();
 
     return tsdb;
 }
@@ -1417,7 +1441,10 @@ Tsdb::insts(const TimeRange& range, std::vector<Tsdb*>& tsdbs)
     {
         tsdb = m_tsdbs[i];
         if (tsdb->in_range(range))
+        {
+            tsdb->inc_ref_count();
             tsdbs.push_back(tsdb);
+        }
     }
 }
 
@@ -1805,6 +1832,9 @@ Tsdb::parse_line(char* &line, const char* &measurement, char* &tags, Timestamp& 
         ts = std::atoll(line);
         while (*line != '\n' && *line != 0) line++;
         if (*line == '\n') line++;
+
+        // convert ts to desired unit
+        ts = validate_resolution(ts);
     }
 
     return true;
@@ -2159,6 +2189,7 @@ Tsdb::rotate(TaskData& data)
                 ASSERT(! (header_file->is_open(true) || header_file->is_open(false)));
             Logger::debug("[rotate] %T already archived!", tsdb);
 #endif
+            tsdb->dec_ref_count_no_lock();
             continue;    // already archived
         }
 
@@ -2186,10 +2217,8 @@ Tsdb::rotate(TaskData& data)
                 else
                 {
                     all_closed = false;
-#ifdef _DEBUG
-                    Logger::info("data file %u last accessed at %" PRIu64 "; now is %" PRIu64,
+                    Logger::debug("data file %u last read at %" PRIu64 "; now is %" PRIu64,
                         data_file->get_id(), last_read, now_sec);
-#endif
                 }
             }
 
@@ -2202,7 +2231,11 @@ Tsdb::rotate(TaskData& data)
                     header_file->close();
                 }
                 else
+                {
                     all_closed = false;
+                    Logger::debug("data file %u last write at %" PRIu64 "; now is %" PRIu64,
+                        data_file->get_id(), last_write, now_sec);
+                }
             }
             else
                 header_file->close();
@@ -2215,6 +2248,8 @@ Tsdb::rotate(TaskData& data)
             Logger::info("[rotate] Archiving %T", tsdb);
             tsdb->unload_no_lock();
         }
+
+        tsdb->dec_ref_count_no_lock();
 /*
         if (((int64_t)now_sec - (int64_t)load_time) > (int64_t)thrashing_threshold)
         {
@@ -2377,9 +2412,31 @@ Tsdb::compact(TaskData& data)
 
             // also make sure it's not readable nor writable while we are compacting
             //if ((*it)->m_mode & (TSDB_MODE_COMPACTED | TSDB_MODE_READ_WRITE))
-            if (((*it)->m_mode & TSDB_MODE_COMPACTED) ||
-                (((*it)->m_mode & TSDB_MODE_READ_WRITE) && (data.integer == 0)))
+            if ((*it)->m_mode & TSDB_MODE_COMPACTED)
+            {
+                Logger::debug("[compact] %T is already compacted, ref-count = %d", (*it), (*it)->m_ref_count);
                 continue;
+            }
+            else if (((*it)->m_mode & TSDB_MODE_READ_WRITE) && (data.integer == 0))
+            {
+                Logger::debug("[compact] %T is still being accessed, ref-count = %d", (*it), (*it)->m_ref_count);
+                continue;
+            }
+            else if ((*it)->m_ref_count > 0)
+            {
+                Logger::debug("[compact] ref-count of %T is not zero: %d", (*it), (*it)->m_ref_count);
+                continue;
+            }
+/**
+            if (((*it)->m_mode & TSDB_MODE_COMPACTED) ||
+                (((*it)->m_mode & TSDB_MODE_READ_WRITE) && (data.integer == 0)) ||
+                ((*it)->m_ref_count > 0))
+            {
+                if ((*it)->m_ref_count > 0)
+                    Logger::info("[compact] ref-count of %T is %d", (*it), (*it)->m_ref_count);
+                continue;
+            }
+**/
 
             tsdb = *it;
             break;
@@ -2388,93 +2445,98 @@ Tsdb::compact(TaskData& data)
 
     if (tsdb != nullptr)
     {
-        //WriteLock load_lock(tsdb->m_load_lock);
-        //std::lock_guard<std::mutex> guard(m_load_lock);
-
-        Logger::info("[compact] Found this tsdb to compact: %T", tsdb);
         std::lock_guard<std::mutex> guard(tsdb->m_lock);
         //WriteLock guard(tsdb->m_lock);
 
-        TimeRange range = tsdb->get_time_range();
-        //MetaFile meta_file(get_file_name(range, "meta", true));
-
-        // perform compaction
-        try
+        if (tsdb->m_ref_count <= 0)
         {
-            // cleanup existing temporary tsdb, if any
-            std::string dir = get_tsdb_dir_name(range, TEMP_SUFFIX);
-            if (ends_with(dir, TEMP_SUFFIX)) // safty check
-                rm_dir(dir);
+            TimeRange range = tsdb->get_time_range();
 
-            // create a temporary tsdb to compact data into
-            Tsdb *compacted = Tsdb::create(range, false, TEMP_SUFFIX);
-            compacted->m_page_size = g_sys_page_size;
-            std::vector<Tsdb*> tsdbs = { tsdb };
-            TimeSeriesId max_id = TimeSeries::get_next_id();
-            QueryTask *query =
-                (QueryTask*)MemoryManager::alloc_recyclable(RecyclableType::RT_QUERY_TASK);
-            PageSize next_size = compacted->get_page_size();
+            Logger::info("[compact] Found this tsdb to compact: %T", tsdb);
 
-            // for each time series...
-            for (TimeSeriesId id = 0; id < max_id; id++)
+            // perform compaction
+            try
             {
-                // collect dps
-                query->init(&tsdbs, tsdb->get_time_range());
-                query->perform(id);
+                // cleanup existing temporary tsdb, if any
+                std::string dir = get_tsdb_dir_name(range, TEMP_SUFFIX);
+                if (ends_with(dir, TEMP_SUFFIX)) // safty check
+                    rm_dir(dir);
 
-                // save into temp tsdb
-                PageInMemory page(id, compacted, false, next_size);
-                DataPointVector& dps = query->get_dps();
+                // create a temporary tsdb to compact data into
+                Tsdb *compacted = Tsdb::create(range, false, TEMP_SUFFIX);
+                compacted->m_page_size = g_sys_page_size;
+                std::vector<Tsdb*> tsdbs = { tsdb };
+                TimeSeriesId max_id = TimeSeries::get_next_id();
+                QueryTask *query =
+                    (QueryTask*)MemoryManager::alloc_recyclable(RecyclableType::RT_QUERY_TASK);
+                PageSize next_size = compacted->get_page_size();
 
-                for (auto dp: dps)
+                // for each time series...
+                for (TimeSeriesId id = 0; id < max_id; id++)
                 {
-                    const Timestamp tstamp = dp.first;
-                    bool ok = page.add_data_point(tstamp, dp.second);
+                    // collect dps
+                    query->init(&tsdbs, tsdb->get_time_range());
+                    query->perform(id);
 
-                    if (! ok)
+                    // save into temp tsdb
+                    compacted->inc_ref_count();
+                    PageInMemory page(id, compacted, false, next_size);
+                    DataPointVector& dps = query->get_dps();
+
+                    for (auto dp: dps)
+                    {
+                        const Timestamp tstamp = dp.first;
+                        bool ok = page.add_data_point(tstamp, dp.second);
+
+                        if (! ok)
+                        {
+                            next_size = page.flush(id, true);
+                            ASSERT(next_size > 0);
+                            page.init(id, nullptr, false, next_size);
+                            ok = page.add_data_point(tstamp, dp.second);
+                            ASSERT(ok);
+                        }
+                    }
+
+                    if (! page.is_empty())
                     {
                         next_size = page.flush(id, true);
                         ASSERT(next_size > 0);
-                        page.init(id, nullptr, false, next_size);
-                        ok = page.add_data_point(tstamp, dp.second);
-                        ASSERT(ok);
                     }
+
+                    query->recycle();
                 }
 
-                if (! page.is_empty())
-                {
-                    next_size = page.flush(id, true);
-                    ASSERT(next_size > 0);
-                }
+                MemoryManager::free_recyclable(query);
+                compacted->unload_no_lock();
+                delete compacted;
+                tsdb->unload_no_lock();
 
-                query->recycle();
+                // rename to indicate compaction was successful
+                std::string temp_name = get_tsdb_dir_name(range, TEMP_SUFFIX);
+                std::string done_name = get_tsdb_dir_name(range, DONE_SUFFIX);
+                rm_dir(done_name);  // in case it already exists
+                int rc = std::rename(temp_name.c_str(), done_name.c_str());
+                compact2();
+
+                // mark it as compacted
+                tsdb->m_mode |= TSDB_MODE_COMPACTED;
+                dir = get_tsdb_dir_name(range);
+                tsdb->reload_header_data_files(dir);
+                Logger::info("[compact] 1 Tsdb compacted");
             }
-
-            MemoryManager::free_recyclable(query);
-            compacted->unload_no_lock();
-            delete compacted;
-            tsdb->unload_no_lock();
-
-            // rename to indicate compaction was successful
-            std::string temp_name = get_tsdb_dir_name(range, TEMP_SUFFIX);
-            std::string done_name = get_tsdb_dir_name(range, DONE_SUFFIX);
-            rm_dir(done_name);  // in case it already exists
-            int rc = std::rename(temp_name.c_str(), done_name.c_str());
-            compact2();
-
-            // mark it as compacted
-            tsdb->m_mode |= TSDB_MODE_COMPACTED;
-            dir = get_tsdb_dir_name(range);
-            tsdb->reload_header_data_files(dir);
-            Logger::info("[compact] 1 Tsdb compacted");
+            catch (const std::exception& ex)
+            {
+                Logger::error("[compact] compaction failed: %s", ex.what());
+            }
+            catch (...)
+            {
+                Logger::error("[compact] compaction failed for unknown reasons");
+            }
         }
-        catch (const std::exception& ex)
+        else
         {
-            Logger::error("[compact] compaction failed: %s", ex.what());
-        }
-        catch (...)
-        {
-            Logger::error("[compact] compaction failed for unknown reasons");
+            Logger::debug("[compact] Tsdb busy, not compacting. ref = %d", tsdb->m_ref_count);
         }
     }
     else

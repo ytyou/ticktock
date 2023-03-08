@@ -41,7 +41,9 @@ namespace tt
 
 #define NONE_NULL_STR(_X)       (((_X) == nullptr) ? EMPTY_STRING : (_X))
 
-#define MAX_SEC_SINCE_EPOCH     (100000000000L)
+#define MAX_SEC_SINCE_EPOCH     (100000000000ull)
+#define MAX_MS_SINCE_EPOCH      (100000000000000ull)
+#define MAX_US_SINCE_EPOCH      (100000000000000000ull)
 
 // 1024 x 1024
 #define ONE_MEGABYTES           (1048576L)
@@ -62,13 +64,17 @@ extern Timestamp ts_now_sec();
 extern void ts_now(char *buff, const size_t size);
 extern void ts_now(time_t& sec, unsigned int& msec);
 extern bool is_ms(Timestamp tstamp);
+extern bool is_ns(Timestamp tstamp);
 extern bool is_sec(Timestamp tstamp);
+extern bool is_us(Timestamp tstamp);    // microsecond
 extern bool is_off_hour();
 extern bool ts_resolution_ms();     // timestamp resolution is millisecond?
 extern bool is_my_ip(std::string& ip);
 extern Timestamp validate_resolution(Timestamp ts); // return timestamp with correct unit
 extern Timestamp to_ms(Timestamp tstamp);
+extern Timestamp to_ns(Timestamp tstamp);
 extern Timestamp to_sec(Timestamp tstamp);
+extern Timestamp to_us(Timestamp tstamp);
 extern Timestamp parse_ts(const JsonValue *value, Timestamp now);
 extern TimeUnit to_time_unit(const char *str, size_t len);
 extern Timestamp convert_time(Timestamp time, TimeUnit from_unit, TimeUnit to_unit);

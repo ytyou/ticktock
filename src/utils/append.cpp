@@ -174,7 +174,7 @@ AppendLog::restore(std::vector<TimeSeries*>& tsv)
         }
 
         ts->restore(tsdb, offset, start, buff, (is_ooo==(uint8_t)1));
-    };
+    }
 
     if (file != nullptr)
         fclose(file);
