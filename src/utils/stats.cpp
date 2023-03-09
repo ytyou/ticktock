@@ -463,6 +463,19 @@ Stats::collect_stats(char *buff, int size)
         }
     }
 
+    // ticktock.query.pending_task.count
+    {
+        std::vector<size_t> counts;
+        QueryExecutor::get_pending_task_count(counts);
+
+        for (int i = 0; i < counts.size(); i++)
+        {
+            len += snprintf(buff+len, size-len,
+                "ticktock.query.pending_task.count %" PRIu64 " %d executor=%d %s=%s\n",
+                now, (int)counts[i], i, HOST_TAG_NAME, g_host_name.c_str());
+        }
+    }
+
     std::vector<DataPoint> dps;
     MemoryManager::collect_stats(now, dps);
     for (DataPoint& dp: dps)
@@ -492,6 +505,9 @@ Stats::collect_stats(char *buff, int size)
 
     if ((0 < len) && (len < size))
         buff[len] = 0;
+    else
+        buff[size-1] = 0;
+
     return len;
 }
 

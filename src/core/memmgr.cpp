@@ -34,6 +34,7 @@
 #include "down.h"
 #include "query.h"
 #include "rate.h"
+#include "stats.h"
 #include "timer.h"
 
 
@@ -366,6 +367,12 @@ MemoryManager::log_stats()
 
         fprintf(file, "ticktock.connection.count %" PRIu64 " %d %s=%s\n",
             ts, TcpListener::get_active_conn_count(), HOST_TAG_NAME, g_host_name.c_str());
+
+        size_t buff_size = get_network_buffer_size();
+        char *buff = alloc_network_buffer();
+        Stats::collect_stats(buff, buff_size);
+        fprintf(file, "%s", buff);
+        free_network_buffer(buff);
 
         fclose(file);
     }
