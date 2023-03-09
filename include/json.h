@@ -123,8 +123,8 @@ public:
 
     inline double to_double() const
     {
-        ASSERT(type == JsonValueType::JVT_DOUBLE);
-        return dbl;
+        //ASSERT(type == JsonValueType::JVT_DOUBLE);
+        return (type == JsonValueType::JVT_STRING) ? atof(str) : dbl;
     }
 
     inline JsonMap& to_map()

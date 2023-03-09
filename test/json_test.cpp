@@ -130,6 +130,17 @@ JsonTests::query_json_tests()
     CONFIRM(std::strcmp(search->second->to_string(), "1d-ago") == 0);
     JsonParser::free_map(map3);
 
+    char *json4 = strdup("{host=host1,cpu=0}");
+    JsonMap map4;
+    JsonParser::parse_map_unquoted(json4, map4, '=');
+    search = map4.find("host");
+    CONFIRM(search != map4.end());
+    CONFIRM(std::strcmp(search->second->to_string(), "host1") == 0);
+    search = map4.find("cpu");
+    CONFIRM(search != map4.end());
+    CONFIRM(std::strcmp(search->second->to_string(), "0") == 0);
+    JsonParser::free_map(map4);
+
     m_stats.add_passed(1);
 
     log("Finished %s", m_name);

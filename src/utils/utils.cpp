@@ -211,26 +211,58 @@ ts_resolution_ms()
 }
 
 Timestamp
-validate_resolution(Timestamp ts)
+validate_resolution(Timestamp tstamp)
 {
+    if (g_tstamp_resolution_ms)
+    {
+        if (tstamp < MAX_SEC_SINCE_EPOCH)
+            tstamp *= 1000L;
+        else if (tstamp >= MAX_US_SINCE_EPOCH)
+            tstamp /= 1000000ul;    // ns to ms
+        else if (tstamp >= MAX_MS_SINCE_EPOCH)
+            tstamp /= 1000ul;       // us to ms
+    }
+    else    // second
+    {
+        if (tstamp >= MAX_US_SINCE_EPOCH)
+            tstamp /= 1000000000ull;    // ns to sec
+        else if (tstamp >= MAX_MS_SINCE_EPOCH)
+            tstamp /= 1000000ull;       // us to sec
+        else if (tstamp >= MAX_SEC_SINCE_EPOCH)
+            tstamp /= 1000ull;          // ms to sec
+    }
+/*
     if (g_tstamp_resolution_ms && is_sec(ts))
         ts = to_ms(ts);
     else if (! g_tstamp_resolution_ms && is_ms(ts))
         ts = to_sec(ts);
-    return ts;
+*/
+    return tstamp;
 }
 
 // TODO: make it inlined
 bool
 is_ms(Timestamp tstamp)
 {
-    return (tstamp >= MAX_SEC_SINCE_EPOCH);
+    return ((tstamp >= MAX_SEC_SINCE_EPOCH) && (tstamp < MAX_MS_SINCE_EPOCH));
+}
+
+bool
+is_ns(Timestamp tstamp)
+{
+    return (tstamp >= MAX_US_SINCE_EPOCH);
 }
 
 bool
 is_sec(Timestamp tstamp)
 {
     return (tstamp < MAX_SEC_SINCE_EPOCH);
+}
+
+bool
+is_us(Timestamp tstamp)
+{
+    return ((tstamp >= MAX_MS_SINCE_EPOCH) && (tstamp < MAX_US_SINCE_EPOCH));
 }
 
 // TODO: make it inlined

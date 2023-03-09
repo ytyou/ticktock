@@ -58,9 +58,11 @@ RUN mkdir -p /opt/ticktock && \
 COPY limits.conf /etc/security/
 COPY --chown=ticktock:ticktock opt/ /opt/
 
+EXPOSE 6180/tcp
 EXPOSE 6181/tcp
 EXPOSE 6181/udp
 EXPOSE 6182/tcp
+EXPOSE 6183/tcp
 
 USER ticktock
 WORKDIR /tmp

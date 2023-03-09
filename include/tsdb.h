@@ -186,6 +186,9 @@ public:
 
     void flush(bool sync);
     void flush_for_test();  // for testing only
+    void dec_ref_count();
+    void dec_ref_count_no_lock();
+    void inc_ref_count();
 
     inline PageSize get_page_size() const { return m_page_size; }
     PageCount get_page_count() const;
@@ -292,6 +295,7 @@ private:
     // This time range will use the time unit specified in the config.
     TimeRange m_time_range;
     std::mutex m_lock;
+    int m_ref_count;        // prevent compaction when in use
 
     IndexFile m_index_file;
     std::vector<HeaderFile*> m_header_files;
