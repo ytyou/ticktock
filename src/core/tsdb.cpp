@@ -1688,10 +1688,20 @@ Tsdb::http_get_api_suggest_handler(HttpRequest& request, HttpResponse& response)
             ASSERT(it->first == mapping->m_metric);
 
             //ReadLock mapping_guard(mapping->m_lock);
+            std::set<std::string> keys;
 
             //for (auto it2 = mapping->m_map.begin(); it2 != mapping->m_map.end(); it2++)
             for (TimeSeries *ts = mapping->get_ts_head(); ts != nullptr; ts = ts->m_next)
-                ts->get_keys(suggestions);
+                ts->get_keys(keys);
+
+            for (std::string key: keys)
+            {
+                if (starts_with(key.c_str(), prefix))
+                {
+                    suggestions.insert(key);
+                    if (suggestions.size() >= max) break;
+                }
+            }
         }
     }
     else if (std::strcmp(type, "tagv") == 0)
@@ -1705,10 +1715,20 @@ Tsdb::http_get_api_suggest_handler(HttpRequest& request, HttpResponse& response)
             ASSERT(it->first == mapping->m_metric);
 
             //ReadLock mapping_guard(mapping->m_lock);
+            std::set<std::string> values;
 
             //for (auto it2 = mapping->m_map.begin(); it2 != mapping->m_map.end(); it2++)
             for (TimeSeries *ts = mapping->get_ts_head(); ts != nullptr; ts = ts->m_next)
-                ts->get_values(suggestions);
+                ts->get_values(values);
+
+            for (std::string value: values)
+            {
+                if (starts_with(value.c_str(), prefix))
+                {
+                    suggestions.insert(value);
+                    if (suggestions.size() >= max) break;
+                }
+            }
         }
     }
     else

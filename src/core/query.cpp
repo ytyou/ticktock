@@ -139,6 +139,9 @@ Query::Query(JsonMap& map, TimeRange& range, StringBuffer& strbuf, bool ms) :
     }
 }
 
+/* Syntax:
+ *  m=<aggregator>:[rate[{counter[,<counter_max>[,<reset_value>]]}]:][<down_sampler>:][percentiles\[<p1>, <pn>\]:][explicit_tags:]<metric_name>[{<tag_name1>=<grouping filter>[,...<tag_nameN>=<grouping_filter>]}][{<tag_name1>=<non grouping filter>[,...<tag_nameN>=<non_grouping_filter>]}]
+ */
 Query::Query(JsonMap& map, StringBuffer& strbuf) :
     m_time_range(0L, 0L),
     m_metric(nullptr),
@@ -194,85 +197,71 @@ Query::Query(JsonMap& map, StringBuffer& strbuf) :
     m_aggregate = strbuf.strdup(tokens[idx++].c_str());
     m_aggregator = Aggregator::create(m_aggregate);
 
-    m_downsample = strbuf.strdup(tokens[idx++].c_str());
-
-    if (Downsampler::is_downsampler(m_downsample))
+    while (idx < (tokens.size()-1))
     {
-        if (tokens.size() <= idx)
-            throw std::runtime_error("Failed to parse query parameter.");
-        m_metric = strbuf.strdup(tokens[idx++].c_str());
-    }
-    else if (std::strncmp(m_downsample, "rate{", 5) == 0)
-    {
-        std::vector<std::string> opts;
-        tokenize(std::string(m_downsample+5), opts, ',');
+        char *token = strbuf.strdup(tokens[idx++].c_str());
 
-        bool counter = false;
-        bool drop_resets = false;
-        uint64_t counter_max = UINT64_MAX;
-        uint64_t reset_value = 0;
-
-        if ((opts.size() > 0) && (! opts[0].empty()))
+        if (std::strncmp(token, "rate{", 5) == 0)
         {
-            counter = ((opts[0].front() == 't') || (opts[0].front() == 'T'));
-        }
+            std::vector<std::string> opts;
+            tokenize(std::string(token+5), opts, ',');
 
-        if ((opts.size() > 1) && (! opts[1].empty()))
+            bool counter = false;
+            bool drop_resets = false;
+            uint64_t counter_max = UINT64_MAX;
+            uint64_t reset_value = 0;
+
+            if ((opts.size() > 0) && (! opts[0].empty()))
+            {
+                counter = ((opts[0].front() == 't') || (opts[0].front() == 'T'));
+            }
+
+            if ((opts.size() > 1) && (! opts[1].empty()))
+            {
+                counter_max = std::stoull(opts[1]);
+            }
+
+            if ((opts.size() > 2) && (! opts[2].empty()))
+            {
+                reset_value = std::stoull(opts[2]);
+            }
+
+            if ((opts.size() > 3) && (! opts[2].empty()))
+            {
+                drop_resets = ((opts[2].front() == 't') || (opts[2].front() == 'T'));
+            }
+
+            m_rate_calculator =
+                (RateCalculator*)MemoryManager::alloc_recyclable(RecyclableType::RT_RATE_CALCULATOR);
+            m_rate_calculator->init(counter, drop_resets, counter_max, reset_value);
+        }
+        else if (std::strncmp(token, "rate", 4) == 0)
         {
-            counter_max = std::stoull(opts[1]);
-        }
+            bool counter = false;
+            bool drop_resets = false;
+            uint64_t counter_max = UINT64_MAX;
+            uint64_t reset_value = 0;
 
-        if ((opts.size() > 2) && (! opts[2].empty()))
+            m_rate_calculator =
+                (RateCalculator*)MemoryManager::alloc_recyclable(RecyclableType::RT_RATE_CALCULATOR);
+            m_rate_calculator->init(counter, drop_resets, counter_max, reset_value);
+        }
+        else if (std::strncmp(token, "percentiles[", 12) == 0)
         {
-            reset_value = std::stoull(opts[2]);
+            Logger::warn("percentiles in query param not supported");
         }
-
-        if ((opts.size() > 3) && (! opts[2].empty()))
+        else if (std::strcmp(token, "explicit_tags") == 0)
         {
-            drop_resets = ((opts[2].front() == 't') || (opts[2].front() == 'T'));
+            Logger::warn("explicit_tags in query param not supported");
         }
-
-        m_rate_calculator =
-            (RateCalculator*)MemoryManager::alloc_recyclable(RecyclableType::RT_RATE_CALCULATOR);
-        m_rate_calculator->init(counter, drop_resets, counter_max, reset_value);
-
-        if (tokens.size() <= idx)
-            throw std::runtime_error("Failed to parse query parameter.");
-        m_downsample = strbuf.strdup(tokens[idx++].c_str());
-    }
-    else if (std::strncmp(m_downsample, "rate", 4) == 0)
-    {
-        bool counter = false;
-        bool drop_resets = false;
-        uint64_t counter_max = UINT64_MAX;
-        uint64_t reset_value = 0;
-
-        m_rate_calculator =
-            (RateCalculator*)MemoryManager::alloc_recyclable(RecyclableType::RT_RATE_CALCULATOR);
-        m_rate_calculator->init(counter, drop_resets, counter_max, reset_value);
-
-        if (tokens.size() <= idx)
-            throw std::runtime_error("Failed to parse query parameter.");
-        m_downsample = strbuf.strdup(tokens[idx++].c_str());
-    }
-    else
-    {
-        //Logger::debug("no downsampler found, metric: %s", m_downsample);
-        m_metric = m_downsample;
-        m_downsample = nullptr;
+        else    // it's downsampler
+        {
+            m_downsample = token;
+        }
     }
 
-    if ((m_downsample != nullptr) && ! Downsampler::is_downsampler(m_downsample))
-    {
-        m_metric = m_downsample;
-        m_downsample = nullptr;
-    }
-    else if (m_metric == nullptr)
-    {
-        if (tokens.size() <= idx)
-            throw std::runtime_error("Failed to parse query parameter.");
-        m_metric = strbuf.strdup(tokens[idx++].c_str());
-    }
+    ASSERT(idx == (tokens.size()-1));
+    m_metric = strbuf.strdup(tokens[idx++].c_str());
 
     if (! m_ms && (m_downsample == nullptr))
     {
