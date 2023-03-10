@@ -199,12 +199,12 @@ Query::Query(JsonMap& map, StringBuffer& strbuf) :
 
     while (idx < (tokens.size()-1))
     {
-        m_downsample = strbuf.strdup(tokens[idx++].c_str());
+        char *token = strbuf.strdup(tokens[idx++].c_str());
 
-        if (std::strncmp(m_downsample, "rate{", 5) == 0)
+        if (std::strncmp(token, "rate{", 5) == 0)
         {
             std::vector<std::string> opts;
-            tokenize(std::string(m_downsample+5), opts, ',');
+            tokenize(std::string(token+5), opts, ',');
 
             bool counter = false;
             bool drop_resets = false;
@@ -235,7 +235,7 @@ Query::Query(JsonMap& map, StringBuffer& strbuf) :
                 (RateCalculator*)MemoryManager::alloc_recyclable(RecyclableType::RT_RATE_CALCULATOR);
             m_rate_calculator->init(counter, drop_resets, counter_max, reset_value);
         }
-        else if (std::strncmp(m_downsample, "rate", 4) == 0)
+        else if (std::strncmp(token, "rate", 4) == 0)
         {
             bool counter = false;
             bool drop_resets = false;
@@ -246,30 +246,22 @@ Query::Query(JsonMap& map, StringBuffer& strbuf) :
                 (RateCalculator*)MemoryManager::alloc_recyclable(RecyclableType::RT_RATE_CALCULATOR);
             m_rate_calculator->init(counter, drop_resets, counter_max, reset_value);
         }
-        else if (std::strncmp(m_downsample, "percentiles[", 12) == 0)
+        else if (std::strncmp(token, "percentiles[", 12) == 0)
         {
             Logger::warn("percentiles in query param not supported");
         }
-        else if (std::strcmp(m_downsample, "explicit_tags") == 0)
+        else if (std::strcmp(token, "explicit_tags") == 0)
         {
             Logger::warn("explicit_tags in query param not supported");
         }
+        else    // it's downsampler
+        {
+            m_downsample = token;
+        }
     }
 
-    ASSERT(idx < tokens.size());
+    ASSERT(idx == (tokens.size()-1));
     m_metric = strbuf.strdup(tokens[idx++].c_str());
-
-    if ((m_downsample != nullptr) && ! Downsampler::is_downsampler(m_downsample))
-    {
-        m_metric = m_downsample;
-        m_downsample = nullptr;
-    }
-    else if (m_metric == nullptr)
-    {
-        if (tokens.size() <= idx)
-            throw std::runtime_error("Failed to parse query parameter.");
-        m_metric = strbuf.strdup(tokens[idx++].c_str());
-    }
 
     if (! m_ms && (m_downsample == nullptr))
     {
