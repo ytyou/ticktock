@@ -1090,9 +1090,23 @@ Tsdb::query_for_data_no_lock(TimeSeriesId id, TimeRange& query_range, std::vecto
             container->set_page_index(page_header->get_global_page_index(file_idx, m_page_count));
             container->collect_data(from, tsdb_header, page_header, page);
             ASSERT(container->size() > 0);
-            data.push_back(container);
 
             if (page_header->is_out_of_order()) has_ooo = true;
+
+#ifdef _DEBUG
+            if (! has_ooo && ! data.empty())    // safety check
+            {
+                DataPointPair& dp0 = container->get_data_point(0);
+                DataPointContainer *prev = data.back();
+                size_t size = prev->size();
+                ASSERT(size > 0);
+                DataPointPair& dp1 = prev->get_data_point(size-1);
+                //if (dp0.first < dp1.first) has_ooo = true;
+                ASSERT(dp0.first >= dp1.first);
+            }
+#endif
+
+            data.push_back(container);
         }
 
         file_idx = page_header->get_next_file();

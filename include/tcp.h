@@ -55,9 +55,11 @@ class TcpListener;
 #define TCS_ERROR       0x00000002
 #define TCS_CLOSED      0x00000004
 #define TCS_NEW         0x00000008
-#define TCS_INFLUXDB    0x80000000
+#define TCS_SECOND      0x80000000
 
 #define INVALID_WORKER_ID   (-1)
+
+#define LISTENER0_COUNT     2
 
 
 class alignas(64) TcpConnection : public Recyclable
@@ -154,8 +156,8 @@ class TcpListener : public Stoppable
 {
 public:
     TcpListener();             // this c'tor will not create listening thread
-    TcpListener(TcpServer *server, int fd, char protocol);  // level 0
-    TcpListener(TcpServer *server, int fd, int id);         // level 1
+    TcpListener(TcpServer *server, int id, int fd); // level 0
+    TcpListener(TcpServer *server, int id);         // level 1
     virtual ~TcpListener();
 
     void shutdown(ShutdownRequest request = ShutdownRequest::ASAP);
@@ -197,12 +199,12 @@ private:
     bool register_with_epoll(int fd);
     bool deregister_with_epoll(int fd);
 
-    void rebalance0();
+    //void rebalance0();
     void rebalance1();
     void disconnect();
 
     void new_conn0();
-    void new_conn2(int fd, char protocol);
+    void new_conn2(int fd);
 
     void close_conn(int fd);
     void resubmit(char c, int fd);
@@ -258,8 +260,6 @@ private:
     TaskScheduler m_responders; // threads to handle http requests
     std::thread m_listener;     // the thread that goes into the event loop
 
-    char m_protocol;            // 'o': OpenTSDB protocol; 'i': InfluxDB protocol
-
     //std::atomic<bool> m_resend; // true if m_resend_queue is not empty
     //std::mutex m_resend_mutex;  // to guard m_resend_queue
     //std::queue<Task> m_resend_queue;
@@ -270,7 +270,6 @@ class TcpServer : public Stoppable
 {
 public:
     TcpServer();
-    TcpServer(int listener_count);
     virtual ~TcpServer();
 
     bool start(const std::string& ports);
@@ -280,19 +279,20 @@ public:
     bool is_stopped() const;
     //void instruct0(const char *instruction, int size);
 
-    TcpListener* next_listener();  // listener to receive new connection
-    void get_level1_listeners(std::vector<TcpListener*>& listeners) const;
+    TcpListener* next_listener(int id); // listener to receive new connection
+    //void get_level1_listeners(std::vector<TcpListener*>& listeners) const;
 
     size_t get_active_conn_count() const;
     size_t get_pending_task_count(std::vector<std::vector<size_t>> &counts) const;
-    int get_total_task_count(size_t counts[], int size) const;
+    //int get_total_task_count(size_t counts[], int size) const;
 
     virtual inline const char *get_name() const { return "tcp"; }
 
 protected:
     virtual TcpConnection *create_conn() const;
     virtual Task get_recv_data_task(TcpConnection *conn) const;
-    virtual int get_responders_per_listener() const;
+    virtual int get_responders_per_listener(int which) const;
+    virtual int get_listener_count(int which) const;
 
     // task func
     static bool recv_tcp_data(TaskData& data);
@@ -305,19 +305,18 @@ private:
     static bool process_data(TcpConnection *conn, char *data, int len);
     static void send_response(int fd, char *content, int len);
 
-    int listen(int port);       // return fd
+    int listen(int port, int listener_count);   // return fd
     void instruct1(const char *instruction, int size);
 
-    TcpListener *get_least_conn_listener() const;
-    TcpListener *get_most_conn_listener() const;
+    //TcpListener *get_least_conn_listener() const;
+    //TcpListener *get_most_conn_listener() const;
 
-    int m_next_listener;        // used to distribute new connections
-    size_t m_listener_count;    // number of listeners (max 2 as hard-coded below)
-    TcpListener **m_listeners;  // threads that go into the event loop
+    int m_next_listener[LISTENER0_COUNT];   // used to distribute new connections
+    int m_listener_count[LISTENER0_COUNT];  // number of listeners (max 2 as hard-coded below)
+    TcpListener **m_listeners[LISTENER0_COUNT]; // threads that go into the event loop
 
     size_t m_max_conns_per_listener;
-    int m_socket_fd0;           // main socket we listen on for OpenTSDB traffic
-    int m_socket_fd1;           // main socket we listen on for InfluxDB traffic
+    int m_socket_fd[LISTENER0_COUNT];       // main socket we listen on for new connections
 };
 
 

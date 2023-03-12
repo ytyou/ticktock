@@ -185,7 +185,8 @@ public:
 protected:
     TcpConnection *create_conn() const override;
     Task get_recv_data_task(TcpConnection *conn) const override;
-    int get_responders_per_listener() const override;
+    int get_responders_per_listener(int which) const override;
+    int get_listener_count(int which) const override;
 
     // task func
     static bool recv_http_data(TaskData& data);

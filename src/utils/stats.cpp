@@ -419,7 +419,7 @@ Stats::write_proc_stat(Timestamp tstamp, Tsdb *tsdb)
 int
 Stats::collect_stats(char *buff, int size)
 {
-    Timestamp now = ts_now();
+    Timestamp now = ts_now_sec();
     std::vector<std::vector<size_t>> counts;
     int len = 0;
 

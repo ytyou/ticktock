@@ -248,6 +248,11 @@ public:
     static std::string get_log_dir();
     static std::string get_log_file();
 
+    static int get_http_listener_count(int which);
+    static int get_http_responders_per_listener(int which);
+    static int get_tcp_listener_count(int which);
+    static int get_tcp_responders_per_listener(int which);
+
     static void add_override(const char *name, const char *value);
     static const char *c_str(char *buff, size_t size);
 
@@ -255,6 +260,7 @@ private:
     static std::shared_ptr<Property> get_property(const std::string& name);
     static std::shared_ptr<Property> get_override(const std::string& name);
     static bool reload(TaskData& data);
+    static int get_count_internal(const char *name, int def_value, int which);
 
     static std::mutex m_lock;
     static std::map<std::string, std::shared_ptr<Property>> m_properties;
