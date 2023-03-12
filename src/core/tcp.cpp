@@ -666,13 +666,13 @@ TcpServer::get_pending_task_count(std::vector<std::vector<size_t>> &counts) cons
 
     for (int i = 0; i < LISTENER0_COUNT; i++)
     {
+        counts.push_back(std::vector<size_t>());
+
         for (int j = 1; j < m_listener_count[i]; j++)
         {
-            counts.push_back(std::vector<size_t>());
-
             if (m_listeners[i][j] != nullptr)
             {
-                count += m_listeners[i][j]->get_pending_task_count(counts[i-2]);
+                count += m_listeners[i][j]->get_pending_task_count(counts[i]);
             }
         }
     }
