@@ -55,6 +55,11 @@ TcpServer::TcpServer() :
     m_max_conns_per_listener(512),
     m_fd_type(FileDescriptorType::FD_TCP)
 {
+}
+
+void
+TcpServer::init()
+{
     for (int i = 0; i < LISTENER0_COUNT; i++)
     {
         m_socket_fd[i] = -1;
@@ -67,6 +72,7 @@ TcpServer::TcpServer() :
             m_listeners[i] = static_cast<TcpListener**>(malloc(size));
             ASSERT(m_listeners[i] != nullptr);
             std::memset(m_listeners[i], 0, size);
+            Logger::info("%s listener_count[%d] = %d", get_name(), i, m_listener_count[i]);
         }
         else
             m_listeners[i] = nullptr;

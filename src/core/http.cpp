@@ -86,6 +86,7 @@ std::map<const char*,HttpRequestHandler,cstr_less> HttpServer::m_post_handlers;
  */
 HttpServer::HttpServer()
 {
+    TcpServer::init();
     m_fd_type = FileDescriptorType::FD_HTTP;
 }
 

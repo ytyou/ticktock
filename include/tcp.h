@@ -272,6 +272,7 @@ public:
     TcpServer();
     virtual ~TcpServer();
 
+    void init();
     bool start(const std::string& ports);
     void shutdown(ShutdownRequest request = ShutdownRequest::ASAP);
     void wait(size_t timeout_secs); // BLOCKING CALL!
