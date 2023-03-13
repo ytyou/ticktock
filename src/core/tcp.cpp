@@ -64,10 +64,11 @@ TcpServer::init()
     {
         m_socket_fd[i] = -1;
         m_next_listener[i] = 0;
-        m_listener_count[i] = get_listener_count(i) + 1;
+        m_listener_count[i] = get_listener_count(i);
 
         if (m_listener_count[i] > 0)
         {
+            m_listener_count[i]++;  // +1 for the listener0
             int size = sizeof(TcpListener*) * m_listener_count[i];
             m_listeners[i] = static_cast<TcpListener**>(malloc(size));
             ASSERT(m_listeners[i] != nullptr);
@@ -129,6 +130,13 @@ TcpServer::close_conns()
 int
 TcpServer::listen(int port, int listener_count)
 {
+    if (listener_count <= 0)
+    {
+        Logger::warn("%s listener count for port %d is 0. No listener started!",
+            get_name(), port);
+        return -1;
+    }
+
     // 1. create and bind the socket
     int fd = socket(AF_INET6, SOCK_STREAM, IPPROTO_TCP);
     if (fd == -1) return -1;
@@ -316,7 +324,7 @@ TcpServer::listen(int port, int listener_count)
 bool
 TcpServer::start(const std::string& ports)
 {
-    Logger::info("Starting Server on ports %s...", ports.c_str());
+    Logger::info("Starting %s server on ports %s...", get_name(), ports.c_str());
 
     std::tuple<std::string,std::string> pair;
     if (! tokenize(ports, pair, ','))

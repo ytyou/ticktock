@@ -86,13 +86,13 @@ std::map<const char*,HttpRequestHandler,cstr_less> HttpServer::m_post_handlers;
  */
 HttpServer::HttpServer()
 {
-    TcpServer::init();
     m_fd_type = FileDescriptorType::FD_HTTP;
 }
 
 void
 HttpServer::init()
 {
+    TcpServer::init();
     //m_max_resend = Config::get_int(CFG_HTTP_MAX_RETRIES, CFG_HTTP_MAX_RETRIES_DEF);
 
     add_get_handler(HTTP_API_AGGREGATORS, &Aggregator::http_get_api_aggregators_handler);

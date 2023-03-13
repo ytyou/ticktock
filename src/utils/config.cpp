@@ -323,7 +323,8 @@ Config::get_count_internal(const char *name, int def_value, int which)
         if (tokenize(str_count, kv, ','))
         {
             // 2 counts present
-            count = std::stoi((0 == which) ? std::get<0>(kv) : std::get<1>(kv));
+            std::string& str = (0 == which) ? std::get<0>(kv) : std::get<1>(kv);
+            count = str.empty() ? 0 : std::stoi(str);
         }
         else
             count = Config::get_int(name);

@@ -111,12 +111,17 @@ void
 TimeSeries::init()
 {
     // Birthday Paradox - Square approximation method
-    int tcp_responders =
-        Config::get_int(CFG_TCP_LISTENER_COUNT, CFG_TCP_LISTENER_COUNT_DEF) *
-        Config::get_int(CFG_TCP_RESPONDERS_PER_LISTENER, CFG_TCP_RESPONDERS_PER_LISTENER_DEF);
-    int http_responders =
-        Config::get_int(CFG_HTTP_LISTENER_COUNT, CFG_HTTP_LISTENER_COUNT_DEF) *
-        Config::get_int(CFG_HTTP_RESPONDERS_PER_LISTENER, CFG_HTTP_RESPONDERS_PER_LISTENER_DEF);
+    int tcp_responders = 0;
+    int http_responders = 0;
+
+    for (int i = 0; i < LISTENER0_COUNT; i++)
+    {
+        tcp_responders += Config::get_tcp_listener_count(i)
+            * Config::get_tcp_responders_per_listener(i);
+        http_responders += Config::get_http_listener_count(i)
+            * Config::get_http_responders_per_listener(i);
+    }
+
     float probability =
         Config::get_float(CFG_TS_LOCK_PROBABILITY, CFG_TS_LOCK_PROBABILITY_DEF);
     m_lock_count = std::max(tcp_responders, http_responders);

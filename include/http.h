@@ -161,8 +161,7 @@ class HttpServer : public TcpServer
 {
 public:
     HttpServer();
-
-    static void init();
+    void init();
 
     static void add_get_handler(const char *path, HttpRequestHandler handler);
     static void add_put_handler(const char *path, HttpRequestHandler handler);
