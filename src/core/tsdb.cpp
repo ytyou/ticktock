@@ -119,7 +119,7 @@ Measurement::add_ts(const char *field, Mapping *mapping)
 {
     ASSERT(m_ts_count > 0);
 
-    WriteLock guard(m_lock);
+    //WriteLock guard(m_lock);
 
     m_ts_count++;
     TimeSeries **tmp = m_time_series;
@@ -147,7 +147,7 @@ Measurement::get_ts(int idx, const char *field)
     TimeSeries *ts = nullptr;
 
     {
-        ReadLock guard(m_lock);
+        //ReadLock guard(m_lock);
         vid = Tag_v2::get_or_set_id(field);
 
         if (idx < m_ts_count)
@@ -160,7 +160,7 @@ Measurement::get_ts(int idx, const char *field)
         }
     }
 
-    WriteLock guard(m_lock);
+    //WriteLock guard(m_lock);
 
     // look for it
     for (int i = 0; i < m_ts_count; i++)
@@ -200,7 +200,7 @@ Measurement::get_ts(bool add, Mapping *mapping)
 bool
 Measurement::get_ts(std::vector<DataPoint>& dps, std::vector<TimeSeries*>& tsv)
 {
-    ReadLock guard(m_lock);
+    //ReadLock guard(m_lock);
 
     if (dps.size() != m_ts_count) return false;
 
@@ -226,6 +226,7 @@ Measurement::add_data_points(std::vector<DataPoint>& dps, Timestamp tstamp, Mapp
     std::vector<TimeSeries*> tsv;
 
     tsv.reserve(dps.size());
+    std::lock_guard<std::mutex> guard(m_lock);
     success = get_ts(dps, tsv);
 
     if (LIKELY(success))
@@ -237,7 +238,7 @@ Measurement::add_data_points(std::vector<DataPoint>& dps, Timestamp tstamp, Mapp
             TimeSeries *ts = tsv[i];    //get_ts(i++, dp->get_raw_tags());
             DataPoint& dp = dps[i];
             dp.set_timestamp(tstamp);
-            success = ts->add_data_point(dp) && success;
+            success = ts->add_data_point_no_lock(dp) && success;
         }
     }
     else
@@ -253,7 +254,7 @@ Measurement::add_data_points(std::vector<DataPoint>& dps, Timestamp tstamp, Mapp
                 ts = add_ts(dp.get_raw_tags(), mapping);
 
             dp.set_timestamp(tstamp);
-            success = ts->add_data_point(dp) && success;
+            success = ts->add_data_point_no_lock(dp) && success;
         }
     }
 
@@ -305,11 +306,11 @@ Mapping::get_ts(DataPoint& dp)
     BaseType *bt = nullptr;
     TimeSeries *ts = nullptr;
     char *raw_tags = dp.get_raw_tags();
-    //std::lock_guard<std::mutex> guard(m_lock);
+    std::lock_guard<std::mutex> guard(m_lock);
 
     if (raw_tags != nullptr)
     {
-        ReadLock guard(m_lock);
+        //ReadLock guard(m_lock);
         auto result = m_map.find(raw_tags);
         if (result != m_map.end())
             bt = result->second;
@@ -328,7 +329,7 @@ Mapping::get_ts(DataPoint& dp)
         char buff[MAX_TOTAL_TAG_LENGTH];
         dp.get_ordered_tags(buff, MAX_TOTAL_TAG_LENGTH);
 
-        WriteLock guard(m_lock);
+        //WriteLock guard(m_lock);
 
         {
             auto result = m_map.find(buff);
@@ -368,9 +369,10 @@ Mapping::get_measurement(char *raw_tags, TagOwner& owner, const char *measuremen
     ASSERT(raw_tags != nullptr);
     BaseType *bt = nullptr;
     TimeSeries *ts = nullptr;
+    std::lock_guard<std::mutex> guard(m_lock);
 
     {
-        ReadLock guard(m_lock);
+        //ReadLock guard(m_lock);
         auto result = m_map.find(raw_tags);
         if (result != m_map.end())
             bt = result->second;
@@ -403,7 +405,7 @@ Mapping::get_measurement(char *raw_tags, TagOwner& owner, const char *measuremen
             owner.get_ordered_tags(ordered, MAX_TOTAL_TAG_LENGTH);
         }
 
-        WriteLock guard(m_lock);
+        //WriteLock guard(m_lock);
 
         {
             auto result = m_map.find(ordered);
@@ -546,7 +548,8 @@ Mapping::query_for_ts(Tag *tags, std::unordered_set<TimeSeries*>& tsv, const cha
 
     if ((key != nullptr) && (tag_count == m_tag_count))
     {
-        ReadLock guard(m_lock);
+        //ReadLock guard(m_lock);
+        std::lock_guard<std::mutex> guard(m_lock);
         auto result = m_map.find(key);
         if (result != m_map.end())
         {
@@ -658,8 +661,8 @@ Mapping::set_tag_count(int tag_count)
 int
 Mapping::get_ts_count()
 {
-    //std::lock_guard<std::mutex> guard(m_lock);
-    ReadLock guard(m_lock);
+    //ReadLock guard(m_lock);
+    std::lock_guard<std::mutex> guard(m_lock);
     return m_map.size();
 }
 
