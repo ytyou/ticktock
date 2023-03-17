@@ -61,7 +61,6 @@ public:
     void archive(Timestamp now_sec, Timestamp threshold_sec);
 
     bool add_data_point(DataPoint& dp);
-    bool add_data_point_no_lock(DataPoint& dp);
     bool add_ooo_data_point(DataPoint& dp);
 
     void append(FILE *file);

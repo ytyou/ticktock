@@ -218,16 +218,9 @@ TimeSeries::append(FILE *file)
 bool
 TimeSeries::add_data_point(DataPoint& dp)
 {
-    std::lock_guard<std::mutex> guard(m_locks[m_id % m_lock_count]);
-    return add_data_point_no_lock(dp);
-}
-
-bool
-TimeSeries::add_data_point_no_lock(DataPoint& dp)
-{
     const Timestamp tstamp = dp.get_timestamp();
     //std::lock_guard<std::mutex> guard(m_lock);
-    //std::lock_guard<std::mutex> guard(m_locks[m_id % m_lock_count]);
+    std::lock_guard<std::mutex> guard(m_locks[m_id % m_lock_count]);
 
     // Make sure we have a valid m_buff (PageInMemory)
     if (UNLIKELY(m_buff == nullptr))

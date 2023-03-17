@@ -238,7 +238,7 @@ Measurement::add_data_points(std::vector<DataPoint>& dps, Timestamp tstamp, Mapp
             TimeSeries *ts = tsv[i];    //get_ts(i++, dp->get_raw_tags());
             DataPoint& dp = dps[i];
             dp.set_timestamp(tstamp);
-            success = ts->add_data_point_no_lock(dp) && success;
+            success = ts->add_data_point(dp) && success;
         }
     }
     else
@@ -254,7 +254,7 @@ Measurement::add_data_points(std::vector<DataPoint>& dps, Timestamp tstamp, Mapp
                 ts = add_ts(dp.get_raw_tags(), mapping);
 
             dp.set_timestamp(tstamp);
-            success = ts->add_data_point_no_lock(dp) && success;
+            success = ts->add_data_point(dp) && success;
         }
     }
 
