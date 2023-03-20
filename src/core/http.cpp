@@ -84,8 +84,7 @@ std::map<const char*,HttpRequestHandler,cstr_less> HttpServer::m_post_handlers;
 
 /* HttpServer Implementation
  */
-HttpServer::HttpServer() :
-    TcpServer(Config::get_int(CFG_HTTP_LISTENER_COUNT, CFG_HTTP_LISTENER_COUNT_DEF)+2)
+HttpServer::HttpServer()
 {
     m_fd_type = FileDescriptorType::FD_HTTP;
 }
@@ -93,6 +92,7 @@ HttpServer::HttpServer() :
 void
 HttpServer::init()
 {
+    TcpServer::init();
     //m_max_resend = Config::get_int(CFG_HTTP_MAX_RETRIES, CFG_HTTP_MAX_RETRIES_DEF);
 
     add_get_handler(HTTP_API_AGGREGATORS, &Aggregator::http_get_api_aggregators_handler);
@@ -120,10 +120,17 @@ HttpServer::init()
 }
 
 int
-HttpServer::get_responders_per_listener() const
+HttpServer::get_responders_per_listener(int which) const
 {
-    int n = Config::get_int(CFG_HTTP_RESPONDERS_PER_LISTENER, CFG_HTTP_RESPONDERS_PER_LISTENER_DEF);
-    return (n > 0) ? n : CFG_HTTP_RESPONDERS_PER_LISTENER_DEF;
+    return Config::get_http_responders_per_listener(which);
+    //int n = Config::get_int(CFG_HTTP_RESPONDERS_PER_LISTENER, CFG_HTTP_RESPONDERS_PER_LISTENER_DEF);
+    //return (n > 0) ? n : CFG_HTTP_RESPONDERS_PER_LISTENER_DEF;
+}
+
+int
+HttpServer::get_listener_count(int which) const
+{
+    return Config::get_http_listener_count(which);
 }
 
 TcpConnection *

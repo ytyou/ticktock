@@ -95,8 +95,8 @@ public:
     inline bool is_type(int type) const override
     { return TT_TYPE_MEASUREMENT == type; }
 
-    //std::mutex m_lock;
-    default_contention_free_shared_mutex m_lock;
+    std::mutex m_lock;
+    //default_contention_free_shared_mutex m_lock;
 
 private:
     TimeSeries **m_time_series;
@@ -136,8 +136,8 @@ private:
     int get_dp_count();
     int get_ts_count();
 
-    //std::mutex m_lock;
-    default_contention_free_shared_mutex m_lock;
+    std::mutex m_lock;
+    //default_contention_free_shared_mutex m_lock;
 
     // Keys of the m_map are of the following format:
     //  <tag1>=<val1>,<tag2>=<val2>,...,<tagN>=<valN>

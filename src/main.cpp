@@ -429,6 +429,7 @@ main(int argc, char *argv[])
 
     // start a TcpServer
     TcpServer tcp_server;
+    tcp_server.init();
     if (Config::get_bool(CFG_TCP_SERVER_ENABLED, CFG_TCP_SERVER_ENABLED_DEF))
     {
         tcp_server.start(Config::get_str(CFG_TCP_SERVER_PORT, CFG_TCP_SERVER_PORT_DEF));

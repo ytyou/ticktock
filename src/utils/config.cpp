@@ -304,6 +304,63 @@ Config::get_log_file()
     return get_log_dir() + "/ticktock.log";
 }
 
+/* The config could be '6181,6162', '6181,', ',6182', '6182',
+ * or nothing at all (not specified).
+ */
+int
+Config::get_count_internal(const char *name, int def_value, int which)
+{
+    ASSERT(name != nullptr);
+    ASSERT((which == 0) || (which == 1));
+
+    int count;
+
+    if (Config::exists(name))
+    {
+        const std::string& str_count = Config::get_str(name);
+        std::tuple<std::string,std::string> kv;
+
+        if (tokenize(str_count, kv, ','))
+        {
+            // 2 counts present
+            std::string& str = (0 == which) ? std::get<0>(kv) : std::get<1>(kv);
+            count = str.empty() ? 0 : std::stoi(str);
+        }
+        else
+            count = Config::get_int(name);
+    }
+    else
+    {
+        count = def_value;
+    }
+
+    return count;
+}
+
+int
+Config::get_http_listener_count(int which)
+{
+    return get_count_internal(CFG_HTTP_LISTENER_COUNT, CFG_HTTP_LISTENER_COUNT_DEF, which);
+}
+
+int
+Config::get_http_responders_per_listener(int which)
+{
+    return get_count_internal(CFG_HTTP_RESPONDERS_PER_LISTENER, CFG_HTTP_RESPONDERS_PER_LISTENER_DEF, which);
+}
+
+int
+Config::get_tcp_listener_count(int which)
+{
+    return get_count_internal(CFG_TCP_LISTENER_COUNT, CFG_TCP_LISTENER_COUNT_DEF, which);
+}
+
+int
+Config::get_tcp_responders_per_listener(int which)
+{
+    return get_count_internal(CFG_TCP_RESPONDERS_PER_LISTENER, CFG_TCP_RESPONDERS_PER_LISTENER_DEF, which);
+}
+
 const char *
 Config::c_str(char *buff, size_t size)
 {

@@ -52,24 +52,33 @@ TcpConnection::close()
 /* TcpServer Implementation
  */
 TcpServer::TcpServer() :
-    TcpServer(Config::get_int(CFG_TCP_LISTENER_COUNT, CFG_TCP_LISTENER_COUNT_DEF)+2)
+    m_max_conns_per_listener(512),
+    m_fd_type(FileDescriptorType::FD_TCP)
 {
 }
 
-TcpServer::TcpServer(int listener_count) :
-    m_socket_fd0(-1),
-    m_socket_fd1(-1),
-    m_max_conns_per_listener(512),
-    m_next_listener(1),
-    m_listener_count(listener_count),
-    m_fd_type(FileDescriptorType::FD_TCP)
+void
+TcpServer::init()
 {
-    size_t size = sizeof(TcpListener*) * m_listener_count;
-    m_listeners = static_cast<TcpListener**>(malloc(size));
-    ASSERT(m_listeners != nullptr);
-    std::memset(m_listeners, 0, size);
+    for (int i = 0; i < LISTENER0_COUNT; i++)
+    {
+        m_socket_fd[i] = -1;
+        m_next_listener[i] = 0;
+        m_listener_count[i] = get_listener_count(i);
 
-    Logger::info("TCP m_listener_count = %d", m_listener_count);
+        if (m_listener_count[i] > 0)
+        {
+            m_listener_count[i]++;  // +1 for the listener0
+            int size = sizeof(TcpListener*) * m_listener_count[i];
+            m_listeners[i] = static_cast<TcpListener**>(malloc(size));
+            ASSERT(m_listeners[i] != nullptr);
+            std::memset(m_listeners[i], 0, size);
+            Logger::info("%s listener_count[%d] = %d", get_name(), i, m_listener_count[i]);
+        }
+        else
+            m_listeners[i] = nullptr;
+    }
+
     Logger::info("TCP m_max_conns_per_listener = %d", m_max_conns_per_listener);
 }
 
@@ -77,13 +86,17 @@ TcpServer::~TcpServer()
 {
     close_conns();
 
-    if (m_listeners != nullptr)
+    for (int i = 0; i < LISTENER0_COUNT; i++)
     {
-        for (int i = 0; i < m_listener_count; i++)
+        if (m_listeners[i] != nullptr)
         {
-            if (m_listeners[i] != nullptr) delete m_listeners[i];
+            for (int j = 0; j < m_listener_count[i]; j++)
+            {
+                if (m_listeners[i][j] != nullptr)
+                    delete m_listeners[i][j];
+            }
+            free(m_listeners[i]);
         }
-        free(m_listeners);
     }
 }
 
@@ -95,30 +108,35 @@ TcpServer::close_conns()
         shutdown();
     }
 
-    if (m_listeners != nullptr)
+    for (int i = 0; i < LISTENER0_COUNT; i++)
     {
-        for (int i = 0; i < m_listener_count; i++)
+        if (m_listeners[i] != nullptr)
         {
-            if (m_listeners[i] != nullptr) m_listeners[i]->close_conns();
+            for (int j = 0; j < m_listener_count[i]; j++)
+            {
+                if (m_listeners[i][j] != nullptr)
+                    m_listeners[i][j]->close_conns();
+            }
         }
-    }
 
-    if (m_socket_fd0 > 0)
-    {
-        close(m_socket_fd0);
-        m_socket_fd0 = -1;
-    }
-
-    if (m_socket_fd1 > 0)
-    {
-        close(m_socket_fd1);
-        m_socket_fd1 = -1;
+        if (m_socket_fd[i] > 0)
+        {
+            close(m_socket_fd[i]);
+            m_socket_fd[i] = -1;
+        }
     }
 }
 
 int
-TcpServer::listen(int port)
+TcpServer::listen(int port, int listener_count)
 {
+    if (listener_count <= 0)
+    {
+        Logger::warn("%s listener count for port %d is 0. No listener started!",
+            get_name(), port);
+        return -1;
+    }
+
     // 1. create and bind the socket
     int fd = socket(AF_INET6, SOCK_STREAM, IPPROTO_TCP);
     if (fd == -1) return -1;
@@ -284,7 +302,7 @@ TcpServer::listen(int port)
     }
 
     // 3. listen on the socket
-    retval = ::listen(fd, m_max_conns_per_listener * m_listener_count);
+    retval = ::listen(fd, m_max_conns_per_listener * listener_count);
 
     if (retval == -1)
     {
@@ -306,28 +324,34 @@ TcpServer::listen(int port)
 bool
 TcpServer::start(const std::string& ports)
 {
-    Logger::info("Starting TCP Server on ports %s...", ports.c_str());
+    Logger::info("Starting %s server on ports %s...", get_name(), ports.c_str());
 
     std::tuple<std::string,std::string> pair;
     if (! tokenize(ports, pair, ','))
         std::get<0>(pair) = ports;
 
     if (! std::get<0>(pair).empty())
-        m_socket_fd0 = this->listen(std::stoi(std::get<0>(pair)));
+        m_socket_fd[0] = this->listen(std::stoi(std::get<0>(pair)), m_listener_count[0]);
     if (! std::get<1>(pair).empty())
-        m_socket_fd1 = this->listen(std::stoi(std::get<1>(pair)));
+        m_socket_fd[1] = this->listen(std::stoi(std::get<1>(pair)), m_listener_count[1]);
 
     // Create all the level 1 listeners before creating level 0 listener so
     // that when level 0 listener is ready to send msgs to level 1 listeners
     // they are already created and ready.
-    for (int i = 2; i < m_listener_count; i++)
-        m_listeners[i] = new TcpListener(this, -1, i);
+    // The last 4 bits of a listener's m_id indicates which listener0 it
+    // belongs.
+    for (int i = 0; i < LISTENER0_COUNT; i++)
+    {
+        for (int j = 1; j < m_listener_count[i]; j++)
+            m_listeners[i][j] = new TcpListener(this, i+(j*10));
+    }
 
     // 5. create the level 0 listener
-    if (m_socket_fd0 > 0)
-        m_listeners[0] = new TcpListener(this, m_socket_fd0, 'o');
-    if (m_socket_fd1 > 0)
-        m_listeners[1] = new TcpListener(this, m_socket_fd1, 'i');
+    for (int i = 0; i < LISTENER0_COUNT; i++)
+    {
+        if (m_socket_fd[i] > 0)
+            m_listeners[i][0] = new TcpListener(this, i, m_socket_fd[i]);
+    }
 
     return true;
 }
@@ -469,7 +493,7 @@ TcpServer::process_data(TcpConnection *conn, char *data, int len)
 
         Logger::tcp("Recved:\n%s", conn->fd, data);
 
-        if (conn->state.load(std::memory_order_relaxed) & TCS_INFLUXDB)
+        if (conn->state.load(std::memory_order_relaxed) & TCS_SECOND)
             Tsdb::http_api_write_handler(request, response);
         else
             Tsdb::http_api_put_handler_plain(request, response);
@@ -536,11 +560,12 @@ TcpServer::shutdown(ShutdownRequest request)
 {
     Stoppable::shutdown(request);
 
-    for (size_t i = 0; i < m_listener_count; i++)
+    for (int i = 0; i < LISTENER0_COUNT; i++)
     {
-        if (m_listeners[i] != nullptr)
+        for (int j = 0; j < m_listener_count[i]; j++)
         {
-            m_listeners[i]->shutdown(request);
+            if (m_listeners[i][j] != nullptr)
+                m_listeners[i][j]->shutdown(request);
         }
     }
 }
@@ -548,11 +573,12 @@ TcpServer::shutdown(ShutdownRequest request)
 void
 TcpServer::wait(size_t timeout_secs)
 {
-    for (size_t i = 0; i < m_listener_count; i++)
+    for (int i = 0; i < LISTENER0_COUNT; i++)
     {
-        if (m_listeners[i] != nullptr)
+        for (int j = 0; j < m_listener_count[i]; j++)
         {
-            m_listeners[i]->wait(timeout_secs);
+            if (m_listeners[i][j] != nullptr)
+                m_listeners[i][j]->wait(timeout_secs);
         }
     }
 }
@@ -560,17 +586,19 @@ TcpServer::wait(size_t timeout_secs)
 bool
 TcpServer::is_stopped() const
 {
-    for (size_t i = 0; i < m_listener_count; i++)
+    for (int i = 0; i < LISTENER0_COUNT; i++)
     {
-        if ((m_listeners[i] != nullptr) && (! m_listeners[i]->is_stopped()))
+        for (int j = 0; j < m_listener_count[i]; j++)
         {
-            return false;
+            if ((m_listeners[i][j] != nullptr) && (! m_listeners[i][j]->is_stopped()))
+                return false;
         }
     }
 
     return true;
 }
 
+/*
 void
 TcpServer::get_level1_listeners(std::vector<TcpListener*>& listeners) const
 {
@@ -582,16 +610,22 @@ TcpServer::get_level1_listeners(std::vector<TcpListener*>& listeners) const
         }
     }
 }
+*/
 
 TcpListener *
-TcpServer::next_listener()
+TcpServer::next_listener(int id)
 {
-    m_next_listener++;
-    if (m_next_listener >= m_listener_count) m_next_listener = 2;
-    Logger::debug("m_next_listener = %d", m_next_listener);
-    return m_listeners[m_next_listener];
+    ASSERT((0 <= id) && (id < LISTENER0_COUNT));
+
+    m_next_listener[id]++;
+    if (m_next_listener[id] >= m_listener_count[id])
+        m_next_listener[id] = 1;
+
+    ASSERT(m_listeners[id][m_next_listener[id]] != nullptr);
+    return m_listeners[id][m_next_listener[id]];
 }
 
+#if 0
 TcpListener *
 TcpServer::get_least_conn_listener() const
 {
@@ -637,25 +671,30 @@ TcpServer::get_most_conn_listener() const
 
     return listener;
 }
+#endif
 
 size_t
 TcpServer::get_pending_task_count(std::vector<std::vector<size_t>> &counts) const
 {
     size_t count = 0;
 
-    for (size_t i = 2; i < m_listener_count; i++)
+    for (int i = 0; i < LISTENER0_COUNT; i++)
     {
         counts.push_back(std::vector<size_t>());
 
-        if (m_listeners[i] != nullptr)
+        for (int j = 1; j < m_listener_count[i]; j++)
         {
-            count += m_listeners[i]->get_pending_task_count(counts[i-2]);
+            if (m_listeners[i][j] != nullptr)
+            {
+                count += m_listeners[i][j]->get_pending_task_count(counts[i]);
+            }
         }
     }
 
     return count;
 }
 
+#if 0
 int
 TcpServer::get_total_task_count(size_t counts[], int size) const
 {
@@ -671,19 +710,24 @@ TcpServer::get_total_task_count(size_t counts[], int size) const
 
     return i;
 }
+#endif
 
 size_t
 TcpServer::get_active_conn_count() const
 {
     int count = 0;
 
-    for (size_t i = 2; i < m_listener_count; i++)
+    for (int i = 0; i < LISTENER0_COUNT; i++)
     {
-        if (m_listeners[i] != nullptr)
+        for (int j = 1; j < m_listener_count[i]; j++)
         {
-            count += m_listeners[i]->get_active_conn_count();
-            Logger::debug("listener %d: active connection count = %d", i, m_listeners[i]->get_active_conn_count());
-            break;
+            if (m_listeners[i][j] != nullptr)
+            {
+                count += m_listeners[i][j]->get_active_conn_count();
+                Logger::debug("listener %d: active connection count = %d",
+                    i, m_listeners[i][j]->get_active_conn_count());
+                break;
+            }
         }
     }
 
@@ -728,11 +772,14 @@ TcpServer::instruct0(const char *instruction, int size)
 void
 TcpServer::instruct1(const char *instruction, int size)
 {
-    for (int i = 2; i < m_listener_count; i++)
+    for (int i = 0; i < LISTENER0_COUNT; i++)
     {
-        if (m_listeners[i] != nullptr)
+        for (int j = 1; j < m_listener_count[i]; j++)
         {
-            m_listeners[i]->instruct(instruction, size);
+            if (m_listeners[i][j] != nullptr)
+            {
+                m_listeners[i][j]->instruct(instruction, size);
+            }
         }
     }
 }
@@ -755,24 +802,30 @@ TcpServer::get_recv_data_task(TcpConnection *conn) const
 }
 
 int
-TcpServer::get_responders_per_listener() const
+TcpServer::get_responders_per_listener(int which) const
 {
-    int n = Config::get_int(CFG_TCP_RESPONDERS_PER_LISTENER, CFG_TCP_RESPONDERS_PER_LISTENER_DEF);
-    return (n > 0) ? n : CFG_TCP_RESPONDERS_PER_LISTENER_DEF;
+    return Config::get_tcp_responders_per_listener(which);
+    //int n = Config::get_int(CFG_TCP_RESPONDERS_PER_LISTENER, CFG_TCP_RESPONDERS_PER_LISTENER_DEF);
+    //return (n > 0) ? n : CFG_TCP_RESPONDERS_PER_LISTENER_DEF;
+}
+
+int
+TcpServer::get_listener_count(int which) const
+{
+    return Config::get_tcp_listener_count(which);
 }
 
 
 /* Constructing a level 0 listener
  */
-TcpListener::TcpListener(TcpServer *server, int fd, char protocol) :
-    m_id(0),
+TcpListener::TcpListener(TcpServer *server, int id, int fd) :
+    m_id(id),
     m_server(server),
     m_max_events(Config::get_int(CFG_TCP_MAX_EPOLL_EVENTS, CFG_TCP_MAX_EPOLL_EVENTS_DEF)),
     m_socket_fd(fd),
     m_epoll_fd(-1),
     m_pipe_fds{-1,-1},
     m_conns(nullptr),
-    m_protocol(protocol),
     m_live_conns(nullptr),
     m_free_conns(nullptr),
     m_least_conn_listener(nullptr),
@@ -787,21 +840,20 @@ TcpListener::TcpListener(TcpServer *server, int fd, char protocol) :
 
 /* Constructing a level 1 listener to handle tcp traffic
  */
-TcpListener::TcpListener(TcpServer *server, int fd, int id) :
+TcpListener::TcpListener(TcpServer *server, int id) :
     m_id(id),
     m_server(server),
     m_max_events(Config::get_int(CFG_TCP_MAX_EPOLL_EVENTS, CFG_TCP_MAX_EPOLL_EVENTS_DEF)),
-    m_socket_fd(fd),
+    m_socket_fd(-1),
     m_epoll_fd(-1),
     m_pipe_fds{-1,-1},
     m_conns(nullptr),
-    m_protocol(0),
     m_live_conns(nullptr),
     m_free_conns(nullptr),
     m_least_conn_listener(nullptr),
     m_conn_in_transit(nullptr),
     m_responders(std::string(server->get_name())+std::string("_")+std::to_string(id),
-                 server->get_responders_per_listener(),
+                 server->get_responders_per_listener(id%10),
                  Config::get_int(CFG_TCP_RESPONDERS_QUEUE_SIZE, CFG_TCP_RESPONDERS_QUEUE_SIZE_DEF))
     //m_stats_active_conn_count(0)
 {
@@ -975,7 +1027,8 @@ TcpListener::listener0()
     uint32_t err_flags = EPOLLERR | EPOLLHUP | EPOLLRDHUP;
     PipeReader pipe_reader(m_pipe_fds[0]);
 
-    g_thread_id = "tcp_listener_0";
+    g_thread_id = m_server->get_name();
+    g_thread_id += "_listener_" + std::to_string(m_id);
 
     Logger::debug("entered epoll_wait() loop, fd=%d", m_epoll_fd);
 
@@ -1053,7 +1106,8 @@ TcpListener::listener1()
     uint32_t err_flags = EPOLLERR | EPOLLHUP;
     PipeReader pipe_reader(m_pipe_fds[0]);
 
-    g_thread_id = "tcp_listener_" + std::to_string(m_id);
+    g_thread_id = m_server->get_name();
+    g_thread_id += "_listener_" + std::to_string(m_id);
 
     Logger::debug("entered epoll_wait() loop, fd=%d", m_epoll_fd);
 
@@ -1096,7 +1150,7 @@ TcpListener::listener1()
                     switch (cmd[0])
                     {
                         case PIPE_CMD_REBALANCE_CONN[0]:    rebalance1(); break;
-                        case PIPE_CMD_NEW_CONN[0]:          new_conn2(std::atoi(cmd+4), cmd[2]); break;
+                        case PIPE_CMD_NEW_CONN[0]:          new_conn2(std::atoi(cmd+2)); break;
                         case PIPE_CMD_CLOSE_CONN[0]:        close_conn(std::atoi(cmd+2)); break;
                         case PIPE_CMD_DISCONNECT_CONN[0]:   disconnect(); break;
                         case PIPE_CMD_RESUBMIT[0]:          resubmit(cmd[2], std::atoi(cmd+4)); break; // r [h|t] <fd>
@@ -1234,11 +1288,12 @@ TcpListener::new_conn0()
                 listener1 = conn->listener;
             }
             else
-                listener1 = m_server->next_listener();
+                listener1 = m_server->next_listener(m_id);
+            ASSERT(listener1 != nullptr);
         }
 
         char buff[32];
-        snprintf(buff, 30, "%c %c %d\n", PIPE_CMD_NEW_CONN[0], m_protocol, fd);
+        snprintf(buff, 30, "%c %d\n", PIPE_CMD_NEW_CONN[0], fd);
         write_pipe(listener1->m_pipe_fds[1], buff);
     }
 
@@ -1248,7 +1303,7 @@ TcpListener::new_conn0()
 // called by level 1 listeners;
 // accept just one connection at a time;
 void
-TcpListener::new_conn2(int fd, char protocol)
+TcpListener::new_conn2(int fd)
 {
     Logger::trace("new_conn2(%d)", fd);
 
@@ -1263,11 +1318,10 @@ TcpListener::new_conn2(int fd, char protocol)
         ASSERT(fd == conn->fd);
         conn->state &= ~(TCS_ERROR | TCS_CLOSED);   // start new, clear these flags
 
-        if (protocol == 'i')
-            conn->state |= TCS_INFLUXDB;
-
-        //if (conn->state & TCS_REGISTERED)
-            //deregister_with_epoll(fd);
+        if ((m_id % 10) == 0)
+            conn->state &= ~TCS_SECOND;
+        else
+            conn->state |= TCS_SECOND;
 
         if ((conn->state & TCS_REGISTERED) == 0)
             register_with_epoll(fd);
@@ -1503,6 +1557,7 @@ TcpListener::get_active_conn_count()
     return m_all_conn_map.size();
 }
 
+#if 0
 // Find the level 1 listener with max/min connections;
 // and instruct the one with max connections to move
 // one of the connections to the one with min connections;
@@ -1535,6 +1590,7 @@ TcpListener::rebalance0()
         Logger::info("m_least_conn_listener updated: %s", (updated?"true":"false"));
     }
 }
+#endif
 
 void
 TcpListener::instruct(const char *instruction, int size)

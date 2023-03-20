@@ -22,6 +22,7 @@
 #include "fd.h"
 #include "config.h"
 #include "logger.h"
+#include "tcp.h"
 #include "type.h"
 
 
@@ -41,9 +42,11 @@ FileDescriptorManager::init()
 {
     m_min_step = Config::get_int(CFG_TCP_MIN_HTTP_STEP, CFG_TCP_MIN_HTTP_STEP_DEF);
     if (m_min_step < 1) m_min_step = 1;
-    m_min_file = 8 * (Config::get_int(CFG_HTTP_LISTENER_COUNT, CFG_HTTP_LISTENER_COUNT_DEF) +
-                 Config::get_int(CFG_TCP_LISTENER_COUNT, CFG_TCP_LISTENER_COUNT_DEF)) +
-                 Config::get_int(CFG_TCP_MIN_FILE_DESCRIPTOR, CFG_TCP_MIN_FILE_DESCRIPTOR_DEF);
+    m_min_file = 0;
+    for (int i = 0; i < LISTENER0_COUNT; i++)
+        m_min_file += Config::get_tcp_listener_count(i) + Config::get_http_listener_count(i);
+    m_min_file = 8 * m_min_file +
+        Config::get_int(CFG_TCP_MIN_FILE_DESCRIPTOR, CFG_TCP_MIN_FILE_DESCRIPTOR_DEF);
     if (m_min_file < 10) m_min_file = 10;
     m_max_tcp = m_min_file;
 
