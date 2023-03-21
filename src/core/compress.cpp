@@ -188,6 +188,18 @@ Compressor_v3::save(CompressorPosition& position)
 }
 
 void
+Compressor_v3::empty()
+{
+    m_bitset.reset();
+
+    m_dp_count = 0;
+    m_prev_delta = 0L;
+    m_prev_tstamp = get_start_tstamp();
+    m_prev_value = 0.0;
+    m_is_full = false;
+}
+
+void
 Compressor_v3::compress1(Timestamp timestamp, double value)
 {
     ASSERT(m_dp_count == 0);
@@ -562,6 +574,21 @@ Compressor_v2::save(CompressorPosition& position)
 
     Logger::debug("cv2: saved position: offset=%d, start=%d, #dp=%d",
         position.m_offset, position.m_start, m_dp_count);
+}
+
+void
+Compressor_v2::empty()
+{
+    m_bitset.reset();
+
+    m_dp_count = 0;
+    m_prev_delta = 0L;
+    m_prev_tstamp = get_start_tstamp();
+    m_prev_value = 0.0;
+    m_prev_leading_zeros = 65;
+    m_prev_trailing_zeros = 65;
+    m_prev_none_zeros = 64;
+    m_is_full = false;
 }
 
 void
@@ -949,6 +976,18 @@ Compressor_v1::rebase(uint8_t *base)
 }
 
 void
+Compressor_v1::empty()
+{
+    m_cursor = m_base;
+    m_is_full = false;
+
+    m_dp_count = 0;
+    m_prev_delta = 0L;
+    m_prev_tstamp = get_start_tstamp();
+    m_prev_value = 0.0;
+}
+
+void
 Compressor_v1::compress1(
     Timestamp timestamp,        // t_1: tstamp of the new dp
     double value)               // v_1: value of the new dp
@@ -1227,6 +1266,12 @@ Compressor_v0::save(uint8_t *base)
     {
         *dps = *it;
     }
+}
+
+void
+Compressor_v0::empty()
+{
+    m_dps.clear();
 }
 
 bool

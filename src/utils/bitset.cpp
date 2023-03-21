@@ -92,6 +92,7 @@ BitSet::recycle()
     m_start = 0;
     m_cp_cursor = nullptr;
     m_cp_start = 0;
+    m_end = m_bits + m_capacity_in_bytes;
 }
 
 void

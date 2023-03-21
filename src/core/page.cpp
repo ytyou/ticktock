@@ -68,12 +68,14 @@ PageInMemory::get_time_range()
     return TimeRange(header->m_tstamp_from + m_start, header->m_tstamp_to + m_start);
 }
 
+/*
 int
 PageInMemory::in_range(Timestamp tstamp) const
 {
     ASSERT(m_tsdb != nullptr);
     return m_tsdb->in_range(tstamp);
 }
+*/
 
 /* 'range' should be the time range of the Tsdb.
  */
@@ -92,6 +94,7 @@ PageInMemory::setup_compressor(const TimeRange& range, PageSize page_size, int c
     m_compressor->init(range.get_from(), reinterpret_cast<uint8_t*>(m_page), page_size);
 }
 
+/**
 void
 PageInMemory::update_indices(PageInMemory *info)
 {
@@ -106,6 +109,7 @@ PageInMemory::update_indices(PageInMemory *info)
     this_header->m_next_file = that_header->m_next_file;
     this_header->m_next_header = that_header->m_next_header;
 }
+**/
 
 Timestamp
 PageInMemory::get_last_tstamp() const
@@ -131,7 +135,7 @@ PageInMemory::get_dp_count() const
 PageInMemory::PageInMemory(TimeSeriesId id, Tsdb *tsdb, bool is_ooo, PageSize actual_size) :
     m_compressor(nullptr),
     m_page(nullptr),
-    m_tsdb(nullptr),
+    //m_tsdb(nullptr),
     m_start(0)
 {
     m_page_header.init();
@@ -141,8 +145,8 @@ PageInMemory::PageInMemory(TimeSeriesId id, Tsdb *tsdb, bool is_ooo, PageSize ac
 
 PageInMemory::~PageInMemory()
 {
-    if (m_tsdb != nullptr)
-        m_tsdb->dec_ref_count();
+    //if (m_tsdb != nullptr)
+        //m_tsdb->dec_ref_count();
 
     if (m_compressor != nullptr)
         MemoryManager::free_recyclable(m_compressor);
@@ -154,50 +158,66 @@ PageInMemory::~PageInMemory()
 void
 PageInMemory::init(TimeSeriesId id, Tsdb *tsdb, bool is_ooo, PageSize actual_size)
 {
-    if (tsdb == nullptr) tsdb = m_tsdb; // same tsdb
-    ASSERT(actual_size <= tsdb->get_page_size());
-
     // preserve m_page_header.m_next_file and m_page_header.m_next_header, if
     // tsdb remains the same...
-    Timestamp from = tsdb->get_time_range().get_from();
     FileIndex file_idx = m_page_header.m_next_file;
     HeaderIndex header_idx = m_page_header.m_next_header;
 
     m_page_header.init();
     m_page_header.set_out_of_order(is_ooo);
 
-    if (m_tsdb == tsdb)    // same tsdb
+    if (nullptr == tsdb)
     {
         m_page_header.m_next_file = file_idx;
         m_page_header.m_next_header = header_idx;
+
+        ASSERT(m_page != nullptr);
     }
     else
     {
-        if (m_tsdb != nullptr)
-            m_tsdb->dec_ref_count();
+        //if (m_tsdb != nullptr)
+            //m_tsdb->dec_ref_count();
 
-        m_tsdb = tsdb;
-        m_start = from;
+        //m_tsdb = tsdb;
+        m_start = tsdb->get_time_range().get_from();
 
         // need to locate the last page of this TS
         tsdb->get_last_header_indices(id, file_idx, header_idx);
         m_page_header.m_next_file = file_idx;
         m_page_header.m_next_header = header_idx;
+
+        if (m_page == nullptr)
+            m_page = malloc(tsdb->get_page_size());
+
+        if (actual_size == 0)
+            actual_size = tsdb->get_page_size();
     }
 
-    if (m_page == nullptr)
-        m_page = malloc(tsdb->get_page_size());
+    if (tsdb == nullptr)
+        m_compressor->empty();
+    else
+    {
+        ASSERT(actual_size != 0);
+        int compressor_version = is_ooo ? 0 : tsdb->get_compressor_version();
+        const TimeRange& range = tsdb->get_time_range();
+        setup_compressor(range, actual_size, compressor_version);
+    }
+}
 
-    if (actual_size == 0)
-        actual_size = tsdb->get_page_size();
-
-    int compressor_version = is_ooo ? 0 : tsdb->get_compressor_version();
-    setup_compressor(tsdb->get_time_range(), actual_size, compressor_version);
+void
+PageInMemory::restore(Tsdb *tsdb)
+{
+    ASSERT(tsdb != nullptr);
+    ASSERT(m_compressor != nullptr);
+    ASSERT(m_compressor->is_empty());
+    tsdb->restore_page(m_page_header.m_next_file, m_page_header.m_next_header, m_compressor);
 }
 
 PageSize
-PageInMemory::flush(TimeSeriesId id, bool compact)
+PageInMemory::flush(TimeSeriesId id, Tsdb *tsdb, bool compact)
 {
+    ASSERT(tsdb != nullptr);
+
     if (m_compressor->is_empty()) return 0;
 
     // [m_page_header.m_next_file, m_page_header.m_next_header] is the
@@ -224,11 +244,7 @@ PageInMemory::flush(TimeSeriesId id, bool compact)
     }
 #endif
 
-    return m_tsdb->append_page(id, prev_file_idx, prev_header_idx, &m_page_header, m_page, compact);
-
-    // re-initialize the compressor
-    //m_compressor->init(m_start, (uint8_t*)m_page, m_tsdb->get_page_size());
-    //ASSERT(m_page != nullptr);
+    return tsdb->append_page(id, prev_file_idx, prev_header_idx, &m_page_header, m_page, compact);
 }
 
 void

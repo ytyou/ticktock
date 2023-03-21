@@ -246,8 +246,8 @@ public:
 
     Timestamp get_last_tstamp() const;
     TimeRange get_time_range();
-    int in_range(Timestamp tstamp) const;
-    inline Tsdb *get_tsdb() const { return m_tsdb; }
+    //int in_range(Timestamp tstamp) const;
+    //inline Tsdb *get_tsdb() const { return m_tsdb; }
 
     int get_dp_count() const;
     PageCount get_file_id() const;
@@ -259,11 +259,12 @@ public:
 
     // existing compressor, if any, will be destroyed, and new one created
     void setup_compressor(const TimeRange& range, PageSize page_size, int compressor_version);
+    void restore(Tsdb *tsdb);
 
-    void update_indices(PageInMemory *info);
+    //void update_indices(PageInMemory *info);
 
     void init(TimeSeriesId id, Tsdb *tsdb, bool is_ooo, PageSize actual_size = 0);
-    PageSize flush(TimeSeriesId id, bool compact = false);  // return next page size
+    PageSize flush(TimeSeriesId id, Tsdb *tsdb, bool compact = false);  // return next page size
     void append(TimeSeriesId id, FILE *file);
 
     // return true if dp is added; false if page is full;
@@ -282,7 +283,7 @@ private:
     struct page_info_on_disk m_page_header;
 
 protected:
-    Tsdb *m_tsdb;
+    //Tsdb *m_tsdb;
     void *m_page;
     Timestamp m_start;
     Compressor *m_compressor;

@@ -177,6 +177,7 @@ public:
     static void restore_measurement(std::string& measurement, std::string& tags, std::vector<std::pair<std::string,TimeSeriesId>>& fields, std::vector<TimeSeries*>& tsv);
     static void get_all_ts(std::vector<TimeSeries*>& tsv);
     static void get_all_mappings(std::vector<Mapping*>& mappings);
+    static Tsdb *get_ooo_tsdb() { return m_ooo_tsdb; }
 
     bool add(DataPoint& dp);
 
@@ -194,6 +195,7 @@ public:
     PageCount get_page_count() const;
     int get_compressor_version();
 
+    void restore_page(FileIndex file_idx, HeaderIndex header_idx, Compressor *compressor);
     void get_last_header_indices(TimeSeriesId id, FileIndex& file_idx, HeaderIndex& header_idx);
     void set_indices(TimeSeriesId id, FileIndex prev_file_idx, HeaderIndex prev_header_idx,
                      FileIndex this_file_idx, HeaderIndex this_header_idx);
@@ -264,7 +266,7 @@ private:
     friend class tsdb_less;
 
     //Tsdb(Timestamp start, Timestamp end);
-    Tsdb(TimeRange& range, bool existing, const char *suffix = nullptr);
+    Tsdb(const TimeRange& range, bool existing, const char *suffix = nullptr);
     virtual ~Tsdb();
     void unload();
     void unload_no_lock();
@@ -291,6 +293,7 @@ private:
     //static std::mutex m_tsdb_lock;
     static default_contention_free_shared_mutex m_tsdb_lock;
     static std::vector<Tsdb*> m_tsdbs;  // ordered by m_start_tstamp
+    static Tsdb *m_ooo_tsdb;            // the out-of-order Tsdb
 
     // This time range will use the time unit specified in the config.
     TimeRange m_time_range;

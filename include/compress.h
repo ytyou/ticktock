@@ -96,6 +96,7 @@ public:
     virtual void save(uint8_t *base) = 0;                   // save data
     virtual bool recycle() { return true; }
     virtual void rebase(uint8_t *base) = 0;
+    virtual void empty() = 0;                               // remove all data
 
     // return true if sucessfully added the dp;
     // return false if the buffer is full;
@@ -131,6 +132,7 @@ public:
     void init(Timestamp start, uint8_t *base, size_t size);
     void restore(DataPointVector& dps, CompressorPosition& position, uint8_t *base);
     void save(CompressorPosition& position);
+    void empty() override;
     inline void rebase(uint8_t *base)
     {
         m_bitset.rebase(base);
@@ -211,6 +213,7 @@ public:
     void init(Timestamp start, uint8_t *base, size_t size);
     void restore(DataPointVector& dps, CompressorPosition& position, uint8_t *base);
     void save(CompressorPosition& position);
+    void empty() override;
     inline void rebase(uint8_t *base)
     {
         m_bitset.rebase(base);
@@ -288,6 +291,7 @@ public:
     void init(Timestamp start, uint8_t *base, size_t size);
     void restore(DataPointVector& dps, CompressorPosition& position, uint8_t *base);
     inline void rebase(uint8_t *base);
+    void empty() override;
 
     inline void save(CompressorPosition& position)
     {
@@ -376,6 +380,7 @@ public:
     void init(Timestamp start, uint8_t *base, size_t size);
     void restore(DataPointVector& dps, CompressorPosition& position, uint8_t *base);
     void save(uint8_t *base);                       // save data
+    void empty() override;
 
     inline void rebase(uint8_t *base)
     {

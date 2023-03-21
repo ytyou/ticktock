@@ -87,24 +87,6 @@ TimeSeries::~TimeSeries()
         delete m_ooo_buff;
         m_ooo_buff = nullptr;
     }
-
-    //if (m_tags != nullptr)
-    //{
-        //std::free(m_tags);
-        //m_tags = nullptr;
-    //}
-
-    //if (m_key != nullptr)
-    //{
-        //FREE(m_key);
-        //m_key = nullptr;
-    //}
-
-    //if (m_metric != nullptr)
-    //{
-        //FREE(m_metric);
-        //m_metric = nullptr;
-    //}
 }
 
 void
@@ -136,10 +118,6 @@ TimeSeries::init(TimeSeriesId id, const char *metric, const char *key, Tag *tags
     m_id = id;
     m_buff = nullptr;
     m_ooo_buff = nullptr;
-
-    //m_metric = STRDUP(metric);
-    //m_key = STRDUP(key);
-    //m_tags = tags;
 }
 
 void
@@ -172,10 +150,10 @@ TimeSeries::flush_no_lock(bool close)
 {
     if (m_buff != nullptr)
     {
-        m_buff->flush(m_id);
+        m_buff->flush(m_id, m_tsdb);
 
-        if (m_ooo_buff != nullptr)
-            m_ooo_buff->update_indices(m_buff);
+        //if (m_ooo_buff != nullptr)
+            //m_ooo_buff->update_indices(m_buff);
 
         if (close)
         {
@@ -190,21 +168,22 @@ TimeSeries::flush_no_lock(bool close)
 
     if (m_ooo_buff != nullptr)
     {
-        m_ooo_buff->flush(m_id);
+        m_ooo_buff->flush(m_id, Tsdb::get_ooo_tsdb());
 
         if (close)
         {
             delete m_ooo_buff;
             m_ooo_buff = nullptr;
         }
-        else if (m_buff != nullptr)
+        else //if (m_buff != nullptr)
         {
-            m_buff->update_indices(m_ooo_buff);
-            m_buff->init(m_id, nullptr, true);
+            //m_buff->update_indices(m_ooo_buff);
+            m_ooo_buff->init(m_id, nullptr, true);
         }
     }
 }
 
+// append current buffers at the end of the given data file
 void
 TimeSeries::append(FILE *file)
 {
@@ -226,23 +205,24 @@ TimeSeries::add_data_point(DataPoint& dp)
     if (UNLIKELY(m_buff == nullptr))
     {
         ASSERT(m_ooo_buff == nullptr);
-        Tsdb *tsdb = Tsdb::inst(tstamp, true);
-        m_buff = new PageInMemory(m_id, tsdb, false);
+        m_tsdb = Tsdb::inst(tstamp, true);
+        m_buff = new PageInMemory(m_id, m_tsdb, false);
+        m_buff->restore(m_tsdb);
     }
-    else if (m_buff->in_range(tstamp) != 0)
+    else if (m_tsdb->in_range(tstamp) > 0)
     {
-        m_buff->flush(m_id);
-
-        if (m_ooo_buff != nullptr)
-            m_ooo_buff->update_indices(m_buff);
+        m_buff->flush(m_id, m_tsdb);
 
         // reset the m_buff
         Tsdb *tsdb = Tsdb::inst(tstamp, true);
-        m_buff->init(m_id, tsdb, false);
+        ASSERT(tsdb != m_tsdb);
+        m_tsdb->dec_ref_count();
+        m_tsdb = tsdb;
+        m_buff->init(m_id, m_tsdb, false);
+        m_buff->restore(m_tsdb);
     }
 
     ASSERT(m_buff != nullptr);
-    ASSERT(m_buff->in_range(tstamp) == 0);
 
     Timestamp last_tstamp = m_buff->get_last_tstamp();
 
@@ -257,11 +237,8 @@ TimeSeries::add_data_point(DataPoint& dp)
     {
         ASSERT(m_buff->is_full());
 
-        m_buff->flush(m_id);
+        m_buff->flush(m_id, m_tsdb);
         m_buff->init(m_id, nullptr, false);
-
-        if (m_ooo_buff != nullptr)
-            m_ooo_buff->update_indices(m_buff);
 
         ASSERT(m_buff->is_empty());
 
@@ -277,42 +254,24 @@ TimeSeries::add_data_point(DataPoint& dp)
 bool
 TimeSeries::add_ooo_data_point(DataPoint& dp)
 {
-    const Timestamp tstamp = dp.get_timestamp();
-
     // Make sure we have a valid m_ooo_buff (PageInMemory)
     if (m_ooo_buff == nullptr)
-    {
-        Tsdb *tsdb = Tsdb::inst(tstamp, true);
-        m_ooo_buff = new PageInMemory(m_id, tsdb, true);
-    }
-    else if (m_ooo_buff->in_range(tstamp) != 0)
-    {
-        m_ooo_buff->flush(m_id);
+        m_ooo_buff = new PageInMemory(m_id, Tsdb::get_ooo_tsdb(), true);
 
-        if (m_buff != nullptr)
-            m_buff->update_indices(m_ooo_buff);
-
-        Tsdb *tsdb = Tsdb::inst(tstamp, true);
-        m_ooo_buff->init(m_id, tsdb, true);
-    }
-
-    bool ok = m_ooo_buff->add_data_point(tstamp, dp.get_value());
+    bool ok = m_ooo_buff->add_data_point(dp.get_timestamp(), dp.get_value());
 
     if (! ok)
     {
         ASSERT(m_ooo_buff->is_full());
 
-        m_ooo_buff->flush(m_id);
+        m_ooo_buff->flush(m_id, Tsdb::get_ooo_tsdb());
         m_ooo_buff->init(m_id, nullptr, true);
 
         ASSERT(m_ooo_buff->is_empty());
         ASSERT(m_ooo_buff->is_out_of_order());
 
-        if (m_buff != nullptr)
-            m_buff->update_indices(m_ooo_buff);
-
         // try again
-        ok = m_ooo_buff->add_data_point(tstamp, dp.get_value());
+        ok = m_ooo_buff->add_data_point(dp.get_timestamp(), dp.get_value());
         ASSERT(ok);
     }
 
@@ -326,7 +285,7 @@ TimeSeries::query_for_data(Tsdb *tsdb, TimeRange& range, std::vector<DataPointCo
     //std::lock_guard<std::mutex> guard(m_lock);
     std::lock_guard<std::mutex> guard(m_locks[m_id % m_lock_count]);
 
-    if ((m_buff != nullptr) && (! m_buff->is_empty()) && (m_buff->get_tsdb() == tsdb))
+    if ((m_buff != nullptr) && (! m_buff->is_empty()) && (m_tsdb == tsdb))
     {
         TimeRange r = m_buff->get_time_range();
 
@@ -349,6 +308,7 @@ TimeSeries::query_for_data(Tsdb *tsdb, TimeRange& range, std::vector<DataPointCo
         }
     }
 
+#if 0
     if ((m_ooo_buff != nullptr) && (! m_ooo_buff->is_empty()) && (m_ooo_buff->get_tsdb() == tsdb))
     {
         TimeRange r = m_ooo_buff->get_time_range();
@@ -372,6 +332,7 @@ TimeSeries::query_for_data(Tsdb *tsdb, TimeRange& range, std::vector<DataPointCo
             has_ooo = true;
         }
     }
+#endif
 
     return has_ooo;
 }

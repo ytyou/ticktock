@@ -414,6 +414,9 @@ main(int argc, char *argv[])
         //for_all_dirs(g_data_dir, inspect_tsdb, 3);
         for_all_dirs(g_data_dir, inspect_tsdb, 3);
 
+        std::string ooo_dir = g_data_dir + "/ooo/0.18446744073709551";
+        inspect_tsdb(ooo_dir);
+
         std::vector<size_t> counts;
         while ((inspector.get_pending_task_count(counts) > 0) ||
                (total_cnt != g_total_dps_cnt.load()))

@@ -25,6 +25,7 @@
 #include <glob.h>
 #include <stdio.h>
 #include "admin.h"
+#include "compress.h"
 #include "config.h"
 #include "cp.h"
 #include "limit.h"
@@ -52,6 +53,7 @@ namespace tt
 default_contention_free_shared_mutex Tsdb::m_tsdb_lock;
 std::vector<Tsdb*> Tsdb::m_tsdbs;
 static uint64_t tsdb_rotation_freq = 0;
+Tsdb *Tsdb::m_ooo_tsdb = nullptr;
 
 // maps metrics => Mapping;
 std::mutex g_metric_lock;
@@ -667,14 +669,14 @@ Mapping::get_ts_count()
 }
 
 
-Tsdb::Tsdb(TimeRange& range, bool existing, const char *suffix) :
+Tsdb::Tsdb(const TimeRange& range, bool existing, const char *suffix) :
     m_ref_count(0),
     m_time_range(range),
     m_index_file(Tsdb::get_index_file_name(range, suffix)),
     m_page_size(g_page_size),
     m_page_count(g_page_count)
 {
-    ASSERT(g_tstamp_resolution_ms ? is_ms(range.get_from()) : is_sec(range.get_from()));
+    //ASSERT(g_tstamp_resolution_ms ? is_ms(range.get_from()) : is_sec(range.get_from()));
 
     m_compressor_version =
         Config::get_int(CFG_TSDB_COMPRESSOR_VERSION,CFG_TSDB_COMPRESSOR_VERSION_DEF);
@@ -1045,6 +1047,29 @@ Tsdb::query_for_ts(const char *metric, Tag *tags, std::unordered_set<TimeSeries*
 
     if (mapping != nullptr)
         mapping->query_for_ts(tags, ts, key);
+}
+
+void
+Tsdb::restore_page(FileIndex file_idx, HeaderIndex header_idx, Compressor *compressor)
+{
+    ASSERT(compressor != nullptr);
+
+    if (file_idx != TT_INVALID_FILE_INDEX)
+    {
+        ASSERT(header_idx != TT_INVALID_HEADER_INDEX);
+
+        std::lock_guard<std::mutex> guard(m_lock);
+        HeaderFile *header_file = m_header_files[file_idx];
+        header_file->ensure_open(true);
+        struct page_info_on_disk *page_header = header_file->get_page_header(header_idx);
+        DataFile *data_file = m_data_files[file_idx];
+        data_file->ensure_open(true);
+        void *page = data_file->get_page(page_header->m_page_index, page_header->m_offset);
+        ASSERT(page != nullptr);
+        CompressorPosition position(page_header);
+        DataPointVector dps;
+        compressor->restore(dps, position, (uint8_t*)page);
+    }
 }
 
 bool
@@ -1914,6 +1939,16 @@ Tsdb::init()
     }
 #endif
 
+    // restore out-of-order Tsdb, if any
+    std::string dir = Tsdb::get_tsdb_dir_name(TimeRange::MAX);
+    if (file_exists(dir))
+        Tsdb::restore_tsdb(dir);
+    else
+    {
+        m_ooo_tsdb = new Tsdb(TimeRange::MAX, false);
+        create_dir(dir);
+    }
+
     // restore all tsdbs
     for_all_dirs(data_dir, Tsdb::restore_tsdb, 3);
     std::sort(m_tsdbs.begin(), m_tsdbs.end(), tsdb_less());
@@ -1992,17 +2027,30 @@ Tsdb::init()
 std::string
 Tsdb::get_tsdb_dir_name(const TimeRange& range, const char *suffix)
 {
-    time_t sec = range.get_from_sec();
-    struct tm timeinfo;
-    localtime_r(&sec, &timeinfo);
     char buff[PATH_MAX];
-    snprintf(buff, sizeof(buff), "%s/%d/%d/%" PRIu64 ".%" PRIu64 "%s",
-        Config::get_data_dir().c_str(),
-        timeinfo.tm_year+1900,
-        timeinfo.tm_mon+1,
-        range.get_from_sec(),
-        range.get_to_sec(),
-        (suffix==nullptr) ? "" : suffix);
+
+    if (range.equals(TimeRange::MAX))
+    {
+        // this is the OOO tsdb
+        snprintf(buff, sizeof(buff), "%s/ooo/%" PRIu64 ".%" PRIu64,
+            Config::get_data_dir().c_str(),
+            range.get_from_sec(),
+            range.get_to_sec());
+    }
+    else
+    {
+        time_t sec = range.get_from_sec();
+        struct tm timeinfo;
+        localtime_r(&sec, &timeinfo);
+        snprintf(buff, sizeof(buff), "%s/%d/%d/%" PRIu64 ".%" PRIu64 "%s",
+            Config::get_data_dir().c_str(),
+            timeinfo.tm_year+1900,
+            timeinfo.tm_mon+1,
+            range.get_from_sec(),
+            range.get_to_sec(),
+            (suffix==nullptr) ? "" : suffix);
+    }
+
     return std::string(buff);
 }
 
@@ -2527,7 +2575,7 @@ Tsdb::compact(TaskData& data)
 
                         if (! ok)
                         {
-                            next_size = page.flush(id, true);
+                            next_size = page.flush(id, compacted, true);
                             ASSERT(next_size > 0);
                             page.init(id, nullptr, false, next_size);
                             ok = page.add_data_point(tstamp, dp.second);
@@ -2537,7 +2585,7 @@ Tsdb::compact(TaskData& data)
 
                     if (! page.is_empty())
                     {
-                        next_size = page.flush(id, true);
+                        next_size = page.flush(id, compacted, true);
                         ASSERT(next_size > 0);
                     }
 

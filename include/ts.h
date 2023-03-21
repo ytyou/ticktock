@@ -93,7 +93,7 @@ private:
     PageInMemory *m_ooo_buff;
 
     //char *m_metric;
-    //Tsdb *m_tsdb;           // current tsdb we are writing into
+    Tsdb *m_tsdb;           // current tsdb we are writing into
 
     Tag_v2 m_tags;
 
