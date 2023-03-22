@@ -244,7 +244,7 @@ public:
     bool is_empty();
     inline bool is_out_of_order() { return get_page_header()->is_out_of_order(); }
 
-    Timestamp get_last_tstamp() const;
+    Timestamp get_last_tstamp(TimeSeriesId id) const;
     TimeRange get_time_range();
     int in_range(Timestamp tstamp) const;
     inline Tsdb *get_tsdb() const { return m_tsdb; }

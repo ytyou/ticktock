@@ -108,10 +108,15 @@ PageInMemory::update_indices(PageInMemory *info)
 }
 
 Timestamp
-PageInMemory::get_last_tstamp() const
+PageInMemory::get_last_tstamp(TimeSeriesId id) const
 {
+    ASSERT(m_tsdb != nullptr);
     ASSERT(m_compressor != nullptr);
-    return m_compressor->get_last_tstamp();
+
+    if (m_compressor->is_empty())
+        return m_tsdb->get_last_tstamp(id);
+    else
+        return m_compressor->get_last_tstamp();
 }
 
 void

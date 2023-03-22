@@ -332,8 +332,10 @@ public:
 
     inline size_t size() const { return m_dps.size(); }
     inline DataPointPair& get_data_point(int i) { return m_dps[i]; }
+    inline DataPointPair& get_last_data_point() { return m_dps.back(); }
     inline PageIndex get_page_index() const { return m_page_index; }
     inline bool is_out_of_order() const { return m_out_of_order; }
+    inline bool is_empty() const { return m_dps.empty(); }
 
     void set_out_of_order(bool ooo) { m_out_of_order = ooo; }
     void set_page_index(PageIndex idx) { m_page_index = idx; }

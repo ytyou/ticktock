@@ -1197,6 +1197,67 @@ Tsdb::inc_ref_count()
     ASSERT(m_ref_count > 0);
 }
 
+// get timestamp of last data-point in this Tsdb, for the given TimeSeries
+Timestamp
+Tsdb::get_last_tstamp(TimeSeriesId id)
+{
+    Timestamp tstamp = 0;
+    FileIndex fidx, file_idx;
+    HeaderIndex hidx, header_idx;
+    struct page_info_on_disk *page_header = nullptr;
+    struct tsdb_header *tsdb_header = nullptr;
+
+    file_idx = TT_INVALID_FILE_INDEX;
+    header_idx = TT_INVALID_HEADER_INDEX;
+
+    //ReadLock guard(m_lock);
+    std::lock_guard<std::mutex> guard(m_lock);
+
+    m_index_file.ensure_open(false);
+    m_index_file.get_indices(id, fidx, hidx);
+
+    while (fidx != TT_INVALID_FILE_INDEX)
+    {
+        ASSERT(hidx != TT_INVALID_HEADER_INDEX);
+
+        HeaderFile *header_file = get_header_file(fidx);
+        ASSERT(header_file != nullptr);
+        ASSERT(header_file->get_id() == fidx);
+
+        header_file->ensure_open(true);
+        struct page_info_on_disk *header = header_file->get_page_header(hidx);
+
+        if (! header->is_out_of_order())
+        {
+            file_idx = fidx;
+            header_idx = hidx;
+            page_header = header;
+            tsdb_header = header_file->get_tsdb_header();
+        }
+
+        fidx = header->m_next_file;
+        hidx = header->m_next_header;
+    }
+
+    if (page_header != nullptr)
+    {
+        DataFile *data_file = m_data_files[file_idx];
+        data_file->ensure_open(true);
+        void *page = data_file->get_page(page_header->m_page_index, page_header->m_offset);
+        ASSERT(page != nullptr);
+
+        DataPointContainer *container = (DataPointContainer*)
+            MemoryManager::alloc_recyclable(RecyclableType::RT_DATA_POINT_CONTAINER);
+        container->set_page_index(page_header->get_global_page_index(file_idx, m_page_count));
+        container->collect_data(m_time_range.get_from(), tsdb_header, page_header, page);
+        if (! container->is_empty())
+            tstamp = container->get_last_data_point().first;
+        MemoryManager::free_recyclable(container);
+    }
+
+    return tstamp;
+}
+
 // this is only called when writing data points
 void
 Tsdb::get_last_header_indices(TimeSeriesId id, FileIndex& file_idx, HeaderIndex& header_idx)
