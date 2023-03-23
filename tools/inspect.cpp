@@ -45,6 +45,7 @@ char *g_index_base = nullptr;
 std::vector<TimeSeries*> g_time_series;
 std::atomic<uint64_t> g_total_dps_cnt{0};
 std::atomic<long> g_total_page_cnt{0};
+bool g_quick_mode = false;
 bool g_verbose = false;
 std::atomic<bool> g_new_line{false};
 std::mutex g_mutex; // protect std::cerr
@@ -105,6 +106,9 @@ open_mmap(const std::string& file_name, int& fd, size_t& size)
         return nullptr;
     }
 
+    if (g_quick_mode)
+        madvise(base, size, MADV_SEQUENTIAL);
+
     return base;
 }
 
@@ -120,12 +124,16 @@ process_cmdline_opts(int argc, char *argv[])
 {
     int c;
 
-    while ((c = getopt(argc, argv, "?d:t:v")) != -1)
+    while ((c = getopt(argc, argv, "?d:qt:v")) != -1)
     {
         switch (c)
         {
             case 'd':
                 g_data_dir.assign(optarg);
+                break;
+
+            case 'q':
+                g_quick_mode = true;
                 break;
 
             case 't':
@@ -157,8 +165,27 @@ process_cmdline_opts(int argc, char *argv[])
     return 0;
 }
 
+Timestamp
+get_tsdb_start_time(const std::string& dir)
+{
+    std::vector<std::string> tokens;
+    tokenize(dir, tokens, '/');
+    std::string last = tokens.back();
+
+    tokens.clear();
+    tokenize(last, tokens, '.');
+
+    if (tokens.size() != 2)
+        return 0;
+
+    Timestamp start = std::stoull(tokens[0].c_str());
+    //Timestamp end = std::stoull(tokens[1].c_str());
+
+    return start;
+}
+
 uint64_t
-inspect_page(FileIndex file_idx, HeaderIndex header_idx, struct tsdb_header *tsdb_header, struct page_info_on_disk *page_header, char *data_base)
+inspect_page(FileIndex file_idx, HeaderIndex header_idx, struct tsdb_header *tsdb_header, struct page_info_on_disk *page_header, char *data_base, Timestamp start_time)
 {
     uint64_t page_dps = 0;
     int compressor_version =
@@ -188,9 +215,10 @@ inspect_page(FileIndex file_idx, HeaderIndex header_idx, struct tsdb_header *tsd
 
     // dump page data
     DataPointVector dps;
+    dps.reserve(256);
     Compressor *compressor = Compressor::create(compressor_version);
     CompressorPosition position(page_header);
-    compressor->init(tsdb_header->m_start_tstamp, (uint8_t*)page_base, tsdb_header->m_page_size);
+    compressor->init(start_time, (uint8_t*)page_base, tsdb_header->m_page_size);
     compressor->restore(dps, position, nullptr);
     if (g_verbose)
     {
@@ -277,6 +305,7 @@ inspect_tsdb_internal(const std::string& dir)
     char *index_base = open_mmap(index_file_name, index_file_fd, index_file_size);
     struct index_entry *index_entries = (struct index_entry*)index_base;
     long ooo_page_cnt = 0;
+    Timestamp start_time = get_tsdb_start_time(dir);
 
     for (TimeSeries *ts: g_time_series)
     {
@@ -328,7 +357,7 @@ inspect_tsdb_internal(const std::string& dir)
 
             if (page_header->is_out_of_order()) ooo_page_cnt++;
 
-            tsdb_dps = inspect_page(file_idx, header_idx, tsdb_header, page_header, data_base);
+            tsdb_dps = inspect_page(file_idx, header_idx, tsdb_header, page_header, data_base, start_time);
             g_total_dps_cnt.fetch_add(tsdb_dps, std::memory_order_relaxed);
 
             if (file_idx != page_header->m_next_file)
@@ -360,11 +389,71 @@ inspect_tsdb_internal(const std::string& dir)
         //tsdb_dps, g_total_dps_cnt);
 }
 
+void
+inspect_tsdb_quick(const std::string& dir)
+{
+    {
+        std::lock_guard<std::mutex> guard(g_mutex);
+        if (g_new_line)
+        {
+            std::cerr << std::endl;
+            g_new_line = false;
+        }
+        std::cerr << "Inspecting tsdb " << dir << "..." << std::endl;
+    }
+
+    for (int fidx = 0; ; fidx++)
+    {
+        char header_file_name[PATH_MAX];
+        char data_file_name[PATH_MAX];
+
+        snprintf(header_file_name, sizeof(header_file_name), "%s/header.%u", dir.c_str(), fidx);
+        snprintf(data_file_name, sizeof(data_file_name), "%s/data.%u", dir.c_str(), fidx);
+
+        std::string header_file_name_str(header_file_name);
+        std::string data_file_name_str(data_file_name);
+
+        if (! file_exists(header_file_name_str) || ! file_exists(data_file_name_str))
+            break;
+
+        int header_file_fd = -1;
+        int data_file_fd = -1;
+        size_t header_file_size, data_file_size;
+        char *header_base, *data_base;
+        struct tsdb_header *tsdb_header;
+
+        header_base = open_mmap(header_file_name_str, header_file_fd, header_file_size);
+        data_base = open_mmap(data_file_name_str, data_file_fd, data_file_size);
+        tsdb_header = (struct tsdb_header*)header_base;
+
+        if ((header_base == nullptr) || (data_base == nullptr) || (header_file_fd < 0))
+        {
+            printf("[ERROR] failed to open file %s\n", header_file_name_str.c_str());
+            continue;
+        }
+
+        for (PageCount hidx = 0; hidx < tsdb_header->m_header_index; hidx++)
+        {
+            struct page_info_on_disk *page_header = (struct page_info_on_disk *)
+                (header_base + sizeof(struct tsdb_header) + hidx * sizeof(struct page_info_on_disk));
+
+            uint64_t tsdb_dps = inspect_page(fidx, hidx, tsdb_header, page_header, data_base, 0);
+            g_total_dps_cnt.fetch_add(tsdb_dps, std::memory_order_relaxed);
+        }
+
+        close_mmap(data_file_fd, data_base, data_file_size);
+        close_mmap(header_file_fd, header_base, header_file_size);
+    }
+}
+
 bool
 inspect_tsdb_task(TaskData& data)
 {
     std::string tsdb_dir((char*)data.pointer);
-    inspect_tsdb_internal(tsdb_dir);
+    if (g_quick_mode)
+        inspect_tsdb_quick(tsdb_dir);
+    else
+        inspect_tsdb_internal(tsdb_dir);
     return false;
 }
 
