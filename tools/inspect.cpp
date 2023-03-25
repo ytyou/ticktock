@@ -500,31 +500,28 @@ main(int argc, char *argv[])
     {
         // data directory structure:
         // <year>/<month>/<tsdb>/<index>|<header>|<data>
-        //for_all_dirs(g_data_dir, inspect_tsdb, 3);
         for_all_dirs(g_data_dir, inspect_tsdb, 3);
-
-        std::vector<size_t> counts;
-        while ((inspector.get_pending_task_count(counts) > 0) ||
-               (total_cnt != g_total_dps_cnt.load()))
-        {
-            total_cnt = g_total_dps_cnt.load();
-            counts.clear();
-            std::this_thread::sleep_for(std::chrono::seconds(5));
-            std::lock_guard<std::mutex> guard(g_mutex);
-            g_new_line = true;
-            std::cerr << "\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\bTotal dps = " << g_total_dps_cnt.load();
-        }
-
-        std::lock_guard<std::mutex> guard(g_mutex);
-        if (g_new_line.load())
-            std::cerr << std::endl;
     }
     else
     {
-        //std::string index_file_name = g_tsdb_dir + "/index";
-        //inspect_index_file(index_file_name);
-        inspect_tsdb_internal(g_tsdb_dir);
+        inspect_tsdb(g_tsdb_dir);
     }
+
+    std::vector<size_t> counts;
+    while ((inspector.get_pending_task_count(counts) > 0) ||
+           (total_cnt != g_total_dps_cnt.load()))
+    {
+        total_cnt = g_total_dps_cnt.load();
+        counts.clear();
+        std::this_thread::sleep_for(std::chrono::seconds(5));
+        std::lock_guard<std::mutex> guard(g_mutex);
+        g_new_line = true;
+        std::cerr << "\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\bTotal dps = " << g_total_dps_cnt.load();
+    }
+
+    std::lock_guard<std::mutex> guard(g_mutex);
+    if (g_new_line.load())
+        std::cerr << std::endl;
 
     inspector.shutdown();
     inspector.wait(1);
