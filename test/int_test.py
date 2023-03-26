@@ -1326,6 +1326,11 @@ class Duplicate_Tests(Test):
             query = Query(metric=self.metric_name(m), start=self._options.start, end=dps._end, aggregator="none", tags={})
             self.query_and_verify(query)
 
+            for down in ["avg", "count", "dev", "first", "last", "max", "min", "p50", "p75", "p90", "p95", "p99", "p999", "sum"]:
+                for agg in ["none", "avg", "count", "dev", "max", "min", "p50", "p75", "p90", "p95", "p99", "p999", "sum"]:
+                    query = Query(metric=self.metric_name(m), start=self._options.start, end=dps._end, aggregator=agg, downsampler="60s-"+down+"-zero")
+                    self.query_and_verify(query)
+
         # stop tt
         self.stop_tt()
         # make sure tt stopped
@@ -1933,16 +1938,18 @@ def main(argv):
     else:
         tests.append(Compaction_Tests(options))
         tests.append(Multi_Thread_Tests(options))
-        #tests.append(Backfill_Tests(options))
         tests.append(Stop_Restart_Tests(options))
         tests.append(Out_Of_Order_Write_Tests(options))
         tests.append(Rate_Tests(options))
         tests.append(Duplicate_Tests(options))
-        #tests.append(Replication_Tests(options))
-        #tests.append(Partition_Tests(options))
         tests.append(Check_Point_Tests(options))
         tests.append(Query_Tests(options, metric_count=16, metric_cardinality=4, tag_cardinality=4))
+
         #tests.append(Long_Running_Tests(options))
+
+        #tests.append(Backfill_Tests(options))
+        #tests.append(Replication_Tests(options))
+        #tests.append(Partition_Tests(options))
 
     start = datetime.datetime.now()
 
