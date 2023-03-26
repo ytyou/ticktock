@@ -1311,16 +1311,16 @@ class Duplicate_Tests(Test):
         dps = DataPoints(self._prefix, self._options.start, interval_ms=50000, metric_count=256, metric_cardinality=metric_cardinality, tag_cardinality=3)
 
         self.send_data(dps)
-        time.sleep(5)
+        time.sleep(10)
         dps.update_values();    # change values to see which one will win
         self.send_data(dps)     # send again to create duplicates
-        time.sleep(5)
+        time.sleep(10)
         dps.update_values();    # change values to see which one will win
         self.send_data(dps)     # send again to create duplicates
-        time.sleep(5)
+        time.sleep(10)
         dps.update_values();    # change values to see which one will win
         self.send_data(dps)     # send again to create duplicates
-        time.sleep(5)
+        time.sleep(10)
 
         for m in range(metric_cardinality):
             query = Query(metric=self.metric_name(m), start=self._options.start, end=dps._end, aggregator="none", tags={})
