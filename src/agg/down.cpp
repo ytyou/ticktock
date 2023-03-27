@@ -138,31 +138,36 @@ Downsampler::create(const char *downsample, TimeRange& range, bool ms)
     switch (function[0])
     {
         case 'a':
-            ASSERT(strcmp(function, "avg") == 0);
+            if (strcmp(function, "avg") != 0)
+                throw std::runtime_error("unrecognized downsampler");
             downsampler =
                 (Downsampler*)MemoryManager::alloc_recyclable(RecyclableType::RT_DOWNSAMPLER_AVG);
             break;
 
         case 'c':
-            ASSERT(strcmp(function, "count") == 0);
+            if (strcmp(function, "count") != 0)
+                throw std::runtime_error("unrecognized downsampler");
             downsampler =
                 (Downsampler*)MemoryManager::alloc_recyclable(RecyclableType::RT_DOWNSAMPLER_COUNT);
             break;
 
         case 'd':
-            ASSERT(strcmp(function, "dev") == 0);
+            if (strcmp(function, "dev") != 0)
+                throw std::runtime_error("unrecognized downsampler");
             downsampler =
                 (Downsampler*)MemoryManager::alloc_recyclable(RecyclableType::RT_DOWNSAMPLER_DEV);
             break;
 
         case 'f':
-            ASSERT(strcmp(function, "first") == 0);
+            if (strcmp(function, "first") != 0)
+                throw std::runtime_error("unrecognized downsampler");
             downsampler =
                 (Downsampler*)MemoryManager::alloc_recyclable(RecyclableType::RT_DOWNSAMPLER_FIRST);
             break;
 
         case 'l':
-            ASSERT(strcmp(function, "last") == 0);
+            if (strcmp(function, "last") != 0)
+                throw std::runtime_error("unrecognized downsampler");
             downsampler =
                 (Downsampler*)MemoryManager::alloc_recyclable(RecyclableType::RT_DOWNSAMPLER_LAST);
             break;
@@ -170,13 +175,15 @@ Downsampler::create(const char *downsample, TimeRange& range, bool ms)
         case 'm':
             if (function[1] == 'a')
             {
-                ASSERT(strcmp(function, "max") == 0);
+                if (strcmp(function, "max") != 0)
+                    throw std::runtime_error("unrecognized downsampler");
                 downsampler =
                     (Downsampler*)MemoryManager::alloc_recyclable(RecyclableType::RT_DOWNSAMPLER_MAX);
             }
             else
             {
-                ASSERT(strcmp(function, "min") == 0);
+                if (strcmp(function, "min") != 0)
+                    throw std::runtime_error("unrecognized downsampler");
                 downsampler =
                     (Downsampler*)MemoryManager::alloc_recyclable(RecyclableType::RT_DOWNSAMPLER_MIN);
             }
@@ -190,14 +197,15 @@ Downsampler::create(const char *downsample, TimeRange& range, bool ms)
             break;
 
         case 's':
-            ASSERT(strcmp(function, "sum") == 0);
+            if (strcmp(function, "sum") != 0)
+                throw std::runtime_error("unrecognized downsampler");
             downsampler =
                 (Downsampler*)MemoryManager::alloc_recyclable(RecyclableType::RT_DOWNSAMPLER_SUM);
             break;
 
         default:
             if (strcmp(function, "none") != 0)
-                Logger::debug("Unknown downsampler ignored: %s", function);
+                throw std::runtime_error("unrecognized downsampler");
             break;
     }
 

@@ -48,48 +48,67 @@ Aggregator::create(const char *aggregate)
         aggregator =
             (Aggregator*)MemoryManager::alloc_recyclable(RecyclableType::RT_AGGREGATOR_NONE);
     }
-    else if (std::strcmp(aggregate, "avg") == 0)
+
+    switch (aggregate[0])
     {
-        aggregator =
-            (Aggregator*)MemoryManager::alloc_recyclable(RecyclableType::RT_AGGREGATOR_AVG);
-    }
-    else if (std::strcmp(aggregate, "count") == 0)
-    {
-        aggregator =
-            (Aggregator*)MemoryManager::alloc_recyclable(RecyclableType::RT_AGGREGATOR_COUNT);
-    }
-    else if (std::strcmp(aggregate, "dev") == 0)
-    {
-        aggregator =
-            (Aggregator*)MemoryManager::alloc_recyclable(RecyclableType::RT_AGGREGATOR_DEV);
-    }
-    else if (std::strcmp(aggregate, "max") == 0)
-    {
-        aggregator =
-            (Aggregator*)MemoryManager::alloc_recyclable(RecyclableType::RT_AGGREGATOR_MAX);
-    }
-    else if (std::strcmp(aggregate, "min") == 0)
-    {
-        aggregator =
-            (Aggregator*)MemoryManager::alloc_recyclable(RecyclableType::RT_AGGREGATOR_MIN);
-    }
-    else if (std::strcmp(aggregate, "sum") == 0)
-    {
-        aggregator =
-            (Aggregator*)MemoryManager::alloc_recyclable(RecyclableType::RT_AGGREGATOR_SUM);
-    }
-    else if (aggregate[0] == 'p')
-    {
-        int p = std::atoi(aggregate+1);
-        aggregator =
-            (Aggregator*)MemoryManager::alloc_recyclable(RecyclableType::RT_AGGREGATOR_PT);
-        ((AggregatorPercentile*)aggregator)->set_quantile(p);
-    }
-    else
-    {
-        Logger::debug("Unknown or none aggregator %s", aggregate);
-        aggregator =
-            (Aggregator*)MemoryManager::alloc_recyclable(RecyclableType::RT_AGGREGATOR_NONE);
+        case 'a':
+            if (std::strcmp(aggregate, "avg") != 0)
+                throw std::runtime_error("unrecognized aggregator");
+            aggregator =
+                (Aggregator*)MemoryManager::alloc_recyclable(RecyclableType::RT_AGGREGATOR_AVG);
+            break;
+
+        case 'c':
+            if (std::strcmp(aggregate, "count") != 0)
+                throw std::runtime_error("unrecognized aggregator");
+            aggregator =
+                (Aggregator*)MemoryManager::alloc_recyclable(RecyclableType::RT_AGGREGATOR_COUNT);
+            break;
+
+        case 'd':
+            if (std::strcmp(aggregate, "dev") != 0)
+                throw std::runtime_error("unrecognized aggregator");
+            aggregator =
+                (Aggregator*)MemoryManager::alloc_recyclable(RecyclableType::RT_AGGREGATOR_DEV);
+            break;
+
+        case 'm':
+            if (std::strcmp(aggregate, "max") == 0)
+            {
+                aggregator =
+                    (Aggregator*)MemoryManager::alloc_recyclable(RecyclableType::RT_AGGREGATOR_MAX);
+            }
+            else if (std::strcmp(aggregate, "min") == 0)
+            {
+                aggregator =
+                    (Aggregator*)MemoryManager::alloc_recyclable(RecyclableType::RT_AGGREGATOR_MIN);
+            }
+            else
+                throw std::runtime_error("unrecognized aggregator");
+            break;
+
+        case 'n':
+            if (std::strcmp(aggregate, "none") != 0)
+                throw std::runtime_error("unrecognized aggregator");
+            aggregator =
+                (Aggregator*)MemoryManager::alloc_recyclable(RecyclableType::RT_AGGREGATOR_NONE);
+            break;
+
+        case 's':
+            if (std::strcmp(aggregate, "sum") != 0)
+                throw std::runtime_error("unrecognized aggregator");
+            aggregator =
+                (Aggregator*)MemoryManager::alloc_recyclable(RecyclableType::RT_AGGREGATOR_SUM);
+            break;
+
+        case 'p':
+            aggregator =
+                (Aggregator*)MemoryManager::alloc_recyclable(RecyclableType::RT_AGGREGATOR_PT);
+            ((AggregatorPercentile*)aggregator)->set_quantile(std::atoi(aggregate+1));
+            break;
+
+        default:
+            throw std::runtime_error("unrecognized aggregator");
     }
 
     return aggregator;
