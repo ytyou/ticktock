@@ -220,7 +220,7 @@ void
 QueryTests::relative_ts_tests()
 {
     Timestamp now = ts_now_ms();
-    Timestamp start = now - 86399999;   // almost 24 hours ago
+    Timestamp start = now - 86100000;   // almost 24 hours ago
     int dps_cnt = 20;
     DataPointVector dps;
     const char *metric = "query.test.relative.ts.metric";
