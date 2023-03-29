@@ -49,7 +49,7 @@ public:
 
     static void init();    // called by Tsdb::init()
     void init(TimeSeriesId id, const char *metric, const char *key, Tag *tags);
-    void restore(Tsdb *tsdb, PageSize offset, uint8_t start, char *buff, bool is_ooo);
+    void restore(Tsdb *tsdb, Timestamp tstamp, PageSize offset, uint8_t start, uint8_t *buff, bool is_ooo);
 
     inline TimeSeriesId get_id() const { return m_id; }
     static inline TimeSeriesId get_next_id() { return m_next_id.load(std::memory_order_relaxed); }

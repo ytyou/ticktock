@@ -90,6 +90,7 @@ AppendLog::flush_all(TaskData& data)
     if (std::rename(tmp_name.c_str(), log_name.c_str()) != 0)
         Logger::error("Failed to rename %s to %s", tmp_name.c_str(), log_name.c_str());
 
+    MetaFile::instance()->flush();
     return false;
 }
 
@@ -140,7 +141,7 @@ AppendLog::restore(std::vector<TimeSeries*>& tsv)
     for ( ; ; )
     {
         size_t size = ::fread(buff, header_size, 1, file);
-        if (size < header_size) break;
+        if (size < 1) break;
 
         TimeSeriesId id = ((struct append_log_entry*)buff)->id;
         Timestamp tstamp = ((struct append_log_entry*)buff)->tstamp;
@@ -159,7 +160,7 @@ AppendLog::restore(std::vector<TimeSeries*>& tsv)
 
         size = ::fread(buff, offset, 1, file);
 
-        if (size < offset)
+        if (size < 1)
         {
             Logger::error("Truncated append log, ts %u not restored", id);
             break;
@@ -173,7 +174,7 @@ AppendLog::restore(std::vector<TimeSeries*>& tsv)
             continue;
         }
 
-        ts->restore(tsdb, offset, start, buff, (is_ooo==(uint8_t)1));
+        ts->restore(tsdb, tstamp, offset, start, (uint8_t*)buff, (is_ooo==(uint8_t)1));
     }
 
     if (file != nullptr)

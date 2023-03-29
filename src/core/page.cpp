@@ -262,6 +262,33 @@ PageInMemory::append(TimeSeriesId id, FILE *file)
     ASSERT(m_page != nullptr);
 }
 
+void
+PageInMemory::restore(Timestamp tstamp, uint8_t *buff, PageSize offset, uint8_t start)
+{
+    ASSERT(buff != nullptr);
+    ASSERT(m_page != nullptr);
+    ASSERT(m_compressor != nullptr);
+
+    DataPointVector dps;
+    CompressorPosition position(offset, start);
+    m_compressor->set_start_tstamp(tstamp);
+    m_compressor->restore(dps, position, buff);
+
+    struct page_info_on_disk *header = get_page_header();
+    ASSERT(header != nullptr);
+
+    m_start = tstamp;
+    for (auto dp: dps)
+    {
+        uint32_t ts = dp.first - m_start;
+        if (ts < m_page_header.m_tstamp_from)
+            m_page_header.m_tstamp_from = ts;
+        ts++;
+        if (m_page_header.m_tstamp_to < ts)
+            m_page_header.m_tstamp_to = ts;
+    }
+}
+
 bool
 PageInMemory::add_data_point(Timestamp tstamp, double value)
 {

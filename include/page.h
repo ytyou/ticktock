@@ -265,6 +265,7 @@ public:
     void init(TimeSeriesId id, Tsdb *tsdb, bool is_ooo, PageSize actual_size = 0);
     PageSize flush(TimeSeriesId id, bool compact = false);  // return next page size
     void append(TimeSeriesId id, FILE *file);
+    void restore(Timestamp tstamp, uint8_t *buff, PageSize offset, uint8_t start);
 
     // return true if dp is added; false if page is full;
     bool add_data_point(Timestamp tstamp, double value);

@@ -119,6 +119,12 @@ Compressor::get_start_tstamp_const() const
 #endif
 }
 
+void
+Compressor::set_start_tstamp(Timestamp tstamp)
+{
+    get_start_tstamp() = tstamp;
+}
+
 
 // Implementation of Gorilla compression algorithm.
 Compressor_v3::Compressor_v3()

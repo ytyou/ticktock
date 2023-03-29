@@ -143,7 +143,7 @@ TimeSeries::init(TimeSeriesId id, const char *metric, const char *key, Tag *tags
 }
 
 void
-TimeSeries::restore(Tsdb *tsdb, PageSize offset, uint8_t start, char *buff, bool is_ooo)
+TimeSeries::restore(Tsdb *tsdb, Timestamp tstamp, PageSize offset, uint8_t start, uint8_t *buff, bool is_ooo)
 {
     ASSERT(tsdb != nullptr);
 
@@ -151,11 +151,13 @@ TimeSeries::restore(Tsdb *tsdb, PageSize offset, uint8_t start, char *buff, bool
     {
         ASSERT(m_ooo_buff == nullptr);
         m_ooo_buff = new PageInMemory(m_id, tsdb, true);
+        m_ooo_buff->restore(tstamp, buff, offset, start);
     }
     else
     {
         ASSERT(m_buff == nullptr);
         m_buff = new PageInMemory(m_id, tsdb, false);
+        m_buff->restore(tstamp, buff, offset, start);
     }
 }
 
