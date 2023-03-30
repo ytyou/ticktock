@@ -16,6 +16,8 @@ LINE=$(grep PATCH $DIR/../include/global.h)
 PATCH=${LINE##* }
 TT_VERSION="${MAJOR}.${MINOR}.${PATCH}"
 TAGV=${TT_VERSION}-${STAGE}
+GLIBC=`ldd --version | grep ldd | grep -o '[^ ]*$'`
+ARCH=`uname -m`
 
 pushd $DIR/..
 mkdir -p pkgs
@@ -26,9 +28,9 @@ cp -r admin ticktockdb
 cp -r bin ticktockdb
 cp -r conf ticktockdb
 cp tools/prom_scraper.* ticktockdb/tools
-/bin/tar cfz pkgs/ticktockdb-${TAGV}.tar.gz ticktockdb
+/bin/tar cfz pkgs/ticktockdb-${TAGV}-glibc${GLIBC}-${ARCH}.tar.gz ticktockdb
 popd
 
-echo "package pkgs/ticktockdb-${TAGV}.tar.gz created"
+echo "package pkgs/ticktockdb-${TAGV}-glibc${GLIBC}-${ARCH}.tar.gz created"
 
 exit 0
