@@ -59,7 +59,13 @@ namespace tt
 class CompressorPosition
 {
 public:
-    CompressorPosition() : CompressorPosition(0, 0, 0)
+    CompressorPosition() : CompressorPosition(0, 0)
+    {
+    }
+
+    CompressorPosition(PageSize offset, uint8_t start) :
+        m_offset(offset),
+        m_start(start)
     {
     }
 
@@ -111,6 +117,7 @@ public:
     virtual uint16_t get_dp_count() const = 0;
     virtual Timestamp get_last_tstamp() const = 0;
     virtual int get_version() const = 0;
+    void set_start_tstamp(Timestamp tstamp);
     Timestamp& get_start_tstamp();
     Timestamp get_start_tstamp_const() const;
 

@@ -108,10 +108,15 @@ PageInMemory::update_indices(PageInMemory *info)
 }
 
 Timestamp
-PageInMemory::get_last_tstamp() const
+PageInMemory::get_last_tstamp(TimeSeriesId id) const
 {
+    ASSERT(m_tsdb != nullptr);
     ASSERT(m_compressor != nullptr);
-    return m_compressor->get_last_tstamp();
+
+    if (m_compressor->is_empty())
+        return m_tsdb->get_last_tstamp(id);
+    else
+        return m_compressor->get_last_tstamp();
 }
 
 void
@@ -255,6 +260,33 @@ PageInMemory::append(TimeSeriesId id, FILE *file)
     std::fflush(file);
     if (ret != position.m_offset) Logger::error("PageInMemory::append() failed");
     ASSERT(m_page != nullptr);
+}
+
+void
+PageInMemory::restore(Timestamp tstamp, uint8_t *buff, PageSize offset, uint8_t start)
+{
+    ASSERT(buff != nullptr);
+    ASSERT(m_page != nullptr);
+    ASSERT(m_compressor != nullptr);
+
+    DataPointVector dps;
+    CompressorPosition position(offset, start);
+    m_compressor->set_start_tstamp(tstamp);
+    m_compressor->restore(dps, position, buff);
+
+    struct page_info_on_disk *header = get_page_header();
+    ASSERT(header != nullptr);
+
+    m_start = tstamp;
+    for (auto dp: dps)
+    {
+        uint32_t ts = dp.first - m_start;
+        if (ts < m_page_header.m_tstamp_from)
+            m_page_header.m_tstamp_from = ts;
+        ts++;
+        if (m_page_header.m_tstamp_to < ts)
+            m_page_header.m_tstamp_to = ts;
+    }
 }
 
 bool

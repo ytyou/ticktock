@@ -724,6 +724,7 @@ QueryTask::query_with_ooo(std::vector<DataPointContainer*>& data)
     };
     std::priority_queue<container_it, std::vector<container_it>, decltype(container_cmp)> pq(container_cmp);
     uint64_t dp_count = 0;
+    DataPointPair prev_dp(TT_INVALID_TIMESTAMP,0);
 
     for (auto container: data)
     {
@@ -746,17 +747,22 @@ QueryTask::query_with_ooo(std::vector<DataPointContainer*>& data)
         if (in_range == 0)
         {
             // remove duplicates
-            if ((! m_dps.empty()) && (m_dps.back().first == dp.first))
+            //if ((! m_dps.empty()) && (m_dps.back().first == dp.first))
+            if (prev_dp.first == dp.first)
             {
-                m_dps.back().second = dp.second;
-            }
-            else if (m_downsampler == nullptr)
-            {
-                m_dps.push_back(dp);
+                prev_dp.second = dp.second;
             }
             else
             {
-                m_downsampler->add_data_point(dp, m_dps);
+                if (prev_dp.first != TT_INVALID_TIMESTAMP)
+                {
+                    if (m_downsampler == nullptr)
+                        m_dps.emplace_back(prev_dp.first, prev_dp.second);
+                    else
+                        m_downsampler->add_data_point(prev_dp, m_dps);
+                }
+
+                prev_dp = dp;
             }
         }
         else if (in_range > 0)
@@ -768,6 +774,14 @@ QueryTask::query_with_ooo(std::vector<DataPointContainer*>& data)
         {
             pq.emplace(container, i+1);
         }
+    }
+
+    if (prev_dp.first != TT_INVALID_TIMESTAMP)
+    {
+        if (m_downsampler == nullptr)
+            m_dps.emplace_back(prev_dp.first, prev_dp.second);
+        else
+            m_downsampler->add_data_point(prev_dp, m_dps);
     }
 }
 

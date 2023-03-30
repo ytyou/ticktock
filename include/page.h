@@ -244,7 +244,7 @@ public:
     bool is_empty();
     inline bool is_out_of_order() { return get_page_header()->is_out_of_order(); }
 
-    Timestamp get_last_tstamp() const;
+    Timestamp get_last_tstamp(TimeSeriesId id) const;
     TimeRange get_time_range();
     int in_range(Timestamp tstamp) const;
     inline Tsdb *get_tsdb() const { return m_tsdb; }
@@ -265,6 +265,7 @@ public:
     void init(TimeSeriesId id, Tsdb *tsdb, bool is_ooo, PageSize actual_size = 0);
     PageSize flush(TimeSeriesId id, bool compact = false);  // return next page size
     void append(TimeSeriesId id, FILE *file);
+    void restore(Timestamp tstamp, uint8_t *buff, PageSize offset, uint8_t start);
 
     // return true if dp is added; false if page is full;
     bool add_data_point(Timestamp tstamp, double value);

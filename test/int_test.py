@@ -784,6 +784,13 @@ class Stop_Restart_Tests(Test):
 
         for i in range(1, iterations+1):
             print "iteration {}".format(i)
+
+            # add more dps
+            dps2 = DataPoints(self._prefix, self._options.start+10*i, metric_count=0)
+            dp = DataPoint(metric=self._prefix+"_metric_bug0", timestamp=self._options.start+100*i, value=i*100, tags=tags1)
+            dps2.add_dp(dp)
+            self.send_data(dps2)
+
             query1 = Query(metric=self.metric_name(2), start=self._options.start, end=dps._end, tags=tags1)
             self.query_and_verify(query1)
 
@@ -805,6 +812,15 @@ class Stop_Restart_Tests(Test):
                 self.start_tt()
                 # ticktock needs time to restore from disk
                 time.sleep(4)
+
+                # add more dps
+                dps3 = DataPoints(self._prefix, self._options.start-10*i, metric_count=0)
+                dp = DataPoint(metric=self._prefix+"_metric_bug0", timestamp=self._options.start-100*i, value=i, tags=tags1)
+                dps3.add_dp(dp)
+                self.send_data(dps3)
+
+                query4 = Query(metric=self._prefix+"_metric_bug0", start=self._options.start-100*i, end=dps._end, tags=tags1, downsampler="10000h-last")
+                self.query_and_verify(query4)
 
 
 class Backfill_Tests(Test):
@@ -1295,20 +1311,25 @@ class Duplicate_Tests(Test):
         dps = DataPoints(self._prefix, self._options.start, interval_ms=50000, metric_count=256, metric_cardinality=metric_cardinality, tag_cardinality=3)
 
         self.send_data(dps)
-        time.sleep(5)
+        time.sleep(10)
         dps.update_values();    # change values to see which one will win
         self.send_data(dps)     # send again to create duplicates
-        time.sleep(5)
+        time.sleep(10)
         dps.update_values();    # change values to see which one will win
         self.send_data(dps)     # send again to create duplicates
-        time.sleep(5)
+        time.sleep(10)
         dps.update_values();    # change values to see which one will win
         self.send_data(dps)     # send again to create duplicates
-        time.sleep(5)
+        time.sleep(10)
 
         for m in range(metric_cardinality):
             query = Query(metric=self.metric_name(m), start=self._options.start, end=dps._end, aggregator="none", tags={})
             self.query_and_verify(query)
+
+            for down in ["avg", "count", "dev", "first", "last", "max", "min", "p50", "p75", "p90", "p95", "p99", "p999", "sum"]:
+                for agg in ["none", "avg", "count", "dev", "max", "min", "p50", "p75", "p90", "p95", "p99", "p999", "sum"]:
+                    query = Query(metric=self.metric_name(m), start=self._options.start, end=dps._end, aggregator=agg, downsampler="60s-"+down+"-zero")
+                    self.query_and_verify(query)
 
         # stop tt
         self.stop_tt()
@@ -1917,16 +1938,18 @@ def main(argv):
     else:
         tests.append(Compaction_Tests(options))
         tests.append(Multi_Thread_Tests(options))
-        #tests.append(Backfill_Tests(options))
         tests.append(Stop_Restart_Tests(options))
         tests.append(Out_Of_Order_Write_Tests(options))
         tests.append(Rate_Tests(options))
         tests.append(Duplicate_Tests(options))
-        #tests.append(Replication_Tests(options))
-        #tests.append(Partition_Tests(options))
         tests.append(Check_Point_Tests(options))
         tests.append(Query_Tests(options, metric_count=16, metric_cardinality=4, tag_cardinality=4))
+
         #tests.append(Long_Running_Tests(options))
+
+        #tests.append(Backfill_Tests(options))
+        #tests.append(Replication_Tests(options))
+        #tests.append(Partition_Tests(options))
 
     start = datetime.datetime.now()
 

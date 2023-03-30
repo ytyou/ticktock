@@ -21,6 +21,6 @@ fi
 
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
-$DIR/../bin/inspect -d $DATA_DIR
+$DIR/../bin/inspect -q -d $DATA_DIR
 
 exit 0

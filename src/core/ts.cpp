@@ -143,7 +143,7 @@ TimeSeries::init(TimeSeriesId id, const char *metric, const char *key, Tag *tags
 }
 
 void
-TimeSeries::restore(Tsdb *tsdb, PageSize offset, uint8_t start, char *buff, bool is_ooo)
+TimeSeries::restore(Tsdb *tsdb, Timestamp tstamp, PageSize offset, uint8_t start, uint8_t *buff, bool is_ooo)
 {
     ASSERT(tsdb != nullptr);
 
@@ -151,11 +151,13 @@ TimeSeries::restore(Tsdb *tsdb, PageSize offset, uint8_t start, char *buff, bool
     {
         ASSERT(m_ooo_buff == nullptr);
         m_ooo_buff = new PageInMemory(m_id, tsdb, true);
+        m_ooo_buff->restore(tstamp, buff, offset, start);
     }
     else
     {
         ASSERT(m_buff == nullptr);
         m_buff = new PageInMemory(m_id, tsdb, false);
+        m_buff->restore(tstamp, buff, offset, start);
     }
 }
 
@@ -244,9 +246,9 @@ TimeSeries::add_data_point(DataPoint& dp)
     ASSERT(m_buff != nullptr);
     ASSERT(m_buff->in_range(tstamp) == 0);
 
-    Timestamp last_tstamp = m_buff->get_last_tstamp();
+    Timestamp last_tstamp = m_buff->get_last_tstamp(m_id);
 
-    if ((tstamp <= last_tstamp) && (! m_buff->is_empty()))
+    if (tstamp <= last_tstamp)
     {
         return add_ooo_data_point(dp);
     }
@@ -388,7 +390,7 @@ TimeSeries::archive(Timestamp now_sec, Timestamp threshold_sec)
             delete m_buff;
             m_buff = nullptr;
         }
-        else if (((int64_t)now_sec - (int64_t)to_sec(m_buff->get_last_tstamp())) > (int64_t)threshold_sec)
+        else if (((int64_t)now_sec - (int64_t)to_sec(m_buff->get_last_tstamp(m_id))) > (int64_t)threshold_sec)
         {
             flush_no_lock(true);
         }

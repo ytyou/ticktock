@@ -194,6 +194,7 @@ public:
     PageCount get_page_count() const;
     int get_compressor_version();
 
+    Timestamp get_last_tstamp(TimeSeriesId id);
     void get_last_header_indices(TimeSeriesId id, FileIndex& file_idx, HeaderIndex& header_idx);
     void set_indices(TimeSeriesId id, FileIndex prev_file_idx, HeaderIndex prev_header_idx,
                      FileIndex this_file_idx, HeaderIndex this_header_idx);
