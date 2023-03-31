@@ -26,6 +26,7 @@ rm -f pkgs/ticktockdb-${TAGV}.tar.gz
 rm -rf $ROOTD
 mkdir -p $ROOTD/scripts
 mkdir -p $ROOTD/tools
+cp docs/README.1st $ROOTD
 cp -r admin $ROOTD
 cp -r bin $ROOTD
 cp -r conf $ROOTD
