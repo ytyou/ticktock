@@ -1,8 +1,7 @@
 #!/bin/bash
 
 TARGET_BRANCH="main"
-TAGL="latest"
-TAGV="v0.0"
+TAGV="glibc2.28-x86_64"
 DOCKERFILE="../Dockerfile.build"
 
 # make sure we are at the root of repo
@@ -31,7 +30,7 @@ mkdir -p docker/build-$TAGV
 
 # build
 pushd docker/build-$TAGV
-docker build -f $DOCKERFILE --tag ytyou/tt-build:${TAGV} --tag ytyou/tt-build:${TAGL} \
+docker build -f $DOCKERFILE --tag ytyou/tt-build:${TAGV} \
     --build-arg BUILD_DATE=$(date -u +'%Y-%m-%dT%H:%M:%SZ') \
     --build-arg GIT_COMMIT=$(git log -1 --pretty=format:%h) \
     --build-arg VERSION=${TAGV} --add-host=tt-build:127.0.0.1 \
