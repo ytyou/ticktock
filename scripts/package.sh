@@ -18,19 +18,20 @@ TT_VERSION="${MAJOR}.${MINOR}.${PATCH}"
 TAGV=${TT_VERSION}-${STAGE}
 GLIBC=`ldd --version | grep ldd | grep -o '[^ ]*$'`
 ARCH=`uname -m`
+ROOTD="ticktockdb-${TAGV}"
 
 pushd $DIR/..
 mkdir -p pkgs
 rm -f pkgs/ticktockdb-${TAGV}.tar.gz
-rm -rf ticktockdb
-mkdir -p ticktockdb/scripts
-mkdir -p ticktockdb/tools
-cp -r admin ticktockdb
-cp -r bin ticktockdb
-cp -r conf ticktockdb
-cp scripts/glibc-version.sh ticktockdb/scripts
-cp tools/prom_scraper.* ticktockdb/tools
-/bin/tar cfz pkgs/ticktockdb-${TAGV}-glibc${GLIBC}-${ARCH}.tar.gz ticktockdb
+rm -rf $ROOTD
+mkdir -p $ROOTD/scripts
+mkdir -p $ROOTD/tools
+cp -r admin $ROOTD
+cp -r bin $ROOTD
+cp -r conf $ROOTD
+cp scripts/glibc-version.sh $ROOTD/scripts
+cp tools/prom_scraper.* $ROOTD/tools
+/bin/tar cfz pkgs/ticktockdb-${TAGV}-glibc${GLIBC}-${ARCH}.tar.gz $ROOTD
 popd
 
 echo "package pkgs/ticktockdb-${TAGV}-glibc${GLIBC}-${ARCH}.tar.gz created"
