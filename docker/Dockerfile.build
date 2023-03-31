@@ -1,0 +1,45 @@
+# To start the container:
+#   docker run -it --name tt-build -h tt-build -p 6180-6183:6180-6183 -p 6181:6181/udp ytyou/tt-build:latest
+#
+# To attach to a running container:
+#   docker exec -it tt-build /bin/bash
+#
+# To stop a running container:
+#   docker stop tt-build
+#
+# To restart the container:
+#   docker start tt-build
+
+FROM debian:oldstable
+
+ARG BUILD_DATE
+ARG GIT_COMMIT
+ARG VERSION
+
+LABEL name="tt-build" version="$VERSION"
+LABEL build-date="$BUILD_DATE" git-commit="$GIT_COMMIT"
+LABEL maintainer="yongtao.you@gmail.com"
+LABEL url="https://github.com/ytyou/ticktock"
+LABEL description="The build environment for TickTockDB."
+LABEL docker.cmd="docker run -it --name tt-build -h tt-build -p 6180-6183:6180-6183 -p 6181:6181/udp ytyou/tt-build:latest"
+
+RUN apt-get update && apt-get install -y \
+  curl g++ git make vim
+
+RUN cd /lib/x86_64-linux-gnu && \
+  ln -s libz.so.1 libz.so
+
+RUN mkdir -p /home
+RUN cd /home && \
+  git clone https://github.com/ytyou/ticktock.git
+RUN cd /home/ticktock && \
+  ln -s Makefile.ubuntu Makefile
+
+EXPOSE 6180/tcp
+EXPOSE 6181/tcp
+EXPOSE 6181/udp
+EXPOSE 6182/tcp
+EXPOSE 6183/tcp
+
+WORKDIR /home/ticktock
+CMD ["bash"]
