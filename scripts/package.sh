@@ -23,10 +23,12 @@ pushd $DIR/..
 mkdir -p pkgs
 rm -f pkgs/ticktockdb-${TAGV}.tar.gz
 rm -rf ticktockdb
+mkdir -p ticktockdb/scripts
 mkdir -p ticktockdb/tools
 cp -r admin ticktockdb
 cp -r bin ticktockdb
 cp -r conf ticktockdb
+cp scripts/glibc-version.sh ticktockdb/scripts
 cp tools/prom_scraper.* ticktockdb/tools
 /bin/tar cfz pkgs/ticktockdb-${TAGV}-glibc${GLIBC}-${ARCH}.tar.gz ticktockdb
 popd
