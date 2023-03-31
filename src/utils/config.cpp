@@ -390,7 +390,10 @@ Config::c_str(char *buff, size_t size)
         }
     }
 
-    std::snprintf(&buff[idx-2], size-idx+2, "\n}");
+    if (idx == 2)
+        std::snprintf(&buff[idx-1], size-idx+1, "}");
+    else
+        std::snprintf(&buff[idx-2], size-idx+2, "\n}");
     return buff;
 }
 
