@@ -53,6 +53,7 @@ Query::Query(JsonMap& map, TimeRange& range, StringBuffer& strbuf, bool ms) :
     m_downsample(nullptr),
     m_rate_calculator(nullptr),
     m_ms(ms),
+    m_delete(false),
     TagOwner(false)
 {
     auto search = map.find(METRIC_TAG_NAME);
@@ -150,6 +151,7 @@ Query::Query(JsonMap& map, StringBuffer& strbuf) :
     m_downsample(nullptr),
     m_rate_calculator(nullptr),
     m_ms(false),
+    m_delete(false),
     TagOwner(false)
 {
     Timestamp now = ts_now();
@@ -539,11 +541,19 @@ Query::execute(std::vector<QueryResults*>& results, StringBuffer& strbuf)
 
     get_query_tasks(qtv, &tsdbs);
 
-    for (QueryTask *qt: qtv)
-        qt->perform();
+    if (UNLIKELY(m_delete))
+    {
+        for (QueryTask* task: qtv)
+            task->delete_time_series();
+    }
+    else
+    {
+        for (QueryTask *qt: qtv)
+            qt->perform();
 
-    aggregate(qtv, results, strbuf);
-    calculate_rate(results);
+        aggregate(qtv, results, strbuf);
+        calculate_rate(results);
+    }
 
     // cleanup
     for (QueryTask *qt: qtv)
@@ -563,38 +573,46 @@ Query::execute_in_parallel(std::vector<QueryResults*>& results, StringBuffer& st
 
     get_query_tasks(qtv, &tsdbs);
 
-    if (qtv.size() > 1) // TODO: config?
+    if (UNLIKELY(m_delete))
     {
-        int size = qtv.size() - 1;
-        CountingSignal signal(size);
-
-        {
-            std::lock_guard<std::mutex> guard(executor->m_lock);
-
-            for (int i = 0; i < size; i++)
-            {
-                QueryTask *task = qtv[i];
-                //ASSERT(! task->m_tsv.empty());
-                task->set_signal(&signal);
-                executor->submit_query(task);
-            }
-        }
-
-        qtv[size]->perform();
-        signal.wait(false);
+        for (QueryTask* task: qtv)
+            task->delete_time_series();
     }
     else
     {
-        for (QueryTask *qt: qtv)
-            qt->perform();
-    }
+        if (qtv.size() > 1) // TODO: config?
+        {
+            int size = qtv.size() - 1;
+            CountingSignal signal(size);
 
-    {
-        Meter meter(METRIC_TICKTOCK_QUERY_AGGREGATE_LATENCY_MS);
-        Logger::trace("calling aggregate()...");
-        aggregate(qtv, results, strbuf);
-        Logger::trace("calling calculate_rate()...");
-        calculate_rate(results);
+            {
+                std::lock_guard<std::mutex> guard(executor->m_lock);
+
+                for (int i = 0; i < size; i++)
+                {
+                    QueryTask *task = qtv[i];
+                    //ASSERT(! task->m_tsv.empty());
+                    task->set_signal(&signal);
+                    executor->submit_query(task);
+                }
+            }
+
+            qtv[size]->perform();
+            signal.wait(false);
+        }
+        else
+        {
+            for (QueryTask *qt: qtv)
+                qt->perform();
+        }
+
+        {
+            Meter meter(METRIC_TICKTOCK_QUERY_AGGREGATE_LATENCY_MS);
+            Logger::trace("calling aggregate()...");
+            aggregate(qtv, results, strbuf);
+            Logger::trace("calling calculate_rate()...");
+            calculate_rate(results);
+        }
     }
 
     // cleanup
@@ -855,6 +873,18 @@ QueryTask::init(std::vector<Tsdb*> *tsdbs, const TimeRange& range)
     m_time_range.init(range);
 }
 
+void
+QueryTask::delete_time_series()
+{
+    TimeSeriesId id = m_ts->get_id();
+
+    for (Tsdb *tsdb: *m_tsdbs)
+    {
+        tsdb->delete_time_series(id);
+        m_ts->delete_time_series(tsdb);
+    }
+}
+
 bool
 QueryTask::recycle()
 {
@@ -889,6 +919,8 @@ QueryExecutor::init()
     m_instance = new QueryExecutor;
 }
 
+/* This method handles both GET and DELETE requests.
+ */
 bool
 QueryExecutor::http_get_api_query_handler(HttpRequest& request, HttpResponse& response)
 {
@@ -901,6 +933,9 @@ QueryExecutor::http_get_api_query_handler(HttpRequest& request, HttpResponse& re
     StringBuffer strbuf;
     Query query(params, strbuf);
     std::vector<QueryResults*> results;
+
+    if ((request.method != nullptr) && (request.method[0] == 'D'))
+        query.set_delete();     // this is a DELETE request
 
     if (Config::get_bool(CFG_QUERY_EXECUTOR_PARALLEL,CFG_QUERY_EXECUTOR_PARALLEL_DEF))
     {

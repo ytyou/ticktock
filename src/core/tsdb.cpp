@@ -1371,7 +1371,7 @@ Tsdb::append_page(TimeSeriesId id, FileIndex prev_file_idx, HeaderIndex prev_hea
 
     data_file->ensure_open(false);
     //header_file->ensure_open(false);
-    m_index_file.ensure_open(false);
+    //m_index_file.ensure_open(false);
 
     ASSERT(! m_data_files.empty());
     ASSERT(! header_file->is_full());
@@ -1410,6 +1410,39 @@ Tsdb::append_page(TimeSeriesId id, FileIndex prev_file_idx, HeaderIndex prev_hea
     header->m_next_header = header_idx;
 
     return data_file->get_next_page_size();
+}
+
+/* Delete the given time-series by invalidating it's file and header index.
+ */
+void
+Tsdb::delete_time_series(TimeSeriesId id)
+{
+    FileIndex file_idx;
+    HeaderIndex header_idx;
+    std::lock_guard<std::mutex> guard(m_lock);
+    //WriteLock guard(m_lock);
+
+    m_index_file.ensure_open(false);
+    m_index_file.get_indices(id, file_idx, header_idx);
+
+    if ((file_idx != TT_INVALID_FILE_INDEX) && (header_idx != TT_INVALID_HEADER_INDEX))
+    {
+        if (m_mode & TSDB_MODE_COMPACTED)
+        {
+            ASSERT(! m_header_files.empty());
+            HeaderFile *header_file = m_header_files.front();
+            header_file->ensure_open(false);
+            struct tsdb_header *tsdb_header = header_file->get_tsdb_header();
+            tsdb_header->set_compacted(false);
+            m_mode &= ~TSDB_MODE_COMPACTED;
+            header_file->close();
+        }
+
+        m_index_file.set_indices(id, TT_INVALID_FILE_INDEX, TT_INVALID_HEADER_INDEX);
+    }
+
+    if (! (m_mode & TSDB_MODE_READ))
+        m_index_file.close();
 }
 
 Tsdb *

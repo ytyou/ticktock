@@ -179,6 +179,7 @@ public:
     static void get_all_mappings(std::vector<Mapping*>& mappings);
 
     bool add(DataPoint& dp);
+    void delete_time_series(TimeSeriesId id);
 
     static void query_for_ts(const char *metric, Tag *tags, std::unordered_set<TimeSeries*>& ts, const char *key);
     bool query_for_data(TimeSeriesId id, TimeRange& range, std::vector<DataPointContainer*>& data);

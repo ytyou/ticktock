@@ -163,10 +163,12 @@ public:
     HttpServer();
     void init();
 
+    static void add_delete_handler(const char *path, HttpRequestHandler handler);
     static void add_get_handler(const char *path, HttpRequestHandler handler);
     static void add_put_handler(const char *path, HttpRequestHandler handler);
     static void add_post_handler(const char *path, HttpRequestHandler handler);
 
+    static HttpRequestHandler get_delete_handler(const char *path);
     static HttpRequestHandler get_get_handler(const char *path);
     static HttpRequestHandler get_put_handler(const char *path);
     static HttpRequestHandler get_post_handler(const char *path);
@@ -199,6 +201,7 @@ private:
     static bool send_response(HttpConnection *conn, uint16_t status);
 
     // request handlers
+    static std::map<const char*,HttpRequestHandler,cstr_less> m_delete_handlers;
     static std::map<const char*,HttpRequestHandler,cstr_less> m_get_handlers;
     static std::map<const char*,HttpRequestHandler,cstr_less> m_put_handlers;
     static std::map<const char*,HttpRequestHandler,cstr_less> m_post_handlers;

@@ -77,6 +77,7 @@ static const char *HTTP_CONTENT_TYPES[] =
 //int HttpServer::m_max_resend = 0;
 
 
+std::map<const char*,HttpRequestHandler,cstr_less> HttpServer::m_delete_handlers;
 std::map<const char*,HttpRequestHandler,cstr_less> HttpServer::m_get_handlers;
 std::map<const char*,HttpRequestHandler,cstr_less> HttpServer::m_put_handlers;
 std::map<const char*,HttpRequestHandler,cstr_less> HttpServer::m_post_handlers;
@@ -94,6 +95,9 @@ HttpServer::init()
 {
     TcpServer::init();
     //m_max_resend = Config::get_int(CFG_HTTP_MAX_RETRIES, CFG_HTTP_MAX_RETRIES_DEF);
+
+    // Yes QueryExecutor::http_get_api_query_handler() handles both GET and DELETE requests
+    add_delete_handler(HTTP_API_QUERY, &QueryExecutor::http_get_api_query_handler);
 
     add_get_handler(HTTP_API_AGGREGATORS, &Aggregator::http_get_api_aggregators_handler);
     add_get_handler(HTTP_API_CONFIG, &HttpServer::http_get_api_config_handler);
@@ -442,6 +446,15 @@ HttpServer::recv_http_data_cont(HttpConnection *conn)
 }
 
 void
+HttpServer::add_delete_handler(const char *path, HttpRequestHandler handler)
+{
+    if ((path == nullptr) || (handler == nullptr)) return;
+    if (get_delete_handler(path) != nullptr)
+        Logger::error("duplicate delete handlers for path: %s", path);
+    m_delete_handlers[path] = handler;
+}
+
+void
 HttpServer::add_get_handler(const char *path, HttpRequestHandler handler)
 {
     if ((path == nullptr) || (handler == nullptr)) return;
@@ -467,6 +480,15 @@ HttpServer::add_post_handler(const char *path, HttpRequestHandler handler)
         Logger::error("duplicate post handlers for path: %s", path);
     m_post_handlers[path] = handler;
     ASSERT(get_post_handler(path) != nullptr);
+}
+
+HttpRequestHandler
+HttpServer::get_delete_handler(const char *path)
+{
+    if (path == nullptr) return nullptr;
+    auto search = m_delete_handlers.find(path);
+    if (search == m_delete_handlers.end()) return nullptr;
+    return search->second;
 }
 
 HttpRequestHandler
@@ -586,19 +608,6 @@ HttpServer::parse_header(char *buff, int len, HttpRequest& request)
 {
     size_t buff_size = MemoryManager::get_network_buffer_size();
     char *curr1 = buff, *curr2, *curr3;
-
-    if ((std::strncmp(buff, "GET ", 4) != 0) &&
-        (std::strncmp(buff, "PUT ", 4) != 0) &&
-        (std::strncmp(buff, "POST ", 5) != 0))
-    {
-        // This is not a valid HTTP request.
-        //request.path = HTTP_API_PUT;
-        //request.method = HTTP_METHOD_POST;
-        //request.content = buff;
-        //request.length = len;
-        //request.complete = true;
-        return false;
-    }
 
     // parse 1st line
     for (curr2 = curr1; *curr2 != ' '; curr2++) /* do nothing */;
@@ -740,6 +749,10 @@ HttpServer::process_request(HttpRequest& request, HttpResponse& response)
     else if (strcmp(request.method, "GET") == 0)
     {
         handler = get_get_handler(request.path);
+    }
+    else if (strcmp(request.method, "DELETE") == 0)
+    {
+        handler = get_delete_handler(request.path);
     }
 
     if (handler != nullptr)
@@ -1094,6 +1107,9 @@ HttpRequest::init()
 void
 HttpRequest::parse_params(JsonMap& pairs)
 {
+    if (params == nullptr)
+        return;
+
     std::vector<char*> tokens;
     tokenize(params, '&', tokens);
 

@@ -400,5 +400,23 @@ TimeSeries::archive(Timestamp now_sec, Timestamp threshold_sec)
         flush_no_lock(true);
 }
 
+void
+TimeSeries::delete_time_series(Tsdb *tsdb)
+{
+    std::lock_guard<std::mutex> guard(m_locks[m_id % m_lock_count]);
+
+    if ((m_buff != nullptr) && (m_buff->get_tsdb() == tsdb))
+    {
+        delete m_buff;
+        m_buff = nullptr;
+    }
+
+    if ((m_ooo_buff != nullptr) && (m_ooo_buff->get_tsdb() == tsdb))
+    {
+        delete m_ooo_buff;
+        m_ooo_buff = nullptr;
+    }
+}
+
 
 }

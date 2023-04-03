@@ -184,6 +184,7 @@ public:
     int add_data_point(DataPointPair& dp, DataPointVector& dps, Downsampler *downsampler);
     void get_query_tasks(std::vector<QueryTask*>& qtv, std::vector<Tsdb*> *tsdbs);
 
+    inline void set_delete() { m_delete = true; }
     void execute(std::vector<QueryResults*>& results, StringBuffer& strbuf);
     void execute_in_parallel(std::vector<QueryResults*>& results, StringBuffer& strbuf);
 
@@ -206,7 +207,8 @@ private:
 
     TimeRange m_time_range;
 
-    bool m_ms;  // milli-second resolution?
+    bool m_ms;      // milli-second resolution?
+    bool m_delete;  // DELETE request?
     const char *m_metric;
     const char *m_aggregate;
     const char *m_downsample;
@@ -238,6 +240,8 @@ public:
     {
         m_signal = signal;
     }
+
+    void delete_time_series();  // delete matching data-points, instead of querying
 
     void init() override;
     bool recycle() override;
