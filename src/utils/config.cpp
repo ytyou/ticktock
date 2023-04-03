@@ -122,6 +122,10 @@ Config::set_value_no_lock(const std::string& name, const std::string& value)
     }
 }
 
+/* Those configs specified on command-line are considered "overrides".
+ * They take precedence over those specified in the config file, which
+ * in turn take precedence over defaults.
+ */
 void
 Config::add_override(const char *name, const char *value)
 {
@@ -132,6 +136,9 @@ Config::add_override(const char *name, const char *value)
         search->second->set_value(value);
 }
 
+/* Return true if the given config is specified either on the command line,
+ * or in the config file.
+ */
 bool
 Config::exists(const std::string& name)
 {
@@ -361,6 +368,9 @@ Config::get_tcp_responders_per_listener(int which)
     return get_count_internal(CFG_TCP_RESPONDERS_PER_LISTENER, CFG_TCP_RESPONDERS_PER_LISTENER_DEF, which);
 }
 
+/* Return all the configs that are different than their default values.
+ * in a human readable, null-terminated string format.
+ */
 const char *
 Config::c_str(char *buff, size_t size)
 {
@@ -390,10 +400,7 @@ Config::c_str(char *buff, size_t size)
         }
     }
 
-    if (idx == 2)
-        std::snprintf(&buff[idx-1], size-idx+1, "}");
-    else
-        std::snprintf(&buff[idx-2], size-idx+2, "\n}");
+    std::snprintf(&buff[idx], size-idx, "}");
     return buff;
 }
 
