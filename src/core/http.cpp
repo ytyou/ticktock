@@ -587,19 +587,6 @@ HttpServer::parse_header(char *buff, int len, HttpRequest& request)
     size_t buff_size = MemoryManager::get_network_buffer_size();
     char *curr1 = buff, *curr2, *curr3;
 
-    if ((std::strncmp(buff, "GET ", 4) != 0) &&
-        (std::strncmp(buff, "PUT ", 4) != 0) &&
-        (std::strncmp(buff, "POST ", 5) != 0))
-    {
-        // This is not a valid HTTP request.
-        //request.path = HTTP_API_PUT;
-        //request.method = HTTP_METHOD_POST;
-        //request.content = buff;
-        //request.length = len;
-        //request.complete = true;
-        return false;
-    }
-
     // parse 1st line
     for (curr2 = curr1; *curr2 != ' '; curr2++) /* do nothing */;
     *curr2 = 0;

@@ -33,7 +33,7 @@
 #include "part.h"
 #include "range.h"
 #include "recycle.h"
-#include "rw.h"
+#include "lock.h"
 #include "serial.h"
 #include "sync.h"
 #include "type.h"
@@ -96,6 +96,7 @@ public:
     { return TT_TYPE_MEASUREMENT == type; }
 
     std::mutex m_lock;
+    //pthread_rwlock_t m_lock;
     //default_contention_free_shared_mutex m_lock;
 
 private:
@@ -136,7 +137,8 @@ private:
     int get_dp_count();
     int get_ts_count();
 
-    std::mutex m_lock;
+    //std::mutex m_lock;
+    pthread_rwlock_t m_lock;
     //default_contention_free_shared_mutex m_lock;
 
     // Keys of the m_map are of the following format:
@@ -290,7 +292,8 @@ private:
     static std::string get_data_file_name(const TimeRange& range, FileIndex id, const char *suffix = nullptr);
 
     //static std::mutex m_tsdb_lock;
-    static default_contention_free_shared_mutex m_tsdb_lock;
+    //static default_contention_free_shared_mutex m_tsdb_lock;
+    static pthread_rwlock_t m_tsdb_lock;
     static std::vector<Tsdb*> m_tsdbs;  // ordered by m_start_tstamp
 
     // This time range will use the time unit specified in the config.

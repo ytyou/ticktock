@@ -24,7 +24,6 @@
 #include "leak.h"
 #include "logger.h"
 #include "memmgr.h"
-#include "rw.h"
 #include "tag.h"
 
 
@@ -33,7 +32,8 @@ namespace tt
 
 
 TagId Tag_v2::m_next_id = TT_FIELD_TAG_ID+1;
-default_contention_free_shared_mutex Tag_v2::m_lock;
+//default_contention_free_shared_mutex Tag_v2::m_lock;
+pthread_rwlock_t Tag_v2::m_lock;
 std::unordered_map<const char*,TagId,hash_func,eq_func> Tag_v2::m_map =
     {{TT_FIELD_TAG_NAME, TT_FIELD_TAG_ID}};
 const char **Tag_v2::m_names = nullptr;
@@ -251,17 +251,25 @@ Tag_v2::~Tag_v2()
         std::free(m_tags);
 }
 
+void
+Tag_v2::init()
+{
+    pthread_rwlockattr_t attr;
+    pthread_rwlockattr_setkind_np(&attr, PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP);
+    pthread_rwlock_init(&m_lock, &attr);
+}
+
 TagId
 Tag_v2::get_or_set_id(const char *name)
 {
     {
-        ReadLock guard(m_lock);
+        PThread_ReadLock guard(&m_lock);
         auto search = m_map.find(name);
         if (search != m_map.end())
             return search->second;
     }
 
-    WriteLock guard(m_lock);
+    PThread_WriteLock guard(&m_lock);
 
     auto search = m_map.find(name);
     if (search != m_map.end())
@@ -274,7 +282,7 @@ Tag_v2::get_or_set_id(const char *name)
 const char *
 Tag_v2::get_name(TagId id)
 {
-    ReadLock guard(m_lock);
+    PThread_ReadLock guard(&m_lock);
 
     if (UNLIKELY(m_names_capacity <= id))
         return nullptr;
@@ -304,7 +312,7 @@ Tag_v2::set_name(TagId id, const char *name)
 TagId
 Tag_v2::get_id(const char *name)
 {
-    ReadLock guard(m_lock);
+    PThread_ReadLock guard(&m_lock);
     auto search = m_map.find(name);
     if (search != m_map.end())
         return search->second;

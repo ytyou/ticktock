@@ -24,7 +24,7 @@
 #include <set>
 #include <unordered_map>
 #include "kv.h"
-#include "rw.h"
+#include "lock.h"
 #include "strbuf.h"
 #include "type.h"
 #include "utils.h"
@@ -125,6 +125,11 @@ protected:
 };
 
 
+/* Tag names and values are stored in a hash table, and their
+ * corresponding IDs (integers) are stored here. This is to
+ * avoid storing the same name/value, in string format, over
+ * and over, in order to save space (and speed up search).
+ */
 class __attribute__ ((__packed__)) Tag_v2
 {
 public:
@@ -147,6 +152,7 @@ public:
 
     inline TagCount get_count() const { return m_count; }
 
+    static void init();
     static TagId get_id(const char *name);
     static TagId get_or_set_id(const char *name);
 
@@ -161,7 +167,8 @@ private:
     TagCount m_count;
 
     static TagId m_next_id;
-    static default_contention_free_shared_mutex m_lock;
+    //static default_contention_free_shared_mutex m_lock;
+    static pthread_rwlock_t m_lock;
     static std::unordered_map<const char*,TagId,hash_func,eq_func> m_map;
     static const char **m_names;    // indexed by id
     static uint32_t m_names_capacity;

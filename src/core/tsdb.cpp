@@ -49,7 +49,8 @@ namespace tt
 #define DONE_SUFFIX     ".done"
 #define TEMP_SUFFIX     ".temp"
 
-default_contention_free_shared_mutex Tsdb::m_tsdb_lock;
+//default_contention_free_shared_mutex Tsdb::m_tsdb_lock;
+pthread_rwlock_t Tsdb::m_tsdb_lock;
 std::vector<Tsdb*> Tsdb::m_tsdbs;
 static uint64_t tsdb_rotation_freq = 0;
 
@@ -270,6 +271,10 @@ Mapping::Mapping(const char *name) :
     m_metric = STRDUP(name);
     ASSERT(m_metric != nullptr);
     ASSERT(m_ts_head.load() == nullptr);
+
+    pthread_rwlockattr_t attr;
+    pthread_rwlockattr_setkind_np(&attr, PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP);
+    pthread_rwlock_init(&m_lock, &attr);
 }
 
 Mapping::~Mapping()
@@ -279,6 +284,8 @@ Mapping::~Mapping()
         FREE(m_metric);
         m_metric = nullptr;
     }
+
+    pthread_rwlock_destroy(&m_lock);
 }
 
 void
@@ -306,11 +313,11 @@ Mapping::get_ts(DataPoint& dp)
     BaseType *bt = nullptr;
     TimeSeries *ts = nullptr;
     char *raw_tags = dp.get_raw_tags();
-    std::lock_guard<std::mutex> guard(m_lock);
+    //std::lock_guard<std::mutex> guard(m_lock);
 
     if (raw_tags != nullptr)
     {
-        //ReadLock guard(m_lock);
+        PThread_ReadLock guard(&m_lock);
         auto result = m_map.find(raw_tags);
         if (result != m_map.end())
             bt = result->second;
@@ -329,7 +336,7 @@ Mapping::get_ts(DataPoint& dp)
         char buff[MAX_TOTAL_TAG_LENGTH];
         dp.get_ordered_tags(buff, MAX_TOTAL_TAG_LENGTH);
 
-        //WriteLock guard(m_lock);
+        PThread_WriteLock guard(&m_lock);
 
         {
             auto result = m_map.find(buff);
@@ -369,10 +376,10 @@ Mapping::get_measurement(char *raw_tags, TagOwner& owner, const char *measuremen
     ASSERT(raw_tags != nullptr);
     BaseType *bt = nullptr;
     TimeSeries *ts = nullptr;
-    std::lock_guard<std::mutex> guard(m_lock);
+    //std::lock_guard<std::mutex> guard(m_lock);
 
     {
-        //ReadLock guard(m_lock);
+        PThread_ReadLock guard(&m_lock);
         auto result = m_map.find(raw_tags);
         if (result != m_map.end())
             bt = result->second;
@@ -405,7 +412,7 @@ Mapping::get_measurement(char *raw_tags, TagOwner& owner, const char *measuremen
             owner.get_ordered_tags(ordered, MAX_TOTAL_TAG_LENGTH);
         }
 
-        //WriteLock guard(m_lock);
+        PThread_WriteLock guard(&m_lock);
 
         {
             auto result = m_map.find(ordered);
@@ -548,8 +555,8 @@ Mapping::query_for_ts(Tag *tags, std::unordered_set<TimeSeries*>& tsv, const cha
 
     if ((key != nullptr) && (tag_count == m_tag_count))
     {
-        //ReadLock guard(m_lock);
-        std::lock_guard<std::mutex> guard(m_lock);
+        PThread_ReadLock guard(&m_lock);
+        //std::lock_guard<std::mutex> guard(m_lock);
         auto result = m_map.find(key);
         if (result != m_map.end())
         {
@@ -661,8 +668,8 @@ Mapping::set_tag_count(int tag_count)
 int
 Mapping::get_ts_count()
 {
-    //ReadLock guard(m_lock);
-    std::lock_guard<std::mutex> guard(m_lock);
+    PThread_ReadLock guard(&m_lock);
+    //std::lock_guard<std::mutex> guard(m_lock);
     return m_map.size();
 }
 
@@ -1156,7 +1163,7 @@ Tsdb::shutdown()
         g_metric_map.clear();
     }
 
-    WriteLock guard(m_tsdb_lock);
+    PThread_WriteLock guard(&m_tsdb_lock);
 
     for (Tsdb *tsdb: m_tsdbs)
     {
@@ -1436,13 +1443,13 @@ Tsdb::inst(Timestamp tstamp, bool create)
     Tsdb *tsdb = nullptr;
 
     {
-        ReadLock guard(m_tsdb_lock);
+        PThread_ReadLock guard(&m_tsdb_lock);
         tsdb = Tsdb::search(tstamp);
     }
 
     if ((tsdb == nullptr) && create)
     {
-        WriteLock guard(m_tsdb_lock);
+        PThread_WriteLock guard(&m_tsdb_lock);
         tsdb = Tsdb::search(tstamp);  // search again to avoid race condition
         if (tsdb == nullptr)
         {
@@ -1463,7 +1470,7 @@ Tsdb::inst(Timestamp tstamp, bool create)
 void
 Tsdb::insts(const TimeRange& range, std::vector<Tsdb*>& tsdbs)
 {
-    ReadLock guard(m_tsdb_lock);
+    PThread_ReadLock guard(&m_tsdb_lock);
     int i, size = m_tsdbs.size();
     if (size == 0) return;
 
@@ -1944,6 +1951,10 @@ Tsdb::init()
     std::string data_dir = Config::get_data_dir();
     Logger::info("Loading data from %s", data_dir.c_str());
 
+    pthread_rwlockattr_t attr;
+    pthread_rwlockattr_setkind_np(&attr, PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP);
+    pthread_rwlock_init(&m_tsdb_lock, &attr);
+
     CheckPointManager::init();
     PartitionManager::init();
     TimeSeries::init();
@@ -2151,7 +2162,7 @@ int
 Tsdb::get_active_tsdb_count()
 {
     int total = 0;
-    ReadLock guard(m_tsdb_lock);
+    PThread_ReadLock guard(&m_tsdb_lock);
     for (Tsdb *tsdb: m_tsdbs)
     {
         if (tsdb->m_index_file.is_open(true))
@@ -2163,7 +2174,7 @@ Tsdb::get_active_tsdb_count()
 int
 Tsdb::get_total_tsdb_count()
 {
-    ReadLock guard(m_tsdb_lock);
+    PThread_ReadLock guard(&m_tsdb_lock);
     return (int)m_tsdbs.size();
 }
 
@@ -2171,7 +2182,7 @@ int
 Tsdb::get_open_data_file_count(bool for_read)
 {
     int total = 0;
-    ReadLock guard(m_tsdb_lock);
+    PThread_ReadLock guard(&m_tsdb_lock);
     for (Tsdb *tsdb: m_tsdbs)
     {
         for (auto df: tsdb->m_data_files)
@@ -2187,7 +2198,7 @@ int
 Tsdb::get_open_header_file_count(bool for_read)
 {
     int total = 0;
-    ReadLock guard(m_tsdb_lock);
+    PThread_ReadLock guard(&m_tsdb_lock);
     for (Tsdb *tsdb: m_tsdbs)
     {
         for (auto hf: tsdb->m_header_files)
@@ -2203,7 +2214,7 @@ int
 Tsdb::get_open_index_file_count(bool for_read)
 {
     int total = 0;
-    ReadLock guard(m_tsdb_lock);
+    PThread_ReadLock guard(&m_tsdb_lock);
     for (Tsdb *tsdb: m_tsdbs)
     {
         if (tsdb->m_index_file.is_open(for_read))
@@ -2416,7 +2427,7 @@ Tsdb::archive_ts(TaskData& data)
 bool
 Tsdb::validate(Tsdb *tsdb)
 {
-    ReadLock guard(m_tsdb_lock);
+    PThread_ReadLock guard(&m_tsdb_lock);
 
     for (Tsdb *t: m_tsdbs)
     {
@@ -2432,7 +2443,7 @@ Tsdb::purge_oldest(int threshold)
     Tsdb *tsdb = nullptr;
 
     {
-        WriteLock guard(m_tsdb_lock);
+        PThread_WriteLock guard(&m_tsdb_lock);
 
         if (m_tsdbs.size() <= threshold) return;
 
@@ -2498,7 +2509,7 @@ Tsdb::compact(TaskData& data)
     // Go through all the Tsdbs, from the oldest to the newest,
     // to find the first uncompacted Tsdb to compact.
     {
-        ReadLock guard(m_tsdb_lock);
+        PThread_ReadLock guard(&m_tsdb_lock);
 
         for (auto it = m_tsdbs.begin(); it != m_tsdbs.end(); it++)
         {

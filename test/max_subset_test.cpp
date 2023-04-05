@@ -22,6 +22,7 @@
 #include <cassert>
 #include <cstring>
 #include <algorithm>
+#include <iostream>
 #include "utils.h"
 #include "max_subset_test.h"
 
