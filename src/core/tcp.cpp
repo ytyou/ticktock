@@ -202,6 +202,8 @@ TcpServer::listen(int port, int listener_count)
     {
         close(fd);
         Logger::error("Failed to bind to any network interfaces, errno=%d", errno);
+        if ((EADDRINUSE == errno) && ! g_opt_reuse_port)
+            Logger::error("Please consider running TickTockDB with -r command-line option.");
         return -1;
     }
 
