@@ -132,6 +132,7 @@ Measurement::add_ts(const char *field, Mapping *mapping)
     TagCount tag_cnt = ts0->get_tag_count();
     TagId ids[tag_cnt];
     TagBuilder builder(tag_cnt, ids);
+    builder.init(ts0->get_v2_tags());
     builder.update_last(TT_FIELD_TAG_ID, field);
     TimeSeries *ts = new TimeSeries(builder);
     mapping->add_ts(ts);

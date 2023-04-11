@@ -146,6 +146,7 @@ public:
 
     Tag *get_v1_tags() const;
     Tag *get_cloned_v1_tags(StringBuffer& strbuf) const;
+    TagCount clone(TagId *tags, TagCount capacity);
 
     void get_keys(std::set<std::string>& keys) const;
     void get_values(std::set<std::string>& values) const;
@@ -180,6 +181,7 @@ class TagBuilder
 public:
     TagBuilder(TagCount capacity, TagId *tags);
     void init(Tag *tags);
+    void init(Tag_v2& tags);
     void update_last(TagId kid, const char *value);
 
     inline TagCount get_count() const { return m_count; }

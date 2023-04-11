@@ -431,6 +431,8 @@ Tag_v2::get_v1_tags() const
             MemoryManager::alloc_recyclable(RecyclableType::RT_KEY_VALUE_PAIR);
         tag->m_key = get_name(m_tags[i-1]);
         tag->m_value = get_name(m_tags[i]);
+        ASSERT(tag->m_key != nullptr);
+        ASSERT(tag->m_value != nullptr);
         tag->next() = head;
         head = tag;
     }
@@ -454,6 +456,15 @@ Tag_v2::get_cloned_v1_tags(StringBuffer& strbuf) const
     }
 
     return head;
+}
+
+TagCount
+Tag_v2::clone(TagId *tags, TagCount capacity)
+{
+    ASSERT(tags != nullptr);
+    ASSERT(m_count <= capacity);
+    std::memcpy(tags, m_tags, 2*m_count*sizeof(TagId));
+    return m_count;
 }
 
 void
@@ -497,6 +508,12 @@ TagBuilder::init(Tag *tags)
         m_count = i / 2;
         ASSERT(i == (2 * (m_capacity - 1)));
     }
+}
+
+void
+TagBuilder::init(Tag_v2& tags)
+{
+    m_count = tags.clone(m_tags, m_capacity);
 }
 
 void
