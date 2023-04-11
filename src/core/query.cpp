@@ -1120,13 +1120,13 @@ QueryResults::add_query_task(QueryTask *qt, StringBuffer& strbuf)
         else if (ends_with(match->m_value, '*') || ((std::strchr(match->m_value, '|') != nullptr)))
         {
             // move it from tags to aggregate_tags
-            remove_tag(match->m_key);
+            remove_tag(match->m_key, true); // free the tag just removed, instead of return it
             add_tag(strbuf.strdup(tag->m_key), strbuf.strdup(tag->m_value));
         }
         else if (std::strcmp(match->m_value, tag->m_value) != 0)
         {
             // move it from tags to aggregate_tags
-            remove_tag(match->m_key);
+            remove_tag(match->m_key, true); // free the tag just removed, instead of return it
             add_aggregate_tag(strbuf.strdup(tag->m_key));
             //m_aggregate_tags.push_back(tag->m_key);
         }

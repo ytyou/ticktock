@@ -103,7 +103,8 @@ public:
         KeyValuePair::insert_in_order(&m_tags, name, value);
     }
 
-    void remove_tag(const char *key);
+    void remove_tag(Tag *tag);
+    Tag *remove_tag(const char *key, bool free);
 
     inline void remove_all_tags()
     {

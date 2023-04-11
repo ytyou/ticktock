@@ -334,6 +334,17 @@ Mapping::get_ts(DataPoint& dp)
             //dp.set_raw_tags(raw_tags);
         }
 
+        Tag *field = dp.remove_tag(TT_FIELD_TAG_NAME, false);
+
+        if (field != nullptr)
+        {
+            // The reserved tag name "_field" was found;
+            // switch to Measurement...
+            ts = get_ts_in_measurement(dp, field);
+            dp.remove_tag(field);
+            return ts;
+        }
+
         char buff[MAX_TOTAL_TAG_LENGTH];
         dp.get_ordered_tags(buff, MAX_TOTAL_TAG_LENGTH);
 
@@ -367,6 +378,30 @@ Mapping::get_ts(DataPoint& dp)
         ts = (dynamic_cast<Measurement*>(bt))->get_ts(true, this);
     else
         ts = dynamic_cast<TimeSeries*>(bt);
+
+    return ts;
+}
+
+TimeSeries *
+Mapping::get_ts_in_measurement(DataPoint& dp, Tag *field)
+{
+    ASSERT(field != nullptr);
+
+    TimeSeries *ts = nullptr;
+    std::vector<DataPoint> dps;
+
+    dps.emplace_back(dp.get_timestamp(), dp.get_value());
+    dps.back().set_raw_tags((char*)field->m_value);
+    char buff[MAX_TOTAL_TAG_LENGTH];
+    dp.get_ordered_tags(buff, MAX_TOTAL_TAG_LENGTH);
+    Measurement *mm = get_measurement(buff, dp, dp.get_metric(), dps);
+    ASSERT(mm != nullptr);
+
+    if (mm != nullptr)
+        ts = mm->get_ts(0, field->m_value);
+
+    if (ts == nullptr)
+        ts = mm->add_ts(field->m_value, this);
 
     return ts;
 }
@@ -440,8 +475,9 @@ Mapping::get_measurement(char *raw_tags, TagOwner& owner, const char *measuremen
         if (std::strcmp(raw_tags, ordered) != 0)
             m_map[STRDUP(raw_tags)] = bt;
 
-        if ((ts != nullptr) && (mm != nullptr))
-            mm->add_ts(0, ts);
+        // This is a different time series!?
+        //if ((ts != nullptr) && (mm != nullptr))
+            //mm->add_ts(0, ts);
     }
 
     ASSERT(bt->is_type(TT_TYPE_MEASUREMENT));

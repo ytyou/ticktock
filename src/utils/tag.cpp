@@ -107,11 +107,22 @@ TagOwner::parse(char *tags)
 }
 
 void
-TagOwner::remove_tag(const char *key)
+TagOwner::remove_tag(Tag *tag)
+{
+    Tag::free_list(tag, m_own_mem);
+}
+
+Tag *
+TagOwner::remove_tag(const char *key, bool free)
 {
     ASSERT(key != nullptr);
     Tag *removed = KeyValuePair::remove_first(&m_tags, key);
-    Tag::free_list(removed, m_own_mem);
+    if (free && (removed != nullptr))
+    {
+        Tag::free_list(removed, m_own_mem);
+        removed = nullptr;
+    }
+    return removed;
 }
 
 Tag *

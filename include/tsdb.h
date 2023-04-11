@@ -126,6 +126,7 @@ private:
     bool add_data_point(DataPoint& dp, bool forward);
     bool add_data_points(const char *measurement, char *tags, Timestamp ts, std::vector<DataPoint>& dps);
     TimeSeries *get_ts(DataPoint& dp);
+    TimeSeries *get_ts_in_measurement(DataPoint& dp, Tag *field);
     Measurement *get_measurement(char *raw_tags, TagOwner& owner, const char *measurement, std::vector<DataPoint>& dps);
     void init_measurement(Measurement *mm, const char *measurement, char *tags, TagOwner& owner, std::vector<DataPoint>& dps);
     void query_for_ts(Tag *tags, std::unordered_set<TimeSeries*>& tsv, const char *key);
