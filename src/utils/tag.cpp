@@ -31,11 +31,11 @@ namespace tt
 {
 
 
-TagId Tag_v2::m_next_id = TT_FIELD_TAG_ID+1;
+TagId Tag_v2::m_next_id = TT_FIELD_VALUE_ID+1;
 //default_contention_free_shared_mutex Tag_v2::m_lock;
 pthread_rwlock_t Tag_v2::m_lock;
 std::unordered_map<const char*,TagId,hash_func,eq_func> Tag_v2::m_map =
-    {{TT_FIELD_TAG_NAME, TT_FIELD_TAG_ID}};
+    {{TT_FIELD_TAG_NAME, TT_FIELD_TAG_ID},{TT_FIELD_VALUE,TT_FIELD_VALUE_ID}};
 const char **Tag_v2::m_names = nullptr;
 uint32_t Tag_v2::m_names_capacity = 0;
 
@@ -126,11 +126,11 @@ TagOwner::remove_tag(const char *key, bool free)
 }
 
 Tag *
-TagOwner::find_by_key(const char *key)
+TagOwner::find_by_key(Tag *tags, const char *key)
 {
     ASSERT(key != nullptr);
-    if (m_tags == nullptr) return nullptr;
-    return KeyValuePair::get_key_value_pair(m_tags, key);
+    if (tags == nullptr) return nullptr;
+    return KeyValuePair::get_key_value_pair(tags, key);
 }
 
 char *
@@ -144,6 +144,8 @@ TagOwner::get_ordered_tags(char *buff, size_t size) const
     for (Tag *tag = m_tags; tag != nullptr; tag = tag->next())
     {
         //if (strcmp(tag->m_key, METRIC_TAG_NAME) == 0) continue;
+        if ((tag->m_key[0] == '_') && (strcmp(tag->m_key, TT_FIELD_TAG_NAME) == 0))
+            continue;
         ASSERT(strcmp(tag->m_key, METRIC_TAG_NAME) != 0);
         n = std::snprintf(curr, size, "%s=%s,", tag->m_key, tag->m_value);
         if (size <= n) break;
@@ -189,12 +191,23 @@ TagOwner::get_values(std::set<std::string>& values) const
 }
 
 int
-TagOwner::get_tag_count(Tag *tags)
+TagOwner::get_tag_count(Tag *tags, bool excludeField)
 {
     int count = 0;
 
-    for (Tag *tag = tags; tag != nullptr; tag = tag->next(), count++)
-        /* do nothing */;
+    if (excludeField)
+    {
+        for (Tag *tag = tags; tag != nullptr; tag = tag->next())
+        {
+            if ((tag->m_key[0] != '_') || (std::strcmp(tag->m_key, TT_FIELD_TAG_NAME) != 0))
+                count++;
+        }
+    }
+    else
+    {
+        for (Tag *tag = tags; tag != nullptr; tag = tag->next(), count++)
+            /* do nothing */;
+    }
 
     return count;
 }
@@ -209,8 +222,8 @@ Tag_v2::Tag_v2(Tag *tags)
     }
     else
     {
-        ASSERT(TagOwner::get_tag_count(tags) <= UINT16_MAX);
-        m_count = (TagCount)TagOwner::get_tag_count(tags);
+        ASSERT(TagOwner::get_tag_count(tags, false) <= UINT16_MAX);
+        m_count = (TagCount)TagOwner::get_tag_count(tags, false);
         if (m_count > 0)
         {
             m_tags = (TagId*) calloc(2 * m_count, sizeof(TagId));
@@ -270,6 +283,21 @@ Tag_v2::init()
     pthread_rwlock_init(&m_lock, &attr);
 }
 
+void
+Tag_v2::append(TagId key_id, TagId value_id)
+{
+    TagId *tags = (TagId*) calloc(2 * (m_count+2), sizeof(TagId));
+    if (m_tags != nullptr)
+    {
+        std::memcpy(tags, m_tags, 2*m_count*sizeof(TagId));
+        std::free(m_tags);
+    }
+    tags[2*m_count] = key_id;
+    tags[2*m_count+1] = value_id;
+    m_tags = tags;
+    m_count++;
+}
+
 TagId
 Tag_v2::get_or_set_id(const char *name)
 {
@@ -312,7 +340,11 @@ Tag_v2::set_name(TagId id, const char *name)
         std::memset(&tmp[m_names_capacity], 0, (new_capacity-m_names_capacity) * sizeof(const char *));
         if (m_names != nullptr) std::free(m_names);
         m_names = tmp;
-        if (m_names_capacity == 0) m_names[0] = TT_FIELD_TAG_NAME;
+        if (m_names_capacity == 0)
+        {
+            m_names[0] = TT_FIELD_TAG_NAME;
+            m_names[1] = TT_FIELD_VALUE;
+        }
         m_names_capacity = new_capacity;
     }
 

@@ -85,9 +85,11 @@ public:
     void add_ts(int idx, TimeSeries *ts);
     TimeSeries *get_ts(bool add, Mapping *mapping);
     TimeSeries *add_ts(const char *field, Mapping *mapping);
+    void append_ts(TimeSeries *ts);
     bool add_data_points(std::vector<DataPoint>& dps, Timestamp ts, Mapping *mapping);
     TimeSeries *get_ts(int idx, const char *field);
     bool get_ts(std::vector<DataPoint>& dps, std::vector<TimeSeries*>& tsv);
+    void get_all_ts(std::vector<TimeSeries*>& tsv);
     inline uint32_t get_ts_count() const { return m_ts_count; }
     inline void set_ts_count(uint32_t ts_count);
     inline bool is_initialized() const { return m_time_series != nullptr; }

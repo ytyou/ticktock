@@ -140,6 +140,12 @@ Measurement::add_ts(const char *field, Mapping *mapping)
     return ts;
 }
 
+void
+Measurement::append_ts(TimeSeries *ts)
+{
+    add_ts((int)m_ts_count, ts);
+}
+
 TimeSeries *
 Measurement::get_ts(int idx, const char *field)
 {
@@ -219,6 +225,14 @@ Measurement::get_ts(std::vector<DataPoint>& dps, std::vector<TimeSeries*>& tsv)
     }
 
     return true;
+}
+
+void
+Measurement::get_all_ts(std::vector<TimeSeries*>& tsv)
+{
+    tsv.reserve(m_ts_count);
+    for (int i = 0; i < m_ts_count; i++)
+        tsv.push_back((TimeSeries*)m_time_series[i]);
 }
 
 bool
@@ -362,7 +376,7 @@ Mapping::get_ts(DataPoint& dp)
             bt = dynamic_cast<BaseType*>(ts);
             m_map[STRDUP(buff)] = bt;
             add_ts(ts);
-            set_tag_count(dp.get_tag_count());
+            set_tag_count(dp.get_tag_count(true));
         }
 
         if (raw_tags != nullptr)
@@ -443,8 +457,11 @@ Mapping::get_measurement(char *raw_tags, TagOwner& owner, const char *measuremen
         else
         {
             // parse raw tags...
-            if (! owner.parse(&original[1]))
-                return nullptr;
+            if (owner.get_tags() == nullptr)
+            {
+                if (! owner.parse(&original[1]))
+                    return nullptr;
+            }
             owner.get_ordered_tags(ordered, MAX_TOTAL_TAG_LENGTH);
         }
 
@@ -476,8 +493,12 @@ Mapping::get_measurement(char *raw_tags, TagOwner& owner, const char *measuremen
             m_map[STRDUP(raw_tags)] = bt;
 
         // This is a different time series!?
-        //if ((ts != nullptr) && (mm != nullptr))
-            //mm->add_ts(0, ts);
+        if ((ts != nullptr) && (mm != nullptr))
+        {
+            Tag_v2& tags = ts->get_v2_tags();
+            tags.append(TT_FIELD_TAG_ID, TT_FIELD_VALUE_ID);
+            mm->append_ts(ts);
+        }
     }
 
     ASSERT(bt->is_type(TT_TYPE_MEASUREMENT));
@@ -561,11 +582,11 @@ Mapping::init_measurement(Measurement *mm, const char *measurement, char *tags, 
 {
     if (dps.empty()) return;
 
-    TagCount count = owner.get_tag_count() + 1;
+    TagCount count = owner.get_tag_count(true) + 1;
     TagId ids[2 * count];
     TagBuilder builder(count, ids);
 
-    set_tag_count(count);
+    set_tag_count(count-1);
     builder.init(owner.get_tags());
     mm->set_ts_count(dps.size());
 
@@ -588,7 +609,7 @@ Mapping::init_measurement(Measurement *mm, const char *measurement, char *tags, 
 void
 Mapping::query_for_ts(Tag *tags, std::unordered_set<TimeSeries*>& tsv, const char *key)
 {
-    int tag_count = TagOwner::get_tag_count(tags);
+    int tag_count = TagOwner::get_tag_count(tags, true);
 
     if ((key != nullptr) && (tag_count == m_tag_count))
     {
@@ -601,10 +622,24 @@ Mapping::query_for_ts(Tag *tags, std::unordered_set<TimeSeries*>& tsv, const cha
             BaseType *bt = result->second;
 
             if (bt->is_type(TT_TYPE_MEASUREMENT))
-                ts = (dynamic_cast<Measurement*>(bt))->get_ts(false, this);
+            {
+                Measurement *mm = dynamic_cast<Measurement*>(bt);
+                Tag *tag = TagOwner::find_by_key(tags, TT_FIELD_TAG_NAME);
+
+                if (tag != nullptr)
+                    ts = mm->get_ts(0, tag->m_value);
+                else
+                {
+                    std::vector<TimeSeries*> all;
+                    mm->get_all_ts(all);
+                    for (auto t : all) tsv.insert(t);
+                }
+            }
             else
                 ts = dynamic_cast<TimeSeries*>(bt);
-            tsv.insert(ts);
+
+            if (ts != nullptr)
+                tsv.insert(ts);
         }
     }
 
@@ -675,7 +710,7 @@ Mapping::restore_measurement(std::string& measurement, std::string& tags, std::v
     std::vector<DataPoint> dps;
 
     Measurement *mm = get_measurement(buff, owner, measurement.c_str(), dps);
-    TagCount count = owner.get_tag_count() + 1;
+    TagCount count = owner.get_tag_count(true) + 1;
     TagId ids[2 * count];
     TagBuilder builder(count, ids);
 
@@ -1072,6 +1107,8 @@ Tsdb::restore_measurement(std::string& measurement, std::string& tags, std::vect
         Logger::warn("restore failed for: %s,%s", measurement.c_str(), tags.c_str());
 }
 
+/* The 'key' should not include the special '_field' tag.
+ */
 void
 Tsdb::query_for_ts(const char *metric, Tag *tags, std::unordered_set<TimeSeries*>& ts, const char *key)
 {

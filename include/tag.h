@@ -36,6 +36,7 @@ namespace tt
 
 // TT_FIELD_VALUE is used when there's NO field
 #define TT_FIELD_TAG_ID     0
+#define TT_FIELD_VALUE_ID   1
 #define TT_FIELD_TAG_NAME   "_field"
 #define TT_FIELD_VALUE      "_"
 
@@ -56,7 +57,8 @@ public:
 
     bool parse(char *tags);
 
-    Tag *find_by_key(const char *key);
+    inline Tag *find_by_key(const char *key) { return find_by_key(m_tags, key); }
+    static Tag *find_by_key(Tag *tags, const char *key);
 
     inline const char* get_tag_value(const char *tag_name) const
     {
@@ -117,8 +119,9 @@ public:
         m_tags = tags;
     }
 
-    inline int get_tag_count() const { return get_tag_count(m_tags); }
-    static int get_tag_count(Tag *tags);
+    inline int get_tag_count(bool excludeField) const
+    { return get_tag_count(m_tags, excludeField); }
+    static int get_tag_count(Tag *tags, bool excludeField);
 
 protected:
     bool m_own_mem; // should we free m_key and m_value?
@@ -138,6 +141,8 @@ public:
     Tag_v2(Tag_v2& tags);   // copy constructor
     Tag_v2(TagBuilder& builder);
     ~Tag_v2();
+
+    void append(TagId key_id, TagId value_id);
 
     bool match(TagId key_id);
     bool match(TagId key_id, const char *value);
