@@ -284,7 +284,7 @@ public:
     //void get_level1_listeners(std::vector<TcpListener*>& listeners) const;
 
     size_t get_active_conn_count() const;
-    size_t get_pending_task_count(std::vector<std::vector<size_t>> &counts) const;
+    size_t get_pending_task_count(std::vector<std::vector<size_t>> (&counts)[LISTENER0_COUNT]) const;
     //int get_total_task_count(size_t counts[], int size) const;
 
     virtual inline const char *get_name() const { return "tcp"; }
