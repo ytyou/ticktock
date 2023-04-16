@@ -59,10 +59,5 @@ extern std::atomic<bool> g_shutdown_requested;
 extern std::atomic<std::thread::id> g_handler_thread_id;
 extern std::string g_working_dir;
 
-#ifdef _DEBUG
-extern std::atomic<std::uint64_t> g_total_dps_count;
-extern std::atomic<std::uint64_t> g_total_page_count;
-#endif
-
 
 }

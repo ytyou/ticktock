@@ -221,14 +221,6 @@ PageInMemory::flush(TimeSeriesId id, bool compact)
     m_page_header.m_next_file = TT_INVALID_FILE_INDEX;
     m_page_header.m_next_header = TT_INVALID_HEADER_INDEX;
 
-#ifdef _DEBUG
-    if (! compact)
-    {
-        g_total_dps_count.fetch_add(m_compressor->get_dp_count(), std::memory_order_relaxed);
-        g_total_page_count++;
-    }
-#endif
-
     return m_tsdb->append_page(id, prev_file_idx, prev_header_idx, &m_page_header, m_page, compact);
 
     // re-initialize the compressor
