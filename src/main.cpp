@@ -134,6 +134,7 @@ process_cmdline_opts(int argc, char *argv[])
         { CFG_APPEND_LOG_ENABLED,                   required_argument,  0,  0 },
         { CFG_APPEND_LOG_FLUSH_FREQUENCY,           required_argument,  0,  0 },
         { CFG_HTTP_LISTENER_COUNT,                  required_argument,  0,  0 },
+        { CFG_HTTP_REQUEST_FORMAT,                  required_argument,  0,  0 },
         { CFG_HTTP_RESPONDERS_PER_LISTENER,         required_argument,  0,  0 },
         { CFG_HTTP_SERVER_PORT,                     required_argument,  0,  0 },
         { CFG_LOG_FILE,                             required_argument,  0,  0 },
@@ -337,6 +338,7 @@ initialize()
     Logger::info("GNU libc compile-time version: %u.%u", __GLIBC__, __GLIBC_MINOR__);
     Logger::info("GNU libc runtime version: %s", gnu_get_libc_version());
 #endif
+    Tag_v2::init();
     MemoryManager::init();
     Compressor_v3::initialize();
     Tsdb::init();

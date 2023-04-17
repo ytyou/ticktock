@@ -153,21 +153,28 @@ Stats::inject_metrics(TaskData& data)
         // ticktock.tcp.pending_task.count
         if (tcp_server_ptr != nullptr)
         {
-            std::vector<std::vector<size_t>> counts;
+            std::vector<std::vector<size_t>> counts[LISTENER0_COUNT];
             tcp_server_ptr->get_pending_task_count(counts);
 
-            for (int i = 0; i < counts.size(); i++)
+            for (int i = 0; i < LISTENER0_COUNT; i++)
             {
-                for (int j = 0; j < counts[i].size(); j++)
+                std::vector<std::vector<size_t>>& cnts = counts[i];
+
+                for (int j = 0; j < cnts.size(); j++)
                 {
-                    DataPoint dp(now, counts[i][j]);
-                    dp.set_metric("ticktock.tcp.pending_task.count");
-                    std::string listener = std::to_string(i);
-                    std::string responder = std::to_string(j);
-                    dp.add_tag("listener", listener.c_str());
-                    dp.add_tag("responder", responder.c_str());
-                    dp.add_tag(HOST_TAG_NAME, g_host_name.c_str());
-                    tsdb->add(dp);
+                    for (int k = 0; k < cnts[j].size(); k++)
+                    {
+                        DataPoint dp(now, cnts[j][k]);
+                        dp.set_metric("ticktock.tcp.pending_task.count");
+                        std::string port = std::to_string(i);
+                        std::string listener = std::to_string(j);
+                        std::string responder = std::to_string(k);
+                        dp.add_tag("port", port.c_str());
+                        dp.add_tag("listener", listener.c_str());
+                        dp.add_tag("responder", responder.c_str());
+                        dp.add_tag(HOST_TAG_NAME, g_host_name.c_str());
+                        tsdb->add(dp);
+                    }
                 }
             }
         }
@@ -175,21 +182,28 @@ Stats::inject_metrics(TaskData& data)
         // ticktock.http.pending_task.count
         if (http_server_ptr != nullptr)
         {
-            std::vector<std::vector<size_t>> counts;
+            std::vector<std::vector<size_t>> counts[LISTENER0_COUNT];
             http_server_ptr->get_pending_task_count(counts);
 
-            for (int i = 0; i < counts.size(); i++)
+            for (int i = 0; i < LISTENER0_COUNT; i++)
             {
-                for (int j = 0; j < counts[i].size(); j++)
+                std::vector<std::vector<size_t>>& cnts = counts[i];
+
+                for (int j = 0; j < cnts.size(); j++)
                 {
-                    DataPoint dp(now, counts[i][j]);
-                    dp.set_metric("ticktock.http.pending_task.count");
-                    std::string listener = std::to_string(i);
-                    std::string responder = std::to_string(j);
-                    dp.add_tag("listener", listener.c_str());
-                    dp.add_tag("responder", responder.c_str());
-                    dp.add_tag(HOST_TAG_NAME, g_host_name.c_str());
-                    tsdb->add(dp);
+                    for (int k = 0; k < cnts[j].size(); k++)
+                    {
+                        DataPoint dp(now, cnts[j][k]);
+                        dp.set_metric("ticktock.http.pending_task.count");
+                        std::string port = std::to_string(i);
+                        std::string listener = std::to_string(i);
+                        std::string responder = std::to_string(j);
+                        dp.add_tag("port", port.c_str());
+                        dp.add_tag("listener", listener.c_str());
+                        dp.add_tag("responder", responder.c_str());
+                        dp.add_tag(HOST_TAG_NAME, g_host_name.c_str());
+                        tsdb->add(dp);
+                    }
                 }
             }
         }
@@ -420,24 +434,27 @@ int
 Stats::collect_stats(char *buff, int size)
 {
     Timestamp now = ts_now_sec();
-    std::vector<std::vector<size_t>> counts;
+    std::vector<std::vector<size_t>> counts[LISTENER0_COUNT];
     int len = 0;
 
     if (tcp_server_ptr != nullptr)
     {
         tcp_server_ptr->get_pending_task_count(counts);
 
-        for (int i = 0; i < counts.size(); i++)
+        for (int i = 0; i < LISTENER0_COUNT; i++)
         {
             for (int j = 0; j < counts[i].size(); j++)
             {
-                size_t cnt = counts[i][j];
-                int l = snprintf(buff+len, size-len,
-                    "ticktock.tcp.pending_task.count %" PRIu64 " %d listener=%d responder=%d %s=%s\n",
-                    now, (int)cnt, i, j, HOST_TAG_NAME, g_host_name.c_str());
+                for (int k = 0; k < counts[i][j].size(); k++)
+                {
+                    size_t cnt = counts[i][j][k];
+                    int l = snprintf(buff+len, size-len,
+                        "ticktock.tcp.pending_task.count %" PRIu64 " %d port=%d listener=%d responder=%d %s=%s\n",
+                        now, (int)cnt, i, j, k, HOST_TAG_NAME, g_host_name.c_str());
 
-                if (size <= (len + l)) break;
-                len += l;
+                    if (size <= (len + l)) break;
+                    len += l;
+                }
             }
         }
     }
@@ -445,20 +462,25 @@ Stats::collect_stats(char *buff, int size)
     // HTTP server pending tasks
     if (http_server_ptr != nullptr)
     {
-        counts.clear();
+        for (int i = 0; i < LISTENER0_COUNT; i++)
+            counts[i].clear();
+
         http_server_ptr->get_pending_task_count(counts);
 
-        for (int i = 0; i < counts.size(); i++)
+        for (int i = 0; i < LISTENER0_COUNT; i++)
         {
             for (int j = 0; j < counts[i].size(); j++)
             {
-                size_t cnt = counts[i][j];
-                int l = snprintf(buff+len, size-len,
-                    "ticktock.http.pending_task.count %" PRIu64 " %d listener=%d responder=%d %s=%s\n",
-                    now, (int)cnt, i, j, HOST_TAG_NAME, g_host_name.c_str());
+                for (int k = 0; k < counts[i][j].size(); k++)
+                {
+                    size_t cnt = counts[i][j][k];
+                    int l = snprintf(buff+len, size-len,
+                        "ticktock.http.pending_task.count %" PRIu64 " %d port=%d listener=%d responder=%d %s=%s\n",
+                        now, (int)cnt, i, j, k, HOST_TAG_NAME, g_host_name.c_str());
 
-                if (size <= (len + l)) break;
-                len += l;
+                    if (size <= (len + l)) break;
+                    len += l;
+                }
             }
         }
     }

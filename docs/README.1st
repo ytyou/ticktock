@@ -1,0 +1,42 @@
+1. Runtime Requirements
+
+   o You need glibc 2.28 or up. You can use the 'scripts/glibc-version.sh'
+     to find out which version of glibc you currently have.
+   o You should increase the max open files limit to at least 65535. You
+     can see your current limit with the command: ulimit -a; To increase
+     the limit, update the /etc/security/limits.conf, and then reboot.
+
+2. [Optional] Update conf/tt.conf
+
+3. Run TickTockDB
+
+   $ bin/tt -d -c conf/tt.conf --ticktock.home=<dir-to-hold-your-data>
+
+   This will start TickTockDB as a daemon. To stop it, use the script:
+
+   $ admin/stop.sh
+
+4. Sending data to TickTockDB
+
+   You can use one of the following agents:
+
+   o TCollector - Send data to port 6181, unless you changed it in tt.conf
+   o Telegraf - Send data to port 6180, unless you changed it in tt.conf
+   o collectd - Use the OpenTSDB plugin to send data to port 6181
+
+5. Quering TickTockDB
+
+   Use grafana. When setup data sources, select OpenTSDB as the type of
+   your data source, using port 6182, unless you changed it in tt.conf
+
+6. Detailed User Guide
+
+   You can find detailed user guide at the following URL.
+
+   https://github.com/ytyou/ticktock/wiki/User-Guide
+
+7. Source Code
+
+   You can find source code on GitHub, at
+
+   https://github.com/ytyou/ticktock

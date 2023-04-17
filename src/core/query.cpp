@@ -41,7 +41,13 @@ namespace tt
 {
 
 
+#ifdef TT_STATS
+#ifdef __x86_64__
 static std::atomic<uint64_t> s_dp_count {0};
+#else
+static std::atomic<unsigned long> s_dp_count {0};
+#endif
+#endif
 QueryExecutor *QueryExecutor::m_instance = nullptr;
 
 
@@ -609,7 +615,11 @@ Query::execute_in_parallel(std::vector<QueryResults*>& results, StringBuffer& st
 uint64_t
 Query::get_dp_count()
 {
-    return s_dp_count.load(std::memory_order_relaxed);
+    uint64_t cnt = 0;
+#ifdef TT_STATS
+    cnt = s_dp_count.load(std::memory_order_relaxed);
+#endif
+    return cnt;
 }
 
 const char *
@@ -732,7 +742,9 @@ QueryTask::query_with_ooo(std::vector<DataPointContainer*>& data)
         pq.emplace(container, 0);
     }
 
+#ifdef TT_STATS
     s_dp_count.fetch_add(dp_count, std::memory_order_relaxed);
+#endif
 
     while (! pq.empty())
     {
@@ -813,7 +825,9 @@ QueryTask::query_without_ooo(std::vector<DataPointContainer*>& data)
         }
     }
 
+#ifdef TT_STATS
     s_dp_count.fetch_add(dp_count, std::memory_order_relaxed);
+#endif
 }
 
 Tag *
@@ -1120,13 +1134,13 @@ QueryResults::add_query_task(QueryTask *qt, StringBuffer& strbuf)
         else if (ends_with(match->m_value, '*') || ((std::strchr(match->m_value, '|') != nullptr)))
         {
             // move it from tags to aggregate_tags
-            remove_tag(match->m_key);
+            remove_tag(match->m_key, true); // free the tag just removed, instead of return it
             add_tag(strbuf.strdup(tag->m_key), strbuf.strdup(tag->m_value));
         }
         else if (std::strcmp(match->m_value, tag->m_value) != 0)
         {
             // move it from tags to aggregate_tags
-            remove_tag(match->m_key);
+            remove_tag(match->m_key, true); // free the tag just removed, instead of return it
             add_aggregate_tag(strbuf.strdup(tag->m_key));
             //m_aggregate_tags.push_back(tag->m_key);
         }

@@ -202,6 +202,8 @@ TcpServer::listen(int port, int listener_count)
     {
         close(fd);
         Logger::error("Failed to bind to any network interfaces, errno=%d", errno);
+        if ((EADDRINUSE == errno) && ! g_opt_reuse_port)
+            Logger::error("Please consider running TickTockDB with -r command-line option.");
         return -1;
     }
 
@@ -674,43 +676,27 @@ TcpServer::get_most_conn_listener() const
 #endif
 
 size_t
-TcpServer::get_pending_task_count(std::vector<std::vector<size_t>> &counts) const
+TcpServer::get_pending_task_count(std::vector<std::vector<size_t>> (&counts)[LISTENER0_COUNT]) const
 {
     size_t count = 0;
 
     for (int i = 0; i < LISTENER0_COUNT; i++)
     {
-        counts.push_back(std::vector<size_t>());
+        std::vector<std::vector<size_t>>& cnts = counts[i];
 
         for (int j = 1; j < m_listener_count[i]; j++)
         {
+            cnts.push_back(std::vector<size_t>());
+
             if (m_listeners[i][j] != nullptr)
             {
-                count += m_listeners[i][j]->get_pending_task_count(counts[i]);
+                count += m_listeners[i][j]->get_pending_task_count(cnts.back());
             }
         }
     }
 
     return count;
 }
-
-#if 0
-int
-TcpServer::get_total_task_count(size_t counts[], int size) const
-{
-    int i = 0;
-
-    for (int l = 2; l < m_listener_count; l++)
-    {
-        int n = m_listeners[l]->get_total_task_count(&counts[i], size);
-
-        i += n;
-        size -= n;
-    }
-
-    return i;
-}
-#endif
 
 size_t
 TcpServer::get_active_conn_count() const

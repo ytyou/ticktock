@@ -24,7 +24,7 @@
 #include <set>
 #include <unordered_map>
 #include "kv.h"
-#include "rw.h"
+#include "lock.h"
 #include "strbuf.h"
 #include "type.h"
 #include "utils.h"
@@ -36,6 +36,7 @@ namespace tt
 
 // TT_FIELD_VALUE is used when there's NO field
 #define TT_FIELD_TAG_ID     0
+#define TT_FIELD_VALUE_ID   1
 #define TT_FIELD_TAG_NAME   "_field"
 #define TT_FIELD_VALUE      "_"
 
@@ -56,7 +57,8 @@ public:
 
     bool parse(char *tags);
 
-    Tag *find_by_key(const char *key);
+    inline Tag *find_by_key(const char *key) { return find_by_key(m_tags, key); }
+    static Tag *find_by_key(Tag *tags, const char *key);
 
     inline const char* get_tag_value(const char *tag_name) const
     {
@@ -103,7 +105,8 @@ public:
         KeyValuePair::insert_in_order(&m_tags, name, value);
     }
 
-    void remove_tag(const char *key);
+    void remove_tag(Tag *tag);
+    Tag *remove_tag(const char *key, bool free);
 
     inline void remove_all_tags()
     {
@@ -116,8 +119,9 @@ public:
         m_tags = tags;
     }
 
-    inline int get_tag_count() const { return get_tag_count(m_tags); }
-    static int get_tag_count(Tag *tags);
+    inline int get_tag_count(bool excludeField) const
+    { return get_tag_count(m_tags, excludeField); }
+    static int get_tag_count(Tag *tags, bool excludeField);
 
 protected:
     bool m_own_mem; // should we free m_key and m_value?
@@ -125,6 +129,11 @@ protected:
 };
 
 
+/* Tag names and values are stored in a hash table, and their
+ * corresponding IDs (integers) are stored here. This is to
+ * avoid storing the same name/value, in string format, over
+ * and over, in order to save space (and speed up search).
+ */
 class __attribute__ ((__packed__)) Tag_v2
 {
 public:
@@ -132,6 +141,8 @@ public:
     Tag_v2(Tag_v2& tags);   // copy constructor
     Tag_v2(TagBuilder& builder);
     ~Tag_v2();
+
+    void append(TagId key_id, TagId value_id);
 
     bool match(TagId key_id);
     bool match(TagId key_id, const char *value);
@@ -141,12 +152,14 @@ public:
 
     Tag *get_v1_tags() const;
     Tag *get_cloned_v1_tags(StringBuffer& strbuf) const;
+    TagCount clone(TagId *tags, TagCount capacity);
 
     void get_keys(std::set<std::string>& keys) const;
     void get_values(std::set<std::string>& values) const;
 
     inline TagCount get_count() const { return m_count; }
 
+    static void init();
     static TagId get_id(const char *name);
     static TagId get_or_set_id(const char *name);
 
@@ -161,7 +174,8 @@ private:
     TagCount m_count;
 
     static TagId m_next_id;
-    static default_contention_free_shared_mutex m_lock;
+    //static default_contention_free_shared_mutex m_lock;
+    static pthread_rwlock_t m_lock;
     static std::unordered_map<const char*,TagId,hash_func,eq_func> m_map;
     static const char **m_names;    // indexed by id
     static uint32_t m_names_capacity;
@@ -173,6 +187,7 @@ class TagBuilder
 public:
     TagBuilder(TagCount capacity, TagId *tags);
     void init(Tag *tags);
+    void init(Tag_v2& tags);
     void update_last(TagId kid, const char *value);
 
     inline TagCount get_count() const { return m_count; }

@@ -34,7 +34,7 @@ namespace tt
 // Supported aggregators (Note that we support an p\d{2,3} percentile as aggregator);
 // Should make it configurable. (TODO)
 const char *SUPPORTED_AGGREGATORS =
-    "[\"avg\",\"count\",\"dev\",\"first\",\"last\",\"max\",\"min\",\"p50\",\"p90\",\"p95\",\"p98\",\"p99\",\"p999\",\"sum\"]";
+    "[\"avg\",\"count\",\"dev\",\"first\",\"last\",\"max\",\"min\",\"none\",\"p50\",\"p90\",\"p95\",\"p98\",\"p99\",\"p999\",\"sum\"]";
 
 Aggregator *
 Aggregator::create(const char *aggregate)

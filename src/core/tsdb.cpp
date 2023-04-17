@@ -49,7 +49,8 @@ namespace tt
 #define DONE_SUFFIX     ".done"
 #define TEMP_SUFFIX     ".temp"
 
-default_contention_free_shared_mutex Tsdb::m_tsdb_lock;
+//default_contention_free_shared_mutex Tsdb::m_tsdb_lock;
+pthread_rwlock_t Tsdb::m_tsdb_lock;
 std::vector<Tsdb*> Tsdb::m_tsdbs;
 static uint64_t tsdb_rotation_freq = 0;
 
@@ -131,11 +132,18 @@ Measurement::add_ts(const char *field, Mapping *mapping)
     TagCount tag_cnt = ts0->get_tag_count();
     TagId ids[tag_cnt];
     TagBuilder builder(tag_cnt, ids);
+    builder.init(ts0->get_v2_tags());
     builder.update_last(TT_FIELD_TAG_ID, field);
     TimeSeries *ts = new TimeSeries(builder);
     mapping->add_ts(ts);
     m_time_series[m_ts_count-1] = ts;
     return ts;
+}
+
+void
+Measurement::append_ts(TimeSeries *ts)
+{
+    add_ts((int)m_ts_count, ts);
 }
 
 TimeSeries *
@@ -219,6 +227,14 @@ Measurement::get_ts(std::vector<DataPoint>& dps, std::vector<TimeSeries*>& tsv)
     return true;
 }
 
+void
+Measurement::get_all_ts(std::vector<TimeSeries*>& tsv)
+{
+    tsv.reserve(m_ts_count);
+    for (int i = 0; i < m_ts_count; i++)
+        tsv.push_back((TimeSeries*)m_time_series[i]);
+}
+
 bool
 Measurement::add_data_points(std::vector<DataPoint>& dps, Timestamp tstamp, Mapping *mapping)
 {
@@ -270,6 +286,10 @@ Mapping::Mapping(const char *name) :
     m_metric = STRDUP(name);
     ASSERT(m_metric != nullptr);
     ASSERT(m_ts_head.load() == nullptr);
+
+    pthread_rwlockattr_t attr;
+    pthread_rwlockattr_setkind_np(&attr, PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP);
+    pthread_rwlock_init(&m_lock, &attr);
 }
 
 Mapping::~Mapping()
@@ -279,6 +299,8 @@ Mapping::~Mapping()
         FREE(m_metric);
         m_metric = nullptr;
     }
+
+    pthread_rwlock_destroy(&m_lock);
 }
 
 void
@@ -306,11 +328,11 @@ Mapping::get_ts(DataPoint& dp)
     BaseType *bt = nullptr;
     TimeSeries *ts = nullptr;
     char *raw_tags = dp.get_raw_tags();
-    std::lock_guard<std::mutex> guard(m_lock);
+    //std::lock_guard<std::mutex> guard(m_lock);
 
     if (raw_tags != nullptr)
     {
-        //ReadLock guard(m_lock);
+        PThread_ReadLock guard(&m_lock);
         auto result = m_map.find(raw_tags);
         if (result != m_map.end())
             bt = result->second;
@@ -326,10 +348,21 @@ Mapping::get_ts(DataPoint& dp)
             //dp.set_raw_tags(raw_tags);
         }
 
+        Tag *field = dp.remove_tag(TT_FIELD_TAG_NAME, false);
+
+        if (field != nullptr)
+        {
+            // The reserved tag name "_field" was found;
+            // switch to Measurement...
+            ts = get_ts_in_measurement(dp, field);
+            dp.remove_tag(field);
+            return ts;
+        }
+
         char buff[MAX_TOTAL_TAG_LENGTH];
         dp.get_ordered_tags(buff, MAX_TOTAL_TAG_LENGTH);
 
-        //WriteLock guard(m_lock);
+        PThread_WriteLock guard(&m_lock);
 
         {
             auto result = m_map.find(buff);
@@ -343,7 +376,7 @@ Mapping::get_ts(DataPoint& dp)
             bt = dynamic_cast<BaseType*>(ts);
             m_map[STRDUP(buff)] = bt;
             add_ts(ts);
-            set_tag_count(dp.get_tag_count());
+            set_tag_count(dp.get_tag_count(true));
         }
 
         if (raw_tags != nullptr)
@@ -363,16 +396,40 @@ Mapping::get_ts(DataPoint& dp)
     return ts;
 }
 
+TimeSeries *
+Mapping::get_ts_in_measurement(DataPoint& dp, Tag *field)
+{
+    ASSERT(field != nullptr);
+
+    TimeSeries *ts = nullptr;
+    std::vector<DataPoint> dps;
+
+    dps.emplace_back(dp.get_timestamp(), dp.get_value());
+    dps.back().set_raw_tags((char*)field->m_value);
+    char buff[MAX_TOTAL_TAG_LENGTH];
+    dp.get_ordered_tags(buff, MAX_TOTAL_TAG_LENGTH);
+    Measurement *mm = get_measurement(buff, dp, dp.get_metric(), dps);
+    ASSERT(mm != nullptr);
+
+    if (mm != nullptr)
+        ts = mm->get_ts(0, field->m_value);
+
+    if (ts == nullptr)
+        ts = mm->add_ts(field->m_value, this);
+
+    return ts;
+}
+
 Measurement *
 Mapping::get_measurement(char *raw_tags, TagOwner& owner, const char *measurement, std::vector<DataPoint>& dps)
 {
     ASSERT(raw_tags != nullptr);
     BaseType *bt = nullptr;
     TimeSeries *ts = nullptr;
-    std::lock_guard<std::mutex> guard(m_lock);
+    //std::lock_guard<std::mutex> guard(m_lock);
 
     {
-        //ReadLock guard(m_lock);
+        PThread_ReadLock guard(&m_lock);
         auto result = m_map.find(raw_tags);
         if (result != m_map.end())
             bt = result->second;
@@ -400,12 +457,15 @@ Mapping::get_measurement(char *raw_tags, TagOwner& owner, const char *measuremen
         else
         {
             // parse raw tags...
-            if (! owner.parse(&original[1]))
-                return nullptr;
+            if (owner.get_tags() == nullptr)
+            {
+                if (! owner.parse(&original[1]))
+                    return nullptr;
+            }
             owner.get_ordered_tags(ordered, MAX_TOTAL_TAG_LENGTH);
         }
 
-        //WriteLock guard(m_lock);
+        PThread_WriteLock guard(&m_lock);
 
         {
             auto result = m_map.find(ordered);
@@ -432,8 +492,13 @@ Mapping::get_measurement(char *raw_tags, TagOwner& owner, const char *measuremen
         if (std::strcmp(raw_tags, ordered) != 0)
             m_map[STRDUP(raw_tags)] = bt;
 
+        // This is a different time series!?
         if ((ts != nullptr) && (mm != nullptr))
-            mm->add_ts(0, ts);
+        {
+            Tag_v2& tags = ts->get_v2_tags();
+            tags.append(TT_FIELD_TAG_ID, TT_FIELD_VALUE_ID);
+            mm->append_ts(ts);
+        }
     }
 
     ASSERT(bt->is_type(TT_TYPE_MEASUREMENT));
@@ -517,11 +582,11 @@ Mapping::init_measurement(Measurement *mm, const char *measurement, char *tags, 
 {
     if (dps.empty()) return;
 
-    TagCount count = owner.get_tag_count() + 1;
+    TagCount count = owner.get_tag_count(true) + 1;
     TagId ids[2 * count];
     TagBuilder builder(count, ids);
 
-    set_tag_count(count);
+    set_tag_count(count-1);
     builder.init(owner.get_tags());
     mm->set_ts_count(dps.size());
 
@@ -544,12 +609,12 @@ Mapping::init_measurement(Measurement *mm, const char *measurement, char *tags, 
 void
 Mapping::query_for_ts(Tag *tags, std::unordered_set<TimeSeries*>& tsv, const char *key)
 {
-    int tag_count = TagOwner::get_tag_count(tags);
+    int tag_count = TagOwner::get_tag_count(tags, true);
 
     if ((key != nullptr) && (tag_count == m_tag_count))
     {
-        //ReadLock guard(m_lock);
-        std::lock_guard<std::mutex> guard(m_lock);
+        PThread_ReadLock guard(&m_lock);
+        //std::lock_guard<std::mutex> guard(m_lock);
         auto result = m_map.find(key);
         if (result != m_map.end())
         {
@@ -557,10 +622,24 @@ Mapping::query_for_ts(Tag *tags, std::unordered_set<TimeSeries*>& tsv, const cha
             BaseType *bt = result->second;
 
             if (bt->is_type(TT_TYPE_MEASUREMENT))
-                ts = (dynamic_cast<Measurement*>(bt))->get_ts(false, this);
+            {
+                Measurement *mm = dynamic_cast<Measurement*>(bt);
+                Tag *tag = TagOwner::find_by_key(tags, TT_FIELD_TAG_NAME);
+
+                if (tag != nullptr)
+                    ts = mm->get_ts(0, tag->m_value);
+                else
+                {
+                    std::vector<TimeSeries*> all;
+                    mm->get_all_ts(all);
+                    for (auto t : all) tsv.insert(t);
+                }
+            }
             else
                 ts = dynamic_cast<TimeSeries*>(bt);
-            tsv.insert(ts);
+
+            if (ts != nullptr)
+                tsv.insert(ts);
         }
     }
 
@@ -631,7 +710,7 @@ Mapping::restore_measurement(std::string& measurement, std::string& tags, std::v
     std::vector<DataPoint> dps;
 
     Measurement *mm = get_measurement(buff, owner, measurement.c_str(), dps);
-    TagCount count = owner.get_tag_count() + 1;
+    TagCount count = owner.get_tag_count(true) + 1;
     TagId ids[2 * count];
     TagBuilder builder(count, ids);
 
@@ -661,8 +740,8 @@ Mapping::set_tag_count(int tag_count)
 int
 Mapping::get_ts_count()
 {
-    //ReadLock guard(m_lock);
-    std::lock_guard<std::mutex> guard(m_lock);
+    PThread_ReadLock guard(&m_lock);
+    //std::lock_guard<std::mutex> guard(m_lock);
     return m_map.size();
 }
 
@@ -1028,6 +1107,8 @@ Tsdb::restore_measurement(std::string& measurement, std::string& tags, std::vect
         Logger::warn("restore failed for: %s,%s", measurement.c_str(), tags.c_str());
 }
 
+/* The 'key' should not include the special '_field' tag.
+ */
 void
 Tsdb::query_for_ts(const char *metric, Tag *tags, std::unordered_set<TimeSeries*>& ts, const char *key)
 {
@@ -1156,7 +1237,7 @@ Tsdb::shutdown()
         g_metric_map.clear();
     }
 
-    WriteLock guard(m_tsdb_lock);
+    PThread_WriteLock guard(&m_tsdb_lock);
 
     for (Tsdb *tsdb: m_tsdbs)
     {
@@ -1436,13 +1517,13 @@ Tsdb::inst(Timestamp tstamp, bool create)
     Tsdb *tsdb = nullptr;
 
     {
-        ReadLock guard(m_tsdb_lock);
+        PThread_ReadLock guard(&m_tsdb_lock);
         tsdb = Tsdb::search(tstamp);
     }
 
     if ((tsdb == nullptr) && create)
     {
-        WriteLock guard(m_tsdb_lock);
+        PThread_WriteLock guard(&m_tsdb_lock);
         tsdb = Tsdb::search(tstamp);  // search again to avoid race condition
         if (tsdb == nullptr)
         {
@@ -1463,7 +1544,7 @@ Tsdb::inst(Timestamp tstamp, bool create)
 void
 Tsdb::insts(const TimeRange& range, std::vector<Tsdb*>& tsdbs)
 {
-    ReadLock guard(m_tsdb_lock);
+    PThread_ReadLock guard(&m_tsdb_lock);
     int i, size = m_tsdbs.size();
     if (size == 0) return;
 
@@ -1944,6 +2025,10 @@ Tsdb::init()
     std::string data_dir = Config::get_data_dir();
     Logger::info("Loading data from %s", data_dir.c_str());
 
+    pthread_rwlockattr_t attr;
+    pthread_rwlockattr_setkind_np(&attr, PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP);
+    pthread_rwlock_init(&m_tsdb_lock, &attr);
+
     CheckPointManager::init();
     PartitionManager::init();
     TimeSeries::init();
@@ -2151,7 +2236,7 @@ int
 Tsdb::get_active_tsdb_count()
 {
     int total = 0;
-    ReadLock guard(m_tsdb_lock);
+    PThread_ReadLock guard(&m_tsdb_lock);
     for (Tsdb *tsdb: m_tsdbs)
     {
         if (tsdb->m_index_file.is_open(true))
@@ -2163,7 +2248,7 @@ Tsdb::get_active_tsdb_count()
 int
 Tsdb::get_total_tsdb_count()
 {
-    ReadLock guard(m_tsdb_lock);
+    PThread_ReadLock guard(&m_tsdb_lock);
     return (int)m_tsdbs.size();
 }
 
@@ -2171,7 +2256,7 @@ int
 Tsdb::get_open_data_file_count(bool for_read)
 {
     int total = 0;
-    ReadLock guard(m_tsdb_lock);
+    PThread_ReadLock guard(&m_tsdb_lock);
     for (Tsdb *tsdb: m_tsdbs)
     {
         for (auto df: tsdb->m_data_files)
@@ -2187,7 +2272,7 @@ int
 Tsdb::get_open_header_file_count(bool for_read)
 {
     int total = 0;
-    ReadLock guard(m_tsdb_lock);
+    PThread_ReadLock guard(&m_tsdb_lock);
     for (Tsdb *tsdb: m_tsdbs)
     {
         for (auto hf: tsdb->m_header_files)
@@ -2203,7 +2288,7 @@ int
 Tsdb::get_open_index_file_count(bool for_read)
 {
     int total = 0;
-    ReadLock guard(m_tsdb_lock);
+    PThread_ReadLock guard(&m_tsdb_lock);
     for (Tsdb *tsdb: m_tsdbs)
     {
         if (tsdb->m_index_file.is_open(for_read))
@@ -2416,7 +2501,7 @@ Tsdb::archive_ts(TaskData& data)
 bool
 Tsdb::validate(Tsdb *tsdb)
 {
-    ReadLock guard(m_tsdb_lock);
+    PThread_ReadLock guard(&m_tsdb_lock);
 
     for (Tsdb *t: m_tsdbs)
     {
@@ -2432,7 +2517,7 @@ Tsdb::purge_oldest(int threshold)
     Tsdb *tsdb = nullptr;
 
     {
-        WriteLock guard(m_tsdb_lock);
+        PThread_WriteLock guard(&m_tsdb_lock);
 
         if (m_tsdbs.size() <= threshold) return;
 
@@ -2498,7 +2583,7 @@ Tsdb::compact(TaskData& data)
     // Go through all the Tsdbs, from the oldest to the newest,
     // to find the first uncompacted Tsdb to compact.
     {
-        ReadLock guard(m_tsdb_lock);
+        PThread_ReadLock guard(&m_tsdb_lock);
 
         for (auto it = m_tsdbs.begin(); it != m_tsdbs.end(); it++)
         {

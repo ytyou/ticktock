@@ -316,6 +316,11 @@ KeyValuePair::to_json(KeyValuePair *list, char *buff, int size)
     for (KeyValuePair *kv = list; kv != nullptr; kv = kv->next())
     {
         if ((n+3) > size) break;
+        // skip "_field"="_";
+        if ((kv->m_key[0] == '_') && (kv->m_value[0] == '_') &&
+            (strcmp(kv->m_key, TT_FIELD_TAG_NAME) == 0) &&
+            (kv->m_value[1] == 0))
+            continue;
         if (buff[n-1] != '{')
             n += snprintf(buff+n, size-n, ",");
         n += snprintf(buff+n, size-n, "\"%s\":\"%s\"", kv->m_key, kv->m_value);
