@@ -30,6 +30,7 @@
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include "compress.h"
+#include "limit.h"
 #include "mmap.h"
 #include "page.h"
 #include "task.h"
@@ -50,6 +51,7 @@ std::atomic<unsigned long> g_total_dps_cnt{0};
 #endif
 std::atomic<long> g_total_page_cnt{0};
 bool g_quick_mode = false;
+bool g_restore_mode = false;
 bool g_verbose = false;
 std::atomic<bool> g_new_line{false};
 std::mutex g_mutex; // protect std::cerr
@@ -128,7 +130,7 @@ process_cmdline_opts(int argc, char *argv[])
 {
     int c;
 
-    while ((c = getopt(argc, argv, "?d:qt:v")) != -1)
+    while ((c = getopt(argc, argv, "?d:qrt:v")) != -1)
     {
         switch (c)
         {
@@ -138,6 +140,10 @@ process_cmdline_opts(int argc, char *argv[])
 
             case 'q':
                 g_quick_mode = true;
+                break;
+
+            case 'r':
+                g_restore_mode = true;
                 break;
 
             case 't':
@@ -195,6 +201,7 @@ inspect_page(FileIndex file_idx, HeaderIndex header_idx, struct tsdb_header *tsd
     int compressor_version =
         page_header->is_out_of_order() ? 0 : tsdb_header->get_compressor_version();
     g_tstamp_resolution_ms = tsdb_header->is_millisecond();
+    start_time = validate_resolution(start_time);
 
     char *page_base = data_base + (page_header->m_page_index * tsdb_header->m_page_size) + page_header->m_offset;
     ASSERT(page_header->m_page_index <= tsdb_header->m_page_index);
@@ -237,6 +244,43 @@ inspect_page(FileIndex file_idx, HeaderIndex header_idx, struct tsdb_header *tsd
     delete compressor;
     g_total_page_cnt++;
     //g_total_dps_cnt.fetch_add(page_dps, std::memory_order_relaxed);
+    return page_dps;
+}
+
+uint64_t
+inspect_page_for_restore(const char *metric, const char *tags, FileIndex file_idx, HeaderIndex header_idx, struct tsdb_header *tsdb_header, struct page_info_on_disk *page_header, char *data_base, Timestamp start_time)
+{
+    uint64_t page_dps = 0;
+    int compressor_version =
+        page_header->is_out_of_order() ? 0 : tsdb_header->get_compressor_version();
+    g_tstamp_resolution_ms = tsdb_header->is_millisecond();
+    start_time = validate_resolution(start_time);
+
+    char *page_base = data_base + (page_header->m_page_index * tsdb_header->m_page_size) + page_header->m_offset;
+    ASSERT(page_header->m_page_index <= tsdb_header->m_page_index);
+
+    // dump page data
+    DataPointVector dps;
+    dps.reserve(256);
+    Compressor *compressor = Compressor::create(compressor_version);
+    CompressorPosition position(page_header);
+    compressor->init(start_time, (uint8_t*)page_base, tsdb_header->m_page_size);
+    compressor->restore(dps, position, nullptr);
+
+    if (tags != nullptr)
+    {
+        for (auto& dp: dps)
+            std::cout << "put " << metric << " " << dp.first << " " << dp.second << " " << tags << std::endl;
+    }
+    else
+    {
+        for (auto& dp: dps)
+            std::cout << "put " << metric << " " << dp.first << " " << dp.second << std::endl;
+    }
+
+    page_dps = dps.size();
+    delete compressor;
+    g_total_page_cnt++;
     return page_dps;
 }
 
@@ -383,14 +427,6 @@ inspect_tsdb_internal(const std::string& dir)
     }
 
     close_mmap(index_file_fd, index_base, index_file_size);
-    //g_total_dps_cnt.fetch_add(tsdb_dps, std::memory_order_relaxed);
-
-    //if (ooo_page_cnt > 0)
-        //std::cerr << "tsdb dps = " << tsdb_dps << "; pages = " << g_total_page_cnt.load() << "; total dps = " << g_total_dps_cnt.load() << "; ooo pages = " << ooo_page_cnt << std::endl;
-    //else
-        //std::cerr << "tsdb dps = " << tsdb_dps << "; pages = " << g_total_page_cnt.load() << "; total dps = " << g_total_dps_cnt.load() << std::endl;
-    //fprintf(stderr, "tsdb dps = %" PRIu64 "; total dps = %" PRIu64 "\n",
-        //tsdb_dps, g_total_dps_cnt);
 }
 
 void
@@ -450,6 +486,123 @@ inspect_tsdb_quick(const std::string& dir)
     }
 }
 
+void
+inspect_tsdb_for_restore(const std::string& dir)
+{
+    std::cerr << "Inspecting tsdb " << dir << "..." << std::endl;
+
+    // dump all headers first...
+    uint64_t tsdb_dps = 0;
+    std::string header_files_pattern = dir + "/header.*";
+    std::vector<std::string> header_files;
+    find_matching_files(header_files_pattern, header_files);
+
+    std::string index_file_name = dir + "/index";
+    int index_file_fd;
+    size_t index_file_size;
+    char *index_base = open_mmap(index_file_name, index_file_fd, index_file_size);
+    struct index_entry *index_entries = (struct index_entry*)index_base;
+    long ooo_page_cnt = 0;
+    Timestamp start_time = get_tsdb_start_time(dir);
+
+    std::vector<Mapping*> mappings;
+    Tsdb::get_all_mappings(mappings);
+
+    for (Mapping* mapping : mappings)
+    {
+        std::vector<TimeSeries*> tsv;
+        mapping->get_all_ts(tsv);
+
+        for (TimeSeries *ts: tsv)
+        {
+            char tag_buff[MAX_TOTAL_TAG_LENGTH + 1];
+            Tag *tags = ts->get_tags();
+            TimeSeriesId id = ts->get_id();
+
+            tag_buff[0] = 0;
+            while (tags != nullptr)
+            {
+                std::strcat(tag_buff, " ");
+                std::strcat(tag_buff, tags->m_key);
+                std::strcat(tag_buff, "=");
+                std::strcat(tag_buff, tags->m_value);
+                tags = tags->next();
+            }
+
+            if (((id+1) * sizeof(struct index_entry)) >= index_file_size) continue;
+            if (index_entries[id].file_index == TT_INVALID_FILE_INDEX) continue;
+
+            FileIndex file_idx = index_entries[id].file_index;
+            HeaderIndex header_idx = index_entries[id].header_index;
+
+            int header_file_fd = -1;
+            int data_file_fd = -1;
+            size_t header_file_size, data_file_size;
+            char *header_base, *data_base;
+            struct tsdb_header *tsdb_header;
+
+            while ((file_idx != TT_INVALID_FILE_INDEX) && (header_idx != TT_INVALID_HEADER_INDEX))
+            {
+                if (header_file_fd < 0)
+                {
+                    char header_file_name[PATH_MAX];
+                    char data_file_name[PATH_MAX];
+
+                    snprintf(header_file_name, sizeof(header_file_name), "%s/header.%u", dir.c_str(), file_idx);
+                    snprintf(data_file_name, sizeof(data_file_name), "%s/data.%u", dir.c_str(), file_idx);
+
+                    std::string header_file_name_str(header_file_name);
+                    std::string data_file_name_str(data_file_name);
+
+                    header_base = open_mmap(header_file_name_str, header_file_fd, header_file_size);
+                    data_base = open_mmap(data_file_name_str, data_file_fd, data_file_size);
+
+                    tsdb_header = (struct tsdb_header*)header_base;
+                }
+
+                if ((header_base == nullptr) || (data_base == nullptr) || (header_file_fd < 0))
+                {
+                    std::cerr << "[ERROR] failed to open header or data file" << std::endl;
+                    continue;
+                }
+
+                struct page_info_on_disk *page_header = (struct page_info_on_disk *)
+                    (header_base + sizeof(struct tsdb_header) + header_idx * sizeof(struct page_info_on_disk));
+
+                if (page_header->is_out_of_order()) ooo_page_cnt++;
+
+                tsdb_dps = inspect_page_for_restore(mapping->get_metric(),
+                                                    (tag_buff[0] == 0) ? nullptr : &(tag_buff[1]),
+                                                    file_idx,
+                                                    header_idx,
+                                                    tsdb_header,
+                                                    page_header,
+                                                    data_base,
+                                                    start_time);
+                g_total_dps_cnt.fetch_add(tsdb_dps, std::memory_order_relaxed);
+
+                if (file_idx != page_header->m_next_file)
+                {
+                    file_idx = page_header->m_next_file;
+                    header_idx = page_header->m_next_header;
+
+                    close_mmap(data_file_fd, data_base, data_file_size);
+                    close_mmap(header_file_fd, header_base, header_file_size);
+
+                    data_file_fd = -1;
+                    header_file_fd = -1;
+                }
+                else
+                {
+                    header_idx = page_header->m_next_header;
+                }
+            }
+        }
+    }
+
+    close_mmap(index_file_fd, index_base, index_file_size);
+}
+
 bool
 inspect_tsdb_task(TaskData& data)
 {
@@ -464,12 +617,19 @@ inspect_tsdb_task(TaskData& data)
 void
 inspect_tsdb(const std::string& dir)
 {
-    Task task;
+    if (g_restore_mode)
+    {
+        inspect_tsdb_for_restore(dir);
+    }
+    else
+    {
+        Task task;
 
-    task.doit = inspect_tsdb_task;
-    task.data.pointer = (void*)strdup(dir.c_str());
+        task.doit = inspect_tsdb_task;
+        task.data.pointer = (void*)strdup(dir.c_str());
 
-    inspector.submit_task(task);
+        inspector.submit_task(task);
+    }
 }
 
 int

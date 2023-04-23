@@ -151,6 +151,7 @@ public:
     bool match_last(TagId key_id, TagId value_id);
 
     Tag *get_v1_tags() const;
+    Tag *get_ordered_v1_tags() const;
     Tag *get_cloned_v1_tags(StringBuffer& strbuf) const;
     TagCount clone(TagId *tags, TagCount capacity);
 

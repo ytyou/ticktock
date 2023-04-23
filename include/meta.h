@@ -43,6 +43,7 @@ public:
 
     inline bool is_open() const { return (m_file != nullptr); }
     void add_ts(const char *metric, const char *key, TimeSeriesId id);
+    void add_ts(const char *metric, Tag_v2& tags, TimeSeriesId id);
     void add_measurement(const char *measurement, char *tags, std::vector<std::pair<const char*,TimeSeriesId>>& fields);
 
 private:

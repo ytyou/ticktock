@@ -484,6 +484,17 @@ Tag_v2::get_v1_tags() const
 }
 
 Tag *
+Tag_v2::get_ordered_v1_tags() const
+{
+    Tag *head = nullptr;
+
+    for (int i = 2*m_count-1; i >= 0; i -= 2)
+        KeyValuePair::insert_in_order(&head, get_name(m_tags[i-1]), get_name(m_tags[i]));
+
+    return head;
+}
+
+Tag *
 Tag_v2::get_cloned_v1_tags(StringBuffer& strbuf) const
 {
     Tag *head = nullptr;

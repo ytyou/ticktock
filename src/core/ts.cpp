@@ -54,6 +54,16 @@ TimeSeries::TimeSeries(const char *metric, const char *key, Tag *tags) :
     MetaFile::instance()->add_ts(metric, key, m_id);
 }
 
+TimeSeries::TimeSeries(const char *metric, TagBuilder& builder) :
+    m_next(nullptr),
+    m_tags(builder),
+    m_buff(nullptr),
+    m_ooo_buff(nullptr)
+{
+    m_id = m_next_id.fetch_add(1);
+    MetaFile::instance()->add_ts(metric, m_tags, m_id);
+}
+
 TimeSeries::TimeSeries(TagBuilder& builder) :
     m_next(nullptr),
     m_tags(builder),

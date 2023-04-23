@@ -134,7 +134,7 @@ Measurement::add_ts(const char *field, Mapping *mapping)
     TagBuilder builder(tag_cnt, ids);
     builder.init(ts0->get_v2_tags());
     builder.update_last(TT_FIELD_TAG_ID, field);
-    TimeSeries *ts = new TimeSeries(builder);
+    TimeSeries *ts = new TimeSeries(mapping->get_metric(), builder);
     mapping->add_ts(ts);
     m_time_series[m_ts_count-1] = ts;
     return ts;
@@ -373,7 +373,7 @@ Mapping::get_ts(DataPoint& dp)
         if (bt == nullptr)
         {
             ts = new TimeSeries(m_metric, buff, dp.get_tags());
-            bt = dynamic_cast<BaseType*>(ts);
+            bt = static_cast<BaseType*>(ts);
             m_map[STRDUP(buff)] = bt;
             add_ts(ts);
             set_tag_count(dp.get_tag_count(true));
@@ -389,9 +389,9 @@ Mapping::get_ts(DataPoint& dp)
     }
 
     if (bt->is_type(TT_TYPE_MEASUREMENT))
-        ts = (dynamic_cast<Measurement*>(bt))->get_ts(true, this);
+        ts = (static_cast<Measurement*>(bt))->get_ts(true, this);
     else
-        ts = dynamic_cast<TimeSeries*>(bt);
+        ts = static_cast<TimeSeries*>(bt);
 
     return ts;
 }
@@ -437,7 +437,7 @@ Mapping::get_measurement(char *raw_tags, TagOwner& owner, const char *measuremen
 
     if (UNLIKELY(bt != nullptr) && UNLIKELY(bt->is_type(TT_TYPE_TIME_SERIES)))
     {
-        ts = dynamic_cast<TimeSeries*>(bt);
+        ts = static_cast<TimeSeries*>(bt);
         bt = nullptr;
     }
 
@@ -475,7 +475,7 @@ Mapping::get_measurement(char *raw_tags, TagOwner& owner, const char *measuremen
 
         if ((bt != nullptr) && (UNLIKELY(bt->is_type(TT_TYPE_TIME_SERIES))))
         {
-            ts = dynamic_cast<TimeSeries*>(bt);
+            ts = static_cast<TimeSeries*>(bt);
             bt = nullptr;
         }
 
@@ -484,8 +484,8 @@ Mapping::get_measurement(char *raw_tags, TagOwner& owner, const char *measuremen
         if (bt == nullptr)
         {
             mm = new Measurement();
-            init_measurement(mm, measurement, raw_tags, owner, dps);
-            bt = dynamic_cast<BaseType*>(mm);
+            init_measurement(mm, measurement, ordered, owner, dps);
+            bt = static_cast<BaseType*>(mm);
             m_map[STRDUP(ordered)] = bt;
         }
 
@@ -636,7 +636,7 @@ Mapping::query_for_ts(Tag *tags, std::unordered_set<TimeSeries*>& tsv, const cha
                 }
             }
             else
-                ts = dynamic_cast<TimeSeries*>(bt);
+                ts = static_cast<TimeSeries*>(bt);
 
             if (ts != nullptr)
                 tsv.insert(ts);
@@ -710,6 +710,8 @@ Mapping::restore_measurement(std::string& measurement, std::string& tags, std::v
     std::vector<DataPoint> dps;
 
     Measurement *mm = get_measurement(buff, owner, measurement.c_str(), dps);
+    if (owner.get_tags() == nullptr)
+        owner.parse(buff);
     TagCount count = owner.get_tag_count(true) + 1;
     TagId ids[2 * count];
     TagBuilder builder(count, ids);
