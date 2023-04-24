@@ -242,6 +242,7 @@ public:
     }
 
     // http add data-point request handler
+    static bool http_api_put_handler(HttpRequest& request, HttpResponse& response); // json or plain
     static bool http_api_put_handler_json(HttpRequest& request, HttpResponse& response);
     static bool http_api_put_handler_plain(HttpRequest& request, HttpResponse& response);
     static bool http_api_write_handler(HttpRequest& request, HttpResponse& response);

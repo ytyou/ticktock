@@ -1610,31 +1610,57 @@ Tsdb::insts(const TimeRange& range, std::vector<Tsdb*>& tsdbs)
 }
 
 bool
+Tsdb::http_api_put_handler(HttpRequest& request, HttpResponse& response)
+{
+    char *curr = request.content;
+
+    while (std::isspace(*curr))
+        curr++;
+
+    if ((*curr == '[') || (*curr == '{'))
+        return http_api_put_handler_json(request, response);
+    else
+        return http_api_put_handler_plain(request, response);
+}
+
+// Should be able to handle both signle data point or multiple data points.
+bool
 Tsdb::http_api_put_handler_json(HttpRequest& request, HttpResponse& response)
 {
-    char *curr = strchr(request.content, '[');
+    char *curr = request.content;
 
-    if (curr == nullptr)
-    {
-        response.init(400, HttpContentType::PLAIN);
-        return false;
-    }
+    while (std::isspace(*curr))
+        curr++;
 
-    //bool success = true;
     int success = 0;
     int failed = 0;
 
-    while ((*curr != ']') && (*curr != 0))
+    if (*curr == '{')
     {
+        // single data point
         DataPoint dp;
-        curr = dp.from_json(curr+1);
-        if (curr == nullptr) break;
+        curr = dp.from_json(curr);
 
-        if (add_data_point(dp, false))
+        if ((curr != nullptr) && add_data_point(dp, false))
             success++;
         else
             failed++;
-        while (isspace(*curr)) curr++;
+    }
+    else
+    {
+        // multiple data point
+        while ((*curr != ']') && (*curr != 0))
+        {
+            DataPoint dp;
+            curr = dp.from_json(curr+1);
+            if (curr == nullptr) break;
+
+            if (add_data_point(dp, false))
+                success++;
+            else
+                failed++;
+            while (isspace(*curr)) curr++;
+        }
     }
 
     char buff[64];
