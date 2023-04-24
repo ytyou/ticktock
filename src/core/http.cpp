@@ -1044,6 +1044,8 @@ HttpResponse::status_code_to_reason(uint16_t status_code)
         case 408:   reason = "Request Timeout"; break;
         case 411:   reason = "Length Required"; break;
         case 413:   reason = "Request Entity Too Large"; break;
+        case 500:   reason = "Server Error"; break;
+        case 503:   reason = "Out of Memory"; break;
         default:    reason = nullptr; break;
     }
 

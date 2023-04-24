@@ -59,6 +59,7 @@ Query::Query(JsonMap& map, TimeRange& range, StringBuffer& strbuf, bool ms) :
     m_downsample(nullptr),
     m_rate_calculator(nullptr),
     m_ms(ms),
+    m_errno(0),
     TagOwner(false)
 {
     auto search = map.find(METRIC_TAG_NAME);
@@ -156,6 +157,7 @@ Query::Query(JsonMap& map, StringBuffer& strbuf) :
     m_downsample(nullptr),
     m_rate_calculator(nullptr),
     m_ms(false),
+    m_errno(0),
     TagOwner(false)
 {
     Timestamp now = ts_now();
@@ -553,7 +555,11 @@ Query::execute(std::vector<QueryResults*>& results, StringBuffer& strbuf)
 
     // cleanup
     for (QueryTask *qt: qtv)
+    {
+        if (qt->get_errno() != 0)
+            m_errno = qt->get_errno();
         MemoryManager::free_recyclable(qt);
+    }
 
     for (Tsdb *tsdb: tsdbs)
         tsdb->dec_ref_count();
@@ -606,7 +612,11 @@ Query::execute_in_parallel(std::vector<QueryResults*>& results, StringBuffer& st
     // cleanup
     Logger::trace("cleanup...");
     for (QueryTask *qt: qtv)
+    {
+        if (qt->get_errno() != 0)
+            m_errno = qt->get_errno();
         MemoryManager::free_recyclable(qt);
+    }
 
     for (Tsdb *tsdb: tsdbs)
         tsdb->dec_ref_count();
@@ -693,9 +703,17 @@ QueryTask::perform(TimeSeriesId id)
             m_downsampler = nullptr;
         }
     }
+    catch (const std::exception& e)
+    {
+        if (std::strcmp(e.what(), TT_MSG_OUT_OF_MEMORY) == 0)
+            m_errno = ENOMEM;     // out of memory
+        else
+            m_errno = -1;
+    }
     catch (...)
     {
         ASSERT(false);
+        m_errno = -1;
         Logger::error("Caught exception while performing query.");
     }
 
@@ -857,6 +875,7 @@ QueryTask::get_cloned_tags(StringBuffer& strbuf)
 void
 QueryTask::init()
 {
+    m_errno = 0;
     m_signal = nullptr;
     m_downsampler = nullptr;
 }
@@ -915,6 +934,7 @@ QueryExecutor::http_get_api_query_handler(HttpRequest& request, HttpResponse& re
     StringBuffer strbuf;
     Query query(params, strbuf);
     std::vector<QueryResults*> results;
+    int error = 0;
 
     if (Config::get_bool(CFG_QUERY_EXECUTOR_PARALLEL,CFG_QUERY_EXECUTOR_PARALLEL_DEF))
     {
@@ -925,9 +945,12 @@ QueryExecutor::http_get_api_query_handler(HttpRequest& request, HttpResponse& re
         query.execute(results, strbuf);
     }
 
+    if (query.get_errno() != 0)
+        error = query.get_errno();
+
     JsonParser::free_map(params);
 
-    bool status = prepare_response(results, response);
+    bool status = prepare_response(results, response, error);
 
     for (QueryResults *r: results)
         MemoryManager::free_recyclable(r);
@@ -990,6 +1013,7 @@ QueryExecutor::http_post_api_query_handler(HttpRequest& request, HttpResponse& r
 
     StringBuffer strbuf;
     std::vector<QueryResults*> results;
+    int error = 0;
 
     for (int i = 0; i < array.size(); i++)
     {
@@ -1010,6 +1034,9 @@ QueryExecutor::http_post_api_query_handler(HttpRequest& request, HttpResponse& r
             query.execute(res, strbuf);
         }
 
+        if (query.get_errno() != 0)
+            error = query.get_errno();
+
         if (! res.empty())
         {
             results.insert(results.end(), res.begin(), res.end());
@@ -1018,7 +1045,7 @@ QueryExecutor::http_post_api_query_handler(HttpRequest& request, HttpResponse& r
 
     JsonParser::free_map(map);
 
-    bool status = prepare_response(results, response);
+    bool status = prepare_response(results, response, error);
 
     for (QueryResults *r: results)
         MemoryManager::free_recyclable(r);
@@ -1027,7 +1054,7 @@ QueryExecutor::http_post_api_query_handler(HttpRequest& request, HttpResponse& r
 }
 
 bool
-QueryExecutor::prepare_response(std::vector<QueryResults*>& results, HttpResponse& response)
+QueryExecutor::prepare_response(std::vector<QueryResults*>& results, HttpResponse& response, int error)
 {
     char *buff = response.get_buffer();
     int size = response.get_buffer_size();
@@ -1048,7 +1075,22 @@ QueryExecutor::prepare_response(std::vector<QueryResults*>& results, HttpRespons
         if (n >= size) break;
     }
 
-    if (n >= size)
+    if (UNLIKELY(error != 0))
+    {
+        switch (error)
+        {
+            case ENOMEM:
+                response.init(503, HttpContentType::PLAIN, 0, nullptr);
+                break;
+
+            default:
+                response.init(500, HttpContentType::PLAIN, 0, nullptr);
+                break;
+        }
+
+        status = false;
+    }
+    else if (n >= size)
     {
         Logger::error("response too large, %d >= %d", n, size);
         response.init(413, HttpContentType::PLAIN, 0, nullptr);

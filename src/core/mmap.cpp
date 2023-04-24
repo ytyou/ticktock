@@ -68,7 +68,7 @@ MmapFile::open(off_t length, bool read_only, bool append_only, bool resize)
     {
         Logger::error("Failed to open file %s, errno = %d", m_name.c_str(), errno);
         if (ENOMEM == errno)
-            throw std::runtime_error("Out of memory");
+            throw std::runtime_error(TT_MSG_OUT_OF_MEMORY);
         return;
     }
 
@@ -100,7 +100,7 @@ MmapFile::open(off_t length, bool read_only, bool append_only, bool resize)
         }
 
         if (ENOMEM == errno)
-            throw std::runtime_error("Out of memory");
+            throw std::runtime_error(TT_MSG_OUT_OF_MEMORY);
         return;
     }
 
@@ -127,7 +127,7 @@ MmapFile::open_existing(bool read_only, bool append_only)
     {
         Logger::error("Failed to open file %s, errno = %d", m_name.c_str(), errno);
         if (ENOMEM == errno)
-            throw std::runtime_error("Out of memory");
+            throw std::runtime_error(TT_MSG_OUT_OF_MEMORY);
         return;
     }
 
@@ -158,7 +158,7 @@ MmapFile::open_existing(bool read_only, bool append_only)
         }
 
         if (ENOMEM == errno)
-            throw std::runtime_error("Out of memory");
+            throw std::runtime_error(TT_MSG_OUT_OF_MEMORY);
         return;
     }
 

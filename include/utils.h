@@ -49,6 +49,10 @@ namespace tt
 #define ONE_MEGABYTES           (1048576L)
 
 
+// error messages
+#define TT_MSG_OUT_OF_MEMORY        "Out of memory"
+
+
 extern const int SPIN_YIELD_THRESHOLD;
 
 extern void segv_handler(int sig);

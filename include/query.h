@@ -187,6 +187,9 @@ public:
     void execute(std::vector<QueryResults*>& results, StringBuffer& strbuf);
     void execute_in_parallel(std::vector<QueryResults*>& results, StringBuffer& strbuf);
 
+    inline int get_errno() const
+    { return m_errno; }
+
     static uint64_t get_dp_count();
 
     inline size_t c_size() const override { return 1024; }
@@ -207,6 +210,7 @@ private:
     TimeRange m_time_range;
 
     bool m_ms;  // milli-second resolution?
+    int m_errno;
     const char *m_metric;
     const char *m_aggregate;
     const char *m_downsample;
@@ -228,6 +232,9 @@ public:
     Tag *get_tags();
     Tag_v2& get_v2_tags();
     Tag *get_cloned_tags(StringBuffer& strbuf);
+
+    inline int get_errno() const
+    { return m_errno; }
 
     inline DataPointVector& get_dps()
     {
@@ -257,6 +264,7 @@ private:
     DataPointVector m_dps;  // results before aggregation
     QueryResults m_results; // results after aggregation
     CountingSignal *m_signal;   // we don't own this, do not free it
+    int m_errno;
 };
 
 
@@ -285,7 +293,7 @@ private:
     friend class Query;
 
     QueryExecutor();
-    static bool prepare_response(std::vector<QueryResults*>& results, HttpResponse& response);
+    static bool prepare_response(std::vector<QueryResults*>& results, HttpResponse& response, int error);
 
     std::mutex m_lock;
     TaskScheduler m_executors;

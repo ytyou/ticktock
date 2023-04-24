@@ -99,7 +99,7 @@ MemoryManager::alloc_network_buffer()
         buff =
             static_cast<char*>(aligned_alloc(g_page_size, m_network_buffer_len));
         if (buff == nullptr)
-            throw std::runtime_error("Out of memory");
+            throw std::runtime_error(TT_MSG_OUT_OF_MEMORY);
         ASSERT(((long)buff % g_page_size) == 0);
         m_total[RecyclableType::RT_COUNT]++;
     }
@@ -148,7 +148,7 @@ MemoryManager::alloc_network_buffer_small()
         buff =
             static_cast<char*>(malloc(m_network_buffer_small_len));
         if (buff == nullptr)
-            throw std::runtime_error("Out of memory");
+            throw std::runtime_error(TT_MSG_OUT_OF_MEMORY);
         m_total[RecyclableType::RT_COUNT+1]++;
     }
 
@@ -795,7 +795,7 @@ MemoryManager::alloc_recyclable(RecyclableType type)
         {
             HttpResponse response;
             Admin::cmd_stop(nullptr, response);    // shutdown
-            throw std::runtime_error("Out of memory");
+            throw std::runtime_error(TT_MSG_OUT_OF_MEMORY);
         }
 
         ASSERT(r != nullptr);
