@@ -34,6 +34,11 @@ namespace tt
 
 #define MAX_USAGE_SIZE  12
 
+#ifdef TT_STATS
+extern std::atomic<uint64_t> g_query_count;
+extern std::atomic<uint64_t> g_query_latency_ms;
+#endif
+
 class QueryTask;
 
 

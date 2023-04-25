@@ -66,6 +66,11 @@ int MemoryManager::m_max_usage_idx;
 std::unordered_map<Recyclable*,bool> MemoryManager::m_maps[RecyclableType::RT_COUNT];
 #endif
 
+#ifdef TT_STATS
+std::atomic<uint64_t> g_query_count{0};
+std::atomic<uint64_t> g_query_latency_ms{0};
+#endif
+
 
 MemoryManager::MemoryManager()
 {
@@ -371,6 +376,15 @@ MemoryManager::log_stats()
 
         fprintf(file, "ticktock.connection.count %" PRIu64 " %d %s=%s\n",
             ts, TcpListener::get_active_conn_count(), HOST_TAG_NAME, g_host_name.c_str());
+
+#ifdef TT_STATS
+        if (g_query_count.load() > 0)
+        {
+            fprintf(file, "ticktock.query.latency.avg %" PRIu64 " %f %s=%s\n",
+                ts, (double)g_query_latency_ms.load()/(double)g_query_count.load(),
+                HOST_TAG_NAME, g_host_name.c_str());
+        }
+#endif
 
         size_t buff_size = get_network_buffer_size();
         char *buff = alloc_network_buffer();

@@ -927,6 +927,9 @@ QueryExecutor::init()
 bool
 QueryExecutor::http_get_api_query_handler(HttpRequest& request, HttpResponse& response)
 {
+#ifdef TT_STATS
+    Timestamp ts_start = ts_now_ms();
+#endif
     Meter meter(METRIC_TICKTOCK_QUERY_LATENCY_MS);
     Logger::debug("Handling get request: %T", &request);
 
@@ -957,12 +960,21 @@ QueryExecutor::http_get_api_query_handler(HttpRequest& request, HttpResponse& re
     for (QueryResults *r: results)
         MemoryManager::free_recyclable(r);
 
+#ifdef TT_STATS
+    Timestamp ts_end = ts_now_ms();
+    g_query_count++;
+    g_query_latency_ms += ts_end - ts_start;
+#endif
+
     return status;
 }
 
 bool
 QueryExecutor::http_post_api_query_handler(HttpRequest& request, HttpResponse& response)
 {
+#ifdef TT_STATS
+    Timestamp ts_start = ts_now_ms();
+#endif
     Meter meter(METRIC_TICKTOCK_QUERY_LATENCY_MS);
     bool ms = false;
     JsonMap map;
@@ -1051,6 +1063,12 @@ QueryExecutor::http_post_api_query_handler(HttpRequest& request, HttpResponse& r
 
     for (QueryResults *r: results)
         MemoryManager::free_recyclable(r);
+
+#ifdef TT_STATS
+    Timestamp ts_end = ts_now_ms();
+    g_query_count++;
+    g_query_latency_ms += ts_end - ts_start;
+#endif
 
     return status;
 }
