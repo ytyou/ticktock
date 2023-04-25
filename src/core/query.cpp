@@ -271,6 +271,7 @@ Query::Query(JsonMap& map, StringBuffer& strbuf) :
     ASSERT(idx == (tokens.size()-1));
     m_metric = strbuf.strdup(tokens[idx++].c_str());
 
+/*
     if (! m_ms && (m_downsample == nullptr))
     {
         char buff[64];
@@ -278,6 +279,7 @@ Query::Query(JsonMap& map, StringBuffer& strbuf) :
         std::strcat(buff, m_aggregate);
         m_downsample = strbuf.strdup(buff);
     }
+*/
 
     char *tag = std::strchr((char*)m_metric, '{');
 

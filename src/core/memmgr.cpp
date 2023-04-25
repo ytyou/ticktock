@@ -237,6 +237,7 @@ MemoryManager::collect_stats(Timestamp ts, std::vector<DataPoint> &dps)
     }
 
     COLLECT_STATS_FOR(RT_AGGREGATOR_AVG, "aggregator_avg", sizeof(AggregatorAvg))
+    COLLECT_STATS_FOR(RT_AGGREGATOR_BOTTOM, "aggregator_bottom", sizeof(AggregatorBottom))
     COLLECT_STATS_FOR(RT_AGGREGATOR_COUNT, "aggregator_count", sizeof(AggregatorCount))
     COLLECT_STATS_FOR(RT_AGGREGATOR_DEV, "aggregator_dev", sizeof(AggregatorDev))
     COLLECT_STATS_FOR(RT_AGGREGATOR_MAX, "aggregator_max", sizeof(AggregatorMax))
@@ -244,6 +245,7 @@ MemoryManager::collect_stats(Timestamp ts, std::vector<DataPoint> &dps)
     COLLECT_STATS_FOR(RT_AGGREGATOR_NONE, "aggregator_none", sizeof(AggregatorNone))
     COLLECT_STATS_FOR(RT_AGGREGATOR_PT, "aggregator_pt", sizeof(AggregatorPercentile))
     COLLECT_STATS_FOR(RT_AGGREGATOR_SUM, "aggregator_sum", sizeof(AggregatorSum))
+    COLLECT_STATS_FOR(RT_AGGREGATOR_TOP, "aggregator_top", sizeof(AggregatorTop))
     COLLECT_STATS_FOR(RT_BITSET_CURSOR, "bitset_cursor", sizeof(BitSetCursor))
     COLLECT_STATS_FOR(RT_COMPRESSOR_V0, "compressor_v0", sizeof(Compressor_v0))
     COLLECT_STATS_FOR(RT_COMPRESSOR_V1, "compressor_v1", sizeof(Compressor_v1))
@@ -273,6 +275,7 @@ MemoryManager::collect_stats(Timestamp ts, std::vector<DataPoint> &dps)
 
     float total = 0;
     total += m_total[RT_AGGREGATOR_AVG] * sizeof(AggregatorAvg);
+    total += m_total[RT_AGGREGATOR_BOTTOM] * sizeof(AggregatorBottom);
     total += m_total[RT_AGGREGATOR_COUNT] * sizeof(AggregatorCount);
     total += m_total[RT_AGGREGATOR_DEV] * sizeof(AggregatorDev);
     total += m_total[RT_AGGREGATOR_MAX] * sizeof(AggregatorMax);
@@ -280,6 +283,7 @@ MemoryManager::collect_stats(Timestamp ts, std::vector<DataPoint> &dps)
     total += m_total[RT_AGGREGATOR_NONE] * sizeof(AggregatorNone);
     total += m_total[RT_AGGREGATOR_PT] * sizeof(AggregatorPercentile);
     total += m_total[RT_AGGREGATOR_SUM] * sizeof(AggregatorSum);
+    total += m_total[RT_AGGREGATOR_TOP] * sizeof(AggregatorTop);
     total += m_total[RT_BITSET_CURSOR] * sizeof(BitSetCursor);
     total += m_total[RT_COMPRESSOR_V0] * sizeof(Compressor_v0);
     total += m_total[RT_COMPRESSOR_V1] * sizeof(Compressor_v1);
@@ -389,6 +393,14 @@ MemoryManager::cleanup()
         delete static_cast<AggregatorAvg*>(r);
     }
 
+    while (m_free_lists[RecyclableType::RT_AGGREGATOR_BOTTOM] != nullptr)
+    {
+        Recyclable *r = m_free_lists[RecyclableType::RT_AGGREGATOR_BOTTOM];
+        m_free_lists[RecyclableType::RT_AGGREGATOR_BOTTOM] = r->next();
+        ASSERT(r->recyclable_type() == RecyclableType::RT_AGGREGATOR_BOTTOM);
+        delete static_cast<AggregatorBottom*>(r);
+    }
+
     while (m_free_lists[RecyclableType::RT_AGGREGATOR_COUNT] != nullptr)
     {
         Recyclable *r = m_free_lists[RecyclableType::RT_AGGREGATOR_COUNT];
@@ -443,6 +455,14 @@ MemoryManager::cleanup()
         m_free_lists[RecyclableType::RT_AGGREGATOR_SUM] = r->next();
         ASSERT(r->recyclable_type() == RecyclableType::RT_AGGREGATOR_SUM);
         delete static_cast<AggregatorSum*>(r);
+    }
+
+    while (m_free_lists[RecyclableType::RT_AGGREGATOR_TOP] != nullptr)
+    {
+        Recyclable *r = m_free_lists[RecyclableType::RT_AGGREGATOR_TOP];
+        m_free_lists[RecyclableType::RT_AGGREGATOR_TOP] = r->next();
+        ASSERT(r->recyclable_type() == RecyclableType::RT_AGGREGATOR_TOP);
+        delete static_cast<AggregatorTop*>(r);
     }
 
     while (m_free_lists[RecyclableType::RT_BITSET_CURSOR] != nullptr)
@@ -671,6 +691,10 @@ MemoryManager::alloc_recyclable(RecyclableType type)
                     r = new AggregatorAvg();
                     break;
 
+                case RecyclableType::RT_AGGREGATOR_BOTTOM:
+                    r = new AggregatorBottom();
+                    break;
+
                 case RecyclableType::RT_AGGREGATOR_COUNT:
                     r = new AggregatorCount();
                     break;
@@ -701,6 +725,10 @@ MemoryManager::alloc_recyclable(RecyclableType type)
 
                 case RecyclableType::RT_BITSET_CURSOR:
                     r = new BitSetCursor();
+                    break;
+
+                case RecyclableType::RT_AGGREGATOR_TOP:
+                    r = new AggregatorTop();
                     break;
 
                 case RecyclableType::RT_COMPRESSOR_V0:

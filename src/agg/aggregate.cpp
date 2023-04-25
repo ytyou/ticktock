@@ -34,7 +34,7 @@ namespace tt
 // Supported aggregators (Note that we support an p\d{2,3} percentile as aggregator);
 // Should make it configurable. (TODO)
 const char *SUPPORTED_AGGREGATORS =
-    "[\"avg\",\"count\",\"dev\",\"first\",\"last\",\"max\",\"min\",\"none\",\"p50\",\"p90\",\"p95\",\"p98\",\"p99\",\"p999\",\"sum\"]";
+    "[\"avg\",\"bottom3\",\"bottom5\",\"bottom10\",\"bottom20\",\"count\",\"dev\",\"first\",\"last\",\"max\",\"min\",\"none\",\"p50\",\"p90\",\"p95\",\"p98\",\"p99\",\"p999\",\"sum\",\"top3\",\"top5\",\"top10\",\"top20\"]";
 
 Aggregator *
 Aggregator::create(const char *aggregate)
@@ -57,6 +57,14 @@ Aggregator::create(const char *aggregate)
                     throw std::runtime_error("unrecognized aggregator");
                 aggregator =
                     (Aggregator*)MemoryManager::alloc_recyclable(RecyclableType::RT_AGGREGATOR_AVG);
+                break;
+
+            case 'b':
+                if (std::strncmp(aggregate, "bottom", 6) != 0)
+                    throw std::runtime_error("unrecognized aggregator");
+                aggregator =
+                    (Aggregator*)MemoryManager::alloc_recyclable(RecyclableType::RT_AGGREGATOR_BOTTOM);
+                ((AggregatorBottom*)aggregator)->set_n(std::atoi(aggregate+6));
                 break;
 
             case 'c':
@@ -95,6 +103,12 @@ Aggregator::create(const char *aggregate)
                     (Aggregator*)MemoryManager::alloc_recyclable(RecyclableType::RT_AGGREGATOR_NONE);
                 break;
 
+            case 'p':
+                aggregator =
+                    (Aggregator*)MemoryManager::alloc_recyclable(RecyclableType::RT_AGGREGATOR_PT);
+                ((AggregatorPercentile*)aggregator)->set_quantile(std::atoi(aggregate+1));
+                break;
+
             case 's':
                 if (std::strcmp(aggregate, "sum") != 0)
                     throw std::runtime_error("unrecognized aggregator");
@@ -102,10 +116,12 @@ Aggregator::create(const char *aggregate)
                     (Aggregator*)MemoryManager::alloc_recyclable(RecyclableType::RT_AGGREGATOR_SUM);
                 break;
 
-            case 'p':
+            case 't':
+                if (std::strncmp(aggregate, "top", 3) != 0)
+                    throw std::runtime_error("unrecognized aggregator");
                 aggregator =
-                    (Aggregator*)MemoryManager::alloc_recyclable(RecyclableType::RT_AGGREGATOR_PT);
-                ((AggregatorPercentile*)aggregator)->set_quantile(std::atoi(aggregate+1));
+                    (Aggregator*)MemoryManager::alloc_recyclable(RecyclableType::RT_AGGREGATOR_TOP);
+                ((AggregatorTop*)aggregator)->set_n(std::atoi(aggregate+3));
                 break;
 
             default:
@@ -181,6 +197,53 @@ AggregatorAvg::merge(std::vector<std::reference_wrapper<DataPointVector>>& src, 
     {
         ASSERT(count > 0);
         dst.emplace_back(prev_tstamp, sum/(double)count);
+    }
+}
+
+
+void
+AggregatorBottom::merge(std::vector<std::reference_wrapper<DataPointVector>>& src, DataPointVector& dst)
+{
+    PQ pq(src);
+    std::priority_queue<DataPointPair> top;
+    Timestamp prev_tstamp = 0L;
+
+    while (! pq.empty())
+    {
+        DataPointPair& dp = pq.next();
+        Timestamp curr_tstamp = dp.first;
+
+        if (prev_tstamp == curr_tstamp)
+        {
+            if (top.size() < m_n)
+            {
+                top.push(dp);
+            }
+            else if (top.top().second > dp.second)
+            {
+                top.pop();
+                top.push(dp);
+            }
+        }
+        else
+        {
+            ASSERT(prev_tstamp < curr_tstamp);
+
+            if (prev_tstamp != 0L)
+            {
+                for ( ; !top.empty(); top.pop())
+                    dst.push_back(top.top());
+            }
+
+            top.push(dp);
+            prev_tstamp = curr_tstamp;
+        }
+    }
+
+    if (prev_tstamp != 0L)
+    {
+        for ( ; !top.empty(); top.pop())
+            dst.push_back(top.top());
     }
 }
 
@@ -498,6 +561,53 @@ AggregatorSum::merge(std::vector<std::reference_wrapper<DataPointVector>>& src, 
     if (prev_tstamp != 0L)
     {
         dst.emplace_back(prev_tstamp, sum);
+    }
+}
+
+
+void
+AggregatorTop::merge(std::vector<std::reference_wrapper<DataPointVector>>& src, DataPointVector& dst)
+{
+    PQ pq(src);
+    std::priority_queue<DataPointPair, std::vector<DataPointPair>, std::greater<DataPointPair>> top;
+    Timestamp prev_tstamp = 0L;
+
+    while (! pq.empty())
+    {
+        DataPointPair& dp = pq.next();
+        Timestamp curr_tstamp = dp.first;
+
+        if (prev_tstamp == curr_tstamp)
+        {
+            if (top.size() < m_n)
+            {
+                top.push(dp);
+            }
+            else if (top.top().second < dp.second)
+            {
+                top.pop();
+                top.push(dp);
+            }
+        }
+        else
+        {
+            ASSERT(prev_tstamp < curr_tstamp);
+
+            if (prev_tstamp != 0L)
+            {
+                for ( ; !top.empty(); top.pop())
+                    dst.push_back(top.top());
+            }
+
+            top.push(dp);
+            prev_tstamp = curr_tstamp;
+        }
+    }
+
+    if (prev_tstamp != 0L)
+    {
+        for ( ; !top.empty(); top.pop())
+            dst.push_back(top.top());
     }
 }
 

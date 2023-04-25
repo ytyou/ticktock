@@ -124,6 +124,21 @@ public:
 };
 
 
+/* Select the smallest n values.
+ *
+ * This aggregator should not be used to perform downsampling.
+ */
+class AggregatorBottom : public Aggregator
+{
+public:
+    inline void set_n(short n) { m_n = n; }
+    void merge(std::vector<std::reference_wrapper<DataPointVector>>& src, DataPointVector& dst);
+
+private:
+    short m_n;
+};
+
+
 class AggregatorCount : public Aggregator
 {
 public:
@@ -171,6 +186,21 @@ class AggregatorSum : public Aggregator
 {
 public:
     void merge(std::vector<std::reference_wrapper<DataPointVector>>& src, DataPointVector& dst);
+};
+
+
+/* Select the biggest n values.
+ *
+ * This aggregator should not be used to perform downsampling.
+ */
+class AggregatorTop : public Aggregator
+{
+public:
+    inline void set_n(short n) { m_n = n; }
+    void merge(std::vector<std::reference_wrapper<DataPointVector>>& src, DataPointVector& dst);
+
+private:
+    short m_n;
 };
 
 
