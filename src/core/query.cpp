@@ -381,6 +381,8 @@ Query::aggregate(std::vector<QueryTask*>& qtv, std::vector<QueryResults*>& resul
 
     if (m_aggregator->is_none())
     {
+        m_aggregator->aggregate(m_metric, qtv, results, strbuf);
+#if 0
         // no aggregation
         for (QueryTask *qt: qtv)
         {
@@ -394,10 +396,11 @@ Query::aggregate(std::vector<QueryTask*>& qtv, std::vector<QueryResults*>& resul
             result->m_dps.insert(result->m_dps.end(), dps.begin(), dps.end());  // TODO: how to avoid copy?
             dps.clear();
         }
+#endif
     }
     else
     {
-        // split tsv into results
+        // split qtv into results
         create_query_results(qtv, results, strbuf);
 
         // aggregate results
@@ -848,6 +851,34 @@ QueryTask::query_without_ooo(std::vector<DataPointContainer*>& data)
 #ifdef TT_STATS
     s_dp_count.fetch_add(dp_count, std::memory_order_relaxed);
 #endif
+}
+
+double
+QueryTask::get_max(int n) const
+{
+    double max = std::numeric_limits<double>::min();
+
+    for (int i = m_dps.size()-1; i >= 0 && n > 0; i--, n--)
+    {
+        if (max < m_dps[i].second)
+            max = m_dps[i].second;
+    }
+
+    return max;
+}
+
+double
+QueryTask::get_min(int n) const
+{
+    double min = std::numeric_limits<double>::max();
+
+    for (int i = m_dps.size()-1; i >= 0 && n > 0; i--, n--)
+    {
+        if (min > m_dps[i].second)
+            min = m_dps[i].second;
+    }
+
+    return min;
 }
 
 Tag *

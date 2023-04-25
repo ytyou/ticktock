@@ -91,6 +91,7 @@ public:
     bool get_ts(std::vector<DataPoint>& dps, std::vector<TimeSeries*>& tsv);
     void get_all_ts(std::vector<TimeSeries*>& tsv);
     inline uint32_t get_ts_count() const { return m_ts_count; }
+    inline void add_ts_count(uint32_t ts_count);
     inline void set_ts_count(uint32_t ts_count);
     inline bool is_initialized() const { return m_time_series != nullptr; }
 

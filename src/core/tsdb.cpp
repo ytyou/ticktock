@@ -80,6 +80,21 @@ Measurement::~Measurement()
 }
 
 void
+Measurement::add_ts_count(uint32_t ts_count)
+{
+    if (ts_count == 0) return;
+    uint32_t old_count = m_ts_count;
+    m_ts_count += ts_count;
+    TimeSeries **tmp = m_time_series;
+    m_time_series = (TimeSeries**)calloc(m_ts_count, sizeof(TimeSeries*));
+    if (tmp != nullptr)
+    {
+        std::memcpy(m_time_series, tmp, old_count*sizeof(TimeSeries*));
+        std::free(tmp);
+    }
+}
+
+void
 Measurement::set_ts_count(uint32_t ts_count)
 {
     ASSERT(ts_count > 0);
@@ -101,7 +116,6 @@ Measurement::add_ts(int idx, TimeSeries *ts)
 
     if (idx >= m_ts_count)
     {
-        ASSERT(m_time_series != nullptr);
         m_ts_count = idx + 1;
         TimeSeries **tmp = m_time_series;
         m_time_series = (TimeSeries**)calloc(m_ts_count, sizeof(TimeSeries*));
@@ -718,9 +732,9 @@ Mapping::restore_measurement(std::string& measurement, std::string& tags, std::v
 
     set_tag_count(count);
     builder.init(owner.get_tags());
-    mm->set_ts_count(fields.size());
 
-    int i = 0;
+    int i = mm->get_ts_count();
+    mm->add_ts_count(fields.size());
 
     for (auto field: fields)
     {

@@ -34,7 +34,7 @@ namespace tt
 // Supported aggregators (Note that we support an p\d{2,3} percentile as aggregator);
 // Should make it configurable. (TODO)
 const char *SUPPORTED_AGGREGATORS =
-    "[\"avg\",\"bottom3\",\"bottom5\",\"bottom10\",\"bottom20\",\"count\",\"dev\",\"first\",\"last\",\"max\",\"min\",\"none\",\"p50\",\"p90\",\"p95\",\"p98\",\"p99\",\"p999\",\"sum\",\"top3\",\"top5\",\"top10\",\"top20\"]";
+    "[\"avg\",\"bottom1\",\"bottom3\",\"bottom5\",\"bottom9\",\"count\",\"dev\",\"first\",\"last\",\"max\",\"min\",\"none\",\"p50\",\"p90\",\"p95\",\"p98\",\"p99\",\"p999\",\"sum\",\"top1\",\"top3\",\"top5\",\"top9\"]";
 
 Aggregator *
 Aggregator::create(const char *aggregate)
@@ -160,6 +160,24 @@ Aggregator::aggregate(QueryResults *results)
 
 
 void
+AggregatorNone::aggregate(const char *metric, std::vector<QueryTask*>& qtv, std::vector<QueryResults*>& results, StringBuffer& strbuf)
+{
+    for (QueryTask *qt: qtv)
+    {
+        QueryResults *result =
+            (QueryResults*)MemoryManager::alloc_recyclable(RecyclableType::RT_QUERY_RESULTS);
+        result->m_metric = metric;
+        result->set_tags(qt->get_cloned_tags(strbuf));
+        results.push_back(result);
+
+        DataPointVector& dps = qt->get_dps();
+        result->m_dps.insert(result->m_dps.end(), dps.begin(), dps.end());  // TODO: how to avoid copy?
+        dps.clear();
+    }
+}
+
+
+void
 AggregatorAvg::merge(std::vector<std::reference_wrapper<DataPointVector>>& src, DataPointVector& dst)
 {
     PQ pq(src);
@@ -202,48 +220,27 @@ AggregatorAvg::merge(std::vector<std::reference_wrapper<DataPointVector>>& src, 
 
 
 void
-AggregatorBottom::merge(std::vector<std::reference_wrapper<DataPointVector>>& src, DataPointVector& dst)
+AggregatorBottom::aggregate(const char *metric, std::vector<QueryTask*>& qtv, std::vector<QueryResults*>& results, StringBuffer& strbuf)
 {
-    PQ pq(src);
-    std::priority_queue<DataPointPair> top;
-    Timestamp prev_tstamp = 0L;
+    std::priority_queue<QueryTask*, std::vector<QueryTask*>, QueryTask::compare_greater> pq;
 
-    while (! pq.empty())
+    for (QueryTask *qt: qtv)
+        pq.push(qt);
+
+    for (short i = 0; (i < m_n) && !pq.empty(); i++)
     {
-        DataPointPair& dp = pq.next();
-        Timestamp curr_tstamp = dp.first;
+        QueryTask *qt = pq.top();
+        pq.pop();
 
-        if (prev_tstamp == curr_tstamp)
-        {
-            if (top.size() < m_n)
-            {
-                top.push(dp);
-            }
-            else if (top.top().second > dp.second)
-            {
-                top.pop();
-                top.push(dp);
-            }
-        }
-        else
-        {
-            ASSERT(prev_tstamp < curr_tstamp);
+        QueryResults *result =
+            (QueryResults*)MemoryManager::alloc_recyclable(RecyclableType::RT_QUERY_RESULTS);
+        result->m_metric = metric;
+        result->set_tags(qt->get_cloned_tags(strbuf));
+        results.push_back(result);
 
-            if (prev_tstamp != 0L)
-            {
-                for ( ; !top.empty(); top.pop())
-                    dst.push_back(top.top());
-            }
-
-            top.push(dp);
-            prev_tstamp = curr_tstamp;
-        }
-    }
-
-    if (prev_tstamp != 0L)
-    {
-        for ( ; !top.empty(); top.pop())
-            dst.push_back(top.top());
+        DataPointVector& dps = qt->get_dps();
+        result->m_dps.insert(result->m_dps.end(), dps.begin(), dps.end());  // TODO: how to avoid copy?
+        dps.clear();
     }
 }
 
@@ -566,48 +563,27 @@ AggregatorSum::merge(std::vector<std::reference_wrapper<DataPointVector>>& src, 
 
 
 void
-AggregatorTop::merge(std::vector<std::reference_wrapper<DataPointVector>>& src, DataPointVector& dst)
+AggregatorTop::aggregate(const char *metric, std::vector<QueryTask*>& qtv, std::vector<QueryResults*>& results, StringBuffer& strbuf)
 {
-    PQ pq(src);
-    std::priority_queue<DataPointPair, std::vector<DataPointPair>, std::greater<DataPointPair>> top;
-    Timestamp prev_tstamp = 0L;
+    std::priority_queue<QueryTask*, std::vector<QueryTask*>, QueryTask::compare_less> pq;
 
-    while (! pq.empty())
+    for (QueryTask *qt: qtv)
+        pq.push(qt);
+
+    for (short i = 0; (i < m_n) && !pq.empty(); i++)
     {
-        DataPointPair& dp = pq.next();
-        Timestamp curr_tstamp = dp.first;
+        QueryTask *qt = pq.top();
+        pq.pop();
 
-        if (prev_tstamp == curr_tstamp)
-        {
-            if (top.size() < m_n)
-            {
-                top.push(dp);
-            }
-            else if (top.top().second < dp.second)
-            {
-                top.pop();
-                top.push(dp);
-            }
-        }
-        else
-        {
-            ASSERT(prev_tstamp < curr_tstamp);
+        QueryResults *result =
+            (QueryResults*)MemoryManager::alloc_recyclable(RecyclableType::RT_QUERY_RESULTS);
+        result->m_metric = metric;
+        result->set_tags(qt->get_cloned_tags(strbuf));
+        results.push_back(result);
 
-            if (prev_tstamp != 0L)
-            {
-                for ( ; !top.empty(); top.pop())
-                    dst.push_back(top.top());
-            }
-
-            top.push(dp);
-            prev_tstamp = curr_tstamp;
-        }
-    }
-
-    if (prev_tstamp != 0L)
-    {
-        for ( ; !top.empty(); top.pop())
-            dst.push_back(top.top());
+        DataPointVector& dps = qt->get_dps();
+        result->m_dps.insert(result->m_dps.end(), dps.begin(), dps.end());  // TODO: how to avoid copy?
+        dps.clear();
     }
 }
 

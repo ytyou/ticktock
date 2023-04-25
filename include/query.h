@@ -229,6 +229,10 @@ public:
 
     void init(std::vector<Tsdb*> *tsdbs, const TimeRange& range);   // used by Tsdb::compact()
 
+    // return max/min value of the last n dps in m_dps[]
+    double get_max(int n) const;
+    double get_min(int n) const;
+
     Tag *get_tags();
     Tag_v2& get_v2_tags();
     Tag *get_cloned_tags(StringBuffer& strbuf);
@@ -245,6 +249,22 @@ public:
     {
         m_signal = signal;
     }
+
+    struct compare_less
+    {
+        bool operator()(const QueryTask *t1, const QueryTask *t2)
+        {
+            return t1->get_max(3) < t2->get_max(3);
+        }
+    };
+
+    struct compare_greater
+    {
+        bool operator()(const QueryTask *t1, const QueryTask *t2)
+        {
+            return t1->get_min(3) > t2->get_min(3);
+        }
+    };
 
     void init() override;
     bool recycle() override;
