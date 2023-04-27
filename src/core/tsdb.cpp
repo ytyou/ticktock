@@ -796,46 +796,6 @@ Tsdb::create(TimeRange& range, bool existing, const char *suffix)
     if (existing)
     {
         tsdb->reload_header_data_files(dir);
-/*
-        // restore Header/Data files...
-        std::vector<std::string> files;
-        get_all_files(dir + "/header.*", files);
-        for (auto file: files) tsdb->restore_header(file);
-        std::sort(tsdb->m_header_files.begin(), tsdb->m_header_files.end(), header_less());
-
-        // restore page-size & page-count
-        if (! tsdb->m_header_files.empty())
-        {
-            HeaderFile *header_file = tsdb->m_header_files.front();
-            header_file->ensure_open(true);
-            struct tsdb_header *tsdb_header = header_file->get_tsdb_header();
-            ASSERT(tsdb_header != nullptr);
-            tsdb->m_page_size = tsdb_header->m_page_size;
-            tsdb->m_page_count = tsdb_header->m_page_count;
-            tsdb->m_compressor_version = tsdb_header->get_compressor_version();
-            // TODO: This is not accurate! Other headers could be different.
-            if (tsdb_header->is_compacted())
-                tsdb->m_mode |= TSDB_MODE_COMPACTED;
-            header_file->close();
-        }
-
-        files.clear();
-        get_all_files(dir + "/data.*", files);
-        for (auto file: files) tsdb->restore_data(file);
-        std::sort(tsdb->m_data_files.begin(), tsdb->m_data_files.end(), data_less());
-
-        // restore page-size/page-count
-        if (! tsdb->m_header_files.empty())
-        {
-            HeaderFile *header_file = tsdb->m_header_files.front();
-            header_file->ensure_open(true);
-            tsdb->m_page_size = header_file->get_page_size();
-            tsdb->m_page_count = header_file->get_page_count();
-
-            if ((tsdb->m_mode & TSDB_MODE_READ_WRITE) == 0)
-                header_file->close();
-        }
-*/
     }
     else    // new one
     {
@@ -914,20 +874,6 @@ Tsdb::reload_header_data_files(const std::string& dir)
     get_all_files(dir + "/data.*", files);
     for (auto file: files) restore_data(file);
     std::sort(m_data_files.begin(), m_data_files.end(), data_less());
-
-/*
-    // restore page-size/page-count
-    if (! m_header_files.empty())
-    {
-        HeaderFile *header_file = m_header_files.front();
-        header_file->ensure_open(true);
-        m_page_size = header_file->get_page_size();
-        m_page_count = header_file->get_page_count();
-
-        if ((m_mode & TSDB_MODE_READ_WRITE) == 0)
-            header_file->close();
-    }
-*/
 }
 
 void
@@ -2111,44 +2057,7 @@ Tsdb::init()
 
     compact2();
 
-/*
-    dir = opendir(data_dir.c_str());
-
-    if (dir != nullptr)
-    {
-        while (dir_ent = readdir(dir))
-        {
-            //if (starts_with(dir_ent->d_name, '.')) continue;
-            if (! ends_with(dir_ent->d_name, ".meta")) continue;
-
-            // file name should be in the following format:
-            // 1564401600.1564408800.meta
-            std::vector<std::string> tokens;
-            tokenize(dir_ent->d_name, tokens, '.');
-            if (tokens.size() != 3) continue;
-
-            // these are always in seconds
-            Timestamp start = std::stoull(tokens[0].c_str());
-            Timestamp end = std::stoull(tokens[1].c_str());
-
-            if (g_tstamp_resolution_ms)
-            {
-                start *= 1000L;
-                end *= 1000L;
-            }
-
-            TimeRange range(start, end);
-            Tsdb *tsdb = Tsdb::create(range, true); // create existing
-            ASSERT(tsdb != nullptr);
-            //m_tsdbs.push_back(tsdb);
-        }
-
-        closedir(dir);
-
-        std::sort(m_tsdbs.begin(), m_tsdbs.end(), tsdb_less());
-    }
-*/
-
+    // Setup maintenance tasks
     Task task;
     task.doit = &Tsdb::rotate;
     task.data.integer = 0;
@@ -2165,6 +2074,7 @@ Tsdb::init()
         freq_sec /= 2;
         if (freq_sec <= 0) freq_sec = 1;
         Timer::inst()->add_task(task, freq_sec, "ts_archive");
+        Logger::info("Will try to archive ts every %d secs.", freq_sec);
     }
 
     task.doit = &Tsdb::compact;
@@ -2475,38 +2385,6 @@ Tsdb::rotate(TaskData& data)
         }
 
         tsdb->dec_ref_count_no_lock();
-/*
-        if (((int64_t)now_sec - (int64_t)load_time) > (int64_t)thrashing_threshold)
-        {
-            if (! (mode & TSDB_MODE_READ))
-            {
-                // archive it
-                Logger::info("[rotate] Archiving %T (lt=%" PRIu64 ", now=%" PRIu64 ")", tsdb, load_time, now_sec);
-                tsdb->flush(true);
-                tsdb->unload_no_lock();
-                continue;
-            }
-            else if (((mode & TSDB_MODE_READ_WRITE) == TSDB_MODE_READ) && (tsdb->m_mode & TSDB_MODE_WRITE))
-            {
-                // make it read-only
-                Logger::debug("[rotate] Flushing tsdb: %T", tsdb);
-                tsdb->flush(true);
-                continue;
-            }
-        }
-#ifdef _DEBUG
-        else if (! (mode & TSDB_MODE_READ))
-        {
-            Logger::info("%T: now_sec = %" PRIu64 "; load_time = %" PRIu64 "; threshold = %" PRIu64,
-                tsdb, now_sec, load_time, thrashing_threshold);
-        }
-#endif
-        //else if (! (mode & TSDB_MODE_READ) && tsdb->count_is_zero())
-        //{
-            //for (PageManager* pm: tsdb->m_page_mgrs)
-                //pm->try_unload();
-        //}
-*/
     }
 
     CheckPointManager::persist();
@@ -2518,6 +2396,9 @@ Tsdb::rotate(TaskData& data)
     return false;
 }
 
+/* Try to delete memory pages for those TimeSeries that haven't seen
+ * any new data for a long time.
+ */
 bool
 Tsdb::archive_ts(TaskData& data)
 {
@@ -2652,16 +2533,6 @@ Tsdb::compact(TaskData& data)
                 Logger::debug("[compact] ref-count of %T is not zero: %d", (*it), (*it)->m_ref_count);
                 continue;
             }
-/**
-            if (((*it)->m_mode & TSDB_MODE_COMPACTED) ||
-                (((*it)->m_mode & TSDB_MODE_READ_WRITE) && (data.integer == 0)) ||
-                ((*it)->m_ref_count > 0))
-            {
-                if ((*it)->m_ref_count > 0)
-                    Logger::info("[compact] ref-count of %T is %d", (*it), (*it)->m_ref_count);
-                continue;
-            }
-**/
 
             tsdb = *it;
             break;
