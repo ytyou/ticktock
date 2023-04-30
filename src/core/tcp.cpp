@@ -334,8 +334,29 @@ TcpServer::start(const std::string& ports)
 
     if (! std::get<0>(pair).empty())
         m_socket_fd[0] = this->listen(std::stoi(std::get<0>(pair)), m_listener_count[0]);
+    else
+    {
+        m_socket_fd[0] = -1;
+        m_listener_count[0] = 0;
+        if (m_listeners[0] != nullptr)
+        {
+            std::free(m_listeners[0]);
+            m_listeners[0] = nullptr;
+        }
+    }
+
     if (! std::get<1>(pair).empty())
         m_socket_fd[1] = this->listen(std::stoi(std::get<1>(pair)), m_listener_count[1]);
+    else
+    {
+        m_socket_fd[1] = -1;
+        m_listener_count[1] = 0;
+        if (m_listeners[1] != nullptr)
+        {
+            std::free(m_listeners[1]);
+            m_listeners[1] = nullptr;
+        }
+    }
 
     // Create all the level 1 listeners before creating level 0 listener so
     // that when level 0 listener is ready to send msgs to level 1 listeners
@@ -1016,7 +1037,7 @@ TcpListener::listener0()
     g_thread_id = m_server->get_name();
     g_thread_id += "_listener_" + std::to_string(m_id);
 
-    Logger::debug("entered epoll_wait() loop, fd=%d", m_epoll_fd);
+    Logger::info("entered epoll_wait() loop, fd=%d", m_epoll_fd);
 
     while (! is_shutdown_requested())
     {
@@ -1095,7 +1116,7 @@ TcpListener::listener1()
     g_thread_id = m_server->get_name();
     g_thread_id += "_listener_" + std::to_string(m_id);
 
-    Logger::debug("entered epoll_wait() loop, fd=%d", m_epoll_fd);
+    Logger::info("entered epoll_wait() loop, fd=%d", m_epoll_fd);
 
     while (! is_shutdown_requested())
     {
