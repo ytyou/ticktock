@@ -26,6 +26,50 @@ namespace tt
 {
 
 
+/* This class is NOT thread-safe. It's intended to be used by a single thread.
+ * The lock itself that's passed in can be shared by multiple threads, of course.
+ */
+class PThread_Lock
+{
+public:
+    PThread_Lock(pthread_rwlock_t *lock) :
+        m_lock(lock),
+        m_lock_count(0)
+    {
+        ASSERT(m_lock != nullptr);
+    }
+
+    ~PThread_Lock()
+    {
+        while (m_lock_count-- > 0)
+            pthread_rwlock_unlock(m_lock);
+    }
+
+    void lock_for_read()
+    {
+        m_lock_count++;
+        pthread_rwlock_rdlock(m_lock);
+    }
+
+    void lock_for_write()
+    {
+        m_lock_count++;
+        pthread_rwlock_wrlock(m_lock);
+    }
+
+    void unlock()
+    {
+        ASSERT(m_lock_count > 0);
+        m_lock_count--;
+        pthread_rwlock_unlock(m_lock);
+    }
+
+private:
+    int m_lock_count;
+    pthread_rwlock_t *m_lock;
+};
+
+
 class PThread_ReadLock
 {
 public:

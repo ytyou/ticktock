@@ -1124,11 +1124,26 @@ Tsdb::query_for_data_no_lock(TimeSeriesId id, TimeRange& query_range, std::vecto
         if (query_range.has_intersection(range))
         {
             DataFile *data_file = m_data_files[file_idx];
+            PThread_Lock lock(data_file->get_lock());
+            lock.lock_for_read();
             data_file->ensure_open(true);
-            void *page = data_file->get_page(page_header->m_page_index, page_header->m_offset);
-            ASSERT(page != nullptr);
-            //int compressor_version = header_file->get_compressor_version();
-            //ASSERT(! header->is_out_of_order() || (compressor_version == 0));
+            void *page = data_file->get_page(page_header->m_page_index, page_header->m_offset, page_header->m_cursor);
+
+            if (page == nullptr)
+            {
+                lock.unlock();
+                lock.lock_for_write();
+                data_file->remap();
+                lock.unlock();
+                lock.lock_for_read();
+                page = data_file->get_page(page_header->m_page_index, page_header->m_offset, page_header->m_cursor);
+            }
+
+            if (page == nullptr)
+            {
+                lock.unlock();
+                throw std::runtime_error("Failed to open data file for read.");
+            }
 
             DataPointContainer *container = (DataPointContainer*)
                 MemoryManager::alloc_recyclable(RecyclableType::RT_DATA_POINT_CONTAINER);
@@ -1136,6 +1151,7 @@ Tsdb::query_for_data_no_lock(TimeSeriesId id, TimeRange& query_range, std::vecto
             container->set_page_index(page_header->get_global_page_index(file_idx, m_page_count));
             container->collect_data(from, tsdb_header, page_header, page);
             ASSERT(container->size() > 0);
+            lock.unlock();
 
             if (page_header->is_out_of_order()) has_ooo = true;
 
@@ -1285,14 +1301,32 @@ Tsdb::get_last_tstamp(TimeSeriesId id)
     if (page_header != nullptr)
     {
         DataFile *data_file = m_data_files[file_idx];
+        PThread_Lock lock(data_file->get_lock());
+        lock.lock_for_read();
         data_file->ensure_open(true);
-        void *page = data_file->get_page(page_header->m_page_index, page_header->m_offset);
-        ASSERT(page != nullptr);
+        void *page = data_file->get_page(page_header->m_page_index, page_header->m_offset, page_header->m_cursor);
+
+        if (page == nullptr)
+        {
+            lock.unlock();
+            lock.lock_for_write();
+            data_file->remap();
+            lock.unlock();
+            lock.lock_for_read();
+            page = data_file->get_page(page_header->m_page_index, page_header->m_offset, page_header->m_cursor);
+        }
+
+        if (page == nullptr)
+        {
+            lock.unlock();
+            throw std::runtime_error("Failed to open data file for read.");
+        }
 
         DataPointContainer *container = (DataPointContainer*)
             MemoryManager::alloc_recyclable(RecyclableType::RT_DATA_POINT_CONTAINER);
         container->set_page_index(page_header->get_global_page_index(file_idx, m_page_count));
         container->collect_data(m_time_range.get_from(), tsdb_header, page_header, page);
+        lock.unlock();
         if (! container->is_empty())
             tstamp = container->get_last_data_point().first;
         MemoryManager::free_recyclable(container);
