@@ -621,7 +621,7 @@ Mapping::init_measurement(Measurement *mm, const char *measurement, char *tags, 
 }
 
 void
-Mapping::query_for_ts(Tag *tags, std::unordered_set<TimeSeries*>& tsv, const char *key)
+Mapping::query_for_ts(Tag *tags, std::unordered_set<TimeSeries*>& tsv, const char *key, bool explicit_tags)
 {
     int tag_count = TagOwner::get_tag_count(tags, true);
 
@@ -670,10 +670,14 @@ Mapping::query_for_ts(Tag *tags, std::unordered_set<TimeSeries*>& tsv, const cha
             TagMatcher *matcher = (TagMatcher*)
                 MemoryManager::alloc_recyclable(RecyclableType::RT_TAG_MATCHER);
             matcher->init(tags);
+            int tag_count = TagOwner::get_tag_count(tags, false);
 
             for (TimeSeries *ts = m_ts_head.load(); ts != nullptr; ts = ts->m_next)
             {
-                if (matcher->match(ts->get_v2_tags()))
+                Tag_v2& tags_v2 = ts->get_v2_tags();
+                if (explicit_tags && (tags_v2.get_count() != tag_count))
+                    continue;
+                if (matcher->match(tags_v2))
                     tsv.insert(ts);
             }
 
@@ -1072,7 +1076,7 @@ Tsdb::restore_measurement(std::string& measurement, std::string& tags, std::vect
 /* The 'key' should not include the special '_field' tag.
  */
 void
-Tsdb::query_for_ts(const char *metric, Tag *tags, std::unordered_set<TimeSeries*>& ts, const char *key)
+Tsdb::query_for_ts(const char *metric, Tag *tags, std::unordered_set<TimeSeries*>& ts, const char *key, bool explicit_tags)
 {
     Mapping *mapping = nullptr;
 
@@ -1087,7 +1091,7 @@ Tsdb::query_for_ts(const char *metric, Tag *tags, std::unordered_set<TimeSeries*
     }
 
     if (mapping != nullptr)
-        mapping->query_for_ts(tags, ts, key);
+        mapping->query_for_ts(tags, ts, key, explicit_tags);
 }
 
 bool

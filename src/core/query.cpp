@@ -59,6 +59,8 @@ Query::Query(JsonMap& map, TimeRange& range, StringBuffer& strbuf, bool ms) :
     m_downsample(nullptr),
     m_rate_calculator(nullptr),
     m_ms(ms),
+    m_explicit_tags(false),
+    m_non_grouping_tags(nullptr),
     m_errno(0),
     TagOwner(false)
 {
@@ -157,6 +159,8 @@ Query::Query(JsonMap& map, StringBuffer& strbuf) :
     m_downsample(nullptr),
     m_rate_calculator(nullptr),
     m_ms(false),
+    m_explicit_tags(false),
+    m_non_grouping_tags(nullptr),
     m_errno(0),
     TagOwner(false)
 {
@@ -260,7 +264,7 @@ Query::Query(JsonMap& map, StringBuffer& strbuf) :
         }
         else if (std::strcmp(token, "explicit_tags") == 0)
         {
-            Logger::warn("explicit_tags in query param not supported");
+            m_explicit_tags = true;
         }
         else    // it's downsampler
         {
@@ -286,24 +290,39 @@ Query::Query(JsonMap& map, StringBuffer& strbuf) :
     if (tag != nullptr)
     {
         JsonMap m;
+        char *curr;
 
         if (std::strchr(tag+1, '"') == nullptr)
-        {
-            JsonParser::parse_map_unquoted(tag, m, '=');
-        }
+            curr = JsonParser::parse_map_unquoted(tag, m, '=');
         else
-        {
-            JsonParser::parse_map(tag, m, '=');
-        }
+            curr = JsonParser::parse_map(tag, m, '=');
 
         *tag = 0;
+        tag = std::strchr(curr, '{');
 
-        //Logger::debug("metric: %s", m_metric);
+        for (auto it = m.begin(); it != m.end(); it++)
+            add_tag(strbuf.strdup((const char*)it->first), strbuf.strdup(it->second->to_string()));
+
+        JsonParser::free_map(m);
+    }
+
+    // non-grouping tags?
+    if (tag != nullptr)
+    {
+        JsonMap m;
+
+        if (std::strchr(tag+1, '"') == nullptr)
+            JsonParser::parse_map_unquoted(tag, m, '=');
+        else
+            JsonParser::parse_map(tag, m, '=');
 
         for (auto it = m.begin(); it != m.end(); it++)
         {
-            //Logger::debug("tag: %s, %s", (const char*)it->first, (const char*)it->second);
-            add_tag(strbuf.strdup((const char*)it->first), strbuf.strdup(it->second->to_string()));
+            char *key = strbuf.strdup((const char*)it->first);
+            char *value = strbuf.strdup(it->second->to_string());
+
+            add_tag(key, value);
+            TagOwner::add_tag(&m_non_grouping_tags, key, value);
         }
 
         JsonParser::free_map(m);
@@ -355,7 +374,7 @@ Query::get_query_tasks(std::vector<QueryTask*>& qtv, std::vector<Tsdb*> *tsdbs)
     std::unordered_set<TimeSeries*> tsv;
     char buff[MAX_TOTAL_TAG_LENGTH];
     get_ordered_tags(buff, sizeof(buff));
-    Tsdb::query_for_ts(m_metric, m_tags, tsv, buff);
+    Tsdb::query_for_ts(m_metric, m_tags, tsv, buff, m_explicit_tags);
 
     for (TimeSeries *ts: tsv)
     {
@@ -443,6 +462,16 @@ Query::calculate_rate(std::vector<QueryResults*>& results)
 */
 }
 
+QueryResults *
+Query::create_one_query_results(StringBuffer& strbuf)
+{
+    QueryResults *result =
+        (QueryResults*)MemoryManager::alloc_recyclable(RecyclableType::RT_QUERY_RESULTS);
+    result->m_metric = m_metric;
+    result->set_tags(get_cloned_tags(strbuf));
+    return result;
+}
+
 void
 Query::create_query_results(std::vector<QueryTask*>& qtv, std::vector<QueryResults*>& results, StringBuffer& strbuf)
 {
@@ -462,11 +491,7 @@ Query::create_query_results(std::vector<QueryTask*>& qtv, std::vector<QueryResul
     if (! star_tags)
     {
         // in this case there can be only one QueryResults
-        QueryResults *result =
-            (QueryResults*)MemoryManager::alloc_recyclable(RecyclableType::RT_QUERY_RESULTS);
-
-        result->m_metric = m_metric;
-        result->set_tags(get_cloned_tags(strbuf));
+        QueryResults *result = create_one_query_results(strbuf);
 
         for (QueryTask *qt: qtv)
         {
@@ -493,6 +518,9 @@ Query::create_query_results(std::vector<QueryTask*>& qtv, std::vector<QueryResul
                     // skip those tags that are not queried
                     if (find_by_key(tag->m_key) == nullptr) continue;
 
+                    // skip non-grouping tags
+                    if (TagOwner::find_by_key(m_non_grouping_tags, tag->m_key) != nullptr) continue;
+
                     //if (! Tag::match_value(qt->get_tags(), tag->m_key, tag->m_value))
                     if (! qt_tags.match(tag->m_key, tag->m_value))
                     {
@@ -500,21 +528,6 @@ Query::create_query_results(std::vector<QueryTask*>& qtv, std::vector<QueryResul
                         break;
                     }
                 }
-/*
-                bool match = true;
-
-                for (Tag *tag = r->get_tags(); tag != nullptr; tag = tag->next())
-                {
-                    // skip those tags that are not queried
-                    if (find_by_key(tag->m_key) == nullptr) continue;
-
-                    if (! Tag::match_value(qt->get_tags(), tag->m_key, tag->m_value))
-                    {
-                        match = false;
-                        break;
-                    }
-                }
-*/
 
                 if (match)
                 {
@@ -526,12 +539,8 @@ Query::create_query_results(std::vector<QueryTask*>& qtv, std::vector<QueryResul
             if (result == nullptr)
             {
                 // did not find the matching QueryResults, create one
-                result =
-                    (QueryResults*)MemoryManager::alloc_recyclable(RecyclableType::RT_QUERY_RESULTS);
-                result->m_metric = m_metric;
-                result->set_tags(get_cloned_tags(strbuf));
+                result = create_one_query_results(strbuf);
                 result->add_query_task(qt, strbuf);
-
                 results.push_back(result);
             }
             else

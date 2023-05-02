@@ -122,6 +122,13 @@ public:
     inline int get_tag_count(bool excludeField) const
     { return get_tag_count(m_tags, excludeField); }
     static int get_tag_count(Tag *tags, bool excludeField);
+    static void add_tag(Tag **tags, const char *name, const char *value)
+    {
+        ASSERT(tags != nullptr);
+        ASSERT(name != nullptr);
+        ASSERT(value != nullptr);
+        KeyValuePair::insert_in_order(tags, name, value);
+    }
 
 protected:
     bool m_own_mem; // should we free m_key and m_value?

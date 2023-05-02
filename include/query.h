@@ -203,6 +203,7 @@ private:
         return m_time_range.in_range(tstamp);
     }
 
+    QueryResults *create_one_query_results(StringBuffer& strbuf);
     void create_query_results(std::vector<QueryTask*>& qtv, std::vector<QueryResults*>& results, StringBuffer& strbuf);
     void aggregate(std::vector<QueryTask*>& qtv, std::vector<QueryResults*>& results, StringBuffer& strbuf);
     void calculate_rate(std::vector<QueryResults*>& results);
@@ -210,11 +211,13 @@ private:
     TimeRange m_time_range;
 
     bool m_ms;  // milli-second resolution?
+    bool m_explicit_tags;
     int m_errno;
     const char *m_metric;
     const char *m_aggregate;
     const char *m_downsample;
 
+    Tag *m_non_grouping_tags;
     Aggregator *m_aggregator;
     RateCalculator *m_rate_calculator;
 };
