@@ -20,6 +20,7 @@
 
 #include <cstdio>
 #include <mutex>
+#include "lock.h"
 #include "range.h"
 #include "type.h"
 #include "utils.h"
@@ -38,6 +39,7 @@ public:
     MmapFile(const std::string& file_name);
     virtual ~MmapFile();
 
+    bool remap();
     bool resize(off_t length);
     virtual void open(bool for_read) = 0;
     virtual void close();
@@ -139,10 +141,11 @@ public:
     inline PageSize get_offset() const { return m_offset; }
     inline PageSize get_next_page_size() const
     { return m_offset?(m_page_size-m_offset):m_page_size; }
-    void *get_page(PageIndex page_idx, PageSize offset);
+    void *get_page(PageIndex page_idx, PageSize offset, PageSize cursor);
     inline FILE *get_file() const { return m_file; }
     bool is_open(bool for_read) const override;
 
+    inline pthread_rwlock_t *get_lock() { return &m_lock; }
     inline Timestamp get_last_read() const { return m_last_read; }
     inline Timestamp get_last_write() const { return m_last_write; }
 
@@ -156,6 +159,8 @@ private:
     HeaderFile *m_header_file;
     Timestamp m_last_read;
     Timestamp m_last_write;
+
+    pthread_rwlock_t m_lock;
 };
 
 
