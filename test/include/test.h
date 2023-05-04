@@ -109,6 +109,7 @@ public:
                     //printf("%s: %f\n", it.first, it.second->to_double());
                 }
             }
+            tt::JsonParser::free_array(array);
         }
     }
 

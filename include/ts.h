@@ -48,7 +48,8 @@ public:
     TimeSeries(TimeSeriesId id, const char *metric, const char *key, Tag *tags);
     ~TimeSeries();
 
-    static void init();    // called by Tsdb::init()
+    static void init();     // called by Tsdb::init()
+    static void cleanup();  // called by Tsdb::shutdown()
     void init(TimeSeriesId id, const char *metric, const char *key, Tag *tags);
     void restore(Tsdb *tsdb, Timestamp tstamp, PageSize offset, uint8_t start, uint8_t *buff, bool is_ooo);
 

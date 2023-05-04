@@ -153,6 +153,18 @@ TimeSeries::init(TimeSeriesId id, const char *metric, const char *key, Tag *tags
 }
 
 void
+TimeSeries::cleanup()
+{
+#ifdef _DEBUG
+    if (m_locks != nullptr)
+    {
+        delete[] m_locks;
+        m_locks = nullptr;
+    }
+#endif
+}
+
+void
 TimeSeries::restore(Tsdb *tsdb, Timestamp tstamp, PageSize offset, uint8_t start, uint8_t *buff, bool is_ooo)
 {
     ASSERT(tsdb != nullptr);

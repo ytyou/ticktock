@@ -125,6 +125,7 @@ CheckPointTests::get_persisted_tests()
     CONFIRM(std::strcmp(buff, "[{\"leader\":\"leader2\",\"channels\":[{\"channel\":\"channel1\",\"checkpoint\":\"checkpoint1\"}]},{\"leader\":\"leader1\",\"channels\":[{\"channel\":\"channel2\",\"checkpoint\":\"checkpoint4\"},{\"channel\":\"channel1\",\"checkpoint\":\"checkpoint3\"}]}]") == 0);
     log("persisted = %s", buff);
 
+    CheckPointManager::close();
     m_stats.add_passed(1);
 }
 

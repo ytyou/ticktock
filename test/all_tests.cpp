@@ -67,14 +67,17 @@ main(int argc, char *argv[])
     printf("rand() seed used: %ld\n", seed);
 
     // update g_config_file to point to our test config
-    tt::g_config_file = TestCase::str_join(TEST_ROOT, "test.conf");
-    system(TestCase::str_join("mkdir -p ", TEST_ROOT, "data"));
+    char *config_file = TestCase::str_join(TEST_ROOT, "test.conf");
+    tt::g_config_file = config_file;
+    char *mkdir = TestCase::str_join("mkdir -p ", TEST_ROOT, "data");
+    system(mkdir);
     system("rm -f /tmp/*.cp");
 
     // generate our own config file
-    TestCase::create_config(CFG_LOG_FILE, TestCase::str_join(TEST_ROOT, "test.log"));
+    char *log_file = TestCase::str_join(TEST_ROOT, "test.log");
+    TestCase::create_config(CFG_LOG_FILE, log_file);
     Config::init();
-    Tsdb::init();
+    //Tsdb::init();
     QueryExecutor::init();
 
     TestStats stats;
@@ -95,6 +98,12 @@ main(int argc, char *argv[])
 
         stats.add(tests[i]->get_stats());
     }
+
+    // cleanup
+    std::free(mkdir);
+    std::free(log_file);
+    std::free(config_file);
+    delete MetaFile::instance();
 
     printf("PASSED: %d, FAILED: %d, TOTAL: %d, SEED-USED: %ld\n", stats.get_passed(), stats.get_failed(), stats.get_total(), seed);
     return 0;

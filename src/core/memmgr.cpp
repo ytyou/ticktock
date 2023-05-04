@@ -671,7 +671,28 @@ MemoryManager::cleanup()
         delete static_cast<HttpConnection*>(r);
     }
 
-    // TODO: free m_network_buffer_free_list
+    // free m_network_buffer_free_list
+    char* buff = nullptr;
+
+    {
+        std::lock_guard<std::mutex> guard(m_network_lock);
+        while ((buff = m_network_buffer_free_list) != nullptr)
+        {
+            m_network_buffer_free_list = *((char**)buff);
+            m_free[RecyclableType::RT_COUNT]--;
+            std::free(buff);
+        }
+    }
+
+    {
+        std::lock_guard<std::mutex> guard(m_network_small_lock);
+        while ((buff = m_network_buffer_small_free_list) != nullptr)
+        {
+            m_network_buffer_small_free_list = *((char**)buff);
+            m_free[RecyclableType::RT_COUNT+1]--;
+            std::free(buff);
+        }
+    }
 }
 
 Recyclable *

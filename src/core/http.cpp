@@ -817,7 +817,8 @@ HttpResponse::HttpResponse() :
     buffer(nullptr),
     response(nullptr)
 {
-    init(0, HttpContentType::PLAIN);
+    init();
+    //init(0, HttpContentType::PLAIN);
 }
 
 HttpResponse::HttpResponse(uint16_t code, HttpContentType type) :

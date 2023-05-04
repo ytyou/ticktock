@@ -48,11 +48,13 @@ CompactTests::update_config(Timestamp archive_ms, int compressor)
 {
     std::vector<std::pair<const char*, const char*> > configs;
     std::string archive = std::to_string(archive_ms) + "ms";
+    char *log_file = str_join(TEST_ROOT, "test.log");
+    char *data_dir = str_join(TEST_ROOT, "data");
 
     configs.emplace_back(CFG_APPEND_LOG_ENABLED, "false");
-    configs.emplace_back(CFG_LOG_FILE, str_join(TEST_ROOT, "test.log"));
+    configs.emplace_back(CFG_LOG_FILE, log_file);
     configs.emplace_back(CFG_LOG_LEVEL, "TRACE");
-    configs.emplace_back(CFG_TSDB_DATA_DIR, str_join(TEST_ROOT, "data"));
+    configs.emplace_back(CFG_TSDB_DATA_DIR, data_dir);
     configs.emplace_back(CFG_TSDB_ARCHIVE_THRESHOLD, archive.c_str());
     configs.emplace_back(CFG_TSDB_READ_ONLY_THRESHOLD, archive.c_str());
     configs.emplace_back(CFG_TSDB_TIMESTAMP_RESOLUTION, "millisecond");
@@ -62,6 +64,9 @@ CompactTests::update_config(Timestamp archive_ms, int compressor)
 
     create_config(configs);
     Config::init();
+
+    std::free(log_file);
+    std::free(data_dir);
 }
 
 void
@@ -101,6 +106,8 @@ CompactTests::two_partial_with_ooo1(int dps_cnt, int ooo_cnt, DataPointVector dp
     CONFIRM(! Tsdb::inst(start)->is_read_only());
 
     Tsdb::shutdown();
+    delete MetaFile::instance();
+    MemoryManager::cleanup();
 }
 
 void
@@ -114,6 +121,7 @@ CompactTests::two_partial_with_ooo2(int dps_cnt, int ooo_cnt)
     query_raw(metric, 0, results);
     CONFIRM(results.size() == (dps_cnt + ooo_cnt));
     Tsdb::shutdown();
+    delete MetaFile::instance();
 }
 
 void
@@ -131,6 +139,7 @@ CompactTests::two_partial_with_ooo3()
     Tsdb::compact(data);
     CONFIRM(Tsdb::inst(start)->is_compacted());
     Tsdb::shutdown();
+    delete MetaFile::instance();
     log("compaction done");
 }
 
@@ -203,6 +212,8 @@ CompactTests::two_partial_with_ooo()
     t4.join();
 
     clean_shutdown();
+    delete MetaFile::instance();
+    MemoryManager::cleanup();
     m_stats.add_passed(1);
 }
 
@@ -244,6 +255,8 @@ CompactTests::one_full_two_partial_with_ooo1(int dps_cnt, int ooo_cnt, DataPoint
     CONFIRM(! Tsdb::inst(start)->is_read_only());
 
     Tsdb::shutdown();
+    delete MetaFile::instance();
+    MemoryManager::cleanup();
 }
 
 void
@@ -257,6 +270,7 @@ CompactTests::one_full_two_partial_with_ooo2(int dps_cnt, int ooo_cnt)
     query_raw(metric, 0, results);
     CONFIRM(results.size() == (dps_cnt + ooo_cnt));
     Tsdb::shutdown();
+    delete MetaFile::instance();
 }
 
 void
@@ -274,6 +288,7 @@ CompactTests::one_full_two_partial_with_ooo3()
     Tsdb::compact(data);
     CONFIRM(Tsdb::inst(start)->is_compacted());
     Tsdb::shutdown();
+    delete MetaFile::instance();
     log("compaction done");
 }
 
@@ -325,6 +340,8 @@ CompactTests::one_full_two_partial_with_ooo()
     t4.join();
 
     clean_shutdown();
+    delete MetaFile::instance();
+    MemoryManager::cleanup();
     m_stats.add_passed(1);
 }
 
@@ -375,6 +392,8 @@ CompactTests::three_partial_with_ooo1(int dps_cnt, int ooo_cnt, DataPointVector 
     CONFIRM(! Tsdb::inst(start)->is_read_only());
 
     Tsdb::shutdown();
+    delete MetaFile::instance();
+    MemoryManager::cleanup();
 }
 
 void
@@ -388,6 +407,7 @@ CompactTests::three_partial_with_ooo2(int dps_cnt, int ooo_cnt)
     query_raw(metric, 0, results);
     CONFIRM(results.size() == (2*dps_cnt + ooo_cnt));
     Tsdb::shutdown();
+    delete MetaFile::instance();
 }
 
 void
@@ -405,6 +425,7 @@ CompactTests::three_partial_with_ooo3()
     Tsdb::compact(data);
     CONFIRM(Tsdb::inst(start)->is_compacted());
     Tsdb::shutdown();
+    delete MetaFile::instance();
     log("compaction done");
 }
 
@@ -458,6 +479,8 @@ CompactTests::three_partial_with_ooo()
     t4.join();
 
     clean_shutdown();
+    delete MetaFile::instance();
+    MemoryManager::cleanup();
     m_stats.add_passed(1);
 }
 
@@ -507,6 +530,7 @@ CompactTests::need_to_fill_empty_page1(int dps_cnt1, int dps_cnt2, int dps_cnt3,
     CONFIRM(! Tsdb::inst(start)->is_read_only());
 
     Tsdb::shutdown();
+    delete MetaFile::instance();
 }
 
 void
@@ -520,6 +544,7 @@ CompactTests::need_to_fill_empty_page2(int dps_cnt1, int dps_cnt2, int dps_cnt3)
     query_raw(metric, 0, results);
     CONFIRM(results.size() == (dps_cnt1 + dps_cnt2 + dps_cnt3));
     Tsdb::shutdown();
+    delete MetaFile::instance();
 }
 
 void
@@ -537,6 +562,7 @@ CompactTests::need_to_fill_empty_page3()
     Tsdb::compact(data);
     CONFIRM(Tsdb::inst(start)->is_compacted());
     Tsdb::shutdown();
+    delete MetaFile::instance();
     log("compaction done");
 }
 
@@ -590,6 +616,8 @@ CompactTests::need_to_fill_empty_page()
     t4.join();
 
     clean_shutdown();
+    delete MetaFile::instance();
+    MemoryManager::cleanup();
     m_stats.add_passed(1);
 }
 
@@ -629,6 +657,8 @@ CompactTests::need_to_fill_empty_page_again1(int compressor, int dps_cnts[6], Da
     CONFIRM(! Tsdb::inst(start)->is_read_only());
 
     Tsdb::shutdown();
+    delete MetaFile::instance();
+    MemoryManager::cleanup();
 }
 
 void
@@ -642,6 +672,7 @@ CompactTests::need_to_fill_empty_page_again2(int compressor, int dps_cnt)
     query_raw(metric, 0, results);
     CONFIRM(results.size() == dps_cnt);
     Tsdb::shutdown();
+    delete MetaFile::instance();
 }
 
 void
@@ -668,6 +699,7 @@ CompactTests::need_to_fill_empty_page_again3(int compressor, int dps_cnt, DataPo
         for (auto& dp: dps[i]) CONFIRM(contains(results, dp));
     }
     Tsdb::shutdown();
+    delete MetaFile::instance();
 }
 
 void
@@ -729,6 +761,8 @@ CompactTests::need_to_fill_empty_page_again(int compressor)
     t4.join();
 
     clean_shutdown();
+    delete MetaFile::instance();
+    MemoryManager::cleanup();
     m_stats.add_passed(1);
 }
 
@@ -780,6 +814,8 @@ CompactTests::remove_duplicates1(int dps_cnt, int ooo_cnt, DataPointVector dps, 
     CONFIRM(! Tsdb::inst(start)->is_read_only());
 
     Tsdb::shutdown();
+    delete MetaFile::instance();
+    MemoryManager::cleanup();
 }
 
 void
@@ -795,6 +831,7 @@ CompactTests::remove_duplicates2(int dps_cnt, int ooo_cnt)
     CONFIRM(results.size() == (dps_cnt + ooo_cnt));
     log("results.size() = %d", results.size());
     Tsdb::shutdown();
+    delete MetaFile::instance();
 }
 
 void
@@ -812,6 +849,7 @@ CompactTests::remove_duplicates3()
     Tsdb::compact(data);
     CONFIRM(Tsdb::inst(start)->is_compacted());
     Tsdb::shutdown();
+    delete MetaFile::instance();
     log("compaction done");
 }
 
@@ -867,6 +905,7 @@ CompactTests::remove_duplicates()
     t4.join();
 
     clean_shutdown();
+    delete MetaFile::instance();
     m_stats.add_passed(1);
 }
 

@@ -65,7 +65,8 @@ Downsampler::initialize(char *interval, char *fill, TimeRange& range, bool ms)
 
         if (! ends_with(interval, "ms"))
         {
-            char& unit = std::string(interval).back();
+            //char& unit = std::string(interval).back();
+            char unit = interval[std::strlen(interval)-1];  // last char
 
             switch (unit)
             {

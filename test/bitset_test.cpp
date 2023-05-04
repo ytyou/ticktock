@@ -103,6 +103,7 @@ BitSetTests::test1()
     CONFIRM(m6 == n6);
     CONFIRM(m7 == n7);
 
+    delete cursor;
     m_stats.add_passed(1);
 }
 
@@ -171,6 +172,7 @@ BitSetTests::test2()
     CONFIRM(m7 == n7);
     CONFIRM(m8 == n8);
 
+    delete cursor;
     m_stats.add_passed(1);
 }
 

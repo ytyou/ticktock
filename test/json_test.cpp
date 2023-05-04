@@ -106,6 +106,7 @@ JsonTests::query_json_tests()
     JsonMap map1;
     JsonParser::parse_map(json1, map1);
     JsonParser::free_map(map1);
+    std::free(json1);
 
     char *json2 = strdup("{\"start\":1571364787563,\"queries\":[{\"metric\":\"2.2.nginx.number_requests_writing\",\"aggregator\":\"avg\",\"rate\":true,\"rateOptions\":{\"counter\":false,\"dropResets\":true},\"downsample\":\"1m-avg\",\"tags\":{\"host\":\"*\"}}],\"msResolution\":false,\"globalAnnotations\":true}");
     JsonMap map2;
@@ -121,6 +122,7 @@ JsonTests::query_json_tests()
     CONFIRM(m.find("rate") != m.end());
     CONFIRM(m.find("rate")->second->to_bool());
     JsonParser::free_map(map2);
+    std::free(json2);
 
     char *json3 = strdup("{\"start\":\"1d-ago\",\"queries\":[{\"metric\":\"3.3.nginx.number_requests_reading\"}]}");
     JsonMap map3;
@@ -129,6 +131,7 @@ JsonTests::query_json_tests()
     CONFIRM(search != map3.end());
     CONFIRM(std::strcmp(search->second->to_string(), "1d-ago") == 0);
     JsonParser::free_map(map3);
+    std::free(json3);
 
     char *json4 = strdup("{host=host1,cpu=0}");
     JsonMap map4;
@@ -140,7 +143,9 @@ JsonTests::query_json_tests()
     CONFIRM(search != map4.end());
     CONFIRM(std::strcmp(search->second->to_string(), "0") == 0);
     JsonParser::free_map(map4);
+    std::free(json4);
 
+    MemoryManager::cleanup();
     m_stats.add_passed(1);
 
     log("Finished %s", m_name);

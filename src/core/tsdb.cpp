@@ -314,6 +314,10 @@ Mapping::~Mapping()
         m_metric = nullptr;
     }
 
+    for (auto it = m_map.begin(); it != m_map.end(); it++)
+        std::free((char*)it->first);
+    m_map.clear();
+
     pthread_rwlock_destroy(&m_lock);
 }
 
@@ -702,11 +706,13 @@ Mapping::restore_ts(std::string& metric, std::string& keys, TimeSeriesId id)
     TimeSeries *ts = new TimeSeries(id, metric.c_str(), keys.c_str(), tags);
     m_map[STRDUP(keys.c_str())] = ts;
     add_ts(ts);
+    set_tag_count(TagOwner::get_tag_count(tags, false));
+    Tag::free_list(tags, true);
     // for backwards compatibility, tags can be separated by either ',' or ';'
-    if (keys.find_first_of(';') != std::string::npos)   // old style?
-        set_tag_count(std::count(keys.begin(), keys.end(), ';'));
-    else
-        set_tag_count(std::count(keys.begin(), keys.end(), ',')+1);
+    //if (keys.find_first_of(';') != std::string::npos)   // old style?
+        //set_tag_count(std::count(keys.begin(), keys.end(), ';'));
+    //else
+        //set_tag_count(std::count(keys.begin(), keys.end(), ',')+1);
     return ts;
 }
 
@@ -783,7 +789,10 @@ Tsdb::Tsdb(TimeRange& range, bool existing, const char *suffix) :
 
 Tsdb::~Tsdb()
 {
-    unload();
+    unload_no_lock();
+
+    for (DataFile *file: m_data_files) delete file;
+    for (HeaderFile *file: m_header_files) delete file;
 }
 
 Tsdb *
@@ -1214,6 +1223,15 @@ Tsdb::shutdown()
         {
             Mapping *mapping = it->second;
             mapping->flush(true);
+#ifdef _DEBUG
+            TimeSeries *next;
+            for (TimeSeries *ts = mapping->get_ts_head(); ts != nullptr; ts = next)
+            {
+                next = ts->m_next;
+                delete ts;
+            }
+            delete mapping;
+#endif
         }
 
         g_metric_map.clear();
@@ -1229,11 +1247,15 @@ Tsdb::shutdown()
         for (DataFile *file: tsdb->m_data_files) file->close();
         for (HeaderFile *file: tsdb->m_header_files) file->close();
         tsdb->m_index_file.close();
+#ifdef _DEBUG
+        delete tsdb;
+#endif
     }
 
     m_tsdbs.clear();
     CheckPointManager::close();
     MetaFile::instance()->close();
+    TimeSeries::cleanup();
     Logger::info("Tsdb::shutdown complete");
 }
 
