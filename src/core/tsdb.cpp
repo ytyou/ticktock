@@ -315,7 +315,10 @@ Mapping::~Mapping()
     }
 
     for (auto it = m_map.begin(); it != m_map.end(); it++)
+    {
         std::free((char*)it->first);
+        delete it->second;
+    }
     m_map.clear();
 
     pthread_rwlock_destroy(&m_lock);
@@ -1224,12 +1227,12 @@ Tsdb::shutdown()
             Mapping *mapping = it->second;
             mapping->flush(true);
 #ifdef _DEBUG
-            TimeSeries *next;
-            for (TimeSeries *ts = mapping->get_ts_head(); ts != nullptr; ts = next)
-            {
-                next = ts->m_next;
-                delete ts;
-            }
+            //TimeSeries *next;
+            //for (TimeSeries *ts = mapping->get_ts_head(); ts != nullptr; ts = next)
+            //{
+                //next = ts->m_next;
+                //delete ts;
+            //}
             delete mapping;
 #endif
         }
