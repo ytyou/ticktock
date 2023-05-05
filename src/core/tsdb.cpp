@@ -76,7 +76,11 @@ Measurement::Measurement(uint32_t ts_count) :
 Measurement::~Measurement()
 {
     if (m_time_series != nullptr)
+    {
+        for (int i = 0; i < m_ts_count; i++)
+            delete m_time_series[i];
         std::free(m_time_series);
+    }
 }
 
 void
@@ -314,11 +318,13 @@ Mapping::~Mapping()
         m_metric = nullptr;
     }
 
+    std::set<BaseType*> bases;
     for (auto it = m_map.begin(); it != m_map.end(); it++)
     {
         std::free((char*)it->first);
-        delete it->second;
+        bases.insert(it->second);   // to remove any duplicates...
     }
+    for (auto b : bases) delete b;
     m_map.clear();
 
     pthread_rwlock_destroy(&m_lock);
@@ -510,8 +516,10 @@ Mapping::get_measurement(char *raw_tags, TagOwner& owner, const char *measuremen
             m_map[STRDUP(ordered)] = bt;
         }
 
-        if (std::strcmp(raw_tags, ordered) != 0)
+        if (m_map.find(raw_tags) == m_map.end())
             m_map[STRDUP(raw_tags)] = bt;
+        else
+            m_map[raw_tags] = bt;
 
         // This is a different time series!?
         if ((ts != nullptr) && (mm != nullptr))
