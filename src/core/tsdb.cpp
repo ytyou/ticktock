@@ -473,8 +473,8 @@ Mapping::get_measurement(char *raw_tags, TagOwner& owner, const char *measuremen
         char ordered[MAX_TOTAL_TAG_LENGTH];
         char original[MAX_TOTAL_TAG_LENGTH+1];
 
-        original[0] = 0;    // owner.parse() may check this
-        std::strncpy(&original[1], raw_tags, MAX_TOTAL_TAG_LENGTH);
+        //original[0] = 0;    // owner.parse() may check this
+        std::strncpy(original, raw_tags, MAX_TOTAL_TAG_LENGTH);
 
         if (raw_tags[1] == 0)   // no tags
         {
@@ -486,7 +486,8 @@ Mapping::get_measurement(char *raw_tags, TagOwner& owner, const char *measuremen
             // parse raw tags...
             if (owner.get_tags() == nullptr)
             {
-                if (! owner.parse(&original[1]))
+                //if (! owner.parse(&original[1]))
+                if (! owner.parse(raw_tags))
                     return nullptr;
             }
             owner.get_ordered_tags(ordered, MAX_TOTAL_TAG_LENGTH);
@@ -507,19 +508,23 @@ Mapping::get_measurement(char *raw_tags, TagOwner& owner, const char *measuremen
         }
 
         Measurement *mm = nullptr;
+        bool not_found = false;
 
         if (bt == nullptr)
         {
+            not_found = true;
             mm = new Measurement();
             init_measurement(mm, measurement, ordered, owner, dps);
             bt = static_cast<BaseType*>(mm);
             m_map[STRDUP(ordered)] = bt;
         }
 
-        if (m_map.find(raw_tags) == m_map.end())
-            m_map[STRDUP(raw_tags)] = bt;
+        //if (m_map.find(original) == m_map.end())
+        //if (ts == nullptr)
+        if (not_found || (m_map.find(original) == m_map.end()))
+            m_map[STRDUP(original)] = bt;
         else
-            m_map[raw_tags] = bt;
+            m_map[original] = bt;
 
         // This is a different time series!?
         if ((ts != nullptr) && (mm != nullptr))
