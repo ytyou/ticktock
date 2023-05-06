@@ -148,7 +148,7 @@ Measurement::add_ts(const char *field, Mapping *mapping)
 
     TimeSeries *ts0 = m_time_series[0];
     TagCount tag_cnt = ts0->get_tag_count();
-    TagId ids[tag_cnt];
+    TagId ids[2 * tag_cnt];
     TagBuilder builder(tag_cnt, ids);
     builder.init(ts0->get_v2_tags());
     builder.update_last(TT_FIELD_TAG_ID, field);
@@ -508,20 +508,17 @@ Mapping::get_measurement(char *raw_tags, TagOwner& owner, const char *measuremen
         }
 
         Measurement *mm = nullptr;
-        bool not_found = false;
 
         if (bt == nullptr)
         {
-            not_found = true;
             mm = new Measurement();
             init_measurement(mm, measurement, ordered, owner, dps);
             bt = static_cast<BaseType*>(mm);
             m_map[STRDUP(ordered)] = bt;
         }
 
-        //if (m_map.find(original) == m_map.end())
         //if (ts == nullptr)
-        if (not_found || (m_map.find(original) == m_map.end()))
+        if (m_map.find(original) == m_map.end())
             m_map[STRDUP(original)] = bt;
         else
             m_map[original] = bt;
