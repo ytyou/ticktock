@@ -2633,7 +2633,9 @@ Tsdb::compact(TaskData& data)
 
                 // create a temporary tsdb to compact data into
                 Tsdb *compacted = Tsdb::create(range, false, TEMP_SUFFIX);
+#ifdef __x86_64__
                 compacted->m_page_size = g_sys_page_size;
+#endif
                 std::vector<Tsdb*> tsdbs = { tsdb };
                 TimeSeriesId max_id = TimeSeries::get_next_id();
                 QueryTask *query =
