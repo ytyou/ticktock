@@ -78,7 +78,7 @@ Downsampler::initialize(char *interval, char *fill, TimeRange& range, bool ms)
                 case 'd':   factor = 86400;     break;  // day
                 case 'w':   factor = 604800;    break;  // week
                 case 'l':   m_all = true;       break;  // all
-                default:    factor = 1;         break;
+                default:    throw std::runtime_error("unrecognized downsampler");
             };
 
             if (g_tstamp_resolution_ms) factor *= 1000;
