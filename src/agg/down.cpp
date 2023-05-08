@@ -64,7 +64,7 @@ Downsampler::initialize(char *interval, char *fill, TimeRange& range, bool ms)
         double factor = 1;
 
         if (ends_with(interval, "ms"))
-            factor = 0.001;
+            factor = g_tstamp_resolution_ms ? 1 : 0.001;
         else
         {
             //char& unit = std::string(interval).back();

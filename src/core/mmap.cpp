@@ -676,7 +676,7 @@ DataFile::close()
         m_file = nullptr;
     }
 
-    Logger::info("closing data file %s (for both read & write), length = %" PRIu64, m_name.c_str(), get_length());
+    Logger::info("closing data file %s (for both read & write), length = %lu", m_name.c_str(), get_length());
     MmapFile::close();
 }
 
