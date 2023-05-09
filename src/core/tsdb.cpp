@@ -165,7 +165,7 @@ Measurement::append_ts(TimeSeries *ts)
 }
 
 TimeSeries *
-Measurement::get_ts(int idx, const char *field)
+Measurement::get_ts(int idx, const char *field, bool swap)
 {
     ASSERT(field != nullptr);
 
@@ -196,7 +196,7 @@ Measurement::get_ts(int idx, const char *field)
         if (tags.match_last(TT_FIELD_TAG_ID, vid))
         {
             // swap m_time_series[i] & m_time_series[idx]
-            if (idx < m_ts_count)
+            if (swap && (idx < m_ts_count))
             {
                 m_time_series[i] = m_time_series[idx];
                 m_time_series[idx] = ts;
@@ -212,7 +212,7 @@ Measurement::get_ts(int idx, const char *field)
 TimeSeries *
 Measurement::get_ts(bool add, Mapping *mapping)
 {
-    TimeSeries *ts = get_ts(m_ts_count-1, TT_FIELD_VALUE);
+    TimeSeries *ts = get_ts(m_ts_count-1, TT_FIELD_VALUE, false);
 
     if ((ts == nullptr) && add)
     {
@@ -282,7 +282,7 @@ Measurement::add_data_points(std::vector<DataPoint>& dps, Timestamp tstamp, Mapp
 
         for (DataPoint& dp: dps)
         {
-            TimeSeries *ts = get_ts(i++, dp.get_raw_tags());
+            TimeSeries *ts = get_ts(i++, dp.get_raw_tags(), true);
 
             if (ts == nullptr)
                 ts = add_ts(dp.get_raw_tags(), mapping);
@@ -439,7 +439,7 @@ Mapping::get_ts_in_measurement(DataPoint& dp, Tag *field)
     ASSERT(mm != nullptr);
 
     if (mm != nullptr)
-        ts = mm->get_ts(0, field->m_value);
+        ts = mm->get_ts(0, field->m_value, false);
 
     if (ts == nullptr)
         ts = mm->add_ts(field->m_value, this);
@@ -658,7 +658,7 @@ Mapping::query_for_ts(Tag *tags, std::unordered_set<TimeSeries*>& tsv, const cha
                 Tag *tag = TagOwner::find_by_key(tags, TT_FIELD_TAG_NAME);
 
                 if (tag != nullptr)
-                    ts = mm->get_ts(0, tag->m_value);
+                    ts = mm->get_ts(0, tag->m_value, false);
                 else
                 {
                     std::vector<TimeSeries*> all;
