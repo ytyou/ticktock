@@ -103,6 +103,9 @@ public:
     //default_contention_free_shared_mutex m_lock;
 
 private:
+    TimeSeries *get_ts_no_lock(bool add, Mapping *mapping);
+    TimeSeries *get_ts_no_lock(int idx, const char *field, bool swap);
+
     TimeSeries **m_time_series;
     uint32_t m_ts_count;
 };

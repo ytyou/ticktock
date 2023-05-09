@@ -167,6 +167,13 @@ Measurement::append_ts(TimeSeries *ts)
 TimeSeries *
 Measurement::get_ts(int idx, const char *field, bool swap)
 {
+    std::lock_guard<std::mutex> guard(m_lock);
+    return get_ts_no_lock(idx, field, swap);
+}
+
+TimeSeries *
+Measurement::get_ts_no_lock(int idx, const char *field, bool swap)
+{
     ASSERT(field != nullptr);
 
     TagId vid;
@@ -212,7 +219,15 @@ Measurement::get_ts(int idx, const char *field, bool swap)
 TimeSeries *
 Measurement::get_ts(bool add, Mapping *mapping)
 {
-    TimeSeries *ts = get_ts(m_ts_count-1, TT_FIELD_VALUE, false);
+    std::lock_guard<std::mutex> guard(m_lock);
+    return get_ts_no_lock(add, mapping);
+}
+
+// get or add the TimeSeries that has no field name
+TimeSeries *
+Measurement::get_ts_no_lock(bool add, Mapping *mapping)
+{
+    TimeSeries *ts = get_ts_no_lock(m_ts_count-1, TT_FIELD_VALUE, false);
 
     if ((ts == nullptr) && add)
     {
@@ -282,7 +297,7 @@ Measurement::add_data_points(std::vector<DataPoint>& dps, Timestamp tstamp, Mapp
 
         for (DataPoint& dp: dps)
         {
-            TimeSeries *ts = get_ts(i++, dp.get_raw_tags(), true);
+            TimeSeries *ts = get_ts_no_lock(i++, dp.get_raw_tags(), true);
 
             if (ts == nullptr)
                 ts = add_ts(dp.get_raw_tags(), mapping);
