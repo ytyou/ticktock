@@ -165,10 +165,10 @@ Measurement::append_ts(TimeSeries *ts)
 }
 
 TimeSeries *
-Measurement::get_ts(int idx, const char *field, bool swap)
+Measurement::get_ts(int idx, const char *field)
 {
     std::lock_guard<std::mutex> guard(m_lock);
-    return get_ts_no_lock(idx, field, swap);
+    return get_ts_no_lock(idx, field, false);
 }
 
 TimeSeries *
@@ -454,7 +454,7 @@ Mapping::get_ts_in_measurement(DataPoint& dp, Tag *field)
     ASSERT(mm != nullptr);
 
     if (mm != nullptr)
-        ts = mm->get_ts(0, field->m_value, false);
+        ts = mm->get_ts(0, field->m_value);
 
     if (ts == nullptr)
         ts = mm->add_ts(field->m_value, this);
@@ -673,7 +673,7 @@ Mapping::query_for_ts(Tag *tags, std::unordered_set<TimeSeries*>& tsv, const cha
                 Tag *tag = TagOwner::find_by_key(tags, TT_FIELD_TAG_NAME);
 
                 if (tag != nullptr)
-                    ts = mm->get_ts(0, tag->m_value, false);
+                    ts = mm->get_ts(0, tag->m_value);
                 else
                 {
                     std::vector<TimeSeries*> all;
