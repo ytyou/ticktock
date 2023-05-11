@@ -91,6 +91,7 @@ public:
     bool get_ts(std::vector<DataPoint>& dps, std::vector<TimeSeries*>& tsv);
     void get_all_ts(std::vector<TimeSeries*>& tsv);
     inline uint32_t get_ts_count() const { return m_ts_count; }
+    inline void add_ts_count(uint32_t ts_count);
     inline void set_ts_count(uint32_t ts_count);
     inline bool is_initialized() const { return m_time_series != nullptr; }
 
@@ -102,6 +103,9 @@ public:
     //default_contention_free_shared_mutex m_lock;
 
 private:
+    TimeSeries *get_ts_no_lock(bool add, Mapping *mapping);
+    TimeSeries *get_ts_no_lock(int idx, const char *field, bool swap);
+
     TimeSeries **m_time_series;
     uint32_t m_ts_count;
 };
@@ -131,7 +135,7 @@ private:
     TimeSeries *get_ts_in_measurement(DataPoint& dp, Tag *field);
     Measurement *get_measurement(char *raw_tags, TagOwner& owner, const char *measurement, std::vector<DataPoint>& dps);
     void init_measurement(Measurement *mm, const char *measurement, char *tags, TagOwner& owner, std::vector<DataPoint>& dps);
-    void query_for_ts(Tag *tags, std::unordered_set<TimeSeries*>& tsv, const char *key);
+    void query_for_ts(Tag *tags, std::unordered_set<TimeSeries*>& tsv, const char *key, bool explicit_tags);
     TimeSeries *restore_ts(std::string& metric, std::string& key, TimeSeriesId id);
     void restore_measurement(std::string& measurement, std::string& tags, std::vector<std::pair<std::string,TimeSeriesId>>& fields, std::vector<TimeSeries*>& tsv);
     void set_tag_count(int tag_count);
@@ -185,7 +189,7 @@ public:
 
     bool add(DataPoint& dp);
 
-    static void query_for_ts(const char *metric, Tag *tags, std::unordered_set<TimeSeries*>& ts, const char *key);
+    static void query_for_ts(const char *metric, Tag *tags, std::unordered_set<TimeSeries*>& ts, const char *key, bool explicit_tags);
     bool query_for_data(TimeSeriesId id, TimeRange& range, std::vector<DataPointContainer*>& data);
     bool query_for_data_no_lock(TimeSeriesId id, TimeRange& range, std::vector<DataPointContainer*>& data);
 
@@ -242,6 +246,7 @@ public:
     }
 
     // http add data-point request handler
+    static bool http_api_put_handler(HttpRequest& request, HttpResponse& response); // json or plain
     static bool http_api_put_handler_json(HttpRequest& request, HttpResponse& response);
     static bool http_api_put_handler_plain(HttpRequest& request, HttpResponse& response);
     static bool http_api_write_handler(HttpRequest& request, HttpResponse& response);

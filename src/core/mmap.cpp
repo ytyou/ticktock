@@ -68,7 +68,7 @@ MmapFile::open(off_t length, bool read_only, bool append_only, bool resize)
     {
         Logger::error("Failed to open file %s, errno = %d", m_name.c_str(), errno);
         if (ENOMEM == errno)
-            throw std::runtime_error("Out of memory");
+            throw std::runtime_error(TT_MSG_OUT_OF_MEMORY);
         return;
     }
 
@@ -100,7 +100,7 @@ MmapFile::open(off_t length, bool read_only, bool append_only, bool resize)
         }
 
         if (ENOMEM == errno)
-            throw std::runtime_error("Out of memory");
+            throw std::runtime_error(TT_MSG_OUT_OF_MEMORY);
         return;
     }
 
@@ -127,7 +127,7 @@ MmapFile::open_existing(bool read_only, bool append_only)
     {
         Logger::error("Failed to open file %s, errno = %d", m_name.c_str(), errno);
         if (ENOMEM == errno)
-            throw std::runtime_error("Out of memory");
+            throw std::runtime_error(TT_MSG_OUT_OF_MEMORY);
         return;
     }
 
@@ -158,7 +158,7 @@ MmapFile::open_existing(bool read_only, bool append_only)
         }
 
         if (ENOMEM == errno)
-            throw std::runtime_error("Out of memory");
+            throw std::runtime_error(TT_MSG_OUT_OF_MEMORY);
         return;
     }
 
@@ -168,6 +168,44 @@ MmapFile::open_existing(bool read_only, bool append_only)
         Logger::warn("Failed to madvise(), page = %p, errno = %d", m_pages, errno);
 
     ASSERT(is_open(read_only));
+}
+
+bool
+MmapFile::remap()
+{
+    // if it's closed, open it
+    if (m_fd <= 0)
+    {
+        std::lock_guard<std::mutex> guard(m_lock);
+        open_existing(true, false);
+        return true;
+    }
+
+    struct stat sb;
+
+    if (fstat(m_fd, &sb) == -1)
+    {
+        Logger::error("Failed to fstat file %s, errno = %d", m_name.c_str(), errno);
+        return false;
+    }
+
+    off_t length = sb.st_size;
+
+    if (length == m_length)
+        return true;
+
+    void *pages = mremap(m_pages, m_length, length, MREMAP_MAYMOVE);
+
+    if (pages == MAP_FAILED)
+    {
+        Logger::error("Failed to mremap file %s from %u to %u, errno = %d",
+            m_name.c_str(), m_length, length, errno);
+        return false;
+    }
+
+    m_pages = pages;
+    m_length = length;
+    return true;
 }
 
 bool
@@ -583,30 +621,33 @@ DataFile::DataFile(const std::string& file_name, FileIndex id, PageSize size, Pa
     m_last_read(0),
     m_last_write(0)
 {
+    pthread_rwlockattr_t attr;
+    pthread_rwlockattr_setkind_np(&attr, PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP);
+    pthread_rwlock_init(&m_lock, &attr);
 }
 
 DataFile::~DataFile()
 {
     this->close();
+    pthread_rwlock_destroy(&m_lock);
 }
-
-/*
-void
-DataFile::init(HeaderFile *header_file)
-{
-    m_id = header_file->get_id();
-    m_page_size = header_file->get_page_size();
-    m_page_index = header_file->get_page_index();
-}
-*/
 
 void
 DataFile::open(bool for_read)
 {
     if (for_read)
     {
-        off_t length = (off_t)m_page_size * (off_t)m_page_count;
-        MmapFile::open(length, true, false, false);
+        if (m_file != nullptr)  // open for write?
+        {
+            // To avoid frequent remapping in this case, we open
+            // and map the full potential length of the file.
+            off_t length = (off_t)m_page_size * (off_t)m_page_count;
+            MmapFile::open(length, true, false, false);
+        }
+        else
+        {
+            MmapFile::open_existing(true, false);
+        }
         Logger::info("opening %s for read", m_name.c_str());
     }
     else
@@ -635,7 +676,7 @@ DataFile::close()
         m_file = nullptr;
     }
 
-    Logger::info("closing data file %s (for both read & write), length = %" PRIu64, m_name.c_str(), get_length());
+    Logger::info("closing data file %s (for both read & write), length = %lu", m_name.c_str(), get_length());
     MmapFile::close();
 }
 
@@ -708,14 +749,22 @@ DataFile::flush(bool sync)
         std::fflush(m_file);
 }
 
+// In case where the page is not mapped into memory,
+// it will return nullptr. In this case, you need to
+// remap the file.
 void *
-DataFile::get_page(PageIndex idx, PageSize offset)
+DataFile::get_page(PageIndex idx, PageSize offset, PageSize cursor)
 {
     ASSERT(idx != TT_INVALID_PAGE_INDEX);
+
+    long page_idx = idx * m_page_size;
+    if ((page_idx + cursor) > get_length())
+        return nullptr;     // needs remap
+
     uint8_t *pages = (uint8_t*)get_pages();
     ASSERT(pages != nullptr);
     m_last_read = ts_now_sec();
-    return (void*)(pages + (idx * m_page_size) + offset);
+    return (void*)(pages + page_idx + offset);
 }
 
 

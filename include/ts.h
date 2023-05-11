@@ -43,11 +43,13 @@ class __attribute__ ((__packed__)) TimeSeries : public BaseType
 {
 public:
     TimeSeries(TagBuilder& builder);
+    TimeSeries(const char *metric, TagBuilder& builder);
     TimeSeries(const char *metric, const char *key, Tag *tags);
     TimeSeries(TimeSeriesId id, const char *metric, const char *key, Tag *tags);
     ~TimeSeries();
 
-    static void init();    // called by Tsdb::init()
+    static void init();     // called by Tsdb::init()
+    static void cleanup();  // called by Tsdb::shutdown()
     void init(TimeSeriesId id, const char *metric, const char *key, Tag *tags);
     void restore(Tsdb *tsdb, Timestamp tstamp, PageSize offset, uint8_t start, uint8_t *buff, bool is_ooo);
 

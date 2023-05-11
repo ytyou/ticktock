@@ -5,12 +5,15 @@ CPP = g++
 LINK = $(CPP)
 RM = /bin/rm -f
 
-#DEBUG_FLAGS = -g3 -rdynamic -ggdb -D_DEBUG -D_TEST -D_GLIBCXX_DEBUG -O0
-#DEBUG_LIBS = /usr/lib/debug/lib/x86_64-linux-gnu/libSegFault.so
+# sanitize only works on 64-bit host
+uname_m := $(shell uname -m)
+SANITIZE.x86_64 := -fsanitize=address
+SANITIZE += $(SANITIZE.$(uname_m))
+
+#DEBUG_FLAGS = -g3 -rdynamic -ggdb -D_DEBUG -D_TEST -D_GLIBCXX_DEBUG -O0 -flto $(SANITIZE) -fno-omit-frame-pointer
 PROD_FLAGS = -O3 -march=native -ffast-math -flto
 #LEAK_FLAGS = -D_LEAK_DETECTION
 #PROF_FLAGS = -pg -D_GLIBCXX_DEBUG
-#PROF_FLAGS = -fno-omit-frame-pointer
 PROF_FLAGS = -flto
 
 CFLAGS = -I include -std=c++11 -Wno-unused-result -Wno-format-truncation -Wno-psabi $(DEBUG_FLAGS) $(PROF_FLAGS) $(LEAK_FLAGS) $(PROD_FLAGS)

@@ -61,11 +61,14 @@ Downsampler::initialize(char *interval, char *fill, TimeRange& range, bool ms)
     else
     {
         // interval
-        uint64_t factor = 1;
+        double factor = 1;
 
-        if (! ends_with(interval, "ms"))
+        if (ends_with(interval, "ms"))
+            factor = g_tstamp_resolution_ms ? 1 : 0.001;
+        else
         {
-            char& unit = std::string(interval).back();
+            //char& unit = std::string(interval).back();
+            char unit = interval[std::strlen(interval)-1];  // last char
 
             switch (unit)
             {
@@ -75,15 +78,14 @@ Downsampler::initialize(char *interval, char *fill, TimeRange& range, bool ms)
                 case 'd':   factor = 86400;     break;  // day
                 case 'w':   factor = 604800;    break;  // week
                 case 'l':   m_all = true;       break;  // all
-                default:    factor = 1;         break;
+                default:    throw std::runtime_error("unrecognized downsampler");
             };
 
             if (g_tstamp_resolution_ms) factor *= 1000;
         }
 
-        m_interval = (Timestamp)std::atoll(interval);
+        m_interval = (Timestamp)((double)std::atoll(interval) * factor);
         if (m_interval == 0) m_interval = 1;
-        m_interval *= factor;
     }
 
     ASSERT(m_interval > 0);

@@ -103,16 +103,15 @@ HttpServer::init()
     add_get_handler(HTTP_API_SUGGEST, &Tsdb::http_get_api_suggest_handler);
     add_get_handler(HTTP_API_VERSION, &HttpServer::http_get_api_version_handler);
 
-    if (Config::get_str(CFG_HTTP_REQUEST_FORMAT, CFG_HTTP_REQUEST_FORMAT_DEF) == "json")
+    if (Config::exists(CFG_HTTP_REQUEST_FORMAT))
     {
-        Logger::info("Registering HTTP Json handler");
-        add_post_handler(HTTP_API_PUT, &Tsdb::http_api_put_handler_json);
+        if (Config::get_str(CFG_HTTP_REQUEST_FORMAT) == "json")
+            add_post_handler(HTTP_API_PUT, &Tsdb::http_api_put_handler_json);
+        else
+            add_post_handler(HTTP_API_PUT, &Tsdb::http_api_put_handler_plain);
     }
     else
-    {
-        Logger::info("Registering HTTP Plain handler");
-        add_post_handler(HTTP_API_PUT, &Tsdb::http_api_put_handler_plain);
-    }
+        add_post_handler(HTTP_API_PUT, &Tsdb::http_api_put_handler);
 
     add_post_handler(HTTP_API_WRITE, &Tsdb::http_api_write_handler);
     add_post_handler(HTTP_API_QUERY, &QueryExecutor::http_post_api_query_handler);
@@ -818,7 +817,8 @@ HttpResponse::HttpResponse() :
     buffer(nullptr),
     response(nullptr)
 {
-    init(0, HttpContentType::PLAIN);
+    init();
+    //init(0, HttpContentType::PLAIN);
 }
 
 HttpResponse::HttpResponse(uint16_t code, HttpContentType type) :
@@ -1044,6 +1044,8 @@ HttpResponse::status_code_to_reason(uint16_t status_code)
         case 408:   reason = "Request Timeout"; break;
         case 411:   reason = "Length Required"; break;
         case 413:   reason = "Request Entity Too Large"; break;
+        case 500:   reason = "Server Error"; break;
+        case 503:   reason = "Out of Memory"; break;
         default:    reason = nullptr; break;
     }
 

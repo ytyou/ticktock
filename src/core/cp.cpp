@@ -18,6 +18,7 @@
 
 #include <fcntl.h>
 #include <fstream>
+#include <set>
 #include <unistd.h>
 #include "config.h"
 #include "cp.h"
@@ -241,6 +242,20 @@ CheckPointManager::close()
 {
     take_snapshot();
     persist();
+
+#ifdef _DEBUG
+    std::lock_guard<std::mutex> guard(m_lock);
+    for (auto it = m_cps.begin(); it != m_cps.end(); it++)
+    {
+        std::free((char*)it->first);
+        for (auto it2 = it->second.begin(); it2 != it->second.end(); it2++)
+            std::free((char*)it2->first);
+        it->second.clear();
+    }
+    m_cps.clear();
+    m_snapshot.clear();
+    m_persisted.clear();
+#endif
 }
 
 

@@ -187,6 +187,9 @@ public:
     void execute(std::vector<QueryResults*>& results, StringBuffer& strbuf);
     void execute_in_parallel(std::vector<QueryResults*>& results, StringBuffer& strbuf);
 
+    inline int get_errno() const
+    { return m_errno; }
+
     static uint64_t get_dp_count();
 
     inline size_t c_size() const override { return 1024; }
@@ -200,6 +203,7 @@ private:
         return m_time_range.in_range(tstamp);
     }
 
+    QueryResults *create_one_query_results(StringBuffer& strbuf);
     void create_query_results(std::vector<QueryTask*>& qtv, std::vector<QueryResults*>& results, StringBuffer& strbuf);
     void aggregate(std::vector<QueryTask*>& qtv, std::vector<QueryResults*>& results, StringBuffer& strbuf);
     void calculate_rate(std::vector<QueryResults*>& results);
@@ -207,10 +211,13 @@ private:
     TimeRange m_time_range;
 
     bool m_ms;  // milli-second resolution?
+    bool m_explicit_tags;
+    int m_errno;
     const char *m_metric;
     const char *m_aggregate;
     const char *m_downsample;
 
+    Tag *m_non_grouping_tags;
     Aggregator *m_aggregator;
     RateCalculator *m_rate_calculator;
 };
@@ -225,9 +232,16 @@ public:
 
     void init(std::vector<Tsdb*> *tsdbs, const TimeRange& range);   // used by Tsdb::compact()
 
+    // return max/min value of the last n dps in m_dps[]
+    double get_max(int n) const;
+    double get_min(int n) const;
+
     Tag *get_tags();
     Tag_v2& get_v2_tags();
     Tag *get_cloned_tags(StringBuffer& strbuf);
+
+    inline int get_errno() const
+    { return m_errno; }
 
     inline DataPointVector& get_dps()
     {
@@ -238,6 +252,22 @@ public:
     {
         m_signal = signal;
     }
+
+    struct compare_less
+    {
+        bool operator()(const QueryTask *t1, const QueryTask *t2)
+        {
+            return t1->get_max(3) < t2->get_max(3);
+        }
+    };
+
+    struct compare_greater
+    {
+        bool operator()(const QueryTask *t1, const QueryTask *t2)
+        {
+            return t1->get_min(3) > t2->get_min(3);
+        }
+    };
 
     void init() override;
     bool recycle() override;
@@ -257,6 +287,7 @@ private:
     DataPointVector m_dps;  // results before aggregation
     QueryResults m_results; // results after aggregation
     CountingSignal *m_signal;   // we don't own this, do not free it
+    int m_errno;
 };
 
 
@@ -285,7 +316,7 @@ private:
     friend class Query;
 
     QueryExecutor();
-    static bool prepare_response(std::vector<QueryResults*>& results, HttpResponse& response);
+    static bool prepare_response(std::vector<QueryResults*>& results, HttpResponse& response, int error);
 
     std::mutex m_lock;
     TaskScheduler m_executors;

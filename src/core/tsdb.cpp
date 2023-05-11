@@ -76,7 +76,26 @@ Measurement::Measurement(uint32_t ts_count) :
 Measurement::~Measurement()
 {
     if (m_time_series != nullptr)
+    {
+        for (int i = 0; i < m_ts_count; i++)
+            delete m_time_series[i];
         std::free(m_time_series);
+    }
+}
+
+void
+Measurement::add_ts_count(uint32_t ts_count)
+{
+    if (ts_count == 0) return;
+    uint32_t old_count = m_ts_count;
+    m_ts_count += ts_count;
+    TimeSeries **tmp = m_time_series;
+    m_time_series = (TimeSeries**)calloc(m_ts_count, sizeof(TimeSeries*));
+    if (tmp != nullptr)
+    {
+        std::memcpy(m_time_series, tmp, old_count*sizeof(TimeSeries*));
+        std::free(tmp);
+    }
 }
 
 void
@@ -101,7 +120,6 @@ Measurement::add_ts(int idx, TimeSeries *ts)
 
     if (idx >= m_ts_count)
     {
-        ASSERT(m_time_series != nullptr);
         m_ts_count = idx + 1;
         TimeSeries **tmp = m_time_series;
         m_time_series = (TimeSeries**)calloc(m_ts_count, sizeof(TimeSeries*));
@@ -130,11 +148,11 @@ Measurement::add_ts(const char *field, Mapping *mapping)
 
     TimeSeries *ts0 = m_time_series[0];
     TagCount tag_cnt = ts0->get_tag_count();
-    TagId ids[tag_cnt];
+    TagId ids[2 * tag_cnt];
     TagBuilder builder(tag_cnt, ids);
     builder.init(ts0->get_v2_tags());
     builder.update_last(TT_FIELD_TAG_ID, field);
-    TimeSeries *ts = new TimeSeries(builder);
+    TimeSeries *ts = new TimeSeries(mapping->get_metric(), builder);
     mapping->add_ts(ts);
     m_time_series[m_ts_count-1] = ts;
     return ts;
@@ -148,6 +166,13 @@ Measurement::append_ts(TimeSeries *ts)
 
 TimeSeries *
 Measurement::get_ts(int idx, const char *field)
+{
+    std::lock_guard<std::mutex> guard(m_lock);
+    return get_ts_no_lock(idx, field, false);
+}
+
+TimeSeries *
+Measurement::get_ts_no_lock(int idx, const char *field, bool swap)
 {
     ASSERT(field != nullptr);
 
@@ -178,7 +203,7 @@ Measurement::get_ts(int idx, const char *field)
         if (tags.match_last(TT_FIELD_TAG_ID, vid))
         {
             // swap m_time_series[i] & m_time_series[idx]
-            if (idx < m_ts_count)
+            if (swap && (idx < m_ts_count))
             {
                 m_time_series[i] = m_time_series[idx];
                 m_time_series[idx] = ts;
@@ -194,7 +219,15 @@ Measurement::get_ts(int idx, const char *field)
 TimeSeries *
 Measurement::get_ts(bool add, Mapping *mapping)
 {
-    TimeSeries *ts = get_ts(m_ts_count-1, TT_FIELD_VALUE);
+    std::lock_guard<std::mutex> guard(m_lock);
+    return get_ts_no_lock(add, mapping);
+}
+
+// get or add the TimeSeries that has no field name
+TimeSeries *
+Measurement::get_ts_no_lock(bool add, Mapping *mapping)
+{
+    TimeSeries *ts = get_ts_no_lock(m_ts_count-1, TT_FIELD_VALUE, false);
 
     if ((ts == nullptr) && add)
     {
@@ -264,7 +297,7 @@ Measurement::add_data_points(std::vector<DataPoint>& dps, Timestamp tstamp, Mapp
 
         for (DataPoint& dp: dps)
         {
-            TimeSeries *ts = get_ts(i++, dp.get_raw_tags());
+            TimeSeries *ts = get_ts_no_lock(i++, dp.get_raw_tags(), true);
 
             if (ts == nullptr)
                 ts = add_ts(dp.get_raw_tags(), mapping);
@@ -299,6 +332,15 @@ Mapping::~Mapping()
         FREE(m_metric);
         m_metric = nullptr;
     }
+
+    std::set<BaseType*> bases;
+    for (auto it = m_map.begin(); it != m_map.end(); it++)
+    {
+        std::free((char*)it->first);
+        bases.insert(it->second);   // to remove any duplicates...
+    }
+    for (auto b : bases) delete b;
+    m_map.clear();
 
     pthread_rwlock_destroy(&m_lock);
 }
@@ -373,7 +415,7 @@ Mapping::get_ts(DataPoint& dp)
         if (bt == nullptr)
         {
             ts = new TimeSeries(m_metric, buff, dp.get_tags());
-            bt = dynamic_cast<BaseType*>(ts);
+            bt = static_cast<BaseType*>(ts);
             m_map[STRDUP(buff)] = bt;
             add_ts(ts);
             set_tag_count(dp.get_tag_count(true));
@@ -389,9 +431,9 @@ Mapping::get_ts(DataPoint& dp)
     }
 
     if (bt->is_type(TT_TYPE_MEASUREMENT))
-        ts = (dynamic_cast<Measurement*>(bt))->get_ts(true, this);
+        ts = (static_cast<Measurement*>(bt))->get_ts(true, this);
     else
-        ts = dynamic_cast<TimeSeries*>(bt);
+        ts = static_cast<TimeSeries*>(bt);
 
     return ts;
 }
@@ -437,7 +479,7 @@ Mapping::get_measurement(char *raw_tags, TagOwner& owner, const char *measuremen
 
     if (UNLIKELY(bt != nullptr) && UNLIKELY(bt->is_type(TT_TYPE_TIME_SERIES)))
     {
-        ts = dynamic_cast<TimeSeries*>(bt);
+        ts = static_cast<TimeSeries*>(bt);
         bt = nullptr;
     }
 
@@ -446,8 +488,8 @@ Mapping::get_measurement(char *raw_tags, TagOwner& owner, const char *measuremen
         char ordered[MAX_TOTAL_TAG_LENGTH];
         char original[MAX_TOTAL_TAG_LENGTH+1];
 
-        original[0] = 0;    // owner.parse() may check this
-        std::strncpy(&original[1], raw_tags, MAX_TOTAL_TAG_LENGTH);
+        //original[0] = 0;    // owner.parse() may check this
+        std::strncpy(original, raw_tags, MAX_TOTAL_TAG_LENGTH);
 
         if (raw_tags[1] == 0)   // no tags
         {
@@ -459,7 +501,8 @@ Mapping::get_measurement(char *raw_tags, TagOwner& owner, const char *measuremen
             // parse raw tags...
             if (owner.get_tags() == nullptr)
             {
-                if (! owner.parse(&original[1]))
+                //if (! owner.parse(&original[1]))
+                if (! owner.parse(raw_tags))
                     return nullptr;
             }
             owner.get_ordered_tags(ordered, MAX_TOTAL_TAG_LENGTH);
@@ -475,7 +518,7 @@ Mapping::get_measurement(char *raw_tags, TagOwner& owner, const char *measuremen
 
         if ((bt != nullptr) && (UNLIKELY(bt->is_type(TT_TYPE_TIME_SERIES))))
         {
-            ts = dynamic_cast<TimeSeries*>(bt);
+            ts = static_cast<TimeSeries*>(bt);
             bt = nullptr;
         }
 
@@ -484,13 +527,16 @@ Mapping::get_measurement(char *raw_tags, TagOwner& owner, const char *measuremen
         if (bt == nullptr)
         {
             mm = new Measurement();
-            init_measurement(mm, measurement, raw_tags, owner, dps);
-            bt = dynamic_cast<BaseType*>(mm);
+            init_measurement(mm, measurement, ordered, owner, dps);
+            bt = static_cast<BaseType*>(mm);
             m_map[STRDUP(ordered)] = bt;
         }
 
-        if (std::strcmp(raw_tags, ordered) != 0)
-            m_map[STRDUP(raw_tags)] = bt;
+        //if (ts == nullptr)
+        if (m_map.find(original) == m_map.end())
+            m_map[STRDUP(original)] = bt;
+        else
+            m_map[original] = bt;
 
         // This is a different time series!?
         if ((ts != nullptr) && (mm != nullptr))
@@ -607,7 +653,7 @@ Mapping::init_measurement(Measurement *mm, const char *measurement, char *tags, 
 }
 
 void
-Mapping::query_for_ts(Tag *tags, std::unordered_set<TimeSeries*>& tsv, const char *key)
+Mapping::query_for_ts(Tag *tags, std::unordered_set<TimeSeries*>& tsv, const char *key, bool explicit_tags)
 {
     int tag_count = TagOwner::get_tag_count(tags, true);
 
@@ -636,7 +682,7 @@ Mapping::query_for_ts(Tag *tags, std::unordered_set<TimeSeries*>& tsv, const cha
                 }
             }
             else
-                ts = dynamic_cast<TimeSeries*>(bt);
+                ts = static_cast<TimeSeries*>(bt);
 
             if (ts != nullptr)
                 tsv.insert(ts);
@@ -656,10 +702,14 @@ Mapping::query_for_ts(Tag *tags, std::unordered_set<TimeSeries*>& tsv, const cha
             TagMatcher *matcher = (TagMatcher*)
                 MemoryManager::alloc_recyclable(RecyclableType::RT_TAG_MATCHER);
             matcher->init(tags);
+            int tag_count = TagOwner::get_tag_count(tags, false);
 
             for (TimeSeries *ts = m_ts_head.load(); ts != nullptr; ts = ts->m_next)
             {
-                if (matcher->match(ts->get_v2_tags()))
+                Tag_v2& tags_v2 = ts->get_v2_tags();
+                if (explicit_tags && (tags_v2.get_count() != tag_count))
+                    continue;
+                if (matcher->match(tags_v2))
                     tsv.insert(ts);
             }
 
@@ -684,11 +734,13 @@ Mapping::restore_ts(std::string& metric, std::string& keys, TimeSeriesId id)
     TimeSeries *ts = new TimeSeries(id, metric.c_str(), keys.c_str(), tags);
     m_map[STRDUP(keys.c_str())] = ts;
     add_ts(ts);
+    set_tag_count(TagOwner::get_tag_count(tags, false));
+    Tag::free_list(tags, true);
     // for backwards compatibility, tags can be separated by either ',' or ';'
-    if (keys.find_first_of(';') != std::string::npos)   // old style?
-        set_tag_count(std::count(keys.begin(), keys.end(), ';'));
-    else
-        set_tag_count(std::count(keys.begin(), keys.end(), ',')+1);
+    //if (keys.find_first_of(';') != std::string::npos)   // old style?
+        //set_tag_count(std::count(keys.begin(), keys.end(), ';'));
+    //else
+        //set_tag_count(std::count(keys.begin(), keys.end(), ',')+1);
     return ts;
 }
 
@@ -710,15 +762,17 @@ Mapping::restore_measurement(std::string& measurement, std::string& tags, std::v
     std::vector<DataPoint> dps;
 
     Measurement *mm = get_measurement(buff, owner, measurement.c_str(), dps);
+    if (owner.get_tags() == nullptr)
+        owner.parse(buff);
     TagCount count = owner.get_tag_count(true) + 1;
     TagId ids[2 * count];
     TagBuilder builder(count, ids);
 
     set_tag_count(count);
     builder.init(owner.get_tags());
-    mm->set_ts_count(fields.size());
 
-    int i = 0;
+    int i = mm->get_ts_count();
+    mm->add_ts_count(fields.size());
 
     for (auto field: fields)
     {
@@ -763,7 +817,10 @@ Tsdb::Tsdb(TimeRange& range, bool existing, const char *suffix) :
 
 Tsdb::~Tsdb()
 {
-    unload();
+    unload_no_lock();
+
+    for (DataFile *file: m_data_files) delete file;
+    for (HeaderFile *file: m_header_files) delete file;
 }
 
 Tsdb *
@@ -780,46 +837,6 @@ Tsdb::create(TimeRange& range, bool existing, const char *suffix)
     if (existing)
     {
         tsdb->reload_header_data_files(dir);
-/*
-        // restore Header/Data files...
-        std::vector<std::string> files;
-        get_all_files(dir + "/header.*", files);
-        for (auto file: files) tsdb->restore_header(file);
-        std::sort(tsdb->m_header_files.begin(), tsdb->m_header_files.end(), header_less());
-
-        // restore page-size & page-count
-        if (! tsdb->m_header_files.empty())
-        {
-            HeaderFile *header_file = tsdb->m_header_files.front();
-            header_file->ensure_open(true);
-            struct tsdb_header *tsdb_header = header_file->get_tsdb_header();
-            ASSERT(tsdb_header != nullptr);
-            tsdb->m_page_size = tsdb_header->m_page_size;
-            tsdb->m_page_count = tsdb_header->m_page_count;
-            tsdb->m_compressor_version = tsdb_header->get_compressor_version();
-            // TODO: This is not accurate! Other headers could be different.
-            if (tsdb_header->is_compacted())
-                tsdb->m_mode |= TSDB_MODE_COMPACTED;
-            header_file->close();
-        }
-
-        files.clear();
-        get_all_files(dir + "/data.*", files);
-        for (auto file: files) tsdb->restore_data(file);
-        std::sort(tsdb->m_data_files.begin(), tsdb->m_data_files.end(), data_less());
-
-        // restore page-size/page-count
-        if (! tsdb->m_header_files.empty())
-        {
-            HeaderFile *header_file = tsdb->m_header_files.front();
-            header_file->ensure_open(true);
-            tsdb->m_page_size = header_file->get_page_size();
-            tsdb->m_page_count = header_file->get_page_count();
-
-            if ((tsdb->m_mode & TSDB_MODE_READ_WRITE) == 0)
-                header_file->close();
-        }
-*/
     }
     else    // new one
     {
@@ -898,20 +915,6 @@ Tsdb::reload_header_data_files(const std::string& dir)
     get_all_files(dir + "/data.*", files);
     for (auto file: files) restore_data(file);
     std::sort(m_data_files.begin(), m_data_files.end(), data_less());
-
-/*
-    // restore page-size/page-count
-    if (! m_header_files.empty())
-    {
-        HeaderFile *header_file = m_header_files.front();
-        header_file->ensure_open(true);
-        m_page_size = header_file->get_page_size();
-        m_page_count = header_file->get_page_count();
-
-        if ((m_mode & TSDB_MODE_READ_WRITE) == 0)
-            header_file->close();
-    }
-*/
 }
 
 void
@@ -1110,7 +1113,7 @@ Tsdb::restore_measurement(std::string& measurement, std::string& tags, std::vect
 /* The 'key' should not include the special '_field' tag.
  */
 void
-Tsdb::query_for_ts(const char *metric, Tag *tags, std::unordered_set<TimeSeries*>& ts, const char *key)
+Tsdb::query_for_ts(const char *metric, Tag *tags, std::unordered_set<TimeSeries*>& ts, const char *key, bool explicit_tags)
 {
     Mapping *mapping = nullptr;
 
@@ -1125,7 +1128,7 @@ Tsdb::query_for_ts(const char *metric, Tag *tags, std::unordered_set<TimeSeries*
     }
 
     if (mapping != nullptr)
-        mapping->query_for_ts(tags, ts, key);
+        mapping->query_for_ts(tags, ts, key, explicit_tags);
 }
 
 bool
@@ -1162,11 +1165,26 @@ Tsdb::query_for_data_no_lock(TimeSeriesId id, TimeRange& query_range, std::vecto
         if (query_range.has_intersection(range))
         {
             DataFile *data_file = m_data_files[file_idx];
+            PThread_Lock lock(data_file->get_lock());
+            lock.lock_for_read();
             data_file->ensure_open(true);
-            void *page = data_file->get_page(page_header->m_page_index, page_header->m_offset);
-            ASSERT(page != nullptr);
-            //int compressor_version = header_file->get_compressor_version();
-            //ASSERT(! header->is_out_of_order() || (compressor_version == 0));
+            void *page = data_file->get_page(page_header->m_page_index, page_header->m_offset, page_header->m_cursor);
+
+            if (page == nullptr)
+            {
+                lock.unlock();
+                lock.lock_for_write();
+                data_file->remap();
+                lock.unlock();
+                lock.lock_for_read();
+                page = data_file->get_page(page_header->m_page_index, page_header->m_offset, page_header->m_cursor);
+            }
+
+            if (page == nullptr)
+            {
+                lock.unlock();
+                throw std::runtime_error("Failed to open data file for read.");
+            }
 
             DataPointContainer *container = (DataPointContainer*)
                 MemoryManager::alloc_recyclable(RecyclableType::RT_DATA_POINT_CONTAINER);
@@ -1174,6 +1192,7 @@ Tsdb::query_for_data_no_lock(TimeSeriesId id, TimeRange& query_range, std::vecto
             container->set_page_index(page_header->get_global_page_index(file_idx, m_page_count));
             container->collect_data(from, tsdb_header, page_header, page);
             ASSERT(container->size() > 0);
+            lock.unlock();
 
             if (page_header->is_out_of_order()) has_ooo = true;
 
@@ -1232,6 +1251,15 @@ Tsdb::shutdown()
         {
             Mapping *mapping = it->second;
             mapping->flush(true);
+#ifdef _DEBUG
+            //TimeSeries *next;
+            //for (TimeSeries *ts = mapping->get_ts_head(); ts != nullptr; ts = next)
+            //{
+                //next = ts->m_next;
+                //delete ts;
+            //}
+            delete mapping;
+#endif
         }
 
         g_metric_map.clear();
@@ -1247,11 +1275,15 @@ Tsdb::shutdown()
         for (DataFile *file: tsdb->m_data_files) file->close();
         for (HeaderFile *file: tsdb->m_header_files) file->close();
         tsdb->m_index_file.close();
+#ifdef _DEBUG
+        delete tsdb;
+#endif
     }
 
     m_tsdbs.clear();
     CheckPointManager::close();
     MetaFile::instance()->close();
+    TimeSeries::cleanup();
     Logger::info("Tsdb::shutdown complete");
 }
 
@@ -1323,14 +1355,32 @@ Tsdb::get_last_tstamp(TimeSeriesId id)
     if (page_header != nullptr)
     {
         DataFile *data_file = m_data_files[file_idx];
+        PThread_Lock lock(data_file->get_lock());
+        lock.lock_for_read();
         data_file->ensure_open(true);
-        void *page = data_file->get_page(page_header->m_page_index, page_header->m_offset);
-        ASSERT(page != nullptr);
+        void *page = data_file->get_page(page_header->m_page_index, page_header->m_offset, page_header->m_cursor);
+
+        if (page == nullptr)
+        {
+            lock.unlock();
+            lock.lock_for_write();
+            data_file->remap();
+            lock.unlock();
+            lock.lock_for_read();
+            page = data_file->get_page(page_header->m_page_index, page_header->m_offset, page_header->m_cursor);
+        }
+
+        if (page == nullptr)
+        {
+            lock.unlock();
+            throw std::runtime_error("Failed to open data file for read.");
+        }
 
         DataPointContainer *container = (DataPointContainer*)
             MemoryManager::alloc_recyclable(RecyclableType::RT_DATA_POINT_CONTAINER);
         container->set_page_index(page_header->get_global_page_index(file_idx, m_page_count));
         container->collect_data(m_time_range.get_from(), tsdb_header, page_header, page);
+        lock.unlock();
         if (! container->is_empty())
             tstamp = container->get_last_data_point().first;
         MemoryManager::free_recyclable(container);
@@ -1608,31 +1658,57 @@ Tsdb::insts(const TimeRange& range, std::vector<Tsdb*>& tsdbs)
 }
 
 bool
+Tsdb::http_api_put_handler(HttpRequest& request, HttpResponse& response)
+{
+    char *curr = request.content;
+
+    while (std::isspace(*curr))
+        curr++;
+
+    if ((*curr == '[') || (*curr == '{'))
+        return http_api_put_handler_json(request, response);
+    else
+        return http_api_put_handler_plain(request, response);
+}
+
+// Should be able to handle both signle data point or multiple data points.
+bool
 Tsdb::http_api_put_handler_json(HttpRequest& request, HttpResponse& response)
 {
-    char *curr = strchr(request.content, '[');
+    char *curr = request.content;
 
-    if (curr == nullptr)
-    {
-        response.init(400, HttpContentType::PLAIN);
-        return false;
-    }
+    while (std::isspace(*curr))
+        curr++;
 
-    //bool success = true;
     int success = 0;
     int failed = 0;
 
-    while ((*curr != ']') && (*curr != 0))
+    if (*curr == '{')
     {
+        // single data point
         DataPoint dp;
-        curr = dp.from_json(curr+1);
-        if (curr == nullptr) break;
+        curr = dp.from_json(curr);
 
-        if (add_data_point(dp, false))
+        if ((curr != nullptr) && add_data_point(dp, false))
             success++;
         else
             failed++;
-        while (isspace(*curr)) curr++;
+    }
+    else
+    {
+        // multiple data point
+        while ((*curr != ']') && (*curr != 0))
+        {
+            DataPoint dp;
+            curr = dp.from_json(curr+1);
+            if (curr == nullptr) break;
+
+            if (add_data_point(dp, false))
+                success++;
+            else
+                failed++;
+            while (isspace(*curr)) curr++;
+        }
     }
 
     char buff[64];
@@ -2069,44 +2145,7 @@ Tsdb::init()
 
     compact2();
 
-/*
-    dir = opendir(data_dir.c_str());
-
-    if (dir != nullptr)
-    {
-        while (dir_ent = readdir(dir))
-        {
-            //if (starts_with(dir_ent->d_name, '.')) continue;
-            if (! ends_with(dir_ent->d_name, ".meta")) continue;
-
-            // file name should be in the following format:
-            // 1564401600.1564408800.meta
-            std::vector<std::string> tokens;
-            tokenize(dir_ent->d_name, tokens, '.');
-            if (tokens.size() != 3) continue;
-
-            // these are always in seconds
-            Timestamp start = std::stoull(tokens[0].c_str());
-            Timestamp end = std::stoull(tokens[1].c_str());
-
-            if (g_tstamp_resolution_ms)
-            {
-                start *= 1000L;
-                end *= 1000L;
-            }
-
-            TimeRange range(start, end);
-            Tsdb *tsdb = Tsdb::create(range, true); // create existing
-            ASSERT(tsdb != nullptr);
-            //m_tsdbs.push_back(tsdb);
-        }
-
-        closedir(dir);
-
-        std::sort(m_tsdbs.begin(), m_tsdbs.end(), tsdb_less());
-    }
-*/
-
+    // Setup maintenance tasks
     Task task;
     task.doit = &Tsdb::rotate;
     task.data.integer = 0;
@@ -2123,6 +2162,7 @@ Tsdb::init()
         freq_sec /= 2;
         if (freq_sec <= 0) freq_sec = 1;
         Timer::inst()->add_task(task, freq_sec, "ts_archive");
+        Logger::info("Will try to archive ts every %d secs.", freq_sec);
     }
 
     task.doit = &Tsdb::compact;
@@ -2433,38 +2473,6 @@ Tsdb::rotate(TaskData& data)
         }
 
         tsdb->dec_ref_count_no_lock();
-/*
-        if (((int64_t)now_sec - (int64_t)load_time) > (int64_t)thrashing_threshold)
-        {
-            if (! (mode & TSDB_MODE_READ))
-            {
-                // archive it
-                Logger::info("[rotate] Archiving %T (lt=%" PRIu64 ", now=%" PRIu64 ")", tsdb, load_time, now_sec);
-                tsdb->flush(true);
-                tsdb->unload_no_lock();
-                continue;
-            }
-            else if (((mode & TSDB_MODE_READ_WRITE) == TSDB_MODE_READ) && (tsdb->m_mode & TSDB_MODE_WRITE))
-            {
-                // make it read-only
-                Logger::debug("[rotate] Flushing tsdb: %T", tsdb);
-                tsdb->flush(true);
-                continue;
-            }
-        }
-#ifdef _DEBUG
-        else if (! (mode & TSDB_MODE_READ))
-        {
-            Logger::info("%T: now_sec = %" PRIu64 "; load_time = %" PRIu64 "; threshold = %" PRIu64,
-                tsdb, now_sec, load_time, thrashing_threshold);
-        }
-#endif
-        //else if (! (mode & TSDB_MODE_READ) && tsdb->count_is_zero())
-        //{
-            //for (PageManager* pm: tsdb->m_page_mgrs)
-                //pm->try_unload();
-        //}
-*/
     }
 
     CheckPointManager::persist();
@@ -2476,6 +2484,9 @@ Tsdb::rotate(TaskData& data)
     return false;
 }
 
+/* Try to delete memory pages for those TimeSeries that haven't seen
+ * any new data for a long time.
+ */
 bool
 Tsdb::archive_ts(TaskData& data)
 {
@@ -2610,16 +2621,6 @@ Tsdb::compact(TaskData& data)
                 Logger::debug("[compact] ref-count of %T is not zero: %d", (*it), (*it)->m_ref_count);
                 continue;
             }
-/**
-            if (((*it)->m_mode & TSDB_MODE_COMPACTED) ||
-                (((*it)->m_mode & TSDB_MODE_READ_WRITE) && (data.integer == 0)) ||
-                ((*it)->m_ref_count > 0))
-            {
-                if ((*it)->m_ref_count > 0)
-                    Logger::info("[compact] ref-count of %T is %d", (*it), (*it)->m_ref_count);
-                continue;
-            }
-**/
 
             tsdb = *it;
             break;
@@ -2647,7 +2648,9 @@ Tsdb::compact(TaskData& data)
 
                 // create a temporary tsdb to compact data into
                 Tsdb *compacted = Tsdb::create(range, false, TEMP_SUFFIX);
+#ifdef __x86_64__
                 compacted->m_page_size = g_sys_page_size;
+#endif
                 std::vector<Tsdb*> tsdbs = { tsdb };
                 TimeSeriesId max_id = TimeSeries::get_next_id();
                 QueryTask *query =

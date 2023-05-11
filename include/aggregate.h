@@ -97,6 +97,8 @@ public:
 
     inline virtual bool is_none() const { return false; }
     void aggregate(QueryResults *results);
+    virtual void aggregate(const char *metric, std::vector<QueryTask*>& qtv, std::vector<QueryResults*>& results, StringBuffer& strbuf)
+    { ASSERT(false); };     // should not call this
 
     static bool http_get_api_aggregators_handler(HttpRequest& request, HttpResponse& response);
 
@@ -105,51 +107,70 @@ protected:
 
 private:
     Aggregator(const Aggregator&) = delete;
-    virtual void merge(std::vector<std::reference_wrapper<DataPointVector>>& src, DataPointVector& dst) = 0;
+    virtual void merge(std::vector<std::reference_wrapper<DataPointVector>>& src, DataPointVector& dst)
+    { ASSERT(false); };     // should not call this
 };
 
 
 class AggregatorNone : public Aggregator
 {
 public:
-    inline bool is_none() const { return true; }
-    void merge(std::vector<std::reference_wrapper<DataPointVector>>& src, DataPointVector& dst) {};
+    inline bool is_none() const override { return true; }
+    void aggregate(const char *metric, std::vector<QueryTask*>& qtv, std::vector<QueryResults*>& results, StringBuffer& strbuf) override;
 };
 
 
 class AggregatorAvg : public Aggregator
 {
+protected:
+    void merge(std::vector<std::reference_wrapper<DataPointVector>>& src, DataPointVector& dst) override;
+};
+
+
+/* Select the smallest n values.
+ *
+ * This aggregator should not be used to perform downsampling.
+ */
+class AggregatorBottom : public Aggregator
+{
 public:
-    void merge(std::vector<std::reference_wrapper<DataPointVector>>& src, DataPointVector& dst);
+    inline void set_n(short n) { m_n = n; }
+    inline bool is_none() const override { return true; }
+    void aggregate(const char *metric, std::vector<QueryTask*>& qtv, std::vector<QueryResults*>& results, StringBuffer& strbuf) override;
+
+private:
+    short m_n;
 };
 
 
 class AggregatorCount : public Aggregator
 {
-public:
-    void merge(std::vector<std::reference_wrapper<DataPointVector>>& src, DataPointVector& dst);
+protected:
+    void merge(std::vector<std::reference_wrapper<DataPointVector>>& src, DataPointVector& dst) override;
 };
 
 
 class AggregatorDev : public Aggregator
 {
 public:
-    void merge(std::vector<std::reference_wrapper<DataPointVector>>& src, DataPointVector& dst);
     static double stddev(const std::vector<double>& values);
+
+protected:
+    void merge(std::vector<std::reference_wrapper<DataPointVector>>& src, DataPointVector& dst) override;
 };
 
 
 class AggregatorMax : public Aggregator
 {
-public:
-    void merge(std::vector<std::reference_wrapper<DataPointVector>>& src, DataPointVector& dst);
+protected:
+    void merge(std::vector<std::reference_wrapper<DataPointVector>>& src, DataPointVector& dst) override;
 };
 
 
 class AggregatorMin : public Aggregator
 {
-public:
-    void merge(std::vector<std::reference_wrapper<DataPointVector>>& src, DataPointVector& dst);
+protected:
+    void merge(std::vector<std::reference_wrapper<DataPointVector>>& src, DataPointVector& dst) override;
 };
 
 
@@ -157,8 +178,10 @@ class AggregatorPercentile : public Aggregator
 {
 public:
     void set_quantile(double quantile);
-    void merge(std::vector<std::reference_wrapper<DataPointVector>>& src, DataPointVector& dst);
     double percentile(const std::vector<double>& values) const;
+
+protected:
+    void merge(std::vector<std::reference_wrapper<DataPointVector>>& src, DataPointVector& dst) override;
 
 private:
     double index(int length) const;
@@ -169,8 +192,24 @@ private:
 
 class AggregatorSum : public Aggregator
 {
+protected:
+    void merge(std::vector<std::reference_wrapper<DataPointVector>>& src, DataPointVector& dst) override;
+};
+
+
+/* Select the biggest n values.
+ *
+ * This aggregator should not be used to perform downsampling.
+ */
+class AggregatorTop : public Aggregator
+{
 public:
-    void merge(std::vector<std::reference_wrapper<DataPointVector>>& src, DataPointVector& dst);
+    inline void set_n(short n) { m_n = n; }
+    inline bool is_none() const override { return true; }
+    void aggregate(const char *metric, std::vector<QueryTask*>& qtv, std::vector<QueryResults*>& results, StringBuffer& strbuf) override;
+
+private:
+    short m_n;
 };
 
 

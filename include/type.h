@@ -78,6 +78,7 @@ class __attribute__ ((__packed__)) BaseType
 {
 public:
     virtual bool is_type(int type) const = 0;
+    virtual ~BaseType() {};
 };
 
 

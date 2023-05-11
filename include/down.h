@@ -77,7 +77,7 @@ protected:
 
     Timestamp m_start;  // original query start, before stepping down
     TimeRange m_time_range;
-    Timestamp m_interval;
+    Timestamp m_interval;   // unit depends on g_tstamp_resolution_ms
     DownsampleFillPolicy m_fill;
 
     Timestamp m_last_tstamp;

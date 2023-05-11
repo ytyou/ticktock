@@ -34,7 +34,7 @@ namespace tt
 // Supported aggregators (Note that we support an p\d{2,3} percentile as aggregator);
 // Should make it configurable. (TODO)
 const char *SUPPORTED_AGGREGATORS =
-    "[\"avg\",\"count\",\"dev\",\"first\",\"last\",\"max\",\"min\",\"none\",\"p50\",\"p90\",\"p95\",\"p98\",\"p99\",\"p999\",\"sum\"]";
+    "[\"avg\",\"bottom1\",\"bottom3\",\"bottom5\",\"bottom9\",\"count\",\"dev\",\"first\",\"last\",\"max\",\"min\",\"none\",\"p50\",\"p90\",\"p95\",\"p98\",\"p99\",\"p999\",\"sum\",\"top1\",\"top3\",\"top5\",\"top9\"]";
 
 Aggregator *
 Aggregator::create(const char *aggregate)
@@ -57,6 +57,14 @@ Aggregator::create(const char *aggregate)
                     throw std::runtime_error("unrecognized aggregator");
                 aggregator =
                     (Aggregator*)MemoryManager::alloc_recyclable(RecyclableType::RT_AGGREGATOR_AVG);
+                break;
+
+            case 'b':
+                if (std::strncmp(aggregate, "bottom", 6) != 0)
+                    throw std::runtime_error("unrecognized aggregator");
+                aggregator =
+                    (Aggregator*)MemoryManager::alloc_recyclable(RecyclableType::RT_AGGREGATOR_BOTTOM);
+                ((AggregatorBottom*)aggregator)->set_n(std::atoi(aggregate+6));
                 break;
 
             case 'c':
@@ -95,6 +103,12 @@ Aggregator::create(const char *aggregate)
                     (Aggregator*)MemoryManager::alloc_recyclable(RecyclableType::RT_AGGREGATOR_NONE);
                 break;
 
+            case 'p':
+                aggregator =
+                    (Aggregator*)MemoryManager::alloc_recyclable(RecyclableType::RT_AGGREGATOR_PT);
+                ((AggregatorPercentile*)aggregator)->set_quantile(std::atoi(aggregate+1));
+                break;
+
             case 's':
                 if (std::strcmp(aggregate, "sum") != 0)
                     throw std::runtime_error("unrecognized aggregator");
@@ -102,10 +116,12 @@ Aggregator::create(const char *aggregate)
                     (Aggregator*)MemoryManager::alloc_recyclable(RecyclableType::RT_AGGREGATOR_SUM);
                 break;
 
-            case 'p':
+            case 't':
+                if (std::strncmp(aggregate, "top", 3) != 0)
+                    throw std::runtime_error("unrecognized aggregator");
                 aggregator =
-                    (Aggregator*)MemoryManager::alloc_recyclable(RecyclableType::RT_AGGREGATOR_PT);
-                ((AggregatorPercentile*)aggregator)->set_quantile(std::atoi(aggregate+1));
+                    (Aggregator*)MemoryManager::alloc_recyclable(RecyclableType::RT_AGGREGATOR_TOP);
+                ((AggregatorTop*)aggregator)->set_n(std::atoi(aggregate+3));
                 break;
 
             default:
@@ -140,6 +156,24 @@ Aggregator::aggregate(QueryResults *results)
     }
 
     merge(vv, results->m_dps);
+}
+
+
+void
+AggregatorNone::aggregate(const char *metric, std::vector<QueryTask*>& qtv, std::vector<QueryResults*>& results, StringBuffer& strbuf)
+{
+    for (QueryTask *qt: qtv)
+    {
+        QueryResults *result =
+            (QueryResults*)MemoryManager::alloc_recyclable(RecyclableType::RT_QUERY_RESULTS);
+        result->m_metric = metric;
+        result->set_tags(qt->get_cloned_tags(strbuf));
+        results.push_back(result);
+
+        DataPointVector& dps = qt->get_dps();
+        result->m_dps.insert(result->m_dps.end(), dps.begin(), dps.end());  // TODO: how to avoid copy?
+        dps.clear();
+    }
 }
 
 
@@ -181,6 +215,32 @@ AggregatorAvg::merge(std::vector<std::reference_wrapper<DataPointVector>>& src, 
     {
         ASSERT(count > 0);
         dst.emplace_back(prev_tstamp, sum/(double)count);
+    }
+}
+
+
+void
+AggregatorBottom::aggregate(const char *metric, std::vector<QueryTask*>& qtv, std::vector<QueryResults*>& results, StringBuffer& strbuf)
+{
+    std::priority_queue<QueryTask*, std::vector<QueryTask*>, QueryTask::compare_greater> pq;
+
+    for (QueryTask *qt: qtv)
+        pq.push(qt);
+
+    for (short i = 0; (i < m_n) && !pq.empty(); i++)
+    {
+        QueryTask *qt = pq.top();
+        pq.pop();
+
+        QueryResults *result =
+            (QueryResults*)MemoryManager::alloc_recyclable(RecyclableType::RT_QUERY_RESULTS);
+        result->m_metric = metric;
+        result->set_tags(qt->get_cloned_tags(strbuf));
+        results.push_back(result);
+
+        DataPointVector& dps = qt->get_dps();
+        result->m_dps.insert(result->m_dps.end(), dps.begin(), dps.end());  // TODO: how to avoid copy?
+        dps.clear();
     }
 }
 
@@ -498,6 +558,32 @@ AggregatorSum::merge(std::vector<std::reference_wrapper<DataPointVector>>& src, 
     if (prev_tstamp != 0L)
     {
         dst.emplace_back(prev_tstamp, sum);
+    }
+}
+
+
+void
+AggregatorTop::aggregate(const char *metric, std::vector<QueryTask*>& qtv, std::vector<QueryResults*>& results, StringBuffer& strbuf)
+{
+    std::priority_queue<QueryTask*, std::vector<QueryTask*>, QueryTask::compare_less> pq;
+
+    for (QueryTask *qt: qtv)
+        pq.push(qt);
+
+    for (short i = 0; (i < m_n) && !pq.empty(); i++)
+    {
+        QueryTask *qt = pq.top();
+        pq.pop();
+
+        QueryResults *result =
+            (QueryResults*)MemoryManager::alloc_recyclable(RecyclableType::RT_QUERY_RESULTS);
+        result->m_metric = metric;
+        result->set_tags(qt->get_cloned_tags(strbuf));
+        results.push_back(result);
+
+        DataPointVector& dps = qt->get_dps();
+        result->m_dps.insert(result->m_dps.end(), dps.begin(), dps.end());  // TODO: how to avoid copy?
+        dps.clear();
     }
 }
 

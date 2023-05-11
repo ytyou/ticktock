@@ -122,6 +122,13 @@ public:
     inline int get_tag_count(bool excludeField) const
     { return get_tag_count(m_tags, excludeField); }
     static int get_tag_count(Tag *tags, bool excludeField);
+    static void add_tag(Tag **tags, const char *name, const char *value)
+    {
+        ASSERT(tags != nullptr);
+        ASSERT(name != nullptr);
+        ASSERT(value != nullptr);
+        KeyValuePair::insert_in_order(tags, name, value);
+    }
 
 protected:
     bool m_own_mem; // should we free m_key and m_value?
@@ -151,6 +158,7 @@ public:
     bool match_last(TagId key_id, TagId value_id);
 
     Tag *get_v1_tags() const;
+    Tag *get_ordered_v1_tags() const;
     Tag *get_cloned_v1_tags(StringBuffer& strbuf) const;
     TagCount clone(TagId *tags, TagCount capacity);
 

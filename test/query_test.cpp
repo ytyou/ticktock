@@ -50,11 +50,13 @@ QueryTests::update_config(Timestamp archive_ms)
 {
     std::vector<std::pair<const char*, const char*> > configs;
     std::string archive = std::to_string(archive_ms) + "ms";
+    char *log_file = str_join(TEST_ROOT, "test.log");
+    char *data_dir = str_join(TEST_ROOT, "data");
 
     configs.emplace_back(CFG_APPEND_LOG_ENABLED, "false");
-    configs.emplace_back(CFG_LOG_FILE, str_join(TEST_ROOT, "test.log"));
+    configs.emplace_back(CFG_LOG_FILE, log_file);
     configs.emplace_back(CFG_LOG_LEVEL, "TRACE");
-    configs.emplace_back(CFG_TSDB_DATA_DIR, str_join(TEST_ROOT, "data"));
+    configs.emplace_back(CFG_TSDB_DATA_DIR, data_dir);
     configs.emplace_back(CFG_TSDB_ARCHIVE_THRESHOLD, archive.c_str());
     configs.emplace_back(CFG_TSDB_READ_ONLY_THRESHOLD, archive.c_str());
     configs.emplace_back(CFG_TSDB_TIMESTAMP_RESOLUTION, "millisecond");
@@ -63,6 +65,9 @@ QueryTests::update_config(Timestamp archive_ms)
 
     create_config(configs);
     Config::init();
+
+    std::free(log_file);
+    std::free(data_dir);
 }
 
 void
@@ -99,6 +104,8 @@ QueryTests::basic_query_tests()
     for (auto& dp: dps) CONFIRM(contains(results, dp));
 
     clean_shutdown();
+    delete MetaFile::instance();
+    MemoryManager::cleanup();
     m_stats.add_passed(1);
 }
 
@@ -160,6 +167,8 @@ QueryTests::duplicate_dp_tests()
     }
 
     clean_shutdown();
+    delete MetaFile::instance();
+    MemoryManager::cleanup();
     m_stats.add_passed(1);
 }
 
@@ -213,6 +222,8 @@ QueryTests::downsample_tests()
     CONFIRM(avg == results[0].second);
 
     clean_shutdown();
+    delete MetaFile::instance();
+    MemoryManager::cleanup();
     m_stats.add_passed(1);
 }
 

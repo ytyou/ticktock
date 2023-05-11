@@ -59,6 +59,9 @@ Query::Query(JsonMap& map, TimeRange& range, StringBuffer& strbuf, bool ms) :
     m_downsample(nullptr),
     m_rate_calculator(nullptr),
     m_ms(ms),
+    m_explicit_tags(false),
+    m_non_grouping_tags(nullptr),
+    m_errno(0),
     TagOwner(false)
 {
     auto search = map.find(METRIC_TAG_NAME);
@@ -156,6 +159,9 @@ Query::Query(JsonMap& map, StringBuffer& strbuf) :
     m_downsample(nullptr),
     m_rate_calculator(nullptr),
     m_ms(false),
+    m_explicit_tags(false),
+    m_non_grouping_tags(nullptr),
+    m_errno(0),
     TagOwner(false)
 {
     Timestamp now = ts_now();
@@ -258,7 +264,7 @@ Query::Query(JsonMap& map, StringBuffer& strbuf) :
         }
         else if (std::strcmp(token, "explicit_tags") == 0)
         {
-            Logger::warn("explicit_tags in query param not supported");
+            m_explicit_tags = true;
         }
         else    // it's downsampler
         {
@@ -269,6 +275,7 @@ Query::Query(JsonMap& map, StringBuffer& strbuf) :
     ASSERT(idx == (tokens.size()-1));
     m_metric = strbuf.strdup(tokens[idx++].c_str());
 
+/*
     if (! m_ms && (m_downsample == nullptr))
     {
         char buff[64];
@@ -276,30 +283,46 @@ Query::Query(JsonMap& map, StringBuffer& strbuf) :
         std::strcat(buff, m_aggregate);
         m_downsample = strbuf.strdup(buff);
     }
+*/
 
     char *tag = std::strchr((char*)m_metric, '{');
 
     if (tag != nullptr)
     {
         JsonMap m;
+        char *curr;
 
         if (std::strchr(tag+1, '"') == nullptr)
-        {
-            JsonParser::parse_map_unquoted(tag, m, '=');
-        }
+            curr = JsonParser::parse_map_unquoted(tag, m, '=');
         else
-        {
-            JsonParser::parse_map(tag, m, '=');
-        }
+            curr = JsonParser::parse_map(tag, m, '=');
 
         *tag = 0;
+        tag = std::strchr(curr, '{');
 
-        //Logger::debug("metric: %s", m_metric);
+        for (auto it = m.begin(); it != m.end(); it++)
+            add_tag(strbuf.strdup((const char*)it->first), strbuf.strdup(it->second->to_string()));
+
+        JsonParser::free_map(m);
+    }
+
+    // non-grouping tags?
+    if (tag != nullptr)
+    {
+        JsonMap m;
+
+        if (std::strchr(tag+1, '"') == nullptr)
+            JsonParser::parse_map_unquoted(tag, m, '=');
+        else
+            JsonParser::parse_map(tag, m, '=');
 
         for (auto it = m.begin(); it != m.end(); it++)
         {
-            //Logger::debug("tag: %s, %s", (const char*)it->first, (const char*)it->second);
-            add_tag(strbuf.strdup((const char*)it->first), strbuf.strdup(it->second->to_string()));
+            char *key = strbuf.strdup((const char*)it->first);
+            char *value = strbuf.strdup(it->second->to_string());
+
+            add_tag(key, value);
+            TagOwner::add_tag(&m_non_grouping_tags, key, value);
         }
 
         JsonParser::free_map(m);
@@ -351,7 +374,7 @@ Query::get_query_tasks(std::vector<QueryTask*>& qtv, std::vector<Tsdb*> *tsdbs)
     std::unordered_set<TimeSeries*> tsv;
     char buff[MAX_TOTAL_TAG_LENGTH];
     get_ordered_tags(buff, sizeof(buff));
-    Tsdb::query_for_ts(m_metric, m_tags, tsv, buff);
+    Tsdb::query_for_ts(m_metric, m_tags, tsv, buff, m_explicit_tags);
 
     for (TimeSeries *ts: tsv)
     {
@@ -377,6 +400,8 @@ Query::aggregate(std::vector<QueryTask*>& qtv, std::vector<QueryResults*>& resul
 
     if (m_aggregator->is_none())
     {
+        m_aggregator->aggregate(m_metric, qtv, results, strbuf);
+#if 0
         // no aggregation
         for (QueryTask *qt: qtv)
         {
@@ -390,10 +415,11 @@ Query::aggregate(std::vector<QueryTask*>& qtv, std::vector<QueryResults*>& resul
             result->m_dps.insert(result->m_dps.end(), dps.begin(), dps.end());  // TODO: how to avoid copy?
             dps.clear();
         }
+#endif
     }
     else
     {
-        // split tsv into results
+        // split qtv into results
         create_query_results(qtv, results, strbuf);
 
         // aggregate results
@@ -436,6 +462,16 @@ Query::calculate_rate(std::vector<QueryResults*>& results)
 */
 }
 
+QueryResults *
+Query::create_one_query_results(StringBuffer& strbuf)
+{
+    QueryResults *result =
+        (QueryResults*)MemoryManager::alloc_recyclable(RecyclableType::RT_QUERY_RESULTS);
+    result->m_metric = m_metric;
+    result->set_tags(get_cloned_tags(strbuf));
+    return result;
+}
+
 void
 Query::create_query_results(std::vector<QueryTask*>& qtv, std::vector<QueryResults*>& results, StringBuffer& strbuf)
 {
@@ -455,11 +491,7 @@ Query::create_query_results(std::vector<QueryTask*>& qtv, std::vector<QueryResul
     if (! star_tags)
     {
         // in this case there can be only one QueryResults
-        QueryResults *result =
-            (QueryResults*)MemoryManager::alloc_recyclable(RecyclableType::RT_QUERY_RESULTS);
-
-        result->m_metric = m_metric;
-        result->set_tags(get_cloned_tags(strbuf));
+        QueryResults *result = create_one_query_results(strbuf);
 
         for (QueryTask *qt: qtv)
         {
@@ -486,6 +518,9 @@ Query::create_query_results(std::vector<QueryTask*>& qtv, std::vector<QueryResul
                     // skip those tags that are not queried
                     if (find_by_key(tag->m_key) == nullptr) continue;
 
+                    // skip non-grouping tags
+                    if (TagOwner::find_by_key(m_non_grouping_tags, tag->m_key) != nullptr) continue;
+
                     //if (! Tag::match_value(qt->get_tags(), tag->m_key, tag->m_value))
                     if (! qt_tags.match(tag->m_key, tag->m_value))
                     {
@@ -493,21 +528,6 @@ Query::create_query_results(std::vector<QueryTask*>& qtv, std::vector<QueryResul
                         break;
                     }
                 }
-/*
-                bool match = true;
-
-                for (Tag *tag = r->get_tags(); tag != nullptr; tag = tag->next())
-                {
-                    // skip those tags that are not queried
-                    if (find_by_key(tag->m_key) == nullptr) continue;
-
-                    if (! Tag::match_value(qt->get_tags(), tag->m_key, tag->m_value))
-                    {
-                        match = false;
-                        break;
-                    }
-                }
-*/
 
                 if (match)
                 {
@@ -519,12 +539,8 @@ Query::create_query_results(std::vector<QueryTask*>& qtv, std::vector<QueryResul
             if (result == nullptr)
             {
                 // did not find the matching QueryResults, create one
-                result =
-                    (QueryResults*)MemoryManager::alloc_recyclable(RecyclableType::RT_QUERY_RESULTS);
-                result->m_metric = m_metric;
-                result->set_tags(get_cloned_tags(strbuf));
+                result = create_one_query_results(strbuf);
                 result->add_query_task(qt, strbuf);
-
                 results.push_back(result);
             }
             else
@@ -553,7 +569,11 @@ Query::execute(std::vector<QueryResults*>& results, StringBuffer& strbuf)
 
     // cleanup
     for (QueryTask *qt: qtv)
+    {
+        if (qt->get_errno() != 0)
+            m_errno = qt->get_errno();
         MemoryManager::free_recyclable(qt);
+    }
 
     for (Tsdb *tsdb: tsdbs)
         tsdb->dec_ref_count();
@@ -606,7 +626,11 @@ Query::execute_in_parallel(std::vector<QueryResults*>& results, StringBuffer& st
     // cleanup
     Logger::trace("cleanup...");
     for (QueryTask *qt: qtv)
+    {
+        if (qt->get_errno() != 0)
+            m_errno = qt->get_errno();
         MemoryManager::free_recyclable(qt);
+    }
 
     for (Tsdb *tsdb: tsdbs)
         tsdb->dec_ref_count();
@@ -693,9 +717,17 @@ QueryTask::perform(TimeSeriesId id)
             m_downsampler = nullptr;
         }
     }
+    catch (const std::exception& e)
+    {
+        if (std::strcmp(e.what(), TT_MSG_OUT_OF_MEMORY) == 0)
+            m_errno = ENOMEM;     // out of memory
+        else
+            m_errno = -1;
+    }
     catch (...)
     {
         ASSERT(false);
+        m_errno = -1;
         Logger::error("Caught exception while performing query.");
     }
 
@@ -830,6 +862,34 @@ QueryTask::query_without_ooo(std::vector<DataPointContainer*>& data)
 #endif
 }
 
+double
+QueryTask::get_max(int n) const
+{
+    double max = std::numeric_limits<double>::min();
+
+    for (int i = m_dps.size()-1; i >= 0 && n > 0; i--, n--)
+    {
+        if (max < m_dps[i].second)
+            max = m_dps[i].second;
+    }
+
+    return max;
+}
+
+double
+QueryTask::get_min(int n) const
+{
+    double min = std::numeric_limits<double>::max();
+
+    for (int i = m_dps.size()-1; i >= 0 && n > 0; i--, n--)
+    {
+        if (min > m_dps[i].second)
+            min = m_dps[i].second;
+    }
+
+    return min;
+}
+
 Tag *
 QueryTask::get_tags()
 {
@@ -857,6 +917,7 @@ QueryTask::get_cloned_tags(StringBuffer& strbuf)
 void
 QueryTask::init()
 {
+    m_errno = 0;
     m_signal = nullptr;
     m_downsampler = nullptr;
 }
@@ -906,6 +967,9 @@ QueryExecutor::init()
 bool
 QueryExecutor::http_get_api_query_handler(HttpRequest& request, HttpResponse& response)
 {
+#ifdef TT_STATS
+    Timestamp ts_start = ts_now_ms();
+#endif
     Meter meter(METRIC_TICKTOCK_QUERY_LATENCY_MS);
     Logger::debug("Handling get request: %T", &request);
 
@@ -915,6 +979,7 @@ QueryExecutor::http_get_api_query_handler(HttpRequest& request, HttpResponse& re
     StringBuffer strbuf;
     Query query(params, strbuf);
     std::vector<QueryResults*> results;
+    int error = 0;
 
     if (Config::get_bool(CFG_QUERY_EXECUTOR_PARALLEL,CFG_QUERY_EXECUTOR_PARALLEL_DEF))
     {
@@ -925,12 +990,21 @@ QueryExecutor::http_get_api_query_handler(HttpRequest& request, HttpResponse& re
         query.execute(results, strbuf);
     }
 
+    if (query.get_errno() != 0)
+        error = query.get_errno();
+
     JsonParser::free_map(params);
 
-    bool status = prepare_response(results, response);
+    bool status = prepare_response(results, response, error);
 
     for (QueryResults *r: results)
         MemoryManager::free_recyclable(r);
+
+#ifdef TT_STATS
+    Timestamp ts_end = ts_now_ms();
+    g_query_count++;
+    g_query_latency_ms += ts_end - ts_start;
+#endif
 
     return status;
 }
@@ -938,6 +1012,9 @@ QueryExecutor::http_get_api_query_handler(HttpRequest& request, HttpResponse& re
 bool
 QueryExecutor::http_post_api_query_handler(HttpRequest& request, HttpResponse& response)
 {
+#ifdef TT_STATS
+    Timestamp ts_start = ts_now_ms();
+#endif
     Meter meter(METRIC_TICKTOCK_QUERY_LATENCY_MS);
     bool ms = false;
     JsonMap map;
@@ -990,6 +1067,7 @@ QueryExecutor::http_post_api_query_handler(HttpRequest& request, HttpResponse& r
 
     StringBuffer strbuf;
     std::vector<QueryResults*> results;
+    int error = 0;
 
     for (int i = 0; i < array.size(); i++)
     {
@@ -1010,6 +1088,9 @@ QueryExecutor::http_post_api_query_handler(HttpRequest& request, HttpResponse& r
             query.execute(res, strbuf);
         }
 
+        if (query.get_errno() != 0)
+            error = query.get_errno();
+
         if (! res.empty())
         {
             results.insert(results.end(), res.begin(), res.end());
@@ -1018,16 +1099,22 @@ QueryExecutor::http_post_api_query_handler(HttpRequest& request, HttpResponse& r
 
     JsonParser::free_map(map);
 
-    bool status = prepare_response(results, response);
+    bool status = prepare_response(results, response, error);
 
     for (QueryResults *r: results)
         MemoryManager::free_recyclable(r);
+
+#ifdef TT_STATS
+    Timestamp ts_end = ts_now_ms();
+    g_query_count++;
+    g_query_latency_ms += ts_end - ts_start;
+#endif
 
     return status;
 }
 
 bool
-QueryExecutor::prepare_response(std::vector<QueryResults*>& results, HttpResponse& response)
+QueryExecutor::prepare_response(std::vector<QueryResults*>& results, HttpResponse& response, int error)
 {
     char *buff = response.get_buffer();
     int size = response.get_buffer_size();
@@ -1048,7 +1135,22 @@ QueryExecutor::prepare_response(std::vector<QueryResults*>& results, HttpRespons
         if (n >= size) break;
     }
 
-    if (n >= size)
+    if (UNLIKELY(error != 0))
+    {
+        switch (error)
+        {
+            case ENOMEM:
+                response.init(503, HttpContentType::PLAIN, 0, nullptr);
+                break;
+
+            default:
+                response.init(500, HttpContentType::PLAIN, 0, nullptr);
+                break;
+        }
+
+        status = false;
+    }
+    else if (n >= size)
     {
         Logger::error("response too large, %d >= %d", n, size);
         response.init(413, HttpContentType::PLAIN, 0, nullptr);

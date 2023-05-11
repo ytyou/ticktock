@@ -66,6 +66,11 @@ int MemoryManager::m_max_usage_idx;
 std::unordered_map<Recyclable*,bool> MemoryManager::m_maps[RecyclableType::RT_COUNT];
 #endif
 
+#ifdef TT_STATS
+std::atomic<uint64_t> g_query_count{0};
+std::atomic<uint64_t> g_query_latency_ms{0};
+#endif
+
 
 MemoryManager::MemoryManager()
 {
@@ -99,7 +104,7 @@ MemoryManager::alloc_network_buffer()
         buff =
             static_cast<char*>(aligned_alloc(g_page_size, m_network_buffer_len));
         if (buff == nullptr)
-            throw std::runtime_error("Out of memory");
+            throw std::runtime_error(TT_MSG_OUT_OF_MEMORY);
         ASSERT(((long)buff % g_page_size) == 0);
         m_total[RecyclableType::RT_COUNT]++;
     }
@@ -148,7 +153,7 @@ MemoryManager::alloc_network_buffer_small()
         buff =
             static_cast<char*>(malloc(m_network_buffer_small_len));
         if (buff == nullptr)
-            throw std::runtime_error("Out of memory");
+            throw std::runtime_error(TT_MSG_OUT_OF_MEMORY);
         m_total[RecyclableType::RT_COUNT+1]++;
     }
 
@@ -237,6 +242,7 @@ MemoryManager::collect_stats(Timestamp ts, std::vector<DataPoint> &dps)
     }
 
     COLLECT_STATS_FOR(RT_AGGREGATOR_AVG, "aggregator_avg", sizeof(AggregatorAvg))
+    COLLECT_STATS_FOR(RT_AGGREGATOR_BOTTOM, "aggregator_bottom", sizeof(AggregatorBottom))
     COLLECT_STATS_FOR(RT_AGGREGATOR_COUNT, "aggregator_count", sizeof(AggregatorCount))
     COLLECT_STATS_FOR(RT_AGGREGATOR_DEV, "aggregator_dev", sizeof(AggregatorDev))
     COLLECT_STATS_FOR(RT_AGGREGATOR_MAX, "aggregator_max", sizeof(AggregatorMax))
@@ -244,6 +250,7 @@ MemoryManager::collect_stats(Timestamp ts, std::vector<DataPoint> &dps)
     COLLECT_STATS_FOR(RT_AGGREGATOR_NONE, "aggregator_none", sizeof(AggregatorNone))
     COLLECT_STATS_FOR(RT_AGGREGATOR_PT, "aggregator_pt", sizeof(AggregatorPercentile))
     COLLECT_STATS_FOR(RT_AGGREGATOR_SUM, "aggregator_sum", sizeof(AggregatorSum))
+    COLLECT_STATS_FOR(RT_AGGREGATOR_TOP, "aggregator_top", sizeof(AggregatorTop))
     COLLECT_STATS_FOR(RT_BITSET_CURSOR, "bitset_cursor", sizeof(BitSetCursor))
     COLLECT_STATS_FOR(RT_COMPRESSOR_V0, "compressor_v0", sizeof(Compressor_v0))
     COLLECT_STATS_FOR(RT_COMPRESSOR_V1, "compressor_v1", sizeof(Compressor_v1))
@@ -273,6 +280,7 @@ MemoryManager::collect_stats(Timestamp ts, std::vector<DataPoint> &dps)
 
     float total = 0;
     total += m_total[RT_AGGREGATOR_AVG] * sizeof(AggregatorAvg);
+    total += m_total[RT_AGGREGATOR_BOTTOM] * sizeof(AggregatorBottom);
     total += m_total[RT_AGGREGATOR_COUNT] * sizeof(AggregatorCount);
     total += m_total[RT_AGGREGATOR_DEV] * sizeof(AggregatorDev);
     total += m_total[RT_AGGREGATOR_MAX] * sizeof(AggregatorMax);
@@ -280,6 +288,7 @@ MemoryManager::collect_stats(Timestamp ts, std::vector<DataPoint> &dps)
     total += m_total[RT_AGGREGATOR_NONE] * sizeof(AggregatorNone);
     total += m_total[RT_AGGREGATOR_PT] * sizeof(AggregatorPercentile);
     total += m_total[RT_AGGREGATOR_SUM] * sizeof(AggregatorSum);
+    total += m_total[RT_AGGREGATOR_TOP] * sizeof(AggregatorTop);
     total += m_total[RT_BITSET_CURSOR] * sizeof(BitSetCursor);
     total += m_total[RT_COMPRESSOR_V0] * sizeof(Compressor_v0);
     total += m_total[RT_COMPRESSOR_V1] * sizeof(Compressor_v1);
@@ -368,6 +377,15 @@ MemoryManager::log_stats()
         fprintf(file, "ticktock.connection.count %" PRIu64 " %d %s=%s\n",
             ts, TcpListener::get_active_conn_count(), HOST_TAG_NAME, g_host_name.c_str());
 
+#ifdef TT_STATS
+        if (g_query_count.load() > 0)
+        {
+            fprintf(file, "ticktock.query.latency.avg %" PRIu64 " %f %s=%s\n",
+                ts, (double)g_query_latency_ms.load()/(double)g_query_count.load(),
+                HOST_TAG_NAME, g_host_name.c_str());
+        }
+#endif
+
         size_t buff_size = get_network_buffer_size();
         char *buff = alloc_network_buffer();
         Stats::collect_stats(buff, buff_size);
@@ -387,6 +405,14 @@ MemoryManager::cleanup()
         m_free_lists[RecyclableType::RT_AGGREGATOR_AVG] = r->next();
         ASSERT(r->recyclable_type() == RecyclableType::RT_AGGREGATOR_AVG);
         delete static_cast<AggregatorAvg*>(r);
+    }
+
+    while (m_free_lists[RecyclableType::RT_AGGREGATOR_BOTTOM] != nullptr)
+    {
+        Recyclable *r = m_free_lists[RecyclableType::RT_AGGREGATOR_BOTTOM];
+        m_free_lists[RecyclableType::RT_AGGREGATOR_BOTTOM] = r->next();
+        ASSERT(r->recyclable_type() == RecyclableType::RT_AGGREGATOR_BOTTOM);
+        delete static_cast<AggregatorBottom*>(r);
     }
 
     while (m_free_lists[RecyclableType::RT_AGGREGATOR_COUNT] != nullptr)
@@ -443,6 +469,14 @@ MemoryManager::cleanup()
         m_free_lists[RecyclableType::RT_AGGREGATOR_SUM] = r->next();
         ASSERT(r->recyclable_type() == RecyclableType::RT_AGGREGATOR_SUM);
         delete static_cast<AggregatorSum*>(r);
+    }
+
+    while (m_free_lists[RecyclableType::RT_AGGREGATOR_TOP] != nullptr)
+    {
+        Recyclable *r = m_free_lists[RecyclableType::RT_AGGREGATOR_TOP];
+        m_free_lists[RecyclableType::RT_AGGREGATOR_TOP] = r->next();
+        ASSERT(r->recyclable_type() == RecyclableType::RT_AGGREGATOR_TOP);
+        delete static_cast<AggregatorTop*>(r);
     }
 
     while (m_free_lists[RecyclableType::RT_BITSET_CURSOR] != nullptr)
@@ -637,7 +671,28 @@ MemoryManager::cleanup()
         delete static_cast<HttpConnection*>(r);
     }
 
-    // TODO: free m_network_buffer_free_list
+    // free m_network_buffer_free_list
+    char* buff = nullptr;
+
+    {
+        std::lock_guard<std::mutex> guard(m_network_lock);
+        while ((buff = m_network_buffer_free_list) != nullptr)
+        {
+            m_network_buffer_free_list = *((char**)buff);
+            m_free[RecyclableType::RT_COUNT]--;
+            std::free(buff);
+        }
+    }
+
+    {
+        std::lock_guard<std::mutex> guard(m_network_small_lock);
+        while ((buff = m_network_buffer_small_free_list) != nullptr)
+        {
+            m_network_buffer_small_free_list = *((char**)buff);
+            m_free[RecyclableType::RT_COUNT+1]--;
+            std::free(buff);
+        }
+    }
 }
 
 Recyclable *
@@ -671,6 +726,10 @@ MemoryManager::alloc_recyclable(RecyclableType type)
                     r = new AggregatorAvg();
                     break;
 
+                case RecyclableType::RT_AGGREGATOR_BOTTOM:
+                    r = new AggregatorBottom();
+                    break;
+
                 case RecyclableType::RT_AGGREGATOR_COUNT:
                     r = new AggregatorCount();
                     break;
@@ -701,6 +760,10 @@ MemoryManager::alloc_recyclable(RecyclableType type)
 
                 case RecyclableType::RT_BITSET_CURSOR:
                     r = new BitSetCursor();
+                    break;
+
+                case RecyclableType::RT_AGGREGATOR_TOP:
+                    r = new AggregatorTop();
                     break;
 
                 case RecyclableType::RT_COMPRESSOR_V0:
@@ -795,7 +858,7 @@ MemoryManager::alloc_recyclable(RecyclableType type)
         {
             HttpResponse response;
             Admin::cmd_stop(nullptr, response);    // shutdown
-            throw std::runtime_error("Out of memory");
+            throw std::runtime_error(TT_MSG_OUT_OF_MEMORY);
         }
 
         ASSERT(r != nullptr);

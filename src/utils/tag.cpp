@@ -336,7 +336,8 @@ Tag_v2::set_name(TagId id, const char *name)
     {
         uint32_t new_capacity = id + 256;
         const char **tmp = (const char **) calloc(new_capacity, sizeof(const char*));
-        std::memcpy(tmp, m_names, m_names_capacity * sizeof(const char *));
+        if (m_names != nullptr)
+            std::memcpy(tmp, m_names, m_names_capacity * sizeof(const char *));
         std::memset(&tmp[m_names_capacity], 0, (new_capacity-m_names_capacity) * sizeof(const char *));
         if (m_names != nullptr) std::free(m_names);
         m_names = tmp;
@@ -479,6 +480,17 @@ Tag_v2::get_v1_tags() const
         tag->next() = head;
         head = tag;
     }
+
+    return head;
+}
+
+Tag *
+Tag_v2::get_ordered_v1_tags() const
+{
+    Tag *head = nullptr;
+
+    for (int i = 2*m_count-1; i >= 0; i -= 2)
+        KeyValuePair::insert_in_order(&head, get_name(m_tags[i-1]), get_name(m_tags[i]));
 
     return head;
 }

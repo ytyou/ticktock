@@ -187,6 +187,37 @@ MetaFile::add_ts(const char *metric, const char *key, TimeSeriesId id)
 }
 
 void
+MetaFile::add_ts(const char *metric, Tag_v2& tags_v2, TimeSeriesId id)
+{
+    Tag *tags = tags_v2.get_ordered_v1_tags();
+    Tag *field = KeyValuePair::remove_first(&tags, TT_FIELD_TAG_NAME);
+    char buff[MAX_TOTAL_TAG_LENGTH];
+    int n = 0, size = sizeof(buff);
+    Tag *tag = tags;
+
+    while ((tag != nullptr) && (size > n))
+    {
+        n += std::snprintf(buff+n, size-n, ",%s=%s", tag->m_key, tag->m_value);
+        tag = tag->next();
+    }
+
+    buff[size-1] = 0;
+
+    {
+        std::lock_guard<std::mutex> guard(m_lock);
+
+        if (field == nullptr)
+            fprintf(m_file, "%s %s %u\n", metric, (n>0) ? &buff[1] : ";", id);
+        else
+            fprintf(m_file, "%s %s %s=%u\n", metric, (n>0) ? &buff[1] : ";", field->m_value, id);
+    }
+
+    if (field != nullptr)
+        MemoryManager::free_recyclable(field);
+    KeyValuePair::free_list(tags);
+}
+
+void
 MetaFile::add_measurement(const char *measurement, char *tags, std::vector<std::pair<const char*,TimeSeriesId>>& fields)
 {
     ASSERT(measurement != nullptr);
