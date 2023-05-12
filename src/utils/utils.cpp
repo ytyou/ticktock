@@ -147,7 +147,8 @@ bool
 is_off_hour()
 {
     std::time_t sec = std::time(nullptr);
-    struct tm *now = localtime(&sec);
+    struct tm timeinfo;
+    struct tm *now = localtime_r(&sec, &timeinfo);
     int off_hour_begin = Config::get_int(CFG_TSDB_OFF_HOUR_BEGIN, CFG_TSDB_OFF_HOUR_BEGIN_DEF);
     int off_hour_end = Config::get_int(CFG_TSDB_OFF_HOUR_END, CFG_TSDB_OFF_HOUR_END_DEF);
 
