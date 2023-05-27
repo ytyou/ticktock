@@ -1068,9 +1068,9 @@ QuerySuperTask::perform(bool lock)
         for (auto tsdb: m_tsdbs)
         {
             if (lock)
-                tsdb->query_for_data(m_time_range, m_tasks);
+                tsdb->query_for_data(m_time_range, m_tasks, m_compact);
             else
-                tsdb->query_for_data_no_lock(m_time_range, m_tasks);
+                tsdb->query_for_data_no_lock(m_time_range, m_tasks, m_compact);
 
             for (QueryTask *task : m_tasks)
             {

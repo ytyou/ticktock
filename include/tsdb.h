@@ -196,8 +196,8 @@ public:
     bool query_for_data_no_lock(TimeSeriesId id, TimeRange& range, std::vector<DataPointContainer*>& data);
 
     void query_for_data_no_lock(QueryTask *task);
-    void query_for_data(TimeRange& range, std::vector<QueryTask*>& tasks);
-    void query_for_data_no_lock(TimeRange& range, std::vector<QueryTask*>& tasks);
+    void query_for_data(TimeRange& range, std::vector<QueryTask*>& tasks, bool compact = false);
+    void query_for_data_no_lock(TimeRange& range, std::vector<QueryTask*>& tasks, bool compact = false);
 
     void flush(bool sync);
     void flush_for_test();  // for testing only

@@ -1286,15 +1286,15 @@ Tsdb::query_for_data_no_lock(QueryTask *task)
 }
 
 void
-Tsdb::query_for_data(TimeRange& range, std::vector<QueryTask*>& tasks)
+Tsdb::query_for_data(TimeRange& range, std::vector<QueryTask*>& tasks, bool compact)
 {
     std::lock_guard<std::mutex> guard(m_lock);
-    query_for_data_no_lock(range, tasks);
+    query_for_data_no_lock(range, tasks, compact);
 }
 
 // Query for multiple TimeSeries
 void
-Tsdb::query_for_data_no_lock(TimeRange& range, std::vector<QueryTask*>& tasks)
+Tsdb::query_for_data_no_lock(TimeRange& range, std::vector<QueryTask*>& tasks, bool compact)
 {
 /*
     if (tasks.size() == 1)  // special case
@@ -1336,10 +1336,24 @@ Tsdb::query_for_data_no_lock(TimeRange& range, std::vector<QueryTask*>& tasks)
         pq.push(task);
     }
 
+    FileIndex last_file_idx = TT_INVALID_FILE_INDEX;
+
     while (! pq.empty())
     {
         QueryTask *task = pq.top();
         pq.pop();
+
+        // try to close previous files
+        if (compact)
+        {
+            task->get_indices(file_idx, header_idx);
+            if ((file_idx != last_file_idx) && (last_file_idx != TT_INVALID_FILE_INDEX))
+            {
+                m_header_files[last_file_idx]->close();
+                m_data_files[last_file_idx]->close();
+            }
+            last_file_idx = file_idx;
+        }
 
         query_for_data_no_lock(task);
         task->get_indices(file_idx, header_idx);
@@ -1347,6 +1361,9 @@ Tsdb::query_for_data_no_lock(TimeRange& range, std::vector<QueryTask*>& tasks)
         if (file_idx != TT_INVALID_FILE_INDEX && header_idx != TT_INVALID_HEADER_INDEX)
             pq.push(task);
     }
+
+    if (compact)
+        m_index_file.close();
 }
 
 // This will make tsdb read-only!
@@ -2729,7 +2746,7 @@ Tsdb::compact(TaskData& data)
         for (auto it = m_tsdbs.begin(); it != m_tsdbs.end(); it++)
         {
             if (! (*it)->get_time_range().older_than_sec(compact_threshold))
-                continue;
+                break;
 
             std::lock_guard<std::mutex> guard((*it)->m_lock);
             //WriteLock guard((*it)->m_lock);
