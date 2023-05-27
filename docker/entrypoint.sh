@@ -19,6 +19,5 @@ if test -x "/opt/grafana/bin/grafana-server"; then
 fi
 
 # start TickTock
-/opt/ticktock/bin/ticktock -c /var/lib/ticktock/conf/ticktock.conf -r $@
+exec /opt/ticktock/bin/ticktock -c /var/lib/ticktock/conf/ticktock.conf -r $@
 
-exit 0
