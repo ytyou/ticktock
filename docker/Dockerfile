@@ -3,6 +3,8 @@
 #     --build-arg BUILD_DATE=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
 #     --build-arg GIT_COMMIT=$(git log -1 --pretty=format:%h)
 #     --build-arg VERSION=0.1.3-alpha --no-cache=true --add-host=ticktock
+#     --build-arg UID=1000
+#     --build-arg GID=1000
 #
 # To inspect the image by running it:
 #   docker run --rm -it --entrypoint=/bin/bash ytyou/ticktock:latest
@@ -32,6 +34,8 @@ ARG BUILD_DATE
 ARG GIT_COMMIT
 ARG VERSION
 ARG DEBIAN_FRONTEND=noninteractive
+ARG UID=1000
+ARG GID=1000
 
 LABEL name="TickTock" version="$VERSION"
 LABEL build-date="$BUILD_DATE" git-commit="$GIT_COMMIT"
@@ -47,7 +51,8 @@ RUN apt-get update && apt-get install -y \
   curl \
   nano
 
-RUN useradd -M -U ticktock
+RUN addgroup --quiet --gid ${GID} ticktock && \
+  adduser --quiet --uid ${UID} --disabled-login --disabled-password --no-create-home --gecos "" --ingroup ticktock ticktock
 
 RUN mkdir -p /var/lib/ticktock && \
   chown ticktock:ticktock /var/lib/ticktock
