@@ -73,6 +73,7 @@ namespace tt
 class Tsdb;
 class Mapping;
 class DataPointContainer;
+class QuerySuperTask;
 
 
 class Measurement : public BaseType
@@ -181,6 +182,7 @@ public:
     static void purge_oldest(int threshold);
     static bool compact(TaskData& data);
     static void compact2(); // last compaction step
+    static void write_to_compacted(QuerySuperTask& super_task, Tsdb *compacted, PageSize& next_size);
     static bool add_data_point(DataPoint& dp, bool forward);
     static TimeSeries *restore_ts(std::string& metric, std::string& key, TimeSeriesId id);
     static void restore_measurement(std::string& measurement, std::string& tags, std::vector<std::pair<std::string,TimeSeriesId>>& fields, std::vector<TimeSeries*>& tsv);
@@ -192,6 +194,10 @@ public:
     static void query_for_ts(const char *metric, Tag *tags, std::unordered_set<TimeSeries*>& ts, const char *key, bool explicit_tags);
     bool query_for_data(TimeSeriesId id, TimeRange& range, std::vector<DataPointContainer*>& data);
     bool query_for_data_no_lock(TimeSeriesId id, TimeRange& range, std::vector<DataPointContainer*>& data);
+
+    void query_for_data_no_lock(QueryTask *task);
+    void query_for_data(TimeRange& range, std::vector<QueryTask*>& tasks);
+    void query_for_data_no_lock(TimeRange& range, std::vector<QueryTask*>& tasks);
 
     void flush(bool sync);
     void flush_for_test();  // for testing only

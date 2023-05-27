@@ -58,7 +58,7 @@ CompactTests::update_config(Timestamp archive_ms, int compressor)
     configs.emplace_back(CFG_TSDB_ARCHIVE_THRESHOLD, archive.c_str());
     configs.emplace_back(CFG_TSDB_READ_ONLY_THRESHOLD, archive.c_str());
     configs.emplace_back(CFG_TSDB_TIMESTAMP_RESOLUTION, "millisecond");
-    configs.emplace_back(CFG_QUERY_EXECUTOR_PARALLEL, "false");
+    //configs.emplace_back(CFG_QUERY_EXECUTOR_PARALLEL, "false");
     configs.emplace_back(CFG_TCP_BUFFER_SIZE, "1mb");
     configs.emplace_back(CFG_TSDB_COMPRESSOR_VERSION, (compressor==0)?"0":((compressor==1)?"1":"2"));
 

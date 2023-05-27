@@ -48,7 +48,7 @@ static std::atomic<uint64_t> s_dp_count {0};
 static std::atomic<unsigned long> s_dp_count {0};
 #endif
 #endif
-QueryExecutor *QueryExecutor::m_instance = nullptr;
+//QueryExecutor *QueryExecutor::m_instance = nullptr;
 
 
 Query::Query(JsonMap& map, TimeRange& range, StringBuffer& strbuf, bool ms) :
@@ -363,13 +363,13 @@ Query::add_data_point(DataPointPair& dp, DataPointVector& dps, Downsampler *down
 }
 
 void
-Query::get_query_tasks(std::vector<QueryTask*>& qtv, std::vector<Tsdb*> *tsdbs)
+Query::get_query_tasks(QuerySuperTask& super_task)
 {
-    ASSERT(qtv.empty());
-    ASSERT(tsdbs != nullptr);
+    //ASSERT(qtv.empty());
+    //ASSERT(tsdbs != nullptr);
 
-    Tsdb::insts(m_time_range, *tsdbs);
-    Logger::debug("Found %d tsdbs within %T", tsdbs->size(), &m_time_range);
+    //Tsdb::insts(m_time_range, *tsdbs);
+    //Logger::debug("Found %d tsdbs within %T", tsdbs->size(), &m_time_range);
 
     std::unordered_set<TimeSeries*> tsv;
     char buff[MAX_TOTAL_TAG_LENGTH];
@@ -377,20 +377,7 @@ Query::get_query_tasks(std::vector<QueryTask*>& qtv, std::vector<Tsdb*> *tsdbs)
     Tsdb::query_for_ts(m_metric, m_tags, tsv, buff, m_explicit_tags);
 
     for (TimeSeries *ts: tsv)
-    {
-        QueryTask *qt =
-            (QueryTask*)MemoryManager::alloc_recyclable(RecyclableType::RT_QUERY_TASK);
-
-        qt->m_time_range = m_time_range;
-        qt->m_downsampler = (m_downsample == nullptr) ?
-                            nullptr :
-                            Downsampler::create(m_downsample, m_time_range, m_ms);
-        qt->m_ts = ts;
-        qt->m_tsdbs = tsdbs;
-        qtv.push_back(qt);
-    }
-
-    Logger::debug("Got %d query tasks", qtv.size());
+        super_task.add_task(ts);
 }
 
 void
@@ -556,17 +543,21 @@ Query::create_query_results(std::vector<QueryTask*>& qtv, std::vector<QueryResul
 void
 Query::execute(std::vector<QueryResults*>& results, StringBuffer& strbuf)
 {
-    std::vector<QueryTask*> qtv;
-    std::vector<Tsdb*> tsdbs;
+    //std::vector<QueryTask*> qtv;
+    //std::vector<Tsdb*> tsdbs;
+    QuerySuperTask super_task(m_time_range, m_downsample, m_ms);
 
-    get_query_tasks(qtv, &tsdbs);
+    get_query_tasks(super_task);
+    super_task.perform();
 
-    for (QueryTask *qt: qtv)
-        qt->perform();
+    //for (QueryTask *qt: qtv)
+        //qt->perform();
 
-    aggregate(qtv, results, strbuf);
+    aggregate(super_task.get_tasks(), results, strbuf);
     calculate_rate(results);
 
+    m_errno = super_task.get_errno();
+/*
     // cleanup
     for (QueryTask *qt: qtv)
     {
@@ -577,7 +568,10 @@ Query::execute(std::vector<QueryResults*>& results, StringBuffer& strbuf)
 
     for (Tsdb *tsdb: tsdbs)
         tsdb->dec_ref_count();
+*/
 }
+
+#if 0
 
 // perform query by submitting task to QueryExecutor
 void
@@ -636,6 +630,8 @@ Query::execute_in_parallel(std::vector<QueryResults*>& results, StringBuffer& st
         tsdb->dec_ref_count();
 }
 
+#endif
+
 uint64_t
 Query::get_dp_count()
 {
@@ -668,6 +664,50 @@ QueryTask::QueryTask()
 {
     init();
 }
+
+void
+QueryTask::query_ts_data(Tsdb *tsdb)
+{
+    ASSERT(m_ts != nullptr);
+
+    if (m_ts->query_for_data(tsdb, m_time_range, m_data))
+        m_has_ooo = true;
+}
+
+void
+QueryTask::merge_data()
+{
+    if (m_has_ooo)
+        query_with_ooo();
+    else
+        query_without_ooo();
+
+    for (DataPointContainer *container: m_data)
+        MemoryManager::free_recyclable(container);
+    m_data.clear();
+}
+
+void
+QueryTask::fill()
+{
+    if (m_downsampler != nullptr)
+    {
+        m_downsampler->fill_if_needed(m_dps);
+        MemoryManager::free_recyclable(m_downsampler);
+        m_downsampler = nullptr;
+    }
+}
+
+void
+QueryTask::add_container(DataPointContainer *container)
+{
+    ASSERT(container != nullptr);
+    ASSERT(container->size() > 0);
+    m_data.push_back(container);
+}
+
+
+#if 0
 
 void
 QueryTask::perform()
@@ -735,8 +775,10 @@ QueryTask::perform(TimeSeriesId id)
         m_signal->count_down();
 }
 
+#endif
+
 void
-QueryTask::query_with_ooo(std::vector<DataPointContainer*>& data)
+QueryTask::query_with_ooo()
 {
     using container_it = std::pair<DataPointContainer*,int>;
     auto container_cmp = [](const container_it &lhs, const container_it &rhs)
@@ -768,7 +810,7 @@ QueryTask::query_with_ooo(std::vector<DataPointContainer*>& data)
     uint64_t dp_count = 0;
     DataPointPair prev_dp(TT_INVALID_TIMESTAMP,0);
 
-    for (auto container: data)
+    for (auto container: m_data)
     {
         dp_count += container->size();
         pq.emplace(container, 0);
@@ -830,11 +872,11 @@ QueryTask::query_with_ooo(std::vector<DataPointContainer*>& data)
 }
 
 void
-QueryTask::query_without_ooo(std::vector<DataPointContainer*>& data)
+QueryTask::query_without_ooo()
 {
     uint64_t dp_count = 0;
 
-    for (DataPointContainer *container: data)
+    for (DataPointContainer *container: m_data)
     {
         dp_count += container->size();
 
@@ -860,6 +902,13 @@ QueryTask::query_without_ooo(std::vector<DataPointContainer*>& data)
 #ifdef TT_STATS
     s_dp_count.fetch_add(dp_count, std::memory_order_relaxed);
 #endif
+}
+
+TimeSeriesId
+QueryTask::get_ts_id() const
+{
+    ASSERT(m_ts != nullptr);
+    return m_ts->get_id();
 }
 
 double
@@ -917,18 +966,20 @@ QueryTask::get_cloned_tags(StringBuffer& strbuf)
 void
 QueryTask::init()
 {
-    m_errno = 0;
-    m_signal = nullptr;
+    //m_errno = 0;
+    //m_signal = nullptr;
     m_downsampler = nullptr;
 }
 
+/*
 void
-QueryTask::init(std::vector<Tsdb*> *tsdbs, const TimeRange& range)
+QueryTask::init(const TimeRange& range)
 {
     ASSERT(tsdbs != nullptr);
-    m_tsdbs = tsdbs;
+    //m_tsdbs = tsdbs;
     m_time_range.init(range);
 }
+*/
 
 bool
 QueryTask::recycle()
@@ -937,9 +988,9 @@ QueryTask::recycle()
     m_dps.shrink_to_fit();
     m_results.recycle();
 
-    m_signal = nullptr;
+    //m_signal = nullptr;
     m_ts = nullptr;
-    m_tsdbs = nullptr;
+    //m_tsdbs = nullptr;
 
     if (m_downsampler != nullptr)
     {
@@ -950,6 +1001,101 @@ QueryTask::recycle()
     return true;
 }
 
+
+QuerySuperTask::QuerySuperTask(TimeRange& range, const char* ds, bool ms) :
+    m_ms(ms),
+    m_errno(0),
+    m_downsample(ds),
+    m_compact(false),
+    m_time_range(range)
+{
+    Tsdb::insts(m_time_range, m_tsdbs);
+}
+
+// this one is called by Tsdb::compact()
+QuerySuperTask::QuerySuperTask(Tsdb *tsdb) :
+    m_ms(true),
+    m_errno(0),
+    m_downsample(nullptr),
+    m_time_range(tsdb->get_time_range())
+{
+    m_tsdbs.push_back(tsdb);
+    m_compact = true;
+}
+
+QuerySuperTask::~QuerySuperTask()
+{
+    for (QueryTask *qt : m_tasks)
+        MemoryManager::free_recyclable(qt);
+
+    // ref-count was incremented in the constructor, by Tsdb::insts()
+    if (! m_compact)
+    {
+        for (Tsdb *tsdb : m_tsdbs)
+            tsdb->dec_ref_count();
+    }
+}
+
+void
+QuerySuperTask::empty_tasks()
+{
+    for (QueryTask *qt : m_tasks)
+        MemoryManager::free_recyclable(qt);
+    m_tasks.clear();
+}
+
+void
+QuerySuperTask::add_task(TimeSeries *ts)
+{
+    QueryTask *qt =
+        (QueryTask*)MemoryManager::alloc_recyclable(RecyclableType::RT_QUERY_TASK);
+
+    qt->m_time_range = m_time_range;
+    qt->m_downsampler = (m_downsample == nullptr) ?
+                        nullptr :
+                        Downsampler::create(m_downsample, m_time_range, m_ms);
+    qt->m_ts = ts;
+    //qt->m_tsdbs = &m_tsdbs;
+
+    m_tasks.push_back(qt);
+}
+
+void
+QuerySuperTask::perform(bool lock)
+{
+    try
+    {
+        for (auto tsdb: m_tsdbs)
+        {
+            if (lock)
+                tsdb->query_for_data(m_time_range, m_tasks);
+            else
+                tsdb->query_for_data_no_lock(m_time_range, m_tasks);
+
+            for (QueryTask *task : m_tasks)
+            {
+                task->query_ts_data(tsdb);
+                task->merge_data();
+            }
+        }
+
+        for (QueryTask *task : m_tasks)
+            task->fill();
+    }
+    catch (const std::exception& e)
+    {
+        if (std::strcmp(e.what(), TT_MSG_OUT_OF_MEMORY) == 0)
+            m_errno = ENOMEM;     // out of memory
+        else
+        {
+            m_errno = -1;
+            Logger::error("QuerySuperTask: caught exception %s", e.what());
+        }
+    }
+}
+
+
+#if 0
 
 QueryExecutor::QueryExecutor() :
     m_executors("qexe",
@@ -963,6 +1109,8 @@ QueryExecutor::init()
 {
     m_instance = new QueryExecutor;
 }
+
+#endif
 
 bool
 QueryExecutor::http_get_api_query_handler(HttpRequest& request, HttpResponse& response)
@@ -981,6 +1129,8 @@ QueryExecutor::http_get_api_query_handler(HttpRequest& request, HttpResponse& re
     std::vector<QueryResults*> results;
     int error = 0;
 
+    query.execute(results, strbuf);
+/*
     if (Config::get_bool(CFG_QUERY_EXECUTOR_PARALLEL,CFG_QUERY_EXECUTOR_PARALLEL_DEF))
     {
         query.execute_in_parallel(results, strbuf);
@@ -989,6 +1139,7 @@ QueryExecutor::http_get_api_query_handler(HttpRequest& request, HttpResponse& re
     {
         query.execute(results, strbuf);
     }
+*/
 
     if (query.get_errno() != 0)
         error = query.get_errno();
@@ -1079,6 +1230,9 @@ QueryExecutor::http_post_api_query_handler(HttpRequest& request, HttpResponse& r
 
         std::vector<QueryResults*> res;
 
+        query.execute(res, strbuf);
+
+/*
         if (Config::get_bool(CFG_QUERY_EXECUTOR_PARALLEL,CFG_QUERY_EXECUTOR_PARALLEL_DEF))
         {
             query.execute_in_parallel(res, strbuf);
@@ -1087,6 +1241,7 @@ QueryExecutor::http_post_api_query_handler(HttpRequest& request, HttpResponse& r
         {
             query.execute(res, strbuf);
         }
+*/
 
         if (query.get_errno() != 0)
             error = query.get_errno();
@@ -1170,6 +1325,8 @@ QueryExecutor::prepare_response(std::vector<QueryResults*>& results, HttpRespons
     return status;
 }
 
+/*
+
 void
 QueryExecutor::submit_query(QueryTask *query_task)
 {
@@ -1199,6 +1356,8 @@ QueryExecutor::shutdown(ShutdownRequest request)
     m_executors.wait(5);
     Logger::info("QueryExecutor::shutdown complete");
 }
+
+*/
 
 
 void
@@ -1273,11 +1432,13 @@ QueryExecutor::http_get_api_config_filters_handler(HttpRequest& request, HttpRes
     return true;
 }
 
+/*
 size_t
 QueryExecutor::get_pending_task_count(std::vector<size_t> &counts)
 {
     return m_instance->m_executors.get_pending_task_count(counts);
 }
+*/
 
 
 void

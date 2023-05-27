@@ -1138,6 +1138,7 @@ Tsdb::query_for_data(TimeSeriesId id, TimeRange& query_range, std::vector<DataPo
     return query_for_data_no_lock(id, query_range, data);
 }
 
+// Query for a single TimeSeries
 bool
 Tsdb::query_for_data_no_lock(TimeSeriesId id, TimeRange& query_range, std::vector<DataPointContainer*>& data)
 {
@@ -1217,6 +1218,135 @@ Tsdb::query_for_data_no_lock(TimeSeriesId id, TimeRange& query_range, std::vecto
     }
 
     return has_ooo;
+}
+
+// Query ONE page, for a single TimeSeries
+void
+Tsdb::query_for_data_no_lock(QueryTask *task)
+{
+    ASSERT(task != nullptr);
+
+    FileIndex file_idx;
+    HeaderIndex header_idx;
+    Timestamp from = m_time_range.get_from();
+    TimeRange& query_range = task->get_query_range();
+
+    task->get_indices(file_idx, header_idx);
+    ASSERT(file_idx != TT_INVALID_FILE_INDEX);
+    ASSERT(header_idx != TT_INVALID_HEADER_INDEX);
+    ASSERT(file_idx < m_header_files.size());
+    ASSERT(m_data_files.size() == m_header_files.size());
+
+    HeaderFile *header_file = m_header_files[file_idx];
+    header_file->ensure_open(true);
+    struct tsdb_header *tsdb_header = header_file->get_tsdb_header();
+    struct page_info_on_disk *page_header = header_file->get_page_header(header_idx);
+    TimeRange range(from + page_header->m_tstamp_from, from + page_header->m_tstamp_to);
+
+    if (query_range.has_intersection(range))
+    {
+        DataFile *data_file = m_data_files[file_idx];
+        PThread_Lock lock(data_file->get_lock());
+        lock.lock_for_read();
+        data_file->ensure_open(true);
+        void *page = data_file->get_page(page_header->m_page_index, page_header->m_offset, page_header->m_cursor);
+
+        if (page == nullptr)
+        {
+            lock.unlock();
+            lock.lock_for_write();
+            data_file->remap();
+            lock.unlock();
+            lock.lock_for_read();
+            page = data_file->get_page(page_header->m_page_index, page_header->m_offset, page_header->m_cursor);
+        }
+
+        if (page == nullptr)
+        {
+            lock.unlock();
+            throw std::runtime_error("Failed to open data file for read.");
+        }
+
+        DataPointContainer *container = (DataPointContainer*)
+            MemoryManager::alloc_recyclable(RecyclableType::RT_DATA_POINT_CONTAINER);
+        container->set_out_of_order(page_header->is_out_of_order());
+        container->set_page_index(page_header->get_global_page_index(file_idx, m_page_count));
+        container->collect_data(from, tsdb_header, page_header, page);
+        ASSERT(container->size() > 0);
+        lock.unlock();
+
+        if (page_header->is_out_of_order())
+            task->set_ooo(true);
+
+        task->add_container(container);
+    }
+
+    // prepare for the next page
+    task->set_indices(page_header->get_next_file(), page_header->get_next_header());
+}
+
+void
+Tsdb::query_for_data(TimeRange& range, std::vector<QueryTask*>& tasks)
+{
+    std::lock_guard<std::mutex> guard(m_lock);
+    query_for_data_no_lock(range, tasks);
+}
+
+// Query for multiple TimeSeries
+void
+Tsdb::query_for_data_no_lock(TimeRange& range, std::vector<QueryTask*>& tasks)
+{
+/*
+    if (tasks.size() == 1)  // special case
+    {
+        query_for_data_no_lock(tasks[0]);
+        return;
+    }
+*/
+
+    FileIndex file_idx;
+    HeaderIndex header_idx;
+    auto query_task_cmp = [](QueryTask* &lhs, QueryTask* &rhs)
+    {
+        FileIndex lhs_file_idx, rhs_file_idx;
+        HeaderIndex lhs_header_idx, rhs_header_idx;
+
+        lhs->get_indices(lhs_file_idx, lhs_header_idx);
+        rhs->get_indices(rhs_file_idx, rhs_header_idx);
+
+        if (lhs_file_idx > rhs_file_idx)
+            return true;
+        else if (lhs_file_idx == rhs_file_idx)
+            return lhs_header_idx > rhs_header_idx;
+        else
+            return false;
+    };
+    std::priority_queue<QueryTask*, std::vector<QueryTask*>, decltype(query_task_cmp)> pq(query_task_cmp);
+
+    m_mode |= TSDB_MODE_READ;
+    m_index_file.ensure_open(true);
+
+    for (auto task : tasks)
+    {
+        // figure out first page location before pushing to pq
+        m_index_file.get_indices(task->get_ts_id(), file_idx, header_idx);
+        if (file_idx == TT_INVALID_FILE_INDEX || header_idx == TT_INVALID_HEADER_INDEX)
+            continue;
+        task->set_indices(file_idx, header_idx);
+        pq.push(task);
+    }
+
+    while (! pq.empty())
+    {
+        QueryTask *task = pq.top();
+        pq.pop();
+
+        query_for_data_no_lock(task);
+        task->get_indices(file_idx, header_idx);
+
+        if (file_idx != TT_INVALID_FILE_INDEX && header_idx != TT_INVALID_HEADER_INDEX)
+            pq.push(task);
+    }
 }
 
 // This will make tsdb read-only!
@@ -2651,6 +2781,40 @@ Tsdb::compact(TaskData& data)
 #ifdef __x86_64__
                 compacted->m_page_size = g_sys_page_size;
 #endif
+
+                std::vector<Mapping*> mappings;
+                int batch_size =
+                    Config::get_int(CFG_TSDB_COMPACT_BATCH_SIZE, CFG_TSDB_COMPACT_BATCH_SIZE_DEF);
+
+                Tsdb::get_all_mappings(mappings);
+                tsdb->m_index_file.ensure_open(true);
+
+                QuerySuperTask super_task(tsdb);
+                PageSize next_size = compacted->get_page_size();
+
+                for (Mapping *mapping : mappings)
+                {
+                    for (TimeSeries *ts = mapping->get_ts_head(); ts != nullptr; ts = ts->m_next)
+                    {
+                        super_task.add_task(ts);
+
+                        if (super_task.get_task_count() >= batch_size)
+                        {
+                            super_task.perform(false);
+                            write_to_compacted(super_task, compacted, next_size);
+                            super_task.empty_tasks();
+                        }
+                    }
+
+                    if (super_task.get_task_count() > 0)
+                    {
+                        super_task.perform(false);
+                        write_to_compacted(super_task, compacted, next_size);
+                        super_task.empty_tasks();
+                    }
+                }
+
+#if 0
                 std::vector<Tsdb*> tsdbs = { tsdb };
                 TimeSeriesId max_id = TimeSeries::get_next_id();
                 QueryTask *query =
@@ -2694,6 +2858,7 @@ Tsdb::compact(TaskData& data)
                 }
 
                 MemoryManager::free_recyclable(query);
+#endif
                 compacted->unload_no_lock();
                 delete compacted;
                 tsdb->unload_no_lock();
@@ -2776,6 +2941,43 @@ Tsdb::compact2()
             // TODO: enable this
             //rm_dir(back);
         }
+    }
+}
+
+void
+Tsdb::write_to_compacted(QuerySuperTask& super_task, Tsdb *compacted, PageSize& next_size)
+{
+    ASSERT(compacted != nullptr);
+
+    for (QueryTask *task : super_task.get_tasks())
+    {
+        TimeSeriesId id = task->get_ts_id();
+        compacted->inc_ref_count();
+        PageInMemory page(id, compacted, false, next_size);
+        DataPointVector& dps = task->get_dps();
+
+        for (auto dp: dps)
+        {
+            const Timestamp tstamp = dp.first;
+            bool ok = page.add_data_point(tstamp, dp.second);
+
+            if (! ok)
+            {
+                next_size = page.flush(id, true);
+                ASSERT(next_size > 0);
+                page.init(id, nullptr, false, next_size);
+                ok = page.add_data_point(tstamp, dp.second);
+                ASSERT(ok);
+            }
+        }
+
+        if (! page.is_empty())
+        {
+            next_size = page.flush(id, true);
+            ASSERT(next_size > 0);
+        }
+
+        task->recycle();    // release memory
     }
 }
 
