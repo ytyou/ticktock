@@ -228,13 +228,9 @@ class QueryTask : public Recyclable
 {
 public:
     QueryTask();
-    //void perform();
-    //void perform(TimeSeriesId id);
     void query_ts_data(Tsdb *tsdb);
     void merge_data();
     void fill();
-
-    //void init(std::vector<Tsdb*> *tsdbs, const TimeRange& range);   // used by Tsdb::compact()
 
     // return max/min value of the last n dps in m_dps[]
     double get_max(int n) const;
@@ -311,7 +307,6 @@ private:
     TimeRange m_time_range;
     Downsampler *m_downsampler;
     TimeSeries *m_ts;   // should NEVER be nullptr
-    //std::vector<Tsdb*> *m_tsdbs;
     DataPointVector m_dps;  // results before aggregation
     QueryResults m_results; // results after aggregation
     std::vector<DataPointContainer*> m_data;

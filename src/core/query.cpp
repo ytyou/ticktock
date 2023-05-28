@@ -706,77 +706,6 @@ QueryTask::add_container(DataPointContainer *container)
     m_data.push_back(container);
 }
 
-
-#if 0
-
-void
-QueryTask::perform()
-{
-    ASSERT(m_ts != nullptr);
-    perform(m_ts->get_id());
-}
-
-void
-QueryTask::perform(TimeSeriesId id)
-{
-    ASSERT(m_tsdbs != nullptr);
-
-    try
-    {
-        for (auto tsdb: *m_tsdbs)
-        {
-            // collect all the pages for this TS, in this TSDB;
-            // and then collect all the data points from them;
-            std::vector<DataPointContainer*> data;
-            bool has_ooo;
-
-            if (m_ts != nullptr)
-            {
-                has_ooo = tsdb->query_for_data(id, m_time_range, data);
-                has_ooo |= m_ts->query_for_data(tsdb, m_time_range, data);
-            }
-            else
-            {
-                // during compaction m_lock should've been taken already
-                has_ooo = tsdb->query_for_data_no_lock(id, m_time_range, data);
-            }
-
-            if (has_ooo)
-                query_with_ooo(data);
-            else
-                query_without_ooo(data);
-
-            for (DataPointContainer *container: data)
-                MemoryManager::free_recyclable(container);
-        }
-
-        if (m_downsampler != nullptr)
-        {
-            m_downsampler->fill_if_needed(m_dps);
-            MemoryManager::free_recyclable(m_downsampler);
-            m_downsampler = nullptr;
-        }
-    }
-    catch (const std::exception& e)
-    {
-        if (std::strcmp(e.what(), TT_MSG_OUT_OF_MEMORY) == 0)
-            m_errno = ENOMEM;     // out of memory
-        else
-            m_errno = -1;
-    }
-    catch (...)
-    {
-        ASSERT(false);
-        m_errno = -1;
-        Logger::error("Caught exception while performing query.");
-    }
-
-    if (m_signal != nullptr)
-        m_signal->count_down();
-}
-
-#endif
-
 void
 QueryTask::query_with_ooo()
 {
@@ -966,20 +895,13 @@ QueryTask::get_cloned_tags(StringBuffer& strbuf)
 void
 QueryTask::init()
 {
-    //m_errno = 0;
-    //m_signal = nullptr;
+    m_ts = nullptr;
+    m_has_ooo = false;
+    m_file_index = TT_INVALID_FILE_INDEX;
+    m_header_index = TT_INVALID_HEADER_INDEX;
     m_downsampler = nullptr;
+    ASSERT(m_data.empty());
 }
-
-/*
-void
-QueryTask::init(const TimeRange& range)
-{
-    ASSERT(tsdbs != nullptr);
-    //m_tsdbs = tsdbs;
-    m_time_range.init(range);
-}
-*/
 
 bool
 QueryTask::recycle()
@@ -987,10 +909,9 @@ QueryTask::recycle()
     m_dps.clear();
     m_dps.shrink_to_fit();
     m_results.recycle();
+    ASSERT(m_data.empty());
 
-    //m_signal = nullptr;
     m_ts = nullptr;
-    //m_tsdbs = nullptr;
 
     if (m_downsampler != nullptr)
     {
@@ -1050,12 +971,11 @@ QuerySuperTask::add_task(TimeSeries *ts)
     QueryTask *qt =
         (QueryTask*)MemoryManager::alloc_recyclable(RecyclableType::RT_QUERY_TASK);
 
+    qt->m_ts = ts;
     qt->m_time_range = m_time_range;
     qt->m_downsampler = (m_downsample == nullptr) ?
                         nullptr :
                         Downsampler::create(m_downsample, m_time_range, m_ms);
-    qt->m_ts = ts;
-    //qt->m_tsdbs = &m_tsdbs;
 
     m_tasks.push_back(qt);
 }
@@ -1095,23 +1015,6 @@ QuerySuperTask::perform(bool lock)
 }
 
 
-#if 0
-
-QueryExecutor::QueryExecutor() :
-    m_executors("qexe",
-                Config::get_int(CFG_QUERY_EXECUTOR_THREAD_COUNT,CFG_QUERY_EXECUTOR_THREAD_COUNT_DEF),
-                Config::get_int(CFG_QUERY_EXECUTOR_QUEUE_SIZE,CFG_QUERY_EXECUTOR_QUEUE_SIZE_DEF))
-{
-}
-
-void
-QueryExecutor::init()
-{
-    m_instance = new QueryExecutor;
-}
-
-#endif
-
 bool
 QueryExecutor::http_get_api_query_handler(HttpRequest& request, HttpResponse& response)
 {
@@ -1130,16 +1033,6 @@ QueryExecutor::http_get_api_query_handler(HttpRequest& request, HttpResponse& re
     int error = 0;
 
     query.execute(results, strbuf);
-/*
-    if (Config::get_bool(CFG_QUERY_EXECUTOR_PARALLEL,CFG_QUERY_EXECUTOR_PARALLEL_DEF))
-    {
-        query.execute_in_parallel(results, strbuf);
-    }
-    else
-    {
-        query.execute(results, strbuf);
-    }
-*/
 
     if (query.get_errno() != 0)
         error = query.get_errno();
@@ -1225,23 +1118,10 @@ QueryExecutor::http_post_api_query_handler(HttpRequest& request, HttpResponse& r
         JsonMap& m = array[i]->to_map();
         TimeRange range(start, end);
         Query query(m, range, strbuf, ms);
-
-        Logger::debug("query: %T", &query);
-
         std::vector<QueryResults*> res;
 
+        Logger::debug("query: %T", &query);
         query.execute(res, strbuf);
-
-/*
-        if (Config::get_bool(CFG_QUERY_EXECUTOR_PARALLEL,CFG_QUERY_EXECUTOR_PARALLEL_DEF))
-        {
-            query.execute_in_parallel(res, strbuf);
-        }
-        else
-        {
-            query.execute(res, strbuf);
-        }
-*/
 
         if (query.get_errno() != 0)
             error = query.get_errno();
@@ -1266,6 +1146,25 @@ QueryExecutor::http_post_api_query_handler(HttpRequest& request, HttpResponse& r
 #endif
 
     return status;
+}
+
+// returns supported filters, for example:
+// {
+//   "iliteral_or": {
+//     "examples": "host=iliteral_or(web01), host=iliteral_or(web01|web02|web03) {\"type\":\"iliteral_or\",\"tagk\":\"host\",\"filter\":\"web01|web02|web03\",\"groupBy\":false}",
+//     "description": "Accepts one or more exact values and matches if the series contains any of them. Multiple values can be included and must be separated by the | (pipe) character. The filter is case insensitive and will not allow characters that TSDB does not allow at write time."
+//   },
+//   "wildcard": {
+//     "examples": "host=wildcard(web*), host=wildcard(web*.tsdb.net) {\"type\":\"wildcard\",\"tagk\":\"host\",\"filter\":\"web*.tsdb.net\",\"groupBy\":false}",
+//     "description": "Performs pre, post and in-fix glob matching of values. The globs are case sensitive and multiple wildcards can be used. The wildcard character is the * (asterisk). At least one wildcard must be present in the filter value. A wildcard by itself can be used as well to match on any value for the tag key."
+//   }
+// }
+bool
+QueryExecutor::http_get_api_config_filters_handler(HttpRequest& request, HttpResponse& response)
+{
+    // right now we do not support any filters
+    response.init(200, HttpContentType::JSON, 2, "{}");
+    return true;
 }
 
 bool
@@ -1325,40 +1224,6 @@ QueryExecutor::prepare_response(std::vector<QueryResults*>& results, HttpRespons
     return status;
 }
 
-/*
-
-void
-QueryExecutor::submit_query(QueryTask *query_task)
-{
-    Task task;
-
-    task.doit = QueryExecutor::perform_query;
-    task.data.pointer = query_task;
-
-    m_executors.submit_task(task);
-}
-
-bool
-QueryExecutor::perform_query(TaskData& data)
-{
-    QueryTask *task = (QueryTask*)data.pointer;
-    task->perform();
-    return false;
-}
-
-void
-QueryExecutor::shutdown(ShutdownRequest request)
-{
-    std::lock_guard<std::mutex> guard(m_lock);
-
-    Stoppable::shutdown(request);
-    m_executors.shutdown(request);
-    m_executors.wait(5);
-    Logger::info("QueryExecutor::shutdown complete");
-}
-
-*/
-
 
 void
 QueryResults::add_query_task(QueryTask *qt, StringBuffer& strbuf)
@@ -1412,33 +1277,6 @@ QueryResults::add_query_task(QueryTask *qt, StringBuffer& strbuf)
 
     m_qtv.push_back(qt);
 }
-
-// returns supported filters, for example:
-// {
-//   "iliteral_or": {
-//     "examples": "host=iliteral_or(web01), host=iliteral_or(web01|web02|web03) {\"type\":\"iliteral_or\",\"tagk\":\"host\",\"filter\":\"web01|web02|web03\",\"groupBy\":false}",
-//     "description": "Accepts one or more exact values and matches if the series contains any of them. Multiple values can be included and must be separated by the | (pipe) character. The filter is case insensitive and will not allow characters that TSDB does not allow at write time."
-//   },
-//   "wildcard": {
-//     "examples": "host=wildcard(web*), host=wildcard(web*.tsdb.net) {\"type\":\"wildcard\",\"tagk\":\"host\",\"filter\":\"web*.tsdb.net\",\"groupBy\":false}",
-//     "description": "Performs pre, post and in-fix glob matching of values. The globs are case sensitive and multiple wildcards can be used. The wildcard character is the * (asterisk). At least one wildcard must be present in the filter value. A wildcard by itself can be used as well to match on any value for the tag key."
-//   }
-// }
-bool
-QueryExecutor::http_get_api_config_filters_handler(HttpRequest& request, HttpResponse& response)
-{
-    // right now we do not support any filters
-    response.init(200, HttpContentType::JSON, 2, "{}");
-    return true;
-}
-
-/*
-size_t
-QueryExecutor::get_pending_task_count(std::vector<size_t> &counts)
-{
-    return m_instance->m_executors.get_pending_task_count(counts);
-}
-*/
 
 
 void

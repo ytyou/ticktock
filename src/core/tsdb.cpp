@@ -2831,51 +2831,6 @@ Tsdb::compact(TaskData& data)
                     }
                 }
 
-#if 0
-                std::vector<Tsdb*> tsdbs = { tsdb };
-                TimeSeriesId max_id = TimeSeries::get_next_id();
-                QueryTask *query =
-                    (QueryTask*)MemoryManager::alloc_recyclable(RecyclableType::RT_QUERY_TASK);
-                PageSize next_size = compacted->get_page_size();
-
-                // for each time series...
-                for (TimeSeriesId id = 0; id < max_id; id++)
-                {
-                    // collect dps
-                    query->init(&tsdbs, tsdb->get_time_range());
-                    query->perform(id);
-
-                    // save into temp tsdb
-                    compacted->inc_ref_count();
-                    PageInMemory page(id, compacted, false, next_size);
-                    DataPointVector& dps = query->get_dps();
-
-                    for (auto dp: dps)
-                    {
-                        const Timestamp tstamp = dp.first;
-                        bool ok = page.add_data_point(tstamp, dp.second);
-
-                        if (! ok)
-                        {
-                            next_size = page.flush(id, true);
-                            ASSERT(next_size > 0);
-                            page.init(id, nullptr, false, next_size);
-                            ok = page.add_data_point(tstamp, dp.second);
-                            ASSERT(ok);
-                        }
-                    }
-
-                    if (! page.is_empty())
-                    {
-                        next_size = page.flush(id, true);
-                        ASSERT(next_size > 0);
-                    }
-
-                    query->recycle();
-                }
-
-                MemoryManager::free_recyclable(query);
-#endif
                 compacted->unload_no_lock();
                 delete compacted;
                 tsdb->unload_no_lock();
