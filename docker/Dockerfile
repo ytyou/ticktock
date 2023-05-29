@@ -42,7 +42,6 @@ LABEL docker.cmd="docker run -d --name ticktock -p 6181-6182:6181-6182 -p 6181:6
 
 HEALTHCHECK --interval=5m --timeout=5s \
   CMD /opt/ticktock/scripts/healthcheck.sh
-STOPSIGNAL SIGINT
 
 RUN apt-get update && apt-get install -y \
   curl \
