@@ -281,7 +281,8 @@ MmapFile::ensure_open(bool for_read)
         if (! is_open(for_read)) open(for_read);
     }
 
-    ASSERT(is_open(for_read));
+    // open() could fail if we are trying to open a non-existing file for read
+    ASSERT(is_open(for_read) || (for_read && !exists()));
 }
 
 bool

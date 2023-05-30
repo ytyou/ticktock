@@ -343,7 +343,7 @@ initialize()
     Tsdb::init();
     AppendLog::init();
     Stats::init();
-    QueryExecutor::init();
+    //QueryExecutor::init();
     Admin::init();
     Timer::inst()->start();
 
@@ -369,7 +369,7 @@ shutdown()
     try
     {
         Timer::inst()->stop();
-        QueryExecutor::inst()->shutdown();
+        //QueryExecutor::inst()->shutdown();
         Tsdb::shutdown();
         // MM are thread-local singletons, and can't be cleaned up from another thread
         //MemoryManager::cleanup();

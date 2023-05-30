@@ -48,7 +48,7 @@ static std::atomic<uint64_t> s_dp_count {0};
 static std::atomic<unsigned long> s_dp_count {0};
 #endif
 #endif
-QueryExecutor *QueryExecutor::m_instance = nullptr;
+//QueryExecutor *QueryExecutor::m_instance = nullptr;
 
 
 Query::Query(JsonMap& map, TimeRange& range, StringBuffer& strbuf, bool ms) :
@@ -363,13 +363,13 @@ Query::add_data_point(DataPointPair& dp, DataPointVector& dps, Downsampler *down
 }
 
 void
-Query::get_query_tasks(std::vector<QueryTask*>& qtv, std::vector<Tsdb*> *tsdbs)
+Query::get_query_tasks(QuerySuperTask& super_task)
 {
-    ASSERT(qtv.empty());
-    ASSERT(tsdbs != nullptr);
+    //ASSERT(qtv.empty());
+    //ASSERT(tsdbs != nullptr);
 
-    Tsdb::insts(m_time_range, *tsdbs);
-    Logger::debug("Found %d tsdbs within %T", tsdbs->size(), &m_time_range);
+    //Tsdb::insts(m_time_range, *tsdbs);
+    //Logger::debug("Found %d tsdbs within %T", tsdbs->size(), &m_time_range);
 
     std::unordered_set<TimeSeries*> tsv;
     char buff[MAX_TOTAL_TAG_LENGTH];
@@ -377,20 +377,7 @@ Query::get_query_tasks(std::vector<QueryTask*>& qtv, std::vector<Tsdb*> *tsdbs)
     Tsdb::query_for_ts(m_metric, m_tags, tsv, buff, m_explicit_tags);
 
     for (TimeSeries *ts: tsv)
-    {
-        QueryTask *qt =
-            (QueryTask*)MemoryManager::alloc_recyclable(RecyclableType::RT_QUERY_TASK);
-
-        qt->m_time_range = m_time_range;
-        qt->m_downsampler = (m_downsample == nullptr) ?
-                            nullptr :
-                            Downsampler::create(m_downsample, m_time_range, m_ms);
-        qt->m_ts = ts;
-        qt->m_tsdbs = tsdbs;
-        qtv.push_back(qt);
-    }
-
-    Logger::debug("Got %d query tasks", qtv.size());
+        super_task.add_task(ts);
 }
 
 void
@@ -556,17 +543,21 @@ Query::create_query_results(std::vector<QueryTask*>& qtv, std::vector<QueryResul
 void
 Query::execute(std::vector<QueryResults*>& results, StringBuffer& strbuf)
 {
-    std::vector<QueryTask*> qtv;
-    std::vector<Tsdb*> tsdbs;
+    //std::vector<QueryTask*> qtv;
+    //std::vector<Tsdb*> tsdbs;
+    QuerySuperTask super_task(m_time_range, m_downsample, m_ms);
 
-    get_query_tasks(qtv, &tsdbs);
+    get_query_tasks(super_task);
+    super_task.perform();
 
-    for (QueryTask *qt: qtv)
-        qt->perform();
+    //for (QueryTask *qt: qtv)
+        //qt->perform();
 
-    aggregate(qtv, results, strbuf);
+    aggregate(super_task.get_tasks(), results, strbuf);
     calculate_rate(results);
 
+    m_errno = super_task.get_errno();
+/*
     // cleanup
     for (QueryTask *qt: qtv)
     {
@@ -577,7 +568,10 @@ Query::execute(std::vector<QueryResults*>& results, StringBuffer& strbuf)
 
     for (Tsdb *tsdb: tsdbs)
         tsdb->dec_ref_count();
+*/
 }
+
+#if 0
 
 // perform query by submitting task to QueryExecutor
 void
@@ -636,6 +630,8 @@ Query::execute_in_parallel(std::vector<QueryResults*>& results, StringBuffer& st
         tsdb->dec_ref_count();
 }
 
+#endif
+
 uint64_t
 Query::get_dp_count()
 {
@@ -670,73 +666,48 @@ QueryTask::QueryTask()
 }
 
 void
-QueryTask::perform()
+QueryTask::query_ts_data(Tsdb *tsdb)
 {
     ASSERT(m_ts != nullptr);
-    perform(m_ts->get_id());
+
+    if (m_ts->query_for_data(tsdb, m_time_range, m_data))
+        m_has_ooo = true;
 }
 
 void
-QueryTask::perform(TimeSeriesId id)
+QueryTask::merge_data()
 {
-    ASSERT(m_tsdbs != nullptr);
+    if (m_has_ooo)
+        query_with_ooo();
+    else
+        query_without_ooo();
 
-    try
-    {
-        for (auto tsdb: *m_tsdbs)
-        {
-            // collect all the pages for this TS, in this TSDB;
-            // and then collect all the data points from them;
-            std::vector<DataPointContainer*> data;
-            bool has_ooo;
-
-            if (m_ts != nullptr)
-            {
-                has_ooo = tsdb->query_for_data(id, m_time_range, data);
-                has_ooo |= m_ts->query_for_data(tsdb, m_time_range, data);
-            }
-            else
-            {
-                // during compaction m_lock should've been taken already
-                has_ooo = tsdb->query_for_data_no_lock(id, m_time_range, data);
-            }
-
-            if (has_ooo)
-                query_with_ooo(data);
-            else
-                query_without_ooo(data);
-
-            for (DataPointContainer *container: data)
-                MemoryManager::free_recyclable(container);
-        }
-
-        if (m_downsampler != nullptr)
-        {
-            m_downsampler->fill_if_needed(m_dps);
-            MemoryManager::free_recyclable(m_downsampler);
-            m_downsampler = nullptr;
-        }
-    }
-    catch (const std::exception& e)
-    {
-        if (std::strcmp(e.what(), TT_MSG_OUT_OF_MEMORY) == 0)
-            m_errno = ENOMEM;     // out of memory
-        else
-            m_errno = -1;
-    }
-    catch (...)
-    {
-        ASSERT(false);
-        m_errno = -1;
-        Logger::error("Caught exception while performing query.");
-    }
-
-    if (m_signal != nullptr)
-        m_signal->count_down();
+    for (DataPointContainer *container: m_data)
+        MemoryManager::free_recyclable(container);
+    m_data.clear();
 }
 
 void
-QueryTask::query_with_ooo(std::vector<DataPointContainer*>& data)
+QueryTask::fill()
+{
+    if (m_downsampler != nullptr)
+    {
+        m_downsampler->fill_if_needed(m_dps);
+        MemoryManager::free_recyclable(m_downsampler);
+        m_downsampler = nullptr;
+    }
+}
+
+void
+QueryTask::add_container(DataPointContainer *container)
+{
+    ASSERT(container != nullptr);
+    ASSERT(container->size() > 0);
+    m_data.push_back(container);
+}
+
+void
+QueryTask::query_with_ooo()
 {
     using container_it = std::pair<DataPointContainer*,int>;
     auto container_cmp = [](const container_it &lhs, const container_it &rhs)
@@ -768,7 +739,7 @@ QueryTask::query_with_ooo(std::vector<DataPointContainer*>& data)
     uint64_t dp_count = 0;
     DataPointPair prev_dp(TT_INVALID_TIMESTAMP,0);
 
-    for (auto container: data)
+    for (auto container: m_data)
     {
         dp_count += container->size();
         pq.emplace(container, 0);
@@ -830,11 +801,11 @@ QueryTask::query_with_ooo(std::vector<DataPointContainer*>& data)
 }
 
 void
-QueryTask::query_without_ooo(std::vector<DataPointContainer*>& data)
+QueryTask::query_without_ooo()
 {
     uint64_t dp_count = 0;
 
-    for (DataPointContainer *container: data)
+    for (DataPointContainer *container: m_data)
     {
         dp_count += container->size();
 
@@ -860,6 +831,13 @@ QueryTask::query_without_ooo(std::vector<DataPointContainer*>& data)
 #ifdef TT_STATS
     s_dp_count.fetch_add(dp_count, std::memory_order_relaxed);
 #endif
+}
+
+TimeSeriesId
+QueryTask::get_ts_id() const
+{
+    ASSERT(m_ts != nullptr);
+    return m_ts->get_id();
 }
 
 double
@@ -917,17 +895,12 @@ QueryTask::get_cloned_tags(StringBuffer& strbuf)
 void
 QueryTask::init()
 {
-    m_errno = 0;
-    m_signal = nullptr;
+    m_ts = nullptr;
+    m_has_ooo = false;
+    m_file_index = TT_INVALID_FILE_INDEX;
+    m_header_index = TT_INVALID_HEADER_INDEX;
     m_downsampler = nullptr;
-}
-
-void
-QueryTask::init(std::vector<Tsdb*> *tsdbs, const TimeRange& range)
-{
-    ASSERT(tsdbs != nullptr);
-    m_tsdbs = tsdbs;
-    m_time_range.init(range);
+    ASSERT(m_data.empty());
 }
 
 bool
@@ -936,10 +909,9 @@ QueryTask::recycle()
     m_dps.clear();
     m_dps.shrink_to_fit();
     m_results.recycle();
+    ASSERT(m_data.empty());
 
-    m_signal = nullptr;
     m_ts = nullptr;
-    m_tsdbs = nullptr;
 
     if (m_downsampler != nullptr)
     {
@@ -951,18 +923,97 @@ QueryTask::recycle()
 }
 
 
-QueryExecutor::QueryExecutor() :
-    m_executors("qexe",
-                Config::get_int(CFG_QUERY_EXECUTOR_THREAD_COUNT,CFG_QUERY_EXECUTOR_THREAD_COUNT_DEF),
-                Config::get_int(CFG_QUERY_EXECUTOR_QUEUE_SIZE,CFG_QUERY_EXECUTOR_QUEUE_SIZE_DEF))
+QuerySuperTask::QuerySuperTask(TimeRange& range, const char* ds, bool ms) :
+    m_ms(ms),
+    m_errno(0),
+    m_downsample(ds),
+    m_compact(false),
+    m_time_range(range)
 {
+    Tsdb::insts(m_time_range, m_tsdbs);
+}
+
+// this one is called by Tsdb::compact()
+QuerySuperTask::QuerySuperTask(Tsdb *tsdb) :
+    m_ms(true),
+    m_errno(0),
+    m_downsample(nullptr),
+    m_time_range(tsdb->get_time_range())
+{
+    m_tsdbs.push_back(tsdb);
+    m_compact = true;
+}
+
+QuerySuperTask::~QuerySuperTask()
+{
+    for (QueryTask *qt : m_tasks)
+        MemoryManager::free_recyclable(qt);
+
+    // ref-count was incremented in the constructor, by Tsdb::insts()
+    if (! m_compact)
+    {
+        for (Tsdb *tsdb : m_tsdbs)
+            tsdb->dec_ref_count();
+    }
 }
 
 void
-QueryExecutor::init()
+QuerySuperTask::empty_tasks()
 {
-    m_instance = new QueryExecutor;
+    for (QueryTask *qt : m_tasks)
+        MemoryManager::free_recyclable(qt);
+    m_tasks.clear();
 }
+
+void
+QuerySuperTask::add_task(TimeSeries *ts)
+{
+    QueryTask *qt =
+        (QueryTask*)MemoryManager::alloc_recyclable(RecyclableType::RT_QUERY_TASK);
+
+    qt->m_ts = ts;
+    qt->m_time_range = m_time_range;
+    qt->m_downsampler = (m_downsample == nullptr) ?
+                        nullptr :
+                        Downsampler::create(m_downsample, m_time_range, m_ms);
+
+    m_tasks.push_back(qt);
+}
+
+void
+QuerySuperTask::perform(bool lock)
+{
+    try
+    {
+        for (auto tsdb: m_tsdbs)
+        {
+            if (lock)
+                tsdb->query_for_data(m_time_range, m_tasks, m_compact);
+            else
+                tsdb->query_for_data_no_lock(m_time_range, m_tasks, m_compact);
+
+            for (QueryTask *task : m_tasks)
+            {
+                task->query_ts_data(tsdb);
+                task->merge_data();
+            }
+        }
+
+        for (QueryTask *task : m_tasks)
+            task->fill();
+    }
+    catch (const std::exception& e)
+    {
+        if (std::strcmp(e.what(), TT_MSG_OUT_OF_MEMORY) == 0)
+            m_errno = ENOMEM;     // out of memory
+        else
+        {
+            m_errno = -1;
+            Logger::error("QuerySuperTask: caught exception %s", e.what());
+        }
+    }
+}
+
 
 bool
 QueryExecutor::http_get_api_query_handler(HttpRequest& request, HttpResponse& response)
@@ -981,14 +1032,7 @@ QueryExecutor::http_get_api_query_handler(HttpRequest& request, HttpResponse& re
     std::vector<QueryResults*> results;
     int error = 0;
 
-    if (Config::get_bool(CFG_QUERY_EXECUTOR_PARALLEL,CFG_QUERY_EXECUTOR_PARALLEL_DEF))
-    {
-        query.execute_in_parallel(results, strbuf);
-    }
-    else
-    {
-        query.execute(results, strbuf);
-    }
+    query.execute(results, strbuf);
 
     if (query.get_errno() != 0)
         error = query.get_errno();
@@ -1074,19 +1118,10 @@ QueryExecutor::http_post_api_query_handler(HttpRequest& request, HttpResponse& r
         JsonMap& m = array[i]->to_map();
         TimeRange range(start, end);
         Query query(m, range, strbuf, ms);
-
-        Logger::debug("query: %T", &query);
-
         std::vector<QueryResults*> res;
 
-        if (Config::get_bool(CFG_QUERY_EXECUTOR_PARALLEL,CFG_QUERY_EXECUTOR_PARALLEL_DEF))
-        {
-            query.execute_in_parallel(res, strbuf);
-        }
-        else
-        {
-            query.execute(res, strbuf);
-        }
+        Logger::debug("query: %T", &query);
+        query.execute(res, strbuf);
 
         if (query.get_errno() != 0)
             error = query.get_errno();
@@ -1111,6 +1146,25 @@ QueryExecutor::http_post_api_query_handler(HttpRequest& request, HttpResponse& r
 #endif
 
     return status;
+}
+
+// returns supported filters, for example:
+// {
+//   "iliteral_or": {
+//     "examples": "host=iliteral_or(web01), host=iliteral_or(web01|web02|web03) {\"type\":\"iliteral_or\",\"tagk\":\"host\",\"filter\":\"web01|web02|web03\",\"groupBy\":false}",
+//     "description": "Accepts one or more exact values and matches if the series contains any of them. Multiple values can be included and must be separated by the | (pipe) character. The filter is case insensitive and will not allow characters that TSDB does not allow at write time."
+//   },
+//   "wildcard": {
+//     "examples": "host=wildcard(web*), host=wildcard(web*.tsdb.net) {\"type\":\"wildcard\",\"tagk\":\"host\",\"filter\":\"web*.tsdb.net\",\"groupBy\":false}",
+//     "description": "Performs pre, post and in-fix glob matching of values. The globs are case sensitive and multiple wildcards can be used. The wildcard character is the * (asterisk). At least one wildcard must be present in the filter value. A wildcard by itself can be used as well to match on any value for the tag key."
+//   }
+// }
+bool
+QueryExecutor::http_get_api_config_filters_handler(HttpRequest& request, HttpResponse& response)
+{
+    // right now we do not support any filters
+    response.init(200, HttpContentType::JSON, 2, "{}");
+    return true;
 }
 
 bool
@@ -1170,36 +1224,6 @@ QueryExecutor::prepare_response(std::vector<QueryResults*>& results, HttpRespons
     return status;
 }
 
-void
-QueryExecutor::submit_query(QueryTask *query_task)
-{
-    Task task;
-
-    task.doit = QueryExecutor::perform_query;
-    task.data.pointer = query_task;
-
-    m_executors.submit_task(task);
-}
-
-bool
-QueryExecutor::perform_query(TaskData& data)
-{
-    QueryTask *task = (QueryTask*)data.pointer;
-    task->perform();
-    return false;
-}
-
-void
-QueryExecutor::shutdown(ShutdownRequest request)
-{
-    std::lock_guard<std::mutex> guard(m_lock);
-
-    Stoppable::shutdown(request);
-    m_executors.shutdown(request);
-    m_executors.wait(5);
-    Logger::info("QueryExecutor::shutdown complete");
-}
-
 
 void
 QueryResults::add_query_task(QueryTask *qt, StringBuffer& strbuf)
@@ -1252,31 +1276,6 @@ QueryResults::add_query_task(QueryTask *qt, StringBuffer& strbuf)
         Tag::free_list(tag_head);
 
     m_qtv.push_back(qt);
-}
-
-// returns supported filters, for example:
-// {
-//   "iliteral_or": {
-//     "examples": "host=iliteral_or(web01), host=iliteral_or(web01|web02|web03) {\"type\":\"iliteral_or\",\"tagk\":\"host\",\"filter\":\"web01|web02|web03\",\"groupBy\":false}",
-//     "description": "Accepts one or more exact values and matches if the series contains any of them. Multiple values can be included and must be separated by the | (pipe) character. The filter is case insensitive and will not allow characters that TSDB does not allow at write time."
-//   },
-//   "wildcard": {
-//     "examples": "host=wildcard(web*), host=wildcard(web*.tsdb.net) {\"type\":\"wildcard\",\"tagk\":\"host\",\"filter\":\"web*.tsdb.net\",\"groupBy\":false}",
-//     "description": "Performs pre, post and in-fix glob matching of values. The globs are case sensitive and multiple wildcards can be used. The wildcard character is the * (asterisk). At least one wildcard must be present in the filter value. A wildcard by itself can be used as well to match on any value for the tag key."
-//   }
-// }
-bool
-QueryExecutor::http_get_api_config_filters_handler(HttpRequest& request, HttpResponse& response)
-{
-    // right now we do not support any filters
-    response.init(200, HttpContentType::JSON, 2, "{}");
-    return true;
-}
-
-size_t
-QueryExecutor::get_pending_task_count(std::vector<size_t> &counts)
-{
-    return m_instance->m_executors.get_pending_task_count(counts);
 }
 
 

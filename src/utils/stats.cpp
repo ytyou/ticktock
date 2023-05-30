@@ -209,6 +209,7 @@ Stats::inject_metrics(TaskData& data)
         }
 
         // ticktock.query.pending_task.count
+/*
         {
             std::vector<size_t> counts;
             QueryExecutor::get_pending_task_count(counts);
@@ -223,6 +224,7 @@ Stats::inject_metrics(TaskData& data)
                 tsdb->add(dp);
             }
         }
+*/
 
         collect_proc_io(now, tsdb);
 
@@ -486,6 +488,7 @@ Stats::collect_stats(char *buff, int size)
     }
 
     // ticktock.query.pending_task.count
+/*
     {
         std::vector<size_t> counts;
         QueryExecutor::get_pending_task_count(counts);
@@ -497,6 +500,7 @@ Stats::collect_stats(char *buff, int size)
                 now, (int)counts[i], i, HOST_TAG_NAME, g_host_name.c_str());
         }
     }
+*/
 
     std::vector<DataPoint> dps;
     MemoryManager::collect_stats(now, dps);

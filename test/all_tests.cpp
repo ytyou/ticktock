@@ -78,7 +78,7 @@ main(int argc, char *argv[])
     TestCase::create_config(CFG_LOG_FILE, log_file);
     Config::init();
     //Tsdb::init();
-    QueryExecutor::init();
+    //QueryExecutor::init();
 
     TestStats stats;
     int test_cnt = sizeof(tests) / sizeof(tests[0]);

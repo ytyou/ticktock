@@ -38,6 +38,7 @@ namespace tt
 class DataPointContainer;
 class PageInMemory;
 class QueryTask;
+class QuerySuperTask;
 class TimeSeries;
 class Tsdb;
 
@@ -182,10 +183,10 @@ public:
     // return >0 if dp was too late, indicating the rest
     //           of the dps may be skipped;
     int add_data_point(DataPointPair& dp, DataPointVector& dps, Downsampler *downsampler);
-    void get_query_tasks(std::vector<QueryTask*>& qtv, std::vector<Tsdb*> *tsdbs);
+    void get_query_tasks(QuerySuperTask& super_task);
 
     void execute(std::vector<QueryResults*>& results, StringBuffer& strbuf);
-    void execute_in_parallel(std::vector<QueryResults*>& results, StringBuffer& strbuf);
+    //void execute_in_parallel(std::vector<QueryResults*>& results, StringBuffer& strbuf);
 
     inline int get_errno() const
     { return m_errno; }
@@ -227,10 +228,9 @@ class QueryTask : public Recyclable
 {
 public:
     QueryTask();
-    void perform();
-    void perform(TimeSeriesId id);
-
-    void init(std::vector<Tsdb*> *tsdbs, const TimeRange& range);   // used by Tsdb::compact()
+    void query_ts_data(Tsdb *tsdb);
+    void merge_data();
+    void fill();
 
     // return max/min value of the last n dps in m_dps[]
     double get_max(int n) const;
@@ -240,17 +240,40 @@ public:
     Tag_v2& get_v2_tags();
     Tag *get_cloned_tags(StringBuffer& strbuf);
 
-    inline int get_errno() const
-    { return m_errno; }
+    TimeSeriesId get_ts_id() const;
+
+    inline void set_ooo(bool ooo)
+    {
+        m_has_ooo = ooo;
+    }
 
     inline DataPointVector& get_dps()
     {
         return m_dps;
     }
 
-    inline void set_signal(CountingSignal *signal)
+    inline std::vector<DataPointContainer*>& get_containers()
     {
-        m_signal = signal;
+        return m_data;
+    }
+
+    void add_container(DataPointContainer *container);
+
+    inline void set_indices(FileIndex file_idx, HeaderIndex header_idx)
+    {
+        m_file_index = file_idx;
+        m_header_index = header_idx;
+    }
+
+    inline void get_indices(FileIndex& file_idx, HeaderIndex& header_idx)
+    {
+        file_idx = m_file_index;
+        header_idx = m_header_index;
+    }
+
+    inline TimeRange& get_query_range()
+    {
+        return m_time_range;
     }
 
     struct compare_less
@@ -276,52 +299,85 @@ private:
     friend class MemoryManager;
     friend class Query;
     friend class QueryExecutor;
+    friend class QuerySuperTask;
 
-    void query_with_ooo(std::vector<DataPointContainer*>& data);
-    void query_without_ooo(std::vector<DataPointContainer*>& data);
+    void query_with_ooo();
+    void query_without_ooo();
 
     TimeRange m_time_range;
     Downsampler *m_downsampler;
-    TimeSeries *m_ts;
-    std::vector<Tsdb*> *m_tsdbs;
+    TimeSeries *m_ts;   // should NEVER be nullptr
     DataPointVector m_dps;  // results before aggregation
     QueryResults m_results; // results after aggregation
-    CountingSignal *m_signal;   // we don't own this, do not free it
+    std::vector<DataPointContainer*> m_data;
+    FileIndex m_file_index;
+    HeaderIndex m_header_index;
+    bool m_has_ooo;
+};
+
+
+/* This class tries to read multiple TimeSeries data more efficiently.
+ * This class is NOT thread-safe.
+ */
+class QuerySuperTask
+{
+public:
+    // passing in query range and downsampler to use
+    QuerySuperTask(Tsdb *tsdb); // called by Tsdb::compact()
+    QuerySuperTask(TimeRange& range, const char* ds, bool ms);
+    ~QuerySuperTask();
+
+    void perform(bool lock = true); // perform tasks
+    void add_task(TimeSeries *ts);
+
+    int get_task_count() const { return m_tasks.size(); }
+    int get_errno() const { return m_errno; }
+    std::vector<QueryTask*>& get_tasks() { return m_tasks; }
+    void empty_tasks();
+
+private:
+    bool m_ms;
+    bool m_compact;
     int m_errno;
+    TimeRange m_time_range;
+    const char *m_downsample;
+    std::vector<Tsdb*> m_tsdbs;
+    std::vector<QueryTask*> m_tasks;
 };
 
 
 // this is a singleton
-class QueryExecutor : public Stoppable
+//class QueryExecutor : public Stoppable
+class QueryExecutor
 {
 public:
-    static void init();
+    //static void init();
 
-    inline static QueryExecutor *inst()
-    {
-        return m_instance;
-    }
+    //inline static QueryExecutor *inst()
+    //{
+        //return m_instance;
+    //}
 
-    void submit_query(QueryTask *task);
-    void shutdown(ShutdownRequest request = ShutdownRequest::ASAP);
+    //void submit_query(QueryTask *task);
+    //void shutdown(ShutdownRequest request = ShutdownRequest::ASAP);
 
     static bool http_get_api_config_filters_handler(HttpRequest& request, HttpResponse& response);
     static bool http_get_api_query_handler(HttpRequest& request, HttpResponse& response);
     static bool http_post_api_query_handler(HttpRequest& request, HttpResponse& response);
 
-    static bool perform_query(TaskData& data);
-    static size_t get_pending_task_count(std::vector<size_t> &counts);
+    //static bool perform_query(TaskData& data);
+    //static size_t get_pending_task_count(std::vector<size_t> &counts);
 
 private:
     friend class Query;
 
-    QueryExecutor();
+    //QueryExecutor();
     static bool prepare_response(std::vector<QueryResults*>& results, HttpResponse& response, int error);
 
-    std::mutex m_lock;
-    TaskScheduler m_executors;
+    //std::mutex m_lock;
+    //TaskScheduler m_executors;
 
-    static QueryExecutor *m_instance;
+    //static QueryExecutor *m_instance;
 };
 
 
