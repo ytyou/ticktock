@@ -7,6 +7,8 @@ TAGL="latest"
 DOCKERFILE="../Dockerfile"
 _TEST=0
 _GRAFANA=0
+_UID=1000
+_GID=1000
 
 # process command line arguments
 while [[ $# -gt 0 ]]
@@ -21,6 +23,17 @@ do
         --test)
         _TEST=1
         ;;
+
+        --uid)
+        shift
+        _UID=$1
+        ;;
+
+        --gid)
+        shift
+        _GID=$1
+        ;;
+
     esac
     shift
 done
@@ -114,6 +127,8 @@ docker build -f $DOCKERFILE --tag ytyou/ticktock:${TAGV} --tag ytyou/ticktock:${
     --build-arg BUILD_DATE=$(date -u +'%Y-%m-%dT%H:%M:%SZ') \
     --build-arg GIT_COMMIT=$(git log -1 --pretty=format:%h) \
     --build-arg VERSION=${TT_VERSION}-${STAGE} --add-host=ticktock:127.0.0.1 \
+    --build-arg UID=${_UID} \
+    --build-arg GID=${_GID} \
     --rm $BUILD_OPT .
 popd
 
