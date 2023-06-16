@@ -74,6 +74,9 @@ MetaFile::restore_metrics(void (*restore_metrics)(MetricId, std::string& name))
     {
         std::string line;   // format: <id> <metric-name>
 
+        // skip 1st line: ticktockdb.version
+        std::getline(is, line);
+
         while (std::getline(is, line))
         {
             std::vector<TimeSeries*> tsv2;
@@ -111,6 +114,9 @@ MetaFile::restore_ts(TimeSeries* (*restore_ts)(std::string& metric, std::string&
     if (is)
     {
         std::string line;
+
+        // skip 1st line: ticktockdb.version
+        std::getline(is, line);
 
         while (std::getline(is, line))
         {
@@ -178,6 +184,7 @@ MetaFile::open()
     ASSERT(m_metrics_file == nullptr);
 
     // open ts file
+    bool is_new = ! file_exists(m_ts_name);
     int fd = ::open(m_ts_name.c_str(), O_WRONLY|O_CREAT|O_APPEND|O_NONBLOCK, S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH);
     fd = FileDescriptorManager::dup_fd(fd, FileDescriptorType::FD_FILE);
 
@@ -190,9 +197,12 @@ MetaFile::open()
         m_ts_file = fdopen(fd, "a");
         if (m_ts_file == nullptr)
             Logger::error("Failed to convert fd %d to FILE: %d", fd, errno);
+        else if (is_new)    // 1st line: ticktock version
+            fprintf(m_ts_file, "# ticktockdb.%d.%d.%d\n", TT_MAJOR_VERSION, TT_MINOR_VERSION, TT_PATCH_VERSION);
     }
 
     // open metrics file
+    is_new = ! file_exists(m_metrics_name);
     fd = ::open(m_metrics_name.c_str(), O_WRONLY|O_CREAT|O_APPEND|O_NONBLOCK, S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH);
     fd = FileDescriptorManager::dup_fd(fd, FileDescriptorType::FD_FILE);
 
@@ -205,6 +215,8 @@ MetaFile::open()
         m_metrics_file = fdopen(fd, "a");
         if (m_metrics_file == nullptr)
             Logger::error("Failed to convert fd %d to FILE: %d", fd, errno);
+        else if (is_new)    // 1st line: ticktock version
+            fprintf(m_metrics_file, "# ticktockdb.%d.%d.%d\n", TT_MAJOR_VERSION, TT_MINOR_VERSION, TT_PATCH_VERSION);
     }
 }
 
