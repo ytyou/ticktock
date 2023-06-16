@@ -103,9 +103,9 @@ HttpServer::init()
     add_get_handler(HTTP_API_SUGGEST, &Tsdb::http_get_api_suggest_handler);
     add_get_handler(HTTP_API_VERSION, &HttpServer::http_get_api_version_handler);
 
-    if (Config::exists(CFG_HTTP_REQUEST_FORMAT))
+    if (Config::inst()->exists(CFG_HTTP_REQUEST_FORMAT))
     {
-        if (Config::get_str(CFG_HTTP_REQUEST_FORMAT) == "json")
+        if (Config::inst()->get_str(CFG_HTTP_REQUEST_FORMAT) == "json")
             add_post_handler(HTTP_API_PUT, &Tsdb::http_api_put_handler_json);
         else
             add_post_handler(HTTP_API_PUT, &Tsdb::http_api_put_handler_plain);
@@ -121,7 +121,7 @@ HttpServer::init()
 int
 HttpServer::get_responders_per_listener(int which) const
 {
-    return Config::get_http_responders_per_listener(which);
+    return Config::inst()->get_http_responders_per_listener(which);
     //int n = Config::get_int(CFG_HTTP_RESPONDERS_PER_LISTENER, CFG_HTTP_RESPONDERS_PER_LISTENER_DEF);
     //return (n > 0) ? n : CFG_HTTP_RESPONDERS_PER_LISTENER_DEF;
 }
@@ -129,7 +129,7 @@ HttpServer::get_responders_per_listener(int which) const
 int
 HttpServer::get_listener_count(int which) const
 {
-    return Config::get_http_listener_count(which);
+    return Config::inst()->get_http_listener_count(which);
 }
 
 TcpConnection *
@@ -778,7 +778,7 @@ bool
 HttpServer::http_get_api_config_handler(HttpRequest& request, HttpResponse& response)
 {
     char *buff = MemoryManager::alloc_network_buffer();
-    Config::c_str(buff, MemoryManager::get_network_buffer_size());
+    Config::inst()->c_str(buff, MemoryManager::get_network_buffer_size());
     response.init(200, HttpContentType::JSON, std::strlen(buff), buff);
     MemoryManager::free_network_buffer(buff);
     return true;

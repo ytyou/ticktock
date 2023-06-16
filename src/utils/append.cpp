@@ -42,13 +42,13 @@ bool AppendLog::m_enabled = false;
 void
 AppendLog::init()
 {
-    m_enabled = Config::get_bool(CFG_APPEND_LOG_ENABLED, CFG_APPEND_LOG_ENABLED_DEF);
+    m_enabled = Config::inst()->get_bool(CFG_APPEND_LOG_ENABLED, CFG_APPEND_LOG_ENABLED_DEF);
     if (! m_enabled) return;
 
     // Schedule tasks to flush append logs.
     Task task;
     task.doit = &AppendLog::flush_all;
-    int freq_sec = Config::get_time(CFG_APPEND_LOG_FLUSH_FREQUENCY, TimeUnit::SEC, CFG_APPEND_LOG_FLUSH_FREQUENCY_DEF);
+    int freq_sec = Config::inst()->get_time(CFG_APPEND_LOG_FLUSH_FREQUENCY, TimeUnit::SEC, CFG_APPEND_LOG_FLUSH_FREQUENCY_DEF);
     ASSERT(freq_sec > 0);
     Timer::inst()->add_task(task, freq_sec, "append_log_flush");
     Logger::info("using %s of %ds", CFG_APPEND_LOG_FLUSH_FREQUENCY, freq_sec);
@@ -79,7 +79,7 @@ AppendLog::flush_all(TaskData& data)
     {
         std::vector<TimeSeries*> tsv;
         mapping->get_all_ts(tsv);
-        for (auto ts: tsv) ts->append(file);
+        for (auto ts: tsv) ts->append(mapping->get_id(), file);
     }
 
     fflush(file);
@@ -143,26 +143,27 @@ AppendLog::restore(std::vector<TimeSeries*>& tsv)
         size_t size = ::fread(buff, header_size, 1, file);
         if (size < 1) break;
 
-        TimeSeriesId id = ((struct append_log_entry*)buff)->id;
+        MetricId mid = ((struct append_log_entry*)buff)->mid;
+        TimeSeriesId tid = ((struct append_log_entry*)buff)->tid;
         Timestamp tstamp = ((struct append_log_entry*)buff)->tstamp;
         PageSize offset = ((struct append_log_entry*)buff)->offset;
         uint8_t start = ((struct append_log_entry*)buff)->start;
         uint8_t is_ooo = ((struct append_log_entry*)buff)->is_ooo;
 
-        if (tsv.size() <= id)
+        if (tsv.size() <= tid)
         {
-            Logger::error("Time series %u in append log, but not present in meta file", id);
+            Logger::error("Time series %u in append log, but not present in meta file", tid);
             continue;
         }
 
-        TimeSeries *ts = tsv[id];
+        TimeSeries *ts = tsv[tid];
         ASSERT(ts != nullptr);
 
         size = ::fread(buff, offset, 1, file);
 
         if (size < 1)
         {
-            Logger::error("Truncated append log, ts %u not restored", id);
+            Logger::error("Truncated append log, ts %u not restored", tid);
             break;
         }
 
@@ -170,11 +171,11 @@ AppendLog::restore(std::vector<TimeSeries*>& tsv)
 
         if (tsdb == nullptr)
         {
-            Logger::error("Can't recover time series %u, tstamp %" PRIu64 " not exist", id, tstamp);
+            Logger::error("Can't recover time series %u, tstamp %" PRIu64 " not exist", tid, tstamp);
             continue;
         }
 
-        ts->restore(tsdb, tstamp, offset, start, (uint8_t*)buff, (is_ooo==(uint8_t)1));
+        ts->restore(tsdb, mid, tstamp, offset, start, (uint8_t*)buff, (is_ooo==(uint8_t)1));
     }
 
     if (file != nullptr)

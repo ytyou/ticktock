@@ -35,7 +35,7 @@ static const char *HTTP_MSG_PONG = "pong";
 void
 Admin::init()
 {
-    if (Config::get_int(CFG_TSDB_MIN_DISK_SPACE, CFG_TSDB_MIN_DISK_SPACE_DEF) > 0)
+    if (Config::inst()->get_int(CFG_TSDB_MIN_DISK_SPACE, CFG_TSDB_MIN_DISK_SPACE_DEF) > 0)
     {
         Task task;
         task.doit = &Admin::shutdown_if_disk_full;
@@ -247,8 +247,8 @@ Admin::shutdown(TaskData& data)
 bool
 Admin::shutdown_if_disk_full(TaskData& data)
 {
-    long page_cnt = Config::get_int(CFG_TSDB_PAGE_COUNT, CFG_TSDB_PAGE_COUNT_DEF);
-    long min_disk = Config::get_int(CFG_TSDB_MIN_DISK_SPACE, CFG_TSDB_MIN_DISK_SPACE_DEF);
+    long page_cnt = Config::inst()->get_int(CFG_TSDB_PAGE_COUNT, CFG_TSDB_PAGE_COUNT_DEF);
+    long min_disk = Config::inst()->get_int(CFG_TSDB_MIN_DISK_SPACE, CFG_TSDB_MIN_DISK_SPACE_DEF);
 
     if (Stats::get_disk_avail() < (min_disk*g_page_size*page_cnt))
     {

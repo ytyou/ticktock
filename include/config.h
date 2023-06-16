@@ -225,51 +225,60 @@ private:
 class Config
 {
 public:
-    Config() = delete;
+    Config(const std::string& file_name);
+    ~Config();
 
     static void init();     // call this first and once only
-    static bool exists(const std::string& name);
-    static bool get_bool(const std::string& name, bool def_value);
-    static int get_int(const std::string& name);
-    static int get_int(const std::string& name, int def_value);
-    static float get_float(const std::string& name);
-    static float get_float(const std::string& name, float def_value);
-    static const std::string& get_str(const std::string& name);
-    static const std::string& get_str(const std::string& name, const std::string& def_value);
+    inline static Config* inst() { return m_instance; }
 
-    static uint64_t get_bytes(const std::string& name);
-    static uint64_t get_bytes(const std::string& name, const std::string& def_value);
-    static Timestamp get_time(const std::string& name, const TimeUnit unit);
-    static Timestamp get_time(const std::string& name, const TimeUnit unit, const std::string& def_value);
+    bool exists(const std::string& name);
+    bool get_bool(const std::string& name, bool def_value);
+    int get_int(const std::string& name);
+    int get_int(const std::string& name, int def_value);
+    float get_float(const std::string& name);
+    float get_float(const std::string& name, float def_value);
+    const std::string& get_str(const std::string& name);
+    const std::string& get_str(const std::string& name, const std::string& def_value);
+
+    uint64_t get_bytes(const std::string& name);
+    uint64_t get_bytes(const std::string& name, const std::string& def_value);
+    Timestamp get_time(const std::string& name, const TimeUnit unit);
+    Timestamp get_time(const std::string& name, const TimeUnit unit, const std::string& def_value);
 
     // will override existing value, if any
-    static void set_value(const std::string& name, const std::string& value);
-    static void set_value_no_lock(const std::string& name, const std::string& value);
+    void set_value(const std::string& name, const std::string& value);
+
+    void load();        // read
+    void persist();     // write
 
     static std::string get_data_dir();
     static std::string get_log_dir();
     static std::string get_log_file();
 
-    static int get_http_listener_count(int which);
-    static int get_http_responders_per_listener(int which);
-    static int get_tcp_listener_count(int which);
-    static int get_tcp_responders_per_listener(int which);
+    int get_http_listener_count(int which);
+    int get_http_responders_per_listener(int which);
+    int get_tcp_listener_count(int which);
+    int get_tcp_responders_per_listener(int which);
 
     static void add_override(const char *name, const char *value);
-    static const char *c_str(char *buff, size_t size);
+    const char *c_str(char *buff, size_t size);
 
 private:
-    static std::shared_ptr<Property> get_property(const std::string& name);
-    static std::shared_ptr<Property> get_override(const std::string& name);
-    static bool reload(TaskData& data);
-    static int get_count_internal(const char *name, int def_value, int which);
+    void set_value_no_lock(const std::string& name, const std::string& value);
 
-    static std::mutex m_lock;
-    static std::map<std::string, std::shared_ptr<Property>> m_properties;
+    std::shared_ptr<Property> get_property(const std::string& name);
+    static std::shared_ptr<Property> get_override(const std::string& name);
+    int get_count_internal(const char *name, int def_value, int which);
+
+    std::mutex m_lock;
+    std::map<std::string, std::shared_ptr<Property>> m_properties;
+    std::string m_file_name;
 
     // these came from command-line options; they take precedence over
     // m_properties which came from config file;
     static std::map<std::string, std::shared_ptr<Property>> m_overrides;
+
+    static Config *m_instance;
 };
 
 

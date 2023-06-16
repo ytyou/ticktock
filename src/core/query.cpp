@@ -374,10 +374,11 @@ Query::get_query_tasks(QuerySuperTask& super_task)
     std::unordered_set<TimeSeries*> tsv;
     char buff[MAX_TOTAL_TAG_LENGTH];
     get_ordered_tags(buff, sizeof(buff));
-    Tsdb::query_for_ts(m_metric, m_tags, tsv, buff, m_explicit_tags);
+    MetricId mid = Tsdb::query_for_ts(m_metric, m_tags, tsv, buff, m_explicit_tags);
 
     for (TimeSeries *ts: tsv)
         super_task.add_task(ts);
+    super_task.set_metric_id(mid);
 }
 
 void
@@ -988,9 +989,9 @@ QuerySuperTask::perform(bool lock)
         for (auto tsdb: m_tsdbs)
         {
             if (lock)
-                tsdb->query_for_data(m_time_range, m_tasks, m_compact);
+                tsdb->query_for_data(m_metric_id, m_time_range, m_tasks, m_compact);
             else
-                tsdb->query_for_data_no_lock(m_time_range, m_tasks, m_compact);
+                tsdb->query_for_data_no_lock(m_metric_id, m_time_range, m_tasks, m_compact);
 
             for (QueryTask *task : m_tasks)
             {

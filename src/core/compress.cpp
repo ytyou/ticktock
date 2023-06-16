@@ -141,7 +141,7 @@ Compressor_v3::Compressor_v3()
 void
 Compressor_v3::initialize()
 {
-    int p = Config::get_int(CFG_TSDB_COMPRESSOR_PRECISION, CFG_TSDB_COMPRESSOR_PRECISION_DEF);
+    int p = Config::inst()->get_int(CFG_TSDB_COMPRESSOR_PRECISION, CFG_TSDB_COMPRESSOR_PRECISION_DEF);
     if ((p < 0) || (p > 20))
     {
         Logger::warn("config %s of %d ignored, using default %d",

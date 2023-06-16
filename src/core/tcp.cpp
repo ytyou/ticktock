@@ -163,7 +163,7 @@ TcpServer::listen(int port, int listener_count)
     else
         Logger::info("getsockopt(SO_RCVBUF) failed, errno = %d", errno);
 
-    uint64_t opt64 = Config::get_bytes(CFG_TCP_SOCKET_RCVBUF_SIZE, CFG_TCP_SOCKET_RCVBUF_SIZE_DEF);
+    uint64_t opt64 = Config::inst()->get_bytes(CFG_TCP_SOCKET_RCVBUF_SIZE, CFG_TCP_SOCKET_RCVBUF_SIZE_DEF);
     if (opt64 > INT_MAX) opt64 = INT_MAX;
     opt = (int)opt64;
     retval = setsockopt(fd, SOL_SOCKET, SO_RCVBUF, &opt, optlen);
@@ -179,9 +179,9 @@ TcpServer::listen(int port, int listener_count)
     else
         Logger::info("getsockopt(SO_SNDBUF) failed, errno = %d", errno);
 
-    if (Config::exists(CFG_TCP_SOCKET_SNDBUF_SIZE))
+    if (Config::inst()->exists(CFG_TCP_SOCKET_SNDBUF_SIZE))
     {
-        opt64 = Config::get_bytes(CFG_TCP_SOCKET_SNDBUF_SIZE);
+        opt64 = Config::inst()->get_bytes(CFG_TCP_SOCKET_SNDBUF_SIZE);
         if (opt64 > INT_MAX) opt64 = INT_MAX;
         opt = (int)opt64;
         retval = setsockopt(fd, SOL_SOCKET, SO_SNDBUF, &opt, optlen);
@@ -811,7 +811,7 @@ TcpServer::get_recv_data_task(TcpConnection *conn) const
 int
 TcpServer::get_responders_per_listener(int which) const
 {
-    return Config::get_tcp_responders_per_listener(which);
+    return Config::inst()->get_tcp_responders_per_listener(which);
     //int n = Config::get_int(CFG_TCP_RESPONDERS_PER_LISTENER, CFG_TCP_RESPONDERS_PER_LISTENER_DEF);
     //return (n > 0) ? n : CFG_TCP_RESPONDERS_PER_LISTENER_DEF;
 }
@@ -819,7 +819,7 @@ TcpServer::get_responders_per_listener(int which) const
 int
 TcpServer::get_listener_count(int which) const
 {
-    return Config::get_tcp_listener_count(which);
+    return Config::inst()->get_tcp_listener_count(which);
 }
 
 
@@ -828,7 +828,7 @@ TcpServer::get_listener_count(int which) const
 TcpListener::TcpListener(TcpServer *server, int id, int fd) :
     m_id(id),
     m_server(server),
-    m_max_events(Config::get_int(CFG_TCP_MAX_EPOLL_EVENTS, CFG_TCP_MAX_EPOLL_EVENTS_DEF)),
+    m_max_events(Config::inst()->get_int(CFG_TCP_MAX_EPOLL_EVENTS, CFG_TCP_MAX_EPOLL_EVENTS_DEF)),
     m_socket_fd(fd),
     m_epoll_fd(-1),
     m_pipe_fds{-1,-1},
@@ -850,7 +850,7 @@ TcpListener::TcpListener(TcpServer *server, int id, int fd) :
 TcpListener::TcpListener(TcpServer *server, int id) :
     m_id(id),
     m_server(server),
-    m_max_events(Config::get_int(CFG_TCP_MAX_EPOLL_EVENTS, CFG_TCP_MAX_EPOLL_EVENTS_DEF)),
+    m_max_events(Config::inst()->get_int(CFG_TCP_MAX_EPOLL_EVENTS, CFG_TCP_MAX_EPOLL_EVENTS_DEF)),
     m_socket_fd(-1),
     m_epoll_fd(-1),
     m_pipe_fds{-1,-1},
@@ -861,7 +861,7 @@ TcpListener::TcpListener(TcpServer *server, int id) :
     m_conn_in_transit(nullptr),
     m_responders(std::string(server->get_name())+std::string("_")+std::to_string(id),
                  server->get_responders_per_listener(id%10),
-                 Config::get_int(CFG_TCP_RESPONDERS_QUEUE_SIZE, CFG_TCP_RESPONDERS_QUEUE_SIZE_DEF))
+                 Config::inst()->get_int(CFG_TCP_RESPONDERS_QUEUE_SIZE, CFG_TCP_RESPONDERS_QUEUE_SIZE_DEF))
     //m_stats_active_conn_count(0)
 {
     if (! init(-1))
@@ -1440,9 +1440,8 @@ TcpListener::disconnect()
         TcpConnection *conn = it->second;
         std::chrono::duration<double> elapsed_seconds = now - conn->last_contact;
         long secs = elapsed_seconds.count();
-        int timeout = Config::get_time(CFG_TCP_CONNECTION_IDLE_TIMEOUT,
-                                       TimeUnit::SEC,
-                                       CFG_TCP_CONNECTION_IDLE_TIMEOUT_DEF);
+        int timeout = Config::inst()->get_time(CFG_TCP_CONNECTION_IDLE_TIMEOUT,
+            TimeUnit::SEC, CFG_TCP_CONNECTION_IDLE_TIMEOUT_DEF);
 
         if (secs > timeout)
         {

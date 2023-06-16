@@ -225,7 +225,8 @@ struct __attribute__ ((__packed__)) page_info_on_disk
 
 struct __attribute__ ((__packed__)) append_log_entry
 {
-    TimeSeriesId id;
+    MetricId mid;
+    TimeSeriesId tid;
     Timestamp tstamp;
     PageSize offset;
     uint8_t start;
@@ -236,7 +237,7 @@ struct __attribute__ ((__packed__)) append_log_entry
 class __attribute__ ((__packed__)) PageInMemory
 {
 public:
-    PageInMemory(TimeSeriesId id, Tsdb *tsdb, bool is_ooo, PageSize actual_size = 0);
+    PageInMemory(MetricId mid, TimeSeriesId tid, Tsdb *tsdb, bool is_ooo, PageSize actual_size = 0);
     ~PageInMemory();
 
     // prepare to be used to represent a different page
@@ -244,7 +245,7 @@ public:
     bool is_empty();
     inline bool is_out_of_order() { return get_page_header()->is_out_of_order(); }
 
-    Timestamp get_last_tstamp(TimeSeriesId id) const;
+    Timestamp get_last_tstamp(MetricId mid, TimeSeriesId tid) const;
     TimeRange get_time_range();
     int in_range(Timestamp tstamp) const;
     inline Tsdb *get_tsdb() const { return m_tsdb; }
@@ -262,9 +263,9 @@ public:
 
     void update_indices(PageInMemory *info);
 
-    void init(TimeSeriesId id, Tsdb *tsdb, bool is_ooo, PageSize actual_size = 0);
-    PageSize flush(TimeSeriesId id, bool compact = false);  // return next page size
-    void append(TimeSeriesId id, FILE *file);
+    void init(MetricId mid, TimeSeriesId tid, Tsdb *tsdb, bool is_ooo, PageSize actual_size = 0);
+    PageSize flush(MetricId mid, TimeSeriesId tid, bool compact = false);  // return next page size
+    void append(MetricId mid, TimeSeriesId tid, FILE *file);
     void restore(Timestamp tstamp, uint8_t *buff, PageSize offset, uint8_t start);
 
     // return true if dp is added; false if page is full;

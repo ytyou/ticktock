@@ -126,14 +126,14 @@ TimeSeries::init()
 
     for (int i = 0; i < LISTENER0_COUNT; i++)
     {
-        tcp_responders += Config::get_tcp_listener_count(i)
-            * Config::get_tcp_responders_per_listener(i);
-        http_responders += Config::get_http_listener_count(i)
-            * Config::get_http_responders_per_listener(i);
+        tcp_responders += Config::inst()->get_tcp_listener_count(i)
+            * Config::inst()->get_tcp_responders_per_listener(i);
+        http_responders += Config::inst()->get_http_listener_count(i)
+            * Config::inst()->get_http_responders_per_listener(i);
     }
 
     float probability =
-        Config::get_float(CFG_TS_LOCK_PROBABILITY, CFG_TS_LOCK_PROBABILITY_DEF);
+        Config::inst()->get_float(CFG_TS_LOCK_PROBABILITY, CFG_TS_LOCK_PROBABILITY_DEF);
     m_lock_count = std::max(tcp_responders, http_responders);
     m_lock_count = (uint32_t)((float)(m_lock_count * m_lock_count) / (2.0 * probability));
     m_locks = new std::mutex[m_lock_count];
@@ -165,38 +165,38 @@ TimeSeries::cleanup()
 }
 
 void
-TimeSeries::restore(Tsdb *tsdb, Timestamp tstamp, PageSize offset, uint8_t start, uint8_t *buff, bool is_ooo)
+TimeSeries::restore(Tsdb *tsdb, MetricId mid, Timestamp tstamp, PageSize offset, uint8_t start, uint8_t *buff, bool is_ooo)
 {
     ASSERT(tsdb != nullptr);
 
     if (is_ooo)
     {
         ASSERT(m_ooo_buff == nullptr);
-        m_ooo_buff = new PageInMemory(m_id, tsdb, true);
+        m_ooo_buff = new PageInMemory(mid, m_id, tsdb, true);
         m_ooo_buff->restore(tstamp, buff, offset, start);
     }
     else
     {
         ASSERT(m_buff == nullptr);
-        m_buff = new PageInMemory(m_id, tsdb, false);
+        m_buff = new PageInMemory(mid, m_id, tsdb, false);
         m_buff->restore(tstamp, buff, offset, start);
     }
 }
 
 void
-TimeSeries::flush(bool close)
+TimeSeries::flush(MetricId mid, bool close)
 {
     //std::lock_guard<std::mutex> guard(m_lock);
     std::lock_guard<std::mutex> guard(m_locks[m_id % m_lock_count]);
-    flush_no_lock(close);
+    flush_no_lock(mid, close);
 }
 
 void
-TimeSeries::flush_no_lock(bool close)
+TimeSeries::flush_no_lock(MetricId mid, bool close)
 {
     if (m_buff != nullptr)
     {
-        m_buff->flush(m_id);
+        m_buff->flush(mid, m_id);
 
         if (m_ooo_buff != nullptr)
             m_ooo_buff->update_indices(m_buff);
@@ -208,13 +208,13 @@ TimeSeries::flush_no_lock(bool close)
         }
         else
         {
-            m_buff->init(m_id, nullptr, false);
+            m_buff->init(mid, m_id, nullptr, false);
         }
     }
 
     if (m_ooo_buff != nullptr)
     {
-        m_ooo_buff->flush(m_id);
+        m_ooo_buff->flush(mid, m_id);
 
         if (close)
         {
@@ -224,23 +224,23 @@ TimeSeries::flush_no_lock(bool close)
         else if (m_buff != nullptr)
         {
             m_buff->update_indices(m_ooo_buff);
-            m_buff->init(m_id, nullptr, true);
+            m_buff->init(mid, m_id, nullptr, true);
         }
     }
 }
 
 void
-TimeSeries::append(FILE *file)
+TimeSeries::append(MetricId mid, FILE *file)
 {
     ASSERT(file != nullptr);
     //std::lock_guard<std::mutex> guard(m_lock);
     std::lock_guard<std::mutex> guard(m_locks[m_id % m_lock_count]);
-    if (m_buff != nullptr) m_buff->append(m_id, file);
-    if (m_ooo_buff != nullptr) m_ooo_buff->append(m_id, file);
+    if (m_buff != nullptr) m_buff->append(mid, m_id, file);
+    if (m_ooo_buff != nullptr) m_ooo_buff->append(mid, m_id, file);
 }
 
 bool
-TimeSeries::add_data_point(DataPoint& dp)
+TimeSeries::add_data_point(MetricId mid, DataPoint& dp)
 {
     const Timestamp tstamp = dp.get_timestamp();
     //std::lock_guard<std::mutex> guard(m_lock);
@@ -251,28 +251,28 @@ TimeSeries::add_data_point(DataPoint& dp)
     {
         ASSERT(m_ooo_buff == nullptr);
         Tsdb *tsdb = Tsdb::inst(tstamp, true);
-        m_buff = new PageInMemory(m_id, tsdb, false);
+        m_buff = new PageInMemory(mid, m_id, tsdb, false);
     }
     else if (m_buff->in_range(tstamp) != 0)
     {
-        m_buff->flush(m_id);
+        m_buff->flush(mid, m_id);
 
         if (m_ooo_buff != nullptr)
             m_ooo_buff->update_indices(m_buff);
 
         // reset the m_buff
         Tsdb *tsdb = Tsdb::inst(tstamp, true);
-        m_buff->init(m_id, tsdb, false);
+        m_buff->init(mid, m_id, tsdb, false);
     }
 
     ASSERT(m_buff != nullptr);
     ASSERT(m_buff->in_range(tstamp) == 0);
 
-    Timestamp last_tstamp = m_buff->get_last_tstamp(m_id);
+    Timestamp last_tstamp = m_buff->get_last_tstamp(mid, m_id);
 
     if (tstamp <= last_tstamp)
     {
-        return add_ooo_data_point(dp);
+        return add_ooo_data_point(mid, dp);
     }
 
     bool ok = m_buff->add_data_point(tstamp, dp.get_value());
@@ -281,8 +281,8 @@ TimeSeries::add_data_point(DataPoint& dp)
     {
         ASSERT(m_buff->is_full());
 
-        m_buff->flush(m_id);
-        m_buff->init(m_id, nullptr, false);
+        m_buff->flush(mid, m_id);
+        m_buff->init(mid, m_id, nullptr, false);
 
         if (m_ooo_buff != nullptr)
             m_ooo_buff->update_indices(m_buff);
@@ -299,7 +299,7 @@ TimeSeries::add_data_point(DataPoint& dp)
 
 // Lock is acquired in add_data_point() already!
 bool
-TimeSeries::add_ooo_data_point(DataPoint& dp)
+TimeSeries::add_ooo_data_point(MetricId mid, DataPoint& dp)
 {
     const Timestamp tstamp = dp.get_timestamp();
 
@@ -307,17 +307,17 @@ TimeSeries::add_ooo_data_point(DataPoint& dp)
     if (m_ooo_buff == nullptr)
     {
         Tsdb *tsdb = Tsdb::inst(tstamp, true);
-        m_ooo_buff = new PageInMemory(m_id, tsdb, true);
+        m_ooo_buff = new PageInMemory(mid, m_id, tsdb, true);
     }
     else if (m_ooo_buff->in_range(tstamp) != 0)
     {
-        m_ooo_buff->flush(m_id);
+        m_ooo_buff->flush(mid, m_id);
 
         if (m_buff != nullptr)
             m_buff->update_indices(m_ooo_buff);
 
         Tsdb *tsdb = Tsdb::inst(tstamp, true);
-        m_ooo_buff->init(m_id, tsdb, true);
+        m_ooo_buff->init(mid, m_id, tsdb, true);
     }
 
     bool ok = m_ooo_buff->add_data_point(tstamp, dp.get_value());
@@ -326,8 +326,8 @@ TimeSeries::add_ooo_data_point(DataPoint& dp)
     {
         ASSERT(m_ooo_buff->is_full());
 
-        m_ooo_buff->flush(m_id);
-        m_ooo_buff->init(m_id, nullptr, true);
+        m_ooo_buff->flush(mid, m_id);
+        m_ooo_buff->init(mid, m_id, nullptr, true);
 
         ASSERT(m_ooo_buff->is_empty());
         ASSERT(m_ooo_buff->is_out_of_order());
@@ -401,7 +401,7 @@ TimeSeries::query_for_data(Tsdb *tsdb, TimeRange& range, std::vector<DataPointCo
 }
 
 void
-TimeSeries::archive(Timestamp now_sec, Timestamp threshold_sec)
+TimeSeries::archive(MetricId mid, Timestamp now_sec, Timestamp threshold_sec)
 {
     std::lock_guard<std::mutex> guard(m_locks[m_id % m_lock_count]);
 
@@ -412,7 +412,7 @@ TimeSeries::archive(Timestamp now_sec, Timestamp threshold_sec)
             delete m_buff;
             m_buff = nullptr;
         }
-        else if (((int64_t)now_sec - (int64_t)to_sec(m_buff->get_last_tstamp(m_id))) > (int64_t)threshold_sec)
+        else if (((int64_t)now_sec - (int64_t)to_sec(m_buff->get_last_tstamp(mid, m_id))) > (int64_t)threshold_sec)
         {
             flush_no_lock(true);
         }

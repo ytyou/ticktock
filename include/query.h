@@ -334,11 +334,13 @@ public:
     int get_errno() const { return m_errno; }
     std::vector<QueryTask*>& get_tasks() { return m_tasks; }
     void empty_tasks();
+    void set_metric_id(MetricId mid) { m_metric_id = mid; }
 
 private:
     bool m_ms;
     bool m_compact;
     int m_errno;
+    MetricId m_metric_id;
     TimeRange m_time_range;
     const char *m_downsample;
     std::vector<Tsdb*> m_tsdbs;

@@ -51,21 +51,21 @@ public:
     static void init();     // called by Tsdb::init()
     static void cleanup();  // called by Tsdb::shutdown()
     void init(TimeSeriesId id, const char *metric, const char *key, Tag *tags);
-    void restore(Tsdb *tsdb, Timestamp tstamp, PageSize offset, uint8_t start, uint8_t *buff, bool is_ooo);
+    void restore(Tsdb *tsdb, MetricId mid, Timestamp tstamp, PageSize offset, uint8_t start, uint8_t *buff, bool is_ooo);
 
     inline TimeSeriesId get_id() const { return m_id; }
     static inline TimeSeriesId get_next_id() { return m_next_id.load(std::memory_order_relaxed); }
 
-    void flush(bool close = false);
-    void flush_no_lock(bool close = false);
+    void flush(MetricId mid, bool close = false);
+    void flush_no_lock(MetricId mid, bool close = false);
     //bool compact(MetaFile& meta_file);
     void set_check_point();
-    void archive(Timestamp now_sec, Timestamp threshold_sec);
+    void archive(MetricId mid, Timestamp now_sec, Timestamp threshold_sec);
 
-    bool add_data_point(DataPoint& dp);
-    bool add_ooo_data_point(DataPoint& dp);
+    bool add_data_point(MetricId mid, DataPoint& dp);
+    bool add_ooo_data_point(MetricId mid, DataPoint& dp);
 
-    void append(FILE *file);
+    void append(MetricId mid, FILE *file);
 
     inline Tag *get_tags() const { return m_tags.get_v1_tags(); }
     inline Tag *get_cloned_tags(StringBuffer& strbuf) const

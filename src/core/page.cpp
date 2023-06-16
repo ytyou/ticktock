@@ -108,13 +108,13 @@ PageInMemory::update_indices(PageInMemory *info)
 }
 
 Timestamp
-PageInMemory::get_last_tstamp(TimeSeriesId id) const
+PageInMemory::get_last_tstamp(MetricId mid, TimeSeriesId tid) const
 {
     ASSERT(m_tsdb != nullptr);
     ASSERT(m_compressor != nullptr);
 
     if (m_compressor->is_empty())
-        return m_tsdb->get_last_tstamp(id);
+        return m_tsdb->get_last_tstamp(mid, tid);
     else
         return m_compressor->get_last_tstamp();
 }
@@ -133,7 +133,7 @@ PageInMemory::get_dp_count() const
 }
 
 
-PageInMemory::PageInMemory(TimeSeriesId id, Tsdb *tsdb, bool is_ooo, PageSize actual_size) :
+PageInMemory::PageInMemory(MetricId mid, TimeSeriesId tid, Tsdb *tsdb, bool is_ooo, PageSize actual_size) :
     m_compressor(nullptr),
     m_page(nullptr),
     m_tsdb(nullptr),
@@ -141,7 +141,7 @@ PageInMemory::PageInMemory(TimeSeriesId id, Tsdb *tsdb, bool is_ooo, PageSize ac
 {
     m_page_header.init();
     ASSERT(m_page == nullptr);
-    init(id, tsdb, is_ooo, actual_size);
+    init(mid, tid, tsdb, is_ooo, actual_size);
 }
 
 PageInMemory::~PageInMemory()
@@ -157,7 +157,7 @@ PageInMemory::~PageInMemory()
 }
 
 void
-PageInMemory::init(TimeSeriesId id, Tsdb *tsdb, bool is_ooo, PageSize actual_size)
+PageInMemory::init(MetricId mid, TimeSeriesId tid, Tsdb *tsdb, bool is_ooo, PageSize actual_size)
 {
     if (tsdb == nullptr) tsdb = m_tsdb; // same tsdb
     ASSERT(actual_size <= tsdb->get_page_size());
@@ -185,7 +185,7 @@ PageInMemory::init(TimeSeriesId id, Tsdb *tsdb, bool is_ooo, PageSize actual_siz
         m_start = from;
 
         // need to locate the last page of this TS
-        tsdb->get_last_header_indices(id, file_idx, header_idx);
+        tsdb->get_last_header_indices(mid, tid, file_idx, header_idx);
         m_page_header.m_next_file = file_idx;
         m_page_header.m_next_header = header_idx;
     }
@@ -201,7 +201,7 @@ PageInMemory::init(TimeSeriesId id, Tsdb *tsdb, bool is_ooo, PageSize actual_siz
 }
 
 PageSize
-PageInMemory::flush(TimeSeriesId id, bool compact)
+PageInMemory::flush(MetricId mid, TimeSeriesId tid, bool compact)
 {
     if (m_compressor->is_empty()) return 0;
 
@@ -221,7 +221,7 @@ PageInMemory::flush(TimeSeriesId id, bool compact)
     m_page_header.m_next_file = TT_INVALID_FILE_INDEX;
     m_page_header.m_next_header = TT_INVALID_HEADER_INDEX;
 
-    return m_tsdb->append_page(id, prev_file_idx, prev_header_idx, &m_page_header, m_page, compact);
+    return m_tsdb->append_page(mid, tid, prev_file_idx, prev_header_idx, &m_page_header, m_page, compact);
 
     // re-initialize the compressor
     //m_compressor->init(m_start, (uint8_t*)m_page, m_tsdb->get_page_size());
@@ -229,7 +229,7 @@ PageInMemory::flush(TimeSeriesId id, bool compact)
 }
 
 void
-PageInMemory::append(TimeSeriesId id, FILE *file)
+PageInMemory::append(MetricId mid, TimeSeriesId tid, FILE *file)
 {
     if (m_compressor == nullptr) return;
 
@@ -238,7 +238,8 @@ PageInMemory::append(TimeSeriesId id, FILE *file)
 
     struct append_log_entry header =
         {
-            .id = id,
+            .mid = mid,
+            .tid = tid,
             .tstamp = m_compressor->get_start_tstamp(),
             .offset = position.m_offset,
             .start = position.m_start,

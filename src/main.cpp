@@ -413,11 +413,11 @@ main(int argc, char *argv[])
     }
 
     // verify configs
-    if (Config::get_bool(CFG_UDP_SERVER_ENABLED, CFG_UDP_SERVER_ENABLED_DEF) &&
-        (Config::get_int(CFG_UDP_SERVER_PORT, CFG_UDP_SERVER_PORT_DEF) <= 0))
+    if (Config::inst()->get_bool(CFG_UDP_SERVER_ENABLED, CFG_UDP_SERVER_ENABLED_DEF) &&
+        (Config::inst()->get_int(CFG_UDP_SERVER_PORT, CFG_UDP_SERVER_PORT_DEF) <= 0))
     {
         Logger::fatal("UDP Server port must be greater than 0 (instead of %d)",
-            Config::get_int(CFG_UDP_SERVER_PORT, CFG_UDP_SERVER_PORT_DEF));
+            Config::inst()->get_int(CFG_UDP_SERVER_PORT, CFG_UDP_SERVER_PORT_DEF));
         shutdown();
         return 1;
     }
@@ -425,23 +425,23 @@ main(int argc, char *argv[])
     // start an HttpServer
     HttpServer http_server;
     http_server.init();
-    http_server.start(Config::get_str(CFG_HTTP_SERVER_PORT, CFG_HTTP_SERVER_PORT_DEF));
+    http_server.start(Config::inst()->get_str(CFG_HTTP_SERVER_PORT, CFG_HTTP_SERVER_PORT_DEF));
     http_server_ptr = &http_server;
 
     // start a TcpServer
     TcpServer tcp_server;
     tcp_server.init();
-    if (Config::get_bool(CFG_TCP_SERVER_ENABLED, CFG_TCP_SERVER_ENABLED_DEF))
+    if (Config::inst()->get_bool(CFG_TCP_SERVER_ENABLED, CFG_TCP_SERVER_ENABLED_DEF))
     {
-        tcp_server.start(Config::get_str(CFG_TCP_SERVER_PORT, CFG_TCP_SERVER_PORT_DEF));
+        tcp_server.start(Config::inst()->get_str(CFG_TCP_SERVER_PORT, CFG_TCP_SERVER_PORT_DEF));
         tcp_server_ptr = &tcp_server;
     }
 
     // start an UdpServer
     UdpServer udp_server;
-    if (Config::get_bool(CFG_UDP_SERVER_ENABLED, CFG_UDP_SERVER_ENABLED_DEF))
+    if (Config::inst()->get_bool(CFG_UDP_SERVER_ENABLED, CFG_UDP_SERVER_ENABLED_DEF))
     {
-        udp_server.start(Config::get_int(CFG_UDP_SERVER_PORT, CFG_UDP_SERVER_PORT_DEF));
+        udp_server.start(Config::inst()->get_int(CFG_UDP_SERVER_PORT, CFG_UDP_SERVER_PORT_DEF));
         udp_server_ptr = &udp_server;
     }
 
@@ -461,6 +461,7 @@ main(int argc, char *argv[])
     udp_server.shutdown();
 
     shutdown();
+    delete Config::inst();
 
     return 0;
 }

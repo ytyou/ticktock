@@ -149,8 +149,8 @@ is_off_hour()
     std::time_t sec = std::time(nullptr);
     struct tm timeinfo;
     struct tm *now = localtime_r(&sec, &timeinfo);
-    int off_hour_begin = Config::get_int(CFG_TSDB_OFF_HOUR_BEGIN, CFG_TSDB_OFF_HOUR_BEGIN_DEF);
-    int off_hour_end = Config::get_int(CFG_TSDB_OFF_HOUR_END, CFG_TSDB_OFF_HOUR_END_DEF);
+    int off_hour_begin = Config::inst()->get_int(CFG_TSDB_OFF_HOUR_BEGIN, CFG_TSDB_OFF_HOUR_BEGIN_DEF);
+    int off_hour_end = Config::inst()->get_int(CFG_TSDB_OFF_HOUR_END, CFG_TSDB_OFF_HOUR_END_DEF);
 
     if (off_hour_begin == off_hour_end)
     {
@@ -208,7 +208,7 @@ is_my_ip(std::string& ip)
 bool
 ts_resolution_ms()
 {
-    return starts_with(Config::get_str(CFG_TSDB_TIMESTAMP_RESOLUTION, CFG_TSDB_TIMESTAMP_RESOLUTION_DEF), 'm');
+    return starts_with(Config::inst()->get_str(CFG_TSDB_TIMESTAMP_RESOLUTION, CFG_TSDB_TIMESTAMP_RESOLUTION_DEF), 'm');
 }
 
 Timestamp

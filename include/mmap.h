@@ -94,10 +94,10 @@ private:
 class HeaderFile : public MmapFile
 {
 public:
-    HeaderFile(const std::string& file_name, FileIndex id, PageCount page_count, Tsdb *tsdb);
+    HeaderFile(const std::string& file_name, FileIndex id, PageCount page_count, PageSize page_size);
     ~HeaderFile();
 
-    void init_tsdb_header(Tsdb *tsdb);
+    void init_tsdb_header(PageSize page_size);
     void open(bool for_read) override;
 
     PageSize get_page_size();

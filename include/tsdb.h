@@ -119,11 +119,13 @@ public:
     char *get_metric() { return m_metric; }
     void get_all_ts(std::vector<TimeSeries*>& tsv);
     void add_ts(TimeSeries *ts);    // add 'ts' to the list headed by 'm_ts_head'
+    MetricId get_id() const { return m_id; }
 
     friend class Tsdb;
 
 private:
-    Mapping(const char *name);
+    Mapping(const char *name);              // new
+    Mapping(MetricId id, const char *name); // restore
     ~Mapping();
 
     void flush(bool close);
@@ -162,7 +164,47 @@ private:
     std::atomic<TimeSeries*> m_ts_head;
     int16_t m_tag_count;    // -1: uninitialized; -2: inconsistent;
 
+    MetricId m_id;
+    static std::atomic<MetricId> m_next_id;
     //Partition *m_partition;
+};
+
+
+class Metric
+{
+public:
+    Metric(const std::string& dir, PageSize page_size, PageCount page_cnt);
+    ~Metric();
+
+    void close();
+    void flush(bool sync);
+    bool rotate(Timestamp now_sec, Timestamp thrashing_threshold);
+
+    MetricId get_id() const { return m_id; }
+    std::string get_metric_dir(std::string& tsdb_dir);
+    static std::string get_metric_dir(std::string& tsdb_dir, MetricId id);
+    std::string get_data_file_name(std::string& tsdb_dir, FileIndex idx);
+    std::string get_header_file_name(std::string& tsdb_dir, FileIndex idx);
+
+    DataFile *get_last_data() { return m_data_files.back(); };  // call get_last_header() first
+    HeaderFile *get_last_header(std::string& tsdb_dir, PageCount page_cnt, PageSize page_size);
+
+    DataFile *get_data_file(FileIndex file_idx);
+    HeaderFile *get_header_file(FileIndex file_idx);
+
+    // for testing only
+    int get_page_count(bool ooo);
+    int get_data_page_count();
+    int get_open_data_file_count(bool for_read);
+    int get_open_header_file_count(bool for_read);
+
+private:
+    void restore_header(const std::string& file);
+    void restore_data(const std::string& file, PageSize page_size, PageCount page_cnt);
+
+    MetricId m_id;
+    std::vector<HeaderFile*> m_header_files;
+    std::vector<DataFile*> m_data_files;
 };
 
 
@@ -182,8 +224,9 @@ public:
     static void purge_oldest(int threshold);
     static bool compact(TaskData& data);
     static void compact2(); // last compaction step
-    static void write_to_compacted(QuerySuperTask& super_task, Tsdb *compacted, PageSize& next_size);
+    static void write_to_compacted(MetricId mid, QuerySuperTask& super_task, Tsdb *compacted, PageSize& next_size);
     static bool add_data_point(DataPoint& dp, bool forward);
+    static void restore_metrics(MetricId id, std::string& metric);
     static TimeSeries *restore_ts(std::string& metric, std::string& key, TimeSeriesId id);
     static void restore_measurement(std::string& measurement, std::string& tags, std::vector<std::pair<std::string,TimeSeriesId>>& fields, std::vector<TimeSeries*>& tsv);
     static void get_all_ts(std::vector<TimeSeries*>& tsv);
@@ -191,13 +234,13 @@ public:
 
     bool add(DataPoint& dp);
 
-    static void query_for_ts(const char *metric, Tag *tags, std::unordered_set<TimeSeries*>& ts, const char *key, bool explicit_tags);
-    bool query_for_data(TimeSeriesId id, TimeRange& range, std::vector<DataPointContainer*>& data);
-    bool query_for_data_no_lock(TimeSeriesId id, TimeRange& range, std::vector<DataPointContainer*>& data);
+    static MetricId query_for_ts(const char *metric, Tag *tags, std::unordered_set<TimeSeries*>& ts, const char *key, bool explicit_tags);
+    //bool query_for_data(TimeSeriesId id, TimeRange& range, std::vector<DataPointContainer*>& data);
+    //bool query_for_data_no_lock(TimeSeriesId id, TimeRange& range, std::vector<DataPointContainer*>& data);
 
-    void query_for_data_no_lock(QueryTask *task);
-    void query_for_data(TimeRange& range, std::vector<QueryTask*>& tasks, bool compact = false);
-    void query_for_data_no_lock(TimeRange& range, std::vector<QueryTask*>& tasks, bool compact = false);
+    void query_for_data_no_lock(MetricId mid, QueryTask *task);
+    void query_for_data(MetricId mid, TimeRange& range, std::vector<QueryTask*>& tasks, bool compact = false);
+    void query_for_data_no_lock(MetricId mid, TimeRange& range, std::vector<QueryTask*>& tasks, bool compact = false);
 
     void flush(bool sync);
     void flush_for_test();  // for testing only
@@ -209,17 +252,19 @@ public:
     PageCount get_page_count() const;
     int get_compressor_version();
 
-    Timestamp get_last_tstamp(TimeSeriesId id);
-    void get_last_header_indices(TimeSeriesId id, FileIndex& file_idx, HeaderIndex& header_idx);
-    void set_indices(TimeSeriesId id, FileIndex prev_file_idx, HeaderIndex prev_header_idx,
+    Timestamp get_last_tstamp(MetricId mid, TimeSeriesId tid);
+    void get_last_header_indices(MetricId mid, TimeSeriesId tid, FileIndex& file_idx, HeaderIndex& header_idx);
+    void set_indices(MetricId mid, TimeSeriesId tid, FileIndex prev_file_idx, HeaderIndex prev_header_idx,
                      FileIndex this_file_idx, HeaderIndex this_header_idx);
-    PageSize append_page(TimeSeriesId id,       // return next page size
+    PageSize append_page(MetricId mid,          // return next page size
+                         TimeSeriesId tid,
                          FileIndex prev_file_idx,
                          HeaderIndex prev_header_idx,
                          struct page_info_on_disk *header,
                          void *page,
                          bool compact);
-    HeaderFile *get_header_file(FileIndex file_idx);
+    DataFile *get_data_file(MetricId mid, FileIndex file_idx);
+    HeaderFile *get_header_file(MetricId mid, FileIndex file_idx);
 
     inline const TimeRange& get_time_range() const
     {
@@ -296,8 +341,8 @@ private:
     static Tsdb *create(TimeRange& range, bool existing, const char *suffix = nullptr); // caller needs to acquire m_tsdb_lock!
     static void restore_tsdb(const std::string& dir);
 
-    void restore_data(const std::string& file);
-    void restore_header(const std::string& file);
+    void write_config(const std::string& dir);
+    void restore_config(const std::string& dir);
     void reload_header_data_files(const std::string& dir);
 
     static std::string get_tsdb_dir_name(const TimeRange& range, const char *suffix = nullptr);
@@ -316,8 +361,9 @@ private:
     int m_ref_count;        // prevent compaction when in use
 
     IndexFile m_index_file;
-    std::vector<HeaderFile*> m_header_files;
-    std::vector<DataFile*> m_data_files;
+    //std::vector<HeaderFile*> m_header_files;
+    //std::vector<DataFile*> m_data_files;
+    std::vector<Metric*> m_metrics; // indexed by MetricId
 
     // this is true if, 1. m_map is populated; 2. m_page_mgr is open; 3. m_meta_file is open;
     // this is false if all the above are not true;

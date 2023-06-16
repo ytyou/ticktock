@@ -402,15 +402,15 @@ IndexFile::get_indices(TimeSeriesId id, FileIndex& file_index, HeaderIndex& head
 }
 
 
-HeaderFile::HeaderFile(const std::string& file_name, FileIndex id, PageCount page_count, Tsdb *tsdb) :
+HeaderFile::HeaderFile(const std::string& file_name, FileIndex id, PageCount page_count, PageSize page_size) :
     MmapFile(file_name),
     m_id(id),
     m_page_count(page_count)
 {
     ASSERT(page_count > 0);
-    ASSERT(tsdb != nullptr);
+    ASSERT(page_size > 0);
     open(false);    // open for write
-    init_tsdb_header(tsdb);
+    init_tsdb_header(page_size);
 }
 
 HeaderFile::HeaderFile(FileIndex id, const std::string& file_name) :
@@ -426,14 +426,13 @@ HeaderFile::~HeaderFile()
 }
 
 void
-HeaderFile::init_tsdb_header(Tsdb *tsdb)
+HeaderFile::init_tsdb_header(PageSize page_size)
 {
-    ASSERT(tsdb != nullptr);
     struct tsdb_header *header = (struct tsdb_header*)get_pages();
     ASSERT(header != nullptr);
 
     int compressor_version =
-        Config::get_int(CFG_TSDB_COMPRESSOR_VERSION, CFG_TSDB_COMPRESSOR_VERSION_DEF);
+        Config::inst()->get_int(CFG_TSDB_COMPRESSOR_VERSION, CFG_TSDB_COMPRESSOR_VERSION_DEF);
 
     header->m_major_version = TT_MAJOR_VERSION;
     header->m_minor_version = TT_MINOR_VERSION;
@@ -447,7 +446,7 @@ HeaderFile::init_tsdb_header(Tsdb *tsdb)
     header->m_start_tstamp = TimeRange::MAX.get_to();   //tsdb->get_time_range().get_from();
     header->m_end_tstamp = TimeRange::MAX.get_from();   //tsdb->get_time_range().get_to();
     header->m_actual_pg_cnt = m_page_count;
-    header->m_page_size = tsdb->get_page_size();
+    header->m_page_size = page_size;
 
     ASSERT(header->m_page_count > 0);
     ASSERT(header->m_actual_pg_cnt > 0);
@@ -529,7 +528,7 @@ HeaderFile::get_compressor_version()
     if (header != nullptr)
         version = header->get_compressor_version();
     else
-        version = Config::get_int(CFG_TSDB_COMPRESSOR_VERSION, CFG_TSDB_COMPRESSOR_VERSION_DEF);
+        version = Config::inst()->get_int(CFG_TSDB_COMPRESSOR_VERSION, CFG_TSDB_COMPRESSOR_VERSION_DEF);
 
     return version;
 }
