@@ -175,6 +175,7 @@ PageInMemory::init(MetricId mid, TimeSeriesId tid, Tsdb *tsdb, bool is_ooo, Page
     {
         m_page_header.m_next_file = file_idx;
         m_page_header.m_next_header = header_idx;
+        ASSERT((file_idx == TT_INVALID_FILE_INDEX) || (tsdb->get_header_file(mid, file_idx) != nullptr));
     }
     else
     {
@@ -188,6 +189,7 @@ PageInMemory::init(MetricId mid, TimeSeriesId tid, Tsdb *tsdb, bool is_ooo, Page
         tsdb->get_last_header_indices(mid, tid, file_idx, header_idx);
         m_page_header.m_next_file = file_idx;
         m_page_header.m_next_header = header_idx;
+        ASSERT((file_idx == TT_INVALID_FILE_INDEX) || (tsdb->get_header_file(mid, file_idx) != nullptr));
     }
 
     if (m_page == nullptr)

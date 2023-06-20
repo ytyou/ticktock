@@ -442,47 +442,55 @@ inspect_tsdb_quick(const std::string& dir)
         std::cerr << "Inspecting tsdb " << dir << "..." << std::endl;
     }
 
-    for (int fidx = 0; ; fidx++)
+    for (int m = 0; ; m++)
     {
-        char header_file_name[PATH_MAX];
-        char data_file_name[PATH_MAX];
+        char metrics_dir[PATH_MAX];
 
-        snprintf(header_file_name, sizeof(header_file_name), "%s/header.%u", dir.c_str(), fidx);
-        snprintf(data_file_name, sizeof(data_file_name), "%s/data.%u", dir.c_str(), fidx);
+        snprintf(metrics_dir, sizeof(metrics_dir), "%s/m%010d", dir.c_str(), m);
+        if (! file_exists(metrics_dir)) break;
 
-        std::string header_file_name_str(header_file_name);
-        std::string data_file_name_str(data_file_name);
-
-        if (! file_exists(header_file_name_str) || ! file_exists(data_file_name_str))
-            break;
-
-        int header_file_fd = -1;
-        int data_file_fd = -1;
-        size_t header_file_size, data_file_size;
-        char *header_base, *data_base;
-        struct tsdb_header *tsdb_header;
-
-        header_base = open_mmap(header_file_name_str, header_file_fd, header_file_size);
-        data_base = open_mmap(data_file_name_str, data_file_fd, data_file_size);
-        tsdb_header = (struct tsdb_header*)header_base;
-
-        if ((header_base == nullptr) || (data_base == nullptr) || (header_file_fd < 0))
+        for (int fidx = 0; ; fidx++)
         {
-            printf("[ERROR] failed to open file %s\n", header_file_name_str.c_str());
-            continue;
+            char header_file_name[PATH_MAX];
+            char data_file_name[PATH_MAX];
+
+            snprintf(header_file_name, sizeof(header_file_name), "%s/header.%05u", metrics_dir, fidx);
+            snprintf(data_file_name, sizeof(data_file_name), "%s/data.%05u", metrics_dir, fidx);
+
+            std::string header_file_name_str(header_file_name);
+            std::string data_file_name_str(data_file_name);
+
+            if (! file_exists(header_file_name_str) || ! file_exists(data_file_name_str))
+                break;
+
+            int header_file_fd = -1;
+            int data_file_fd = -1;
+            size_t header_file_size, data_file_size;
+            char *header_base, *data_base;
+            struct tsdb_header *tsdb_header;
+
+            header_base = open_mmap(header_file_name_str, header_file_fd, header_file_size);
+            data_base = open_mmap(data_file_name_str, data_file_fd, data_file_size);
+            tsdb_header = (struct tsdb_header*)header_base;
+
+            if ((header_base == nullptr) || (data_base == nullptr) || (header_file_fd < 0))
+            {
+                printf("[ERROR] failed to open file %s\n", header_file_name_str.c_str());
+                continue;
+            }
+
+            for (PageCount hidx = 0; hidx < tsdb_header->m_header_index; hidx++)
+            {
+                struct page_info_on_disk *page_header = (struct page_info_on_disk *)
+                    (header_base + sizeof(struct tsdb_header) + hidx * sizeof(struct page_info_on_disk));
+
+                uint64_t tsdb_dps = inspect_page(fidx, hidx, tsdb_header, page_header, data_base, 0);
+                g_total_dps_cnt.fetch_add(tsdb_dps, std::memory_order_relaxed);
+            }
+
+            close_mmap(data_file_fd, data_base, data_file_size);
+            close_mmap(header_file_fd, header_base, header_file_size);
         }
-
-        for (PageCount hidx = 0; hidx < tsdb_header->m_header_index; hidx++)
-        {
-            struct page_info_on_disk *page_header = (struct page_info_on_disk *)
-                (header_base + sizeof(struct tsdb_header) + hidx * sizeof(struct page_info_on_disk));
-
-            uint64_t tsdb_dps = inspect_page(fidx, hidx, tsdb_header, page_header, data_base, 0);
-            g_total_dps_cnt.fetch_add(tsdb_dps, std::memory_order_relaxed);
-        }
-
-        close_mmap(data_file_fd, data_base, data_file_size);
-        close_mmap(header_file_fd, header_base, header_file_size);
     }
 }
 
@@ -648,12 +656,13 @@ main(int argc, char *argv[])
     std::locale loc("");
     std::cerr.imbue(loc);
 
+    Config::init();
     MemoryManager::init();
 
     if (! g_data_dir.empty())
     {
-        Config::set_value(CFG_TSDB_DATA_DIR, g_data_dir);
-        MetaFile::init(Tsdb::restore_ts, Tsdb::restore_measurement);
+        Config::inst()->set_value(CFG_TSDB_DATA_DIR, g_data_dir);
+        MetaFile::init(Tsdb::restore_metrics, Tsdb::restore_ts, Tsdb::restore_measurement);
         Tsdb::get_all_ts(g_time_series);
         std::cerr << "Total number of time series: " << g_time_series.size() << std::endl;
     }

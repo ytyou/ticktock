@@ -383,7 +383,7 @@ TcpServer::start(const std::string& ports)
 bool
 TcpServer::recv_tcp_data(TaskData& data)
 {
-    size_t buff_size = MemoryManager::get_network_buffer_size() - 2;
+    size_t buff_size = MemoryManager::get_network_buffer_size() - 4;
     TcpConnection *conn = static_cast<TcpConnection*>(data.pointer);
 
     Logger::trace("recv_tcp_data: conn=%p, fd=%d", conn, conn->fd);
@@ -1172,7 +1172,9 @@ TcpListener::listener1()
             {
                 // new data on existing connections
                 TcpConnection *conn = get_conn(fd);
-                ASSERT(conn != nullptr);
+                //ASSERT(conn != nullptr);
+                if (UNLIKELY(conn == nullptr))
+                    continue;
                 Logger::tcp("received data on conn %p", conn->fd, conn);
                 bool rdhup = (events[i].events & EPOLLRDHUP);
 

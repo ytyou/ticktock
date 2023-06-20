@@ -982,6 +982,7 @@ Metric::get_last_header(std::string& tsdb_dir, PageCount page_cnt, PageSize page
         }
     }
 
+    ASSERT(! header_file->is_full());
     return header_file;
 }
 
@@ -1540,6 +1541,13 @@ Tsdb::query_for_data_no_lock(MetricId mid, QueryTask *task)
 
     ASSERT(mid < m_metrics.size());
     Metric *metric = m_metrics[mid];
+
+    if (metric == nullptr)
+    {
+        task->set_indices(TT_INVALID_FILE_INDEX, TT_INVALID_HEADER_INDEX);
+        return;
+    }
+
     HeaderFile *header_file = metric->get_header_file(file_idx);
     header_file->ensure_open(true);
     struct tsdb_header *tsdb_header = header_file->get_tsdb_header();
@@ -1646,10 +1654,12 @@ Tsdb::query_for_data_no_lock(MetricId mid, TimeRange& range, std::vector<QueryTa
             {
                 ASSERT(mid < m_metrics.size());
                 Metric *metric = m_metrics[mid];
-                metric->get_header_file(last_file_idx)->close();
-                metric->get_data_file(last_file_idx)->close();
-                //m_header_files[last_file_idx]->close();
-                //m_data_files[last_file_idx]->close();
+
+                if (metric != nullptr)
+                {
+                    metric->get_header_file(last_file_idx)->close();
+                    metric->get_data_file(last_file_idx)->close();
+                }
             }
             last_file_idx = file_idx;
         }
@@ -1673,8 +1683,8 @@ Tsdb::flush(bool sync)
     //for (HeaderFile *file: m_header_files) file->flush(sync);
     for (auto metric: m_metrics)
     {
-        ASSERT(metric != nullptr);
-        metric->flush(sync);
+        if (metric != nullptr)
+            metric->flush(sync);
     }
     m_index_file.flush(sync);
 }
@@ -1696,8 +1706,8 @@ Tsdb::flush_for_test()
 
     for (auto metric: m_metrics)
     {
-        ASSERT(metric != nullptr);
-        metric->flush(sync);
+        if (metric != nullptr)
+            metric->flush(sync);
     }
     m_index_file.flush(sync);
 }
@@ -1737,8 +1747,8 @@ Tsdb::shutdown()
         //for (HeaderFile *file: tsdb->m_header_files) file->close();
         for (auto metric: tsdb->m_metrics)
         {
-            ASSERT(metric != nullptr);
-            metric->close();
+            if (metric != nullptr)
+                metric->close();
         }
         tsdb->m_index_file.close();
 #ifdef _DEBUG
@@ -1889,11 +1899,14 @@ Tsdb::get_last_header_indices(MetricId mid, TimeSeriesId tid, FileIndex& file_id
         fidx = header->m_next_file;
         hidx = header->m_next_header;
     }
+
+    ASSERT((file_idx == TT_INVALID_FILE_INDEX) || (m_metrics[mid] != nullptr));
 }
 
 void
 Tsdb::set_indices(MetricId mid, TimeSeriesId tid, FileIndex prev_file_idx, HeaderIndex prev_header_idx, FileIndex this_file_idx, HeaderIndex this_header_idx)
 {
+    ASSERT(mid < m_metrics.size());
     ASSERT(TT_INVALID_FILE_INDEX != this_file_idx);
     ASSERT(TT_INVALID_HEADER_INDEX != this_header_idx);
 
@@ -1915,8 +1928,9 @@ Tsdb::get_data_file(MetricId mid, FileIndex file_idx)
 {
     if (mid < m_metrics.size())
     {
-        ASSERT(m_metrics[mid] != nullptr);
-        return m_metrics[mid]->get_data_file(file_idx);
+        Metric *metric = m_metrics[mid];
+        if (metric != nullptr)
+            return metric->get_data_file(file_idx);
     }
     return nullptr;
 }
@@ -1926,8 +1940,9 @@ Tsdb::get_header_file(MetricId mid, FileIndex file_idx)
 {
     if (mid < m_metrics.size())
     {
-        ASSERT(m_metrics[mid] != nullptr);
-        return m_metrics[mid]->get_header_file(file_idx);
+        Metric *metric = m_metrics[mid];
+        if (metric != nullptr)
+            return metric->get_header_file(file_idx);
     }
     return nullptr;
 
@@ -1940,10 +1955,15 @@ Tsdb::append_page(MetricId mid, TimeSeriesId tid, FileIndex prev_file_idx, Heade
     ASSERT(header != nullptr);
     //ASSERT(mid < m_metrics.size());
     //ASSERT(m_metrics[mid] != nullptr);
+    std::lock_guard<std::mutex> guard(m_lock);
+    //WriteLock guard(m_lock);
 
     // create Metric if necessary
     if (mid >= m_metrics.size())
     {
+        if (m_metrics.empty())
+            m_metrics.reserve(Mapping::get_metric_count());
+
         std::string tsdb_dir = get_tsdb_dir_name(m_time_range); // TODO: tsdb may have a suffix?
         std::string metric_dir = Metric::get_metric_dir(tsdb_dir, mid);
         Metric *metric = new Metric(metric_dir, m_page_size, m_page_count);
@@ -1964,37 +1984,14 @@ Tsdb::append_page(MetricId mid, TimeSeriesId tid, FileIndex prev_file_idx, Heade
         m_metrics[mid] = new Metric(metric_dir, m_page_size, m_page_count);
     }
 
+    ASSERT(mid < m_metrics.size());
+
     const char *suffix = compact ? TEMP_SUFFIX : nullptr;
     std::string tsdb_dir = get_tsdb_dir_name(m_time_range, suffix);
     HeaderFile *header_file = m_metrics[mid]->get_last_header(tsdb_dir, get_page_count(), get_page_size());
-    std::lock_guard<std::mutex> guard(m_lock);
-    //WriteLock guard(m_lock);
 
     //m_load_time = ts_now_sec();
     m_mode |= TSDB_MODE_READ_WRITE;
-
-#if 0
-    if (m_header_files.empty())
-    {
-        ASSERT(m_data_files.empty());
-        header_file = new HeaderFile(get_header_file_name(m_time_range, 0, suffix), 0, get_page_count(), this),
-        m_header_files.push_back(header_file);
-        m_data_files.push_back(new DataFile(get_data_file_name(m_time_range, 0, suffix), 0, get_page_size(), get_page_count()));
-    }
-    else
-    {
-        header_file = m_header_files.back();
-        header_file->ensure_open(false);
-
-        if (header_file->is_full())
-        {
-            FileIndex id = m_header_files.size();
-            header_file = new HeaderFile(get_header_file_name(m_time_range, id, suffix), id, get_page_count(), this);
-            m_header_files.push_back(header_file);
-            m_data_files.push_back(new DataFile(get_data_file_name(m_time_range, id, suffix), id, get_page_size(), get_page_count()));
-        }
-    }
-#endif
 
     ASSERT(m_metrics[mid] != nullptr);
     DataFile *data_file = m_metrics[mid]->get_last_data();
@@ -2036,6 +2033,7 @@ Tsdb::append_page(MetricId mid, TimeSeriesId tid, FileIndex prev_file_idx, Heade
     // passing our own indices back to caller
     header->m_next_file = header_file->get_id();
     header->m_next_header = header_idx;
+    ASSERT(get_header_file(mid, header->m_next_file) == header_file);
 
     return data_file->get_next_page_size();
 }
@@ -2744,8 +2742,8 @@ Tsdb::get_page_count(bool ooo)
     {
         for (auto metric: tsdb->m_metrics)
         {
-            ASSERT(metric != nullptr);
-            total += metric->get_page_count(ooo);
+            if (metric != nullptr)
+                total += metric->get_page_count(ooo);
         }
     }
     return total;
@@ -2759,8 +2757,8 @@ Tsdb::get_data_page_count()
     {
         for (auto metric: tsdb->m_metrics)
         {
-            ASSERT(metric != nullptr);
-            total += metric->get_data_page_count();
+            if (metric != nullptr)
+                total += metric->get_data_page_count();
         }
     }
     return total + 1;
@@ -2801,8 +2799,8 @@ Tsdb::get_open_data_file_count(bool for_read)
     {
         for (auto metric: tsdb->m_metrics)
         {
-            ASSERT(metric != nullptr);
-            total += metric->get_open_data_file_count(for_read);
+            if (metric != nullptr)
+                total += metric->get_open_data_file_count(for_read);
         }
     }
     return total;
@@ -2817,8 +2815,8 @@ Tsdb::get_open_header_file_count(bool for_read)
     {
         for (auto metric: tsdb->m_metrics)
         {
-            ASSERT(metric != nullptr);
-            total += metric->get_open_header_file_count(for_read);
+            if (metric != nullptr)
+                total += metric->get_open_header_file_count(for_read);
         }
     }
     return total;
@@ -2854,8 +2852,8 @@ Tsdb::unload_no_lock()
     //for (HeaderFile *file: m_header_files) file->close();
     for (auto metric: m_metrics)
     {
-        ASSERT(metric != nullptr);
-        metric->close();
+        if (metric != nullptr)
+            metric->close();
     }
     m_index_file.close();
     m_mode &= ~TSDB_MODE_READ_WRITE;
@@ -2924,7 +2922,7 @@ Tsdb::rotate(TaskData& data)
 
         for (auto metric: tsdb->m_metrics)
         {
-            ASSERT(metric != nullptr);
+            if (metric == nullptr) continue;
             all_closed = all_closed && metric->rotate(now_sec, thrashing_threshold);
         }
 

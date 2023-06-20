@@ -121,6 +121,8 @@ public:
     void add_ts(TimeSeries *ts);    // add 'ts' to the list headed by 'm_ts_head'
     MetricId get_id() const { return m_id; }
 
+    static MetricId get_metric_count() { return m_next_id.load(std::memory_order_relaxed); }
+
     friend class Tsdb;
 
 private:

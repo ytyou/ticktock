@@ -418,6 +418,7 @@ HeaderFile::HeaderFile(FileIndex id, const std::string& file_name) :
     m_id(id),
     m_page_count(g_page_count)
 {
+    ASSERT(file_exists(file_name));
 }
 
 HeaderFile::~HeaderFile()
@@ -653,17 +654,28 @@ DataFile::open(bool for_read)
     else
     {
         ASSERT(m_file == nullptr);
-        m_file = std::fopen(m_name.c_str(), "ab");
+        //m_file = std::fopen(m_name.c_str(), "ab");
+        int fd = ::open(m_name.c_str(), O_WRONLY|O_CREAT|O_APPEND|O_NONBLOCK, S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH);
+        fd = FileDescriptorManager::dup_fd(fd, FileDescriptorType::FD_FILE);
 
-        // get file size
-        int fd = ::fileno(m_file);
-        struct stat sb;
-        if (fstat(fd, &sb) == -1)
-            Logger::error("Failed to fstat file %s, errno = %d", m_name.c_str(), errno);
-        off_t length = sb.st_size;
+        if (fd == -1)
+        {
+            Logger::error("Failed to open file %s for append: %d", m_name.c_str(), errno);
+        }
+        else
+        {
+            // get file size
+            struct stat sb;
+            if (fstat(fd, &sb) == -1)
+                Logger::error("Failed to fstat file %s, errno = %d", m_name.c_str(), errno);
+            off_t length = sb.st_size;
 
-        m_page_index = length / m_page_size;
-        Logger::info("opening %s for write", m_name.c_str());
+            m_page_index = length / m_page_size;
+            Logger::info("opening %s for write", m_name.c_str());
+
+            m_file = fdopen(fd, "ab");
+            ASSERT(m_file != nullptr);
+        }
     }
 }
 

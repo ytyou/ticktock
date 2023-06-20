@@ -40,14 +40,15 @@ std::mutex FileDescriptorManager::m_lock;
 void
 FileDescriptorManager::init()
 {
+    // Logger not initialized yet, do NOT log.
     m_min_step = Config::inst()->get_int(CFG_TCP_MIN_HTTP_STEP, CFG_TCP_MIN_HTTP_STEP_DEF);
     if (m_min_step < 1) m_min_step = 1;
     m_min_file = 0;
     for (int i = 0; i < LISTENER0_COUNT; i++)
         m_min_file += Config::inst()->get_tcp_listener_count(i) + Config::inst()->get_http_listener_count(i);
-    m_min_file = 8 * m_min_file +
+    m_min_file = 10 * m_min_file +
         Config::inst()->get_int(CFG_TCP_MIN_FILE_DESCRIPTOR, CFG_TCP_MIN_FILE_DESCRIPTOR_DEF);
-    if (m_min_file < 10) m_min_file = 10;
+    if (m_min_file < 100) m_min_file = 100;
     m_max_tcp = m_min_file;
 
     struct rlimit limit;
@@ -81,7 +82,10 @@ FileDescriptorManager::dup_fd(int fd, FileDescriptorType type)
 
     if (type == FileDescriptorType::FD_TCP)
     {
-        new_fd = fcntl(fd, F_DUPFD_CLOEXEC, m_min_file);
+        if (fd < m_min_file)
+            new_fd = fcntl(fd, F_DUPFD_CLOEXEC, m_min_file);
+        else
+            new_fd = fd;
 
         if (new_fd >= 0)
         {
@@ -100,12 +104,13 @@ FileDescriptorManager::dup_fd(int fd, FileDescriptorType type)
     }
     else
     {
-        new_fd = fcntl(fd, F_DUPFD_CLOEXEC, m_min_file);
+        new_fd = fd;
+        //new_fd = fcntl(fd, F_DUPFD_CLOEXEC, m_min_file);
     }
 
-    if (LIKELY(new_fd >= 0))
+    if ((new_fd >= 0) && (new_fd != fd))
         close(fd);
-    else
+    else if (new_fd < 0)
     {
         int max_tcp = m_max_tcp.load(std::memory_order_relaxed);
         int min_http = m_min_http.load(std::memory_order_relaxed);

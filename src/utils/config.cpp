@@ -101,8 +101,8 @@ Config::load()
     }
     catch (std::exception& ex)
     {
-        fprintf(stderr, "Failed to read config file %s: %s\n", m_file_name.c_str(), ex.what());
-        throw;
+        fprintf(stderr, "Failed to load config file %s: %s\n", m_file_name.c_str(), ex.what());
+        //throw;
     }
 }
 
