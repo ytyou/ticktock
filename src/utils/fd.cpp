@@ -46,7 +46,7 @@ FileDescriptorManager::init()
     m_min_file = 0;
     for (int i = 0; i < LISTENER0_COUNT; i++)
         m_min_file += Config::inst()->get_tcp_listener_count(i) + Config::inst()->get_http_listener_count(i);
-    m_min_file = 10 * m_min_file +
+    m_min_file = 100 * m_min_file +
         Config::inst()->get_int(CFG_TCP_MIN_FILE_DESCRIPTOR, CFG_TCP_MIN_FILE_DESCRIPTOR_DEF);
     if (m_min_file < 100) m_min_file = 100;
     m_max_tcp = m_min_file;
@@ -71,7 +71,7 @@ FileDescriptorManager::dup_fd(int fd, FileDescriptorType type)
     if (UNLIKELY(fd < 0)) return fd;
     if (UNLIKELY(fd >= m_min_file))
     {
-        if (type == FileDescriptorType::FD_FILE)
+        if (type != FileDescriptorType::FD_HTTP)
             return fd;
         Logger::error("fd (%d) >= m_min_file (%d)", fd, m_min_file);
         close(fd);

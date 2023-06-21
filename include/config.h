@@ -75,7 +75,7 @@
 #define CFG_TCP_MIN_FILE_DESCRIPTOR             "tcp.min.file.descriptor"
 #define CFG_TCP_MIN_FILE_DESCRIPTOR_DEF         64
 #define CFG_TCP_MIN_HTTP_STEP                   "tcp.min.http.step"
-#define CFG_TCP_MIN_HTTP_STEP_DEF               64
+#define CFG_TCP_MIN_HTTP_STEP_DEF               100
 #define CFG_TCP_RESPONDERS_PER_LISTENER         "tcp.responders.per.listener"
 #define CFG_TCP_RESPONDERS_PER_LISTENER_DEF     1
 #define CFG_TCP_RESPONDERS_QUEUE_SIZE           "tcp.responders.queue.size"
