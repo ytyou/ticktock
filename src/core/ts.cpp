@@ -414,12 +414,12 @@ TimeSeries::archive(MetricId mid, Timestamp now_sec, Timestamp threshold_sec)
         }
         else if (((int64_t)now_sec - (int64_t)to_sec(m_buff->get_last_tstamp(mid, m_id))) > (int64_t)threshold_sec)
         {
-            flush_no_lock(true);
+            flush_no_lock(mid, true);
         }
     }
 
     if ((m_ooo_buff != nullptr) && (m_buff == nullptr))
-        flush_no_lock(true);
+        flush_no_lock(mid, true);
 }
 
 
