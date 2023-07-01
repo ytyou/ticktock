@@ -242,6 +242,8 @@ TimeSeries::append(MetricId mid, FILE *file)
 bool
 TimeSeries::add_data_point(MetricId mid, DataPoint& dp)
 {
+    int in_range;
+    bool is_ooo = false;
     const Timestamp tstamp = dp.get_timestamp();
     //std::lock_guard<std::mutex> guard(m_lock);
     std::lock_guard<std::mutex> guard(m_locks[m_id % m_lock_count]);
@@ -252,9 +254,12 @@ TimeSeries::add_data_point(MetricId mid, DataPoint& dp)
         ASSERT(m_ooo_buff == nullptr);
         Tsdb *tsdb = Tsdb::inst(tstamp, true);
         m_buff = new PageInMemory(mid, m_id, tsdb, false);
+        Timestamp last_tstamp = m_buff->get_last_tstamp(mid, m_id);
+        is_ooo = (tstamp < last_tstamp);
     }
-    else if (m_buff->in_range(tstamp) != 0)
+    else if ((in_range = m_buff->in_range(tstamp)) != 0)
     {
+        is_ooo = (in_range < 0);
         m_buff->flush(mid, m_id);
 
         if (m_ooo_buff != nullptr)
@@ -268,12 +273,8 @@ TimeSeries::add_data_point(MetricId mid, DataPoint& dp)
     ASSERT(m_buff != nullptr);
     ASSERT(m_buff->in_range(tstamp) == 0);
 
-    Timestamp last_tstamp = m_buff->get_last_tstamp(mid, m_id);
-
-    if (tstamp <= last_tstamp)
-    {
+    if (is_ooo)
         return add_ooo_data_point(mid, dp);
-    }
 
     bool ok = m_buff->add_data_point(tstamp, dp.get_value());
 
