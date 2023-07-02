@@ -1085,10 +1085,16 @@ Tsdb::Tsdb(TimeRange& range, bool existing, const char *suffix) :
     m_time_range(range),
     m_index_file(Tsdb::get_index_file_name(range, suffix)),
     m_page_size(g_page_size),
-    m_page_count(g_page_count)
+    m_page_count(g_page_count),
+    m_mbucket_count(UINT32_MAX)
 {
     ASSERT(g_tstamp_resolution_ms ? is_ms(range.get_from()) : is_sec(range.get_from()));
 
+    if (Config::inst()->exists(CFG_TSDB_METRIC_BUCKETS))
+    {
+        m_mbucket_count = Config::inst()->get_int(CFG_TSDB_METRIC_BUCKETS);
+        m_metrics.reserve(m_mbucket_count);
+    }
     m_compressor_version =
         Config::inst()->get_int(CFG_TSDB_COMPRESSOR_VERSION,CFG_TSDB_COMPRESSOR_VERSION_DEF);
     m_mode = mode_of();
@@ -1182,6 +1188,9 @@ Tsdb::restore_config(const std::string& dir)
     m_page_count = cfg.get_int(CFG_TSDB_PAGE_COUNT, CFG_TSDB_PAGE_COUNT_DEF);
     m_compressor_version = cfg.get_int(CFG_TSDB_COMPRESSOR_VERSION, CFG_TSDB_COMPRESSOR_VERSION_DEF);
 
+    if (cfg.exists(CFG_TSDB_METRIC_BUCKETS))
+        m_mbucket_count = cfg.get_int(CFG_TSDB_METRIC_BUCKETS);
+
     if (cfg.exists("compacted") && cfg.get_bool("compacted", false))
         m_mode |= TSDB_MODE_COMPACTED;
 }
@@ -1194,6 +1203,9 @@ Tsdb::write_config(const std::string& dir)
     cfg.set_value(CFG_TSDB_PAGE_SIZE, std::to_string(m_page_size));
     cfg.set_value(CFG_TSDB_PAGE_COUNT, std::to_string(m_page_count));
     cfg.set_value(CFG_TSDB_COMPRESSOR_VERSION, std::to_string(m_compressor_version));
+
+    if (m_mbucket_count != UINT32_MAX)
+        cfg.set_value(CFG_TSDB_METRIC_BUCKETS, std::to_string(m_mbucket_count));
 
     if (m_mode & TSDB_MODE_COMPACTED)
         cfg.set_value("compacted", "true");
@@ -1534,13 +1546,14 @@ Tsdb::query_for_data_no_lock(MetricId mid, QueryTask *task)
     HeaderIndex header_idx;
     Timestamp from = m_time_range.get_from();
     TimeRange& query_range = task->get_query_range();
+    uint32_t bucket = mid % m_mbucket_count;
 
     task->get_indices(file_idx, header_idx);
     ASSERT(file_idx != TT_INVALID_FILE_INDEX);
     ASSERT(header_idx != TT_INVALID_HEADER_INDEX);
 
-    ASSERT(mid < m_metrics.size());
-    Metric *metric = m_metrics[mid];
+    ASSERT(bucket < m_metrics.size());
+    Metric *metric = m_metrics[bucket];
 
     if (metric == nullptr)
     {
@@ -1639,6 +1652,7 @@ Tsdb::query_for_data_no_lock(MetricId mid, TimeRange& range, std::vector<QueryTa
         pq.push(task);
     }
 
+    uint32_t bucket = mid % m_mbucket_count;
     FileIndex last_file_idx = TT_INVALID_FILE_INDEX;
 
     while (! pq.empty())
@@ -1652,8 +1666,8 @@ Tsdb::query_for_data_no_lock(MetricId mid, TimeRange& range, std::vector<QueryTa
             task->get_indices(file_idx, header_idx);
             if ((file_idx != last_file_idx) && (last_file_idx != TT_INVALID_FILE_INDEX))
             {
-                ASSERT(mid < m_metrics.size());
-                Metric *metric = m_metrics[mid];
+                ASSERT(bucket < m_metrics.size());
+                Metric *metric = m_metrics[bucket];
 
                 if (metric != nullptr)
                 {
@@ -1899,14 +1913,11 @@ Tsdb::get_last_header_indices(MetricId mid, TimeSeriesId tid, FileIndex& file_id
         fidx = header->m_next_file;
         hidx = header->m_next_header;
     }
-
-    ASSERT((file_idx == TT_INVALID_FILE_INDEX) || (m_metrics[mid] != nullptr));
 }
 
 void
 Tsdb::set_indices(MetricId mid, TimeSeriesId tid, FileIndex prev_file_idx, HeaderIndex prev_header_idx, FileIndex this_file_idx, HeaderIndex this_header_idx)
 {
-    ASSERT(mid < m_metrics.size());
     ASSERT(TT_INVALID_FILE_INDEX != this_file_idx);
     ASSERT(TT_INVALID_HEADER_INDEX != this_header_idx);
 
@@ -1926,9 +1937,10 @@ Tsdb::set_indices(MetricId mid, TimeSeriesId tid, FileIndex prev_file_idx, Heade
 DataFile *
 Tsdb::get_data_file(MetricId mid, FileIndex file_idx)
 {
-    if (mid < m_metrics.size())
+    uint32_t bucket = mid % m_mbucket_count;
+    if (bucket < m_metrics.size())
     {
-        Metric *metric = m_metrics[mid];
+        Metric *metric = m_metrics[bucket];
         if (metric != nullptr)
             return metric->get_data_file(file_idx);
     }
@@ -1938,9 +1950,10 @@ Tsdb::get_data_file(MetricId mid, FileIndex file_idx)
 HeaderFile *
 Tsdb::get_header_file(MetricId mid, FileIndex file_idx)
 {
-    if (mid < m_metrics.size())
+    uint32_t bucket = mid % m_mbucket_count;
+    if (bucket < m_metrics.size())
     {
-        Metric *metric = m_metrics[mid];
+        Metric *metric = m_metrics[bucket];
         if (metric != nullptr)
             return metric->get_header_file(file_idx);
     }
@@ -1958,43 +1971,45 @@ Tsdb::append_page(MetricId mid, TimeSeriesId tid, FileIndex prev_file_idx, Heade
     std::lock_guard<std::mutex> guard(m_lock);
     //WriteLock guard(m_lock);
 
+    uint32_t bucket = mid % m_mbucket_count;
+
     // create Metric if necessary
-    if (mid >= m_metrics.size())
+    if (bucket >= m_metrics.size())
     {
         if (m_metrics.empty())
             m_metrics.reserve(Mapping::get_metric_count());
 
         std::string tsdb_dir = get_tsdb_dir_name(m_time_range); // TODO: tsdb may have a suffix?
-        std::string metric_dir = Metric::get_metric_dir(tsdb_dir, mid);
+        std::string metric_dir = Metric::get_metric_dir(tsdb_dir, bucket);
         Metric *metric = new Metric(metric_dir, m_page_size, m_page_count);
 
-        if (mid == m_metrics.size())
+        if (bucket == m_metrics.size())
             m_metrics.push_back(metric);
         else
         {
-            while (mid > m_metrics.size())
+            while (bucket > m_metrics.size())
                 m_metrics.push_back(nullptr);
             m_metrics.push_back(metric);
         }
     }
-    else if (m_metrics[mid] == nullptr)
+    else if (m_metrics[bucket] == nullptr)
     {
         std::string tsdb_dir = get_tsdb_dir_name(m_time_range); // TODO: tsdb may have a suffix?
-        std::string metric_dir = Metric::get_metric_dir(tsdb_dir, mid);
-        m_metrics[mid] = new Metric(metric_dir, m_page_size, m_page_count);
+        std::string metric_dir = Metric::get_metric_dir(tsdb_dir, bucket);
+        m_metrics[bucket] = new Metric(metric_dir, m_page_size, m_page_count);
     }
 
-    ASSERT(mid < m_metrics.size());
+    ASSERT(bucket < m_metrics.size());
 
     const char *suffix = compact ? TEMP_SUFFIX : nullptr;
     std::string tsdb_dir = get_tsdb_dir_name(m_time_range, suffix);
-    HeaderFile *header_file = m_metrics[mid]->get_last_header(tsdb_dir, get_page_count(), get_page_size());
+    HeaderFile *header_file = m_metrics[bucket]->get_last_header(tsdb_dir, get_page_count(), get_page_size());
 
     //m_load_time = ts_now_sec();
     m_mode |= TSDB_MODE_READ_WRITE;
 
-    ASSERT(m_metrics[mid] != nullptr);
-    DataFile *data_file = m_metrics[mid]->get_last_data();
+    ASSERT(m_metrics[bucket] != nullptr);
+    DataFile *data_file = m_metrics[bucket]->get_last_data();
 
     data_file->ensure_open(false);
     //header_file->ensure_open(false);
@@ -2155,6 +2170,7 @@ Tsdb::insts(const TimeRange& range, std::vector<Tsdb*>& tsdbs)
 bool
 Tsdb::http_api_put_handler(HttpRequest& request, HttpResponse& response)
 {
+    ASSERT(request.content != nullptr);
     char *curr = request.content;
 
     while (std::isspace(*curr))
@@ -2170,6 +2186,7 @@ Tsdb::http_api_put_handler(HttpRequest& request, HttpResponse& response)
 bool
 Tsdb::http_api_put_handler_json(HttpRequest& request, HttpResponse& response)
 {
+    ASSERT(request.content != nullptr);
     char *curr = request.content;
 
     while (std::isspace(*curr))
@@ -2215,6 +2232,7 @@ Tsdb::http_api_put_handler_json(HttpRequest& request, HttpResponse& response)
 bool
 Tsdb::http_api_put_handler_plain(HttpRequest& request, HttpResponse& response)
 {
+    ASSERT(request.content != nullptr);
     Logger::trace("Entered http_api_put_handler_plain()...");
 
     char *curr = request.content;
@@ -2248,6 +2266,7 @@ Tsdb::http_api_put_handler_plain(HttpRequest& request, HttpResponse& response)
     response.content_length = 0;
 
     // safety measure
+    ASSERT((request.length+2) < MemoryManager::get_network_buffer_size());
     curr[request.length] = '\n';
     curr[request.length+1] = ' ';
     curr[request.length+2] = 0;
@@ -2315,6 +2334,7 @@ Tsdb::http_api_put_handler_plain(HttpRequest& request, HttpResponse& response)
 bool
 Tsdb::http_api_write_handler(HttpRequest& request, HttpResponse& response)
 {
+    ASSERT(request.content != nullptr);
     Logger::trace("Entered http_api_put_handler_influx()...");
 
     char *curr = request.content;

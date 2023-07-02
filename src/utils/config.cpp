@@ -118,7 +118,7 @@ Config::persist()
     std::lock_guard<std::mutex> guard(m_lock);
     std::fstream file(m_file_name, std::ios::out);
 
-    file << "; ticktockdb.version = " << TT_MAJOR_VERSION << "." << TT_MINOR_VERSION << "." << TT_PATCH_VERSION << std::endl;
+    file << "# ticktockdb.version = " << TT_MAJOR_VERSION << "." << TT_MINOR_VERSION << "." << TT_PATCH_VERSION << std::endl;
 
     for (const auto& prop: m_properties)
         file << prop.second->get_name() << " = " << prop.second->as_str() << std::endl;

@@ -365,6 +365,7 @@ private:
     IndexFile m_index_file;
     //std::vector<HeaderFile*> m_header_files;
     //std::vector<DataFile*> m_data_files;
+    uint32_t m_mbucket_count;   // max size of m_metrics[]
     std::vector<Metric*> m_metrics; // indexed by MetricId
 
     // this is true if, 1. m_map is populated; 2. m_page_mgr is open; 3. m_meta_file is open;

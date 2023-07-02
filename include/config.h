@@ -125,6 +125,7 @@
 #define CFG_TSDB_GC_FREQUENCY_DEF               "1d"
 #define CFG_TSDB_MAX_DP_LINE                    "tsdb.max.dp.line"
 #define CFG_TSDB_MAX_DP_LINE_DEF                256
+#define CFG_TSDB_METRIC_BUCKETS                 "tsdb.metric.buckets"
 #define CFG_TSDB_MIN_DISK_SPACE                 "tsdb.min.disk.space"
 #define CFG_TSDB_MIN_DISK_SPACE_DEF             4
 #define CFG_TSDB_READ_ONLY_THRESHOLD            "tsdb.read_only.threshold"
