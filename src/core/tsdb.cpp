@@ -1681,6 +1681,9 @@ Tsdb::query_for_data_no_lock(MetricId mid, TimeRange& range, std::vector<QueryTa
         query_for_data_no_lock(mid, task);
         task->get_indices(file_idx, header_idx);
 
+        if (! get_out_of_order(task->get_ts_id()))
+            task->merge_data();
+
         if (file_idx != TT_INVALID_FILE_INDEX && header_idx != TT_INVALID_HEADER_INDEX)
             pq.push(task);
     }
@@ -1877,6 +1880,20 @@ Tsdb::get_last_tstamp(MetricId mid, TimeSeriesId tid)
     }
 
     return tstamp;
+}
+
+bool
+Tsdb::get_out_of_order(TimeSeriesId tid)
+{
+    return m_index_file.get_out_of_order(tid);
+}
+
+void
+Tsdb::set_out_of_order(TimeSeriesId tid, bool ooo)
+{
+    std::lock_guard<std::mutex> guard(m_lock);
+    m_index_file.ensure_open(false);
+    m_index_file.set_out_of_order(tid, ooo);
 }
 
 // this is only called when writing data points

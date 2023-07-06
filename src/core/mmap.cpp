@@ -344,7 +344,11 @@ IndexFile::expand(off_t new_len)
 
     // TODO: memcpy()?
     for ( ; old_idx < new_idx; old_idx++)
+    {
+        entries[old_idx].flags = 0;
         entries[old_idx].file_index = TT_INVALID_FILE_INDEX;
+        entries[old_idx].header_index = TT_INVALID_HEADER_INDEX;
+    }
 
     Logger::debug("index file %s length: %" PRIu64, m_name.c_str(), get_length());
 
@@ -370,11 +374,9 @@ IndexFile::set_indices(TimeSeriesId id, FileIndex file_index, HeaderIndex header
         pages = get_pages();
     }
 
-    struct index_entry entry;
-    entry.file_index = file_index;
-    entry.header_index = header_index;
     struct index_entry *entries = (struct index_entry*)pages;
-    entries[id] = entry;
+    entries[id].file_index = file_index;
+    entries[id].header_index = header_index;
 
     return true;
 }
@@ -399,6 +401,53 @@ IndexFile::get_indices(TimeSeriesId id, FileIndex& file_index, HeaderIndex& head
         file_index = entry.file_index;
         header_index = entry.header_index;
     }
+}
+
+bool
+IndexFile::get_out_of_order(TimeSeriesId id)
+{
+    void *pages = get_pages();
+
+    size_t idx = (id+1) * TT_INDEX_SIZE;
+    size_t len = get_length();
+
+    if ((len <= idx) || (pages == nullptr))
+    {
+        return false;
+    }
+    else
+    {
+        struct index_entry *entries = (struct index_entry*)pages;
+        struct index_entry entry = entries[id];
+        return entry.flags & 0x01;
+    }
+}
+
+void
+IndexFile::set_out_of_order(TimeSeriesId id, bool ooo)
+{
+    void *pages = get_pages();
+    ASSERT(pages != nullptr);
+    ASSERT(! is_read_only());
+
+    size_t new_len = (id+1) * TT_INDEX_SIZE;
+    size_t old_len = get_length();
+    ASSERT(0 < old_len);
+
+    if (old_len < new_len)
+    {
+        // file too small, expand it
+        if (! expand(new_len + TT_SIZE_INCREMENT))
+            return;
+        pages = get_pages();
+    }
+
+    struct index_entry *entries = (struct index_entry*)pages;
+
+    if (ooo)
+        entries[id].flags |= 0x01;
+    else
+        entries[id].flags &= ~0x01;
 }
 
 

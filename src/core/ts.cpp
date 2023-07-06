@@ -309,6 +309,7 @@ TimeSeries::add_ooo_data_point(MetricId mid, DataPoint& dp)
     {
         Tsdb *tsdb = Tsdb::inst(tstamp, true);
         m_ooo_buff = new PageInMemory(mid, m_id, tsdb, true);
+        tsdb->set_out_of_order(m_id, true);
     }
     else if (m_ooo_buff->in_range(tstamp) != 0)
     {
@@ -319,6 +320,7 @@ TimeSeries::add_ooo_data_point(MetricId mid, DataPoint& dp)
 
         Tsdb *tsdb = Tsdb::inst(tstamp, true);
         m_ooo_buff->init(mid, m_id, tsdb, true);
+        tsdb->set_out_of_order(m_id, true);
     }
 
     bool ok = m_ooo_buff->add_data_point(tstamp, dp.get_value());

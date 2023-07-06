@@ -72,6 +72,7 @@ private:
 
 struct __attribute__ ((__packed__)) index_entry
 {
+    uint8_t flags;
     FileIndex file_index;
     HeaderIndex header_index;
 };
@@ -85,6 +86,9 @@ public:
 
     bool set_indices(TimeSeriesId id, FileIndex file_index, HeaderIndex page_index);
     void get_indices(TimeSeriesId id, FileIndex& file_index, HeaderIndex& page_index);
+
+    bool get_out_of_order(TimeSeriesId id);
+    void set_out_of_order(TimeSeriesId id, bool ooo);
 
 private:
     bool expand(off_t new_len);
