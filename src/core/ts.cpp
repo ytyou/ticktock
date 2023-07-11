@@ -165,20 +165,20 @@ TimeSeries::cleanup()
 }
 
 void
-TimeSeries::restore(Tsdb *tsdb, MetricId mid, Timestamp tstamp, PageSize offset, uint8_t start, uint8_t *buff, bool is_ooo)
+TimeSeries::restore(Tsdb *tsdb, MetricId mid, Timestamp tstamp, PageSize offset, uint8_t start, uint8_t *buff, bool is_ooo, FileIndex file_idx, HeaderIndex header_idx)
 {
     ASSERT(tsdb != nullptr);
 
     if (is_ooo)
     {
         ASSERT(m_ooo_buff == nullptr);
-        m_ooo_buff = new PageInMemory(mid, m_id, tsdb, true);
+        m_ooo_buff = new PageInMemory(mid, m_id, tsdb, true, file_idx, header_idx);
         m_ooo_buff->restore(tstamp, buff, offset, start);
     }
     else
     {
         ASSERT(m_buff == nullptr);
-        m_buff = new PageInMemory(mid, m_id, tsdb, false);
+        m_buff = new PageInMemory(mid, m_id, tsdb, false, file_idx, header_idx);
         m_buff->restore(tstamp, buff, offset, start);
     }
 }

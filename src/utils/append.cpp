@@ -149,6 +149,8 @@ AppendLog::restore(std::vector<TimeSeries*>& tsv)
         PageSize offset = ((struct append_log_entry*)buff)->offset;
         uint8_t start = ((struct append_log_entry*)buff)->start;
         uint8_t is_ooo = ((struct append_log_entry*)buff)->is_ooo;
+        FileIndex file_idx = ((struct append_log_entry*)buff)->file_idx;
+        HeaderIndex header_idx = ((struct append_log_entry*)buff)->header_idx;
 
         if (tsv.size() <= tid)
         {
@@ -175,7 +177,7 @@ AppendLog::restore(std::vector<TimeSeries*>& tsv)
             continue;
         }
 
-        ts->restore(tsdb, mid, tstamp, offset, start, (uint8_t*)buff, (is_ooo==(uint8_t)1));
+        ts->restore(tsdb, mid, tstamp, offset, start, (uint8_t*)buff, (is_ooo==(uint8_t)1), file_idx, header_idx);
     }
 
     if (file != nullptr)

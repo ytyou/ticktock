@@ -231,6 +231,8 @@ struct __attribute__ ((__packed__)) append_log_entry
     PageSize offset;
     uint8_t start;
     uint8_t is_ooo;
+    FileIndex file_idx;
+    HeaderIndex header_idx;
 };
 
 
@@ -238,6 +240,7 @@ class __attribute__ ((__packed__)) PageInMemory
 {
 public:
     PageInMemory(MetricId mid, TimeSeriesId tid, Tsdb *tsdb, bool is_ooo, PageSize actual_size = 0);
+    PageInMemory(MetricId mid, TimeSeriesId tid, Tsdb *tsdb, bool is_ooo, FileIndex file_idx, HeaderIndex header_idx);
     ~PageInMemory();
 
     // prepare to be used to represent a different page
@@ -264,6 +267,7 @@ public:
     void update_indices(PageInMemory *info);
 
     void init(MetricId mid, TimeSeriesId tid, Tsdb *tsdb, bool is_ooo, PageSize actual_size = 0);
+    void init(MetricId mid, TimeSeriesId tid, Tsdb *tsdb, bool is_ooo, FileIndex file_idx, HeaderIndex header_idx);
     PageSize flush(MetricId mid, TimeSeriesId tid, bool compact = false);  // return next page size
     void append(MetricId mid, TimeSeriesId tid, FILE *file);
     void restore(Timestamp tstamp, uint8_t *buff, PageSize offset, uint8_t start);

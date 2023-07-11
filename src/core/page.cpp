@@ -144,6 +144,18 @@ PageInMemory::PageInMemory(MetricId mid, TimeSeriesId tid, Tsdb *tsdb, bool is_o
     init(mid, tid, tsdb, is_ooo, actual_size);
 }
 
+// used during restore
+PageInMemory::PageInMemory(MetricId mid, TimeSeriesId tid, Tsdb *tsdb, bool is_ooo, FileIndex file_idx, HeaderIndex header_idx) :
+    m_compressor(nullptr),
+    m_page(nullptr),
+    m_tsdb(nullptr),
+    m_start(0)
+{
+    m_page_header.init();
+    ASSERT(m_page == nullptr);
+    init(mid, tid, tsdb, is_ooo, file_idx, header_idx);
+}
+
 PageInMemory::~PageInMemory()
 {
     if (m_tsdb != nullptr)
@@ -202,6 +214,34 @@ PageInMemory::init(MetricId mid, TimeSeriesId tid, Tsdb *tsdb, bool is_ooo, Page
     setup_compressor(tsdb->get_time_range(), actual_size, compressor_version);
 }
 
+// used during restore
+void
+PageInMemory::init(MetricId mid, TimeSeriesId tid, Tsdb *tsdb, bool is_ooo, FileIndex file_idx, HeaderIndex header_idx)
+{
+    ASSERT(tsdb != nullptr);
+    ASSERT(m_tsdb == nullptr);
+
+    // preserve m_page_header.m_next_file and m_page_header.m_next_header, if
+    // tsdb remains the same...
+    Timestamp from = tsdb->get_time_range().get_from();
+
+    m_page_header.init();
+    m_page_header.set_out_of_order(is_ooo);
+
+    m_tsdb = tsdb;
+    m_start = from;
+
+    m_page_header.m_next_file = file_idx;
+    m_page_header.m_next_header = header_idx;
+    ASSERT((file_idx == TT_INVALID_FILE_INDEX) || (tsdb->get_header_file(mid, file_idx) != nullptr));
+
+    ASSERT(m_page == nullptr);
+    m_page = malloc(tsdb->get_page_size());
+    PageSize actual_size = tsdb->get_page_size();
+    int compressor_version = is_ooo ? 0 : tsdb->get_compressor_version();
+    setup_compressor(tsdb->get_time_range(), actual_size, compressor_version);
+}
+
 PageSize
 PageInMemory::flush(MetricId mid, TimeSeriesId tid, bool compact)
 {
@@ -245,14 +285,16 @@ PageInMemory::append(MetricId mid, TimeSeriesId tid, FILE *file)
             .tstamp = m_compressor->get_start_tstamp(),
             .offset = position.m_offset,
             .start = position.m_start,
-            .is_ooo = is_out_of_order() ? (uint8_t)1 : (uint8_t)0
+            .is_ooo = is_out_of_order() ? (uint8_t)1 : (uint8_t)0,
+            .file_idx = m_page_header.m_next_file,
+            .header_idx = m_page_header.m_next_header
         };
 
     int ret;
     ret = fwrite(&header, 1, sizeof(header), file);
     if (ret != sizeof(header)) Logger::error("PageInMemory::append() failed");
     ret = fwrite(m_page, 1, position.m_offset, file);
-    std::fflush(file);
+    //std::fflush(file);
     if (ret != position.m_offset) Logger::error("PageInMemory::append() failed");
     ASSERT(m_page != nullptr);
 }
