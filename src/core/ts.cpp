@@ -269,6 +269,11 @@ TimeSeries::add_data_point(MetricId mid, DataPoint& dp)
         Tsdb *tsdb = Tsdb::inst(tstamp, true);
         m_buff->init(mid, m_id, tsdb, false);
     }
+    else
+    {
+        Timestamp last_tstamp = m_buff->get_last_tstamp(mid, m_id);
+        is_ooo = (tstamp < last_tstamp);
+    }
 
     ASSERT(m_buff != nullptr);
     ASSERT(m_buff->in_range(tstamp) == 0);
