@@ -75,9 +75,9 @@ public:
     {
     }
 
-    CompressorPosition(struct page_info_on_disk *piod) :
-        m_offset(piod->m_cursor),
-        m_start(piod->m_start)
+    CompressorPosition(struct compress_info_on_disk *ciod) :
+        m_offset(ciod->m_cursor),
+        m_start(ciod->m_start)
     {
     }
 

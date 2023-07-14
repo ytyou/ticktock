@@ -209,13 +209,13 @@ inspect_page(FileIndex file_idx, HeaderIndex header_idx, struct tsdb_header *tsd
     // dump page header
     if (g_verbose)
     {
-        printf("     [%u,%u][offset=%u,size=%u,cursor=%u,start=%u,flags=%x,page-idx=%u,from=%u,to=%u,next-file=%u,next-header=%u]\n",
+        printf("     [%u,%u][offset=%u,size=%u,flags=%x,page-idx=%u,from=%u,to=%u,next-file=%u,next-header=%u]\n",
             file_idx,
             header_idx,
             page_header->m_offset,
             page_header->m_size,
-            page_header->m_cursor,
-            page_header->m_start,
+            //page_header->m_cursor,
+            //page_header->m_start,
             page_header->m_flags,
             page_header->m_page_index,
             page_header->m_tstamp_from,
@@ -228,8 +228,10 @@ inspect_page(FileIndex file_idx, HeaderIndex header_idx, struct tsdb_header *tsd
     DataPointVector dps;
     dps.reserve(256);
     Compressor *compressor = Compressor::create(compressor_version);
-    CompressorPosition position(page_header);
-    compressor->init(start_time, (uint8_t*)page_base, tsdb_header->m_page_size);
+    struct compress_info_on_disk *ciod =
+        reinterpret_cast<struct compress_info_on_disk*>(page_base);
+    CompressorPosition position(ciod);
+    compressor->init(start_time, (uint8_t*)page_base+sizeof(struct compress_info_on_disk), tsdb_header->m_page_size);
     compressor->restore(dps, position, nullptr);
     if (g_verbose)
     {
@@ -263,8 +265,11 @@ inspect_page_for_restore(const char *metric, const char *tags, FileIndex file_id
     DataPointVector dps;
     dps.reserve(256);
     Compressor *compressor = Compressor::create(compressor_version);
-    CompressorPosition position(page_header);
-    compressor->init(start_time, (uint8_t*)page_base, tsdb_header->m_page_size);
+    struct compress_info_on_disk *ciod =
+        reinterpret_cast<struct compress_info_on_disk*>(page_base);
+    CompressorPosition position(ciod);
+    compressor->init(start_time, (uint8_t*)page_base+sizeof(struct compress_info_on_disk),
+        tsdb_header->m_page_size-sizeof(struct compress_info_on_disk));
     compressor->restore(dps, position, nullptr);
 
     if (tags != nullptr)

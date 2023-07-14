@@ -1573,7 +1573,7 @@ Tsdb::query_for_data_no_lock(MetricId mid, QueryTask *task)
         PThread_Lock lock(data_file->get_lock());
         lock.lock_for_read();
         data_file->ensure_open(true);
-        void *page = data_file->get_page(page_header->m_page_index, page_header->m_offset, page_header->m_cursor);
+        void *page = data_file->get_page(page_header->m_page_index, page_header->m_offset);
 
         if (page == nullptr)
         {
@@ -1582,7 +1582,7 @@ Tsdb::query_for_data_no_lock(MetricId mid, QueryTask *task)
             data_file->remap();
             lock.unlock();
             lock.lock_for_read();
-            page = data_file->get_page(page_header->m_page_index, page_header->m_offset, page_header->m_cursor);
+            page = data_file->get_page(page_header->m_page_index, page_header->m_offset);
         }
 
         if (page == nullptr)
@@ -1851,7 +1851,7 @@ Tsdb::get_last_tstamp(MetricId mid, TimeSeriesId tid)
         PThread_Lock lock(data_file->get_lock());
         lock.lock_for_read();
         data_file->ensure_open(true);
-        void *page = data_file->get_page(page_header->m_page_index, page_header->m_offset, page_header->m_cursor);
+        void *page = data_file->get_page(page_header->m_page_index, page_header->m_offset);
 
         if (page == nullptr)
         {
@@ -1860,7 +1860,7 @@ Tsdb::get_last_tstamp(MetricId mid, TimeSeriesId tid)
             data_file->remap();
             lock.unlock();
             lock.lock_for_read();
-            page = data_file->get_page(page_header->m_page_index, page_header->m_offset, page_header->m_cursor);
+            page = data_file->get_page(page_header->m_page_index, page_header->m_offset);
         }
 
         if (page == nullptr)

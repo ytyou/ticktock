@@ -814,18 +814,31 @@ DataFile::flush(bool sync)
 // it will return nullptr. In this case, you need to
 // remap the file.
 void *
-DataFile::get_page(PageIndex idx, PageSize offset, PageSize cursor)
+DataFile::get_page(PageIndex idx, PageSize offset)
 {
     ASSERT(idx != TT_INVALID_PAGE_INDEX);
 
+    // make sure the 'compress_info_on_disk' at the beginning of
+    // the page is already mapped into memory
+    PageSize cursor = sizeof(struct compress_info_on_disk);
     long page_idx = idx * m_page_size;
-    if ((page_idx + cursor) > get_length())
+    if ((page_idx + offset + cursor) > get_length())
         return nullptr;     // needs remap
 
     uint8_t *pages = (uint8_t*)get_pages();
     ASSERT(pages != nullptr);
+    uint8_t *page = pages + page_idx + offset;
+
+    // make sure the whole page is already mapped into memory
+    struct compress_info_on_disk *ciod =
+        reinterpret_cast<struct compress_info_on_disk*>(page);
+    cursor += ciod->m_cursor;
+    if (ciod->m_start != 0) cursor++;
+    if ((page_idx + offset + cursor) > get_length())
+        return nullptr;     // needs remap
+
     m_last_read = ts_now_sec();
-    return (void*)(pages + page_idx + offset);
+    return (void*)(page);
 }
 
 

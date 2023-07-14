@@ -57,7 +57,10 @@ PageInMemory::is_empty()
     if (m_compressor != nullptr)
         return m_compressor->is_empty();
     else
-        return get_page_header()->is_empty();
+    {
+        struct compress_info_on_disk *ciod = get_compress_header();
+        return ciod == nullptr || ciod->is_empty();
+    }
 }
 
 TimeRange
@@ -86,10 +89,13 @@ PageInMemory::setup_compressor(const TimeRange& range, PageSize page_size, int c
         m_compressor = nullptr;
     }
 
+    PageSize compress_info_size = sizeof(struct compress_info_on_disk);
     RecyclableType type =
         (RecyclableType)(compressor_version + RecyclableType::RT_COMPRESSOR_V0);
     m_compressor = (Compressor*)MemoryManager::alloc_recyclable(type);
-    m_compressor->init(range.get_from(), reinterpret_cast<uint8_t*>(m_page), page_size);
+    m_compressor->init(range.get_from(),
+                       reinterpret_cast<uint8_t*>(m_page) + compress_info_size,
+                       page_size - compress_info_size);
 }
 
 void
@@ -254,10 +260,12 @@ PageInMemory::flush(MetricId mid, TimeSeriesId tid, bool compact)
 
     CompressorPosition position;
     m_compressor->save(position);
-    m_compressor->save((uint8_t*)m_page);
+    m_compressor->save((uint8_t*)m_page + sizeof(struct compress_info_on_disk));
 
-    m_page_header.m_cursor = position.m_offset;
-    m_page_header.m_start = position.m_start;
+    struct compress_info_on_disk *ciod = get_compress_header();
+    ciod->m_cursor = position.m_offset;
+    ciod->m_start = position.m_start;
+
     m_page_header.m_size = m_compressor->size();
     m_page_header.set_full(m_compressor->is_full());
     m_page_header.m_next_file = TT_INVALID_FILE_INDEX;
@@ -309,7 +317,7 @@ PageInMemory::restore(Timestamp tstamp, uint8_t *buff, PageSize offset, uint8_t 
     DataPointVector dps;
     CompressorPosition position(offset, start);
     m_compressor->set_start_tstamp(tstamp);
-    m_compressor->restore(dps, position, buff);
+    m_compressor->restore(dps, position, buff + sizeof(struct compress_info_on_disk));
 
     struct page_info_on_disk *header = get_page_header();
     ASSERT(header != nullptr);
