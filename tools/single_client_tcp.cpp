@@ -82,7 +82,7 @@ tcp_send(int fd, const char *body, int len)
         sent_total += sent;
     }
 
-    std::cout << body<< " " << sent_total << "bytes sent\n";
+    //std::cout << body<< " " << sent_total << "bytes sent\n";
 
     return 0;
 }
@@ -148,6 +148,7 @@ int main(int argc, char* args[])
 	// Each line is supposed to be a Opentsdb PUT.
 	while(std::getline(std::cin, line))
 	{
+		line.append("\n");
 		tcp_send(fd, line.c_str(), line.length());
 	}
 	return 0;
