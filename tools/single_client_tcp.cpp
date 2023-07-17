@@ -26,7 +26,7 @@
 
 #include <iostream>
 #include <stdio.h>
-#include <string>
+#include <string.h>
 #include <netinet/ip.h>
 #include <arpa/inet.h>
 #include <sys/socket.h>
