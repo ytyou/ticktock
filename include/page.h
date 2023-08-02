@@ -124,6 +124,38 @@ struct __attribute__ ((__packed__)) compress_info_on_disk
 };
 
 
+struct __attribute__ ((__packed__)) page_info_ext
+{
+    uint8_t m_flags;            //  8-bit
+    PageIndex m_page_index;     // 32-bit
+    uint32_t m_tstamp_to;       // 32-bit
+
+    void init()
+    {
+        m_flags = 0;
+        m_tstamp_to = 0;
+        m_page_index = TT_INVALID_PAGE_INDEX;
+    }
+
+    void init(struct page_info_ext *ext)
+    {
+        ASSERT(ext != nullptr);
+        m_flags = ext->m_flags;
+        m_tstamp_to = ext->m_tstamp_to;
+        m_page_index = ext->m_page_index;
+    }
+
+//    void init(const TimeRange& range);
+
+    inline bool is_full() const { return ((m_flags & 0x01) != 0); }
+    inline bool is_out_of_order() const { return ((m_flags & 0x02) != 0); }
+    inline bool is_valid() const { return (m_page_index != TT_INVALID_PAGE_INDEX); }
+
+    inline void set_full(bool full) { m_flags = (full ? (m_flags | 0x01) : (m_flags & 0xFE)); }
+    inline void set_out_of_order(bool ooo) { m_flags = (ooo ? (m_flags | 0x02) : (m_flags & 0xFD)); }
+};
+
+
 /* There will be an array of page_info_on_disk immediately following the
  * tsdb_header (defined above) at the beginning of each tsdb data file;
  * The number of page_info_on_disk in this array is determined by the
@@ -154,84 +186,160 @@ struct __attribute__ ((__packed__)) page_info_on_disk
 {
     PageSize m_offset;          // 16-bit
     PageSize m_size;            // 16-bit
-    //PageSize m_cursor;          // 16-bit
-    //uint8_t m_start;            //  8-bit
-    uint8_t m_flags;            //  8-bit
-    PageIndex m_page_index;     // 32-bit
     uint32_t m_tstamp_from;     // 32-bit
-    uint32_t m_tstamp_to;       // 32-bit
+//    uint32_t m_tstamp_to;       // 32-bit
     FileIndex m_next_file;      // 16-bit
     HeaderIndex m_next_header;  // 32-bit
+    struct page_info_ext m_pages[1];
 
-    void init()
+    void init(int page_cnt)
     {
-        //m_offset = m_size = m_cursor = 0;
-        //m_start = m_flags = 0;
+        ASSERT(page_cnt > 0);
+
         m_offset = m_size = 0;
-        m_flags = 0;
-        m_page_index = TT_INVALID_PAGE_INDEX;
+        //m_flags = 0;
+        //m_page_index = TT_INVALID_PAGE_INDEX;
         m_tstamp_from = UINT32_MAX;
-        m_tstamp_to = 0;
+        //m_tstamp_to = 0;
         m_next_file = TT_INVALID_FILE_INDEX;
         m_next_header = TT_INVALID_HEADER_INDEX;
+
+        for (int i = 0; i < page_cnt; i++)
+            m_pages[i].init();
     }
 
-    void init(struct page_info_on_disk *header)
+    void init(int page_cnt, struct page_info_on_disk *header)
     {
+        ASSERT(page_cnt > 0);
         ASSERT(header != nullptr);
 
         m_offset = header->m_offset;
         m_size = header->m_size;
-        //m_cursor = header->m_cursor;
-        //m_start = header->m_start;
-        m_flags = header->m_flags;
-        m_page_index = header->m_page_index;
+        //m_flags = header->m_flags;
+        //m_page_index = header->m_page_index;
         m_tstamp_from = header->m_tstamp_from;
-        m_tstamp_to = header->m_tstamp_to;
+        //m_tstamp_to = header->m_tstamp_to;
         m_next_file = header->m_next_file;
         m_next_header = header->m_next_header;
+
+        for (int i = 0; i < page_cnt; i++)
+            m_pages[i].init(&header->m_pages[i]);
     }
 
-    void init(const TimeRange& range)
+/*
+    void init(int page_cnt, const TimeRange& range)
     {
-        //m_offset = m_size = m_cursor = 0;
-        //m_start = m_flags = 0;
+        ASSERT(page_cnt > 0);
+
         m_offset = m_size = 0;
-        m_flags = 0;
-        m_page_index = 0;
+        //m_flags = 0;
+        //m_page_index = 0;
         m_tstamp_from = 0;
         m_tstamp_to = range.get_duration();
+
+        for (int i = 0; i < page_cnt; i++)
+            m_pages[i].init(range);
     }
 
     void init(PageSize cursor, uint8_t start, bool is_full, uint32_t from, uint32_t to)
     {
-        //m_cursor = cursor;
-        //m_start = start;
         m_tstamp_from = from;
         m_tstamp_to = to;
         set_full(is_full);
     }
+*/
 
-    inline bool is_full() const { return ((m_flags & 0x01) != 0); }
-    inline bool is_out_of_order() const { return ((m_flags & 0x02) != 0); }
+    inline bool is_full(PageCount ext_cnt) const { return m_pages[ext_cnt-1].m_page_index != TT_INVALID_PAGE_INDEX; }
     inline bool is_empty(struct compress_info_on_disk *ciod) const { return ((ciod->m_cursor == 0) && (ciod->m_start == 0)); }
-    inline bool is_valid() const { return (m_page_index != TT_INVALID_PAGE_INDEX); }
+    //inline bool is_valid(PageIndex idx) const { return (m_page_index != TT_INVALID_PAGE_INDEX); }
     inline PageSize get_size() const { return m_size; }
-    inline long int get_global_page_index(FileIndex file_idx, PageCount page_count) const
+
+    uint32_t get_tstamp_to(PageCount ext_idx) const
     {
-        return ((long int)file_idx * (long int)page_count) + (long int)m_page_index;
+        return m_pages[ext_idx].m_tstamp_to;
     }
 
-    inline void set_full(bool full) { m_flags = (full ? (m_flags | 0x01) : (m_flags & 0xFE)); }
-    inline void set_out_of_order(bool ooo) { m_flags = (ooo ? (m_flags | 0x02) : (m_flags & 0xFD)); }
+    void set_tstamp_to(PageCount ext_idx, uint32_t tstamp)
+    {
+        m_pages[ext_idx].m_tstamp_to = tstamp;
+    }
+
+    bool is_out_of_order(PageCount ext_cnt) const
+    {
+        for (int i = 0; i < ext_cnt; i++)
+        {
+            if (m_pages[i].m_page_index == TT_INVALID_PAGE_INDEX)
+                break;
+            if (! m_pages[i].is_out_of_order())
+                return false;
+        }
+        return true;
+    }
+
+    struct page_info_ext *get_page_ext(int idx)
+    {
+        return &m_pages[idx];
+    }
+
+    struct page_info_ext *get_last_ext(PageCount ext_cnt)
+    {
+        for (ext_cnt--; ; ext_cnt--)
+        {
+            if (m_pages[ext_cnt].m_page_index != TT_INVALID_PAGE_INDEX)
+                return &m_pages[ext_cnt];
+        }
+        return nullptr;
+    }
+
+    /* @return  Next available page_info_ext, or nullptr if none is available;
+     */
+    struct page_info_ext *get_new_ext(PageCount ext_cnt)
+    {
+        struct page_info_ext *ext = nullptr;
+        for (PageCount i = 0; i < ext_cnt; i++)
+        {
+            if (m_pages[i].m_page_index == TT_INVALID_HEADER_INDEX)
+            {
+                ext = &m_pages[i];
+                break;
+            }
+        }
+        return ext;
+    }
+
+    PageCount add_ext(struct page_info_ext *ext, PageCount ext_cnt)
+    {
+        ASSERT(ext_cnt > 0);
+        ASSERT(m_pages[ext_cnt-1].m_page_index == TT_INVALID_PAGE_INDEX);
+
+        int i;
+
+        for (i = ext_cnt-1; i > 0; i--)
+        {
+            if (m_pages[i].m_page_index != TT_INVALID_PAGE_INDEX)
+                break;
+        }
+        i++;    // first empty slot
+        ASSERT(i < ext_cnt);
+        ASSERT(m_pages[i].m_page_index == TT_INVALID_PAGE_INDEX);
+        m_pages[i].init(ext);
+        return i;
+    }
+
+    static inline long int get_global_page_index(FileIndex file_idx, PageCount page_count, PageIndex page_idx)
+    {
+        return ((long int)file_idx * (long int)page_count) + (long int)page_idx;
+    }
+
+    //inline void set_full(PageIndex idx, bool full) { m_flags = (full ? (m_flags | 0x01) : (m_flags & 0xFE)); }
+    //inline void set_out_of_order(PageIndex idx, bool ooo) { m_flags = (ooo ? (m_flags | 0x02) : (m_flags & 0xFD)); }
 
     inline FileIndex get_next_file() const { return m_next_file; }
     inline HeaderIndex get_next_header() const { return m_next_header; }
 
     char *c_str(char *buff, size_t size)
     {
-        snprintf(buff, size, "off=%d size=%d flags=%x idx=%d from=%d to=%d",
-            m_offset, m_size, m_flags, m_page_index, m_tstamp_from, m_tstamp_to);
+        snprintf(buff, size, "off=%d size=%d from=%d", m_offset, m_size, m_tstamp_from);
         return buff;
     }
 };
@@ -260,7 +368,7 @@ public:
     // prepare to be used to represent a different page
     bool is_full();
     bool is_empty();
-    inline bool is_out_of_order() { return get_page_header()->is_out_of_order(); }
+    inline bool is_out_of_order() { return get_page_header_ext()->is_out_of_order(); }
 
     Timestamp get_last_tstamp(MetricId mid, TimeSeriesId tid) const;
     TimeRange get_time_range();
@@ -290,11 +398,6 @@ public:
     bool add_data_point(Timestamp tstamp, double value);
     PageIndex get_global_page_index() { return TT_INVALID_PAGE_INDEX - 1; }
 
-    inline struct page_info_on_disk *get_page_header()
-    {
-        return &m_page_header;
-    }
-
     inline struct compress_info_on_disk *get_compress_header()
     {
         return reinterpret_cast<struct compress_info_on_disk*>(m_page);
@@ -304,12 +407,23 @@ private:
     friend class DataFile;
     //friend class page_info_index_less;
 
+    inline struct page_info_on_disk *get_page_header()
+    {
+        return &m_page_header;
+    }
+
+    inline struct page_info_ext *get_page_header_ext()
+    {
+        return &m_page_header.m_pages[0];
+    }
+
+    Timestamp m_tstamp_from;
     struct page_info_on_disk m_page_header;
 
 protected:
     Tsdb *m_tsdb;
     void *m_page;
-    Timestamp m_start;
+    Timestamp m_start;  // beginning of the TSDB range
     Compressor *m_compressor;
 
 };  // class PageInMemory

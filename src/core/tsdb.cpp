@@ -953,13 +953,16 @@ Metric::get_header_file(FileIndex file_idx)
 }
 
 HeaderFile *
-Metric::get_last_header(std::string& tsdb_dir, PageCount page_cnt, PageSize page_size)
+Metric::get_last_header(Tsdb *tsdb, std::string& tsdb_dir, FileIndex& file_idx, HeaderIndex& header_idx, PageCount page_cnt, PageSize page_size)
 {
-    HeaderFile *header_file;
+    HeaderFile *header_file = nullptr;
 
     if (m_header_files.empty())
     {
         ASSERT(m_data_files.empty());
+        ASSERT(file_idx == TT_INVALID_FILE_INDEX);
+        ASSERT(header_idx == TT_INVALID_HEADER_INDEX);
+
         // make sure the metric directory under tsdb exists
         std::string metric_dir = get_metric_dir(tsdb_dir);
         create_dir(metric_dir);
@@ -967,8 +970,22 @@ Metric::get_last_header(std::string& tsdb_dir, PageCount page_cnt, PageSize page
         header_file = new HeaderFile(get_header_file_name(tsdb_dir, 0), 0, page_cnt, page_size),
         m_header_files.push_back(header_file);
         m_data_files.push_back(new DataFile(get_data_file_name(tsdb_dir, 0), 0, page_size, page_cnt));
+
+        file_idx = header_file->get_id();
+        header_idx = header_file->new_header_index(tsdb);
+        ASSERT(header_idx != TT_INVALID_HEADER_INDEX);
     }
-    else
+    else if (file_idx != TT_INVALID_FILE_INDEX)
+    {
+        ASSERT(header_idx != TT_INVALID_HEADER_INDEX);
+        header_file = get_header_file(file_idx);
+        header_file->ensure_open(false);
+
+        if (header_file->is_full(header_idx))
+            header_file = nullptr;
+    }
+    
+    if (header_file == nullptr)
     {
         header_file = m_header_files.back();
         header_file->ensure_open(false);
@@ -980,9 +997,12 @@ Metric::get_last_header(std::string& tsdb_dir, PageCount page_cnt, PageSize page
             m_header_files.push_back(header_file);
             m_data_files.push_back(new DataFile(get_data_file_name(tsdb_dir, id), id, page_size, page_cnt));
         }
+
+        file_idx = header_file->get_id();
+        header_idx = header_file->new_header_index(tsdb);
+        ASSERT(header_idx != TT_INVALID_HEADER_INDEX);
     }
 
-    ASSERT(! header_file->is_full());
     return header_file;
 }
 
@@ -1309,7 +1329,8 @@ Tsdb::mode_of() const
 PageCount
 Tsdb::get_page_count() const
 {
-    return m_page_count;
+    //PageCount cnt = get_page_ext_count();
+    return m_page_count; // * cnt;
 }
 
 int
@@ -1564,8 +1585,12 @@ Tsdb::query_for_data_no_lock(MetricId mid, QueryTask *task)
     HeaderFile *header_file = metric->get_header_file(file_idx);
     header_file->ensure_open(true);
     struct tsdb_header *tsdb_header = header_file->get_tsdb_header();
-    struct page_info_on_disk *page_header = header_file->get_page_header(header_idx);
-    TimeRange range(from + page_header->m_tstamp_from, from + page_header->m_tstamp_to);
+    PageCount ext_cnt = Tsdb::get_page_ext_count(tsdb_header->m_page_size);
+    struct page_info_on_disk page_header_copy;
+    struct page_info_on_disk *page_header = header_file->get_page_header(header_idx, ext_cnt, &page_header_copy);
+    TimeRange range(from + page_header->m_tstamp_from, from + page_header->get_tstamp_to(0));
+    struct page_info_ext *page_ext = page_header->get_page_ext(0);
+    PageIndex page_idx = page_ext->m_page_index;
 
     if (query_range.has_intersection(range))
     {
@@ -1573,7 +1598,7 @@ Tsdb::query_for_data_no_lock(MetricId mid, QueryTask *task)
         PThread_Lock lock(data_file->get_lock());
         lock.lock_for_read();
         data_file->ensure_open(true);
-        void *page = data_file->get_page(page_header->m_page_index, page_header->m_offset);
+        void *page = data_file->get_page(page_idx, page_header->m_offset);
 
         if (page == nullptr)
         {
@@ -1582,7 +1607,7 @@ Tsdb::query_for_data_no_lock(MetricId mid, QueryTask *task)
             data_file->remap();
             lock.unlock();
             lock.lock_for_read();
-            page = data_file->get_page(page_header->m_page_index, page_header->m_offset);
+            page = data_file->get_page(page_idx, page_header->m_offset);
         }
 
         if (page == nullptr)
@@ -1593,13 +1618,13 @@ Tsdb::query_for_data_no_lock(MetricId mid, QueryTask *task)
 
         DataPointContainer *container = (DataPointContainer*)
             MemoryManager::alloc_recyclable(RecyclableType::RT_DATA_POINT_CONTAINER);
-        container->set_out_of_order(page_header->is_out_of_order());
-        container->set_page_index(page_header->get_global_page_index(file_idx, m_page_count));
-        container->collect_data(from, tsdb_header, page_header, page);
+        container->set_out_of_order(page_ext->is_out_of_order());
+        container->set_page_index(page_header->get_global_page_index(file_idx, m_page_count, page_idx));
+        container->collect_data(from, tsdb_header, page_ext, page);
         ASSERT(container->size() > 0);
         lock.unlock();
 
-        if (page_header->is_out_of_order())
+        if (page_ext->is_out_of_order())
             task->set_ooo(true);
 
         task->add_container(container);
@@ -1812,6 +1837,7 @@ Tsdb::get_last_tstamp(MetricId mid, TimeSeriesId tid)
     HeaderIndex hidx, header_idx;
     struct page_info_on_disk *page_header = nullptr;
     struct tsdb_header *tsdb_header = nullptr;
+    PageCount ext_cnt;
 
     file_idx = TT_INVALID_FILE_INDEX;
     header_idx = TT_INVALID_HEADER_INDEX;
@@ -1829,16 +1855,18 @@ Tsdb::get_last_tstamp(MetricId mid, TimeSeriesId tid)
         HeaderFile *header_file = get_header_file(mid, fidx);
         ASSERT(header_file != nullptr);
         ASSERT(header_file->get_id() == fidx);
+        tsdb_header = header_file->get_tsdb_header();
+        ext_cnt = Tsdb::get_page_ext_count(tsdb_header->m_page_size);
 
         header_file->ensure_open(true);
-        struct page_info_on_disk *header = header_file->get_page_header(hidx);
+        struct page_info_on_disk *header = header_file->get_page_header(hidx, ext_cnt);
 
-        if (! header->is_out_of_order())
+        if (! header->is_out_of_order(ext_cnt))
         {
             file_idx = fidx;
             header_idx = hidx;
             page_header = header;
-            tsdb_header = header_file->get_tsdb_header();
+            //tsdb_header = header_file->get_tsdb_header();
         }
 
         fidx = header->m_next_file;
@@ -1847,11 +1875,13 @@ Tsdb::get_last_tstamp(MetricId mid, TimeSeriesId tid)
 
     if (page_header != nullptr)
     {
+        struct page_info_ext *ext = page_header->get_last_ext(ext_cnt);
+        ASSERT(ext != nullptr);
         DataFile *data_file = get_data_file(mid, file_idx);
         PThread_Lock lock(data_file->get_lock());
         lock.lock_for_read();
         data_file->ensure_open(true);
-        void *page = data_file->get_page(page_header->m_page_index, page_header->m_offset);
+        void *page = data_file->get_page(ext->m_page_index, page_header->m_offset);
 
         if (page == nullptr)
         {
@@ -1860,7 +1890,7 @@ Tsdb::get_last_tstamp(MetricId mid, TimeSeriesId tid)
             data_file->remap();
             lock.unlock();
             lock.lock_for_read();
-            page = data_file->get_page(page_header->m_page_index, page_header->m_offset);
+            page = data_file->get_page(ext->m_page_index, page_header->m_offset);
         }
 
         if (page == nullptr)
@@ -1871,8 +1901,8 @@ Tsdb::get_last_tstamp(MetricId mid, TimeSeriesId tid)
 
         DataPointContainer *container = (DataPointContainer*)
             MemoryManager::alloc_recyclable(RecyclableType::RT_DATA_POINT_CONTAINER);
-        container->set_page_index(page_header->get_global_page_index(file_idx, m_page_count));
-        container->collect_data(m_time_range.get_from(), tsdb_header, page_header, page);
+        //container->set_page_index(page_info_on_disk::get_global_page_index(file_idx, m_page_count, ext->m_page_index));
+        container->collect_data(m_time_range.get_from(), tsdb_header, ext, page);
         lock.unlock();
         if (! container->is_empty())
             tstamp = container->get_last_data_point().first;
@@ -1926,29 +1956,38 @@ Tsdb::get_last_header_indices(MetricId mid, TimeSeriesId tid, FileIndex& file_id
         ASSERT(header_file->get_id() == fidx);
 
         header_file->ensure_open(true);
-        struct page_info_on_disk *header = header_file->get_page_header(hidx);
+        struct tsdb_header *tsdb_header = header_file->get_tsdb_header();
+        PageCount ext_cnt = Tsdb::get_page_ext_count(tsdb_header->m_page_size);
+        struct page_info_on_disk *header = header_file->get_page_header(hidx, ext_cnt);
         fidx = header->m_next_file;
         hidx = header->m_next_header;
     }
 }
 
-void
+// Return true if caller should update prev_file_idx and prev_header_idx.
+bool
 Tsdb::set_indices(MetricId mid, TimeSeriesId tid, FileIndex prev_file_idx, HeaderIndex prev_header_idx, FileIndex this_file_idx, HeaderIndex this_header_idx)
 {
     ASSERT(TT_INVALID_FILE_INDEX != this_file_idx);
     ASSERT(TT_INVALID_HEADER_INDEX != this_header_idx);
+    bool updated;
 
     if ((prev_file_idx == TT_INVALID_FILE_INDEX) || (this_header_idx == TT_INVALID_HEADER_INDEX))
+    {
+        updated = true;
         m_index_file.set_indices(tid, this_file_idx, this_header_idx);
+    }
     else
     {
         // update header
         HeaderFile *header_file = get_header_file(mid, prev_file_idx);
         ASSERT(header_file != nullptr);
         ASSERT(header_file->get_id() == prev_file_idx);
-        header_file->ensure_open(false);
-        header_file->update_next(prev_header_idx, this_file_idx, this_header_idx);
+        //header_file->ensure_open(false);
+        updated = header_file->update_next(prev_header_idx, this_file_idx, this_header_idx, get_page_ext_count());
     }
+
+    return updated;
 }
 
 DataFile *
@@ -1978,6 +2017,8 @@ Tsdb::get_header_file(MetricId mid, FileIndex file_idx)
 
 }
 
+/* @param   header  This points to the m_page_header member in PageInMemory class;
+ */
 PageSize
 Tsdb::append_page(MetricId mid, TimeSeriesId tid, FileIndex prev_file_idx, HeaderIndex prev_header_idx, struct page_info_on_disk *header, void *page, bool compact)
 {
@@ -1985,10 +2026,9 @@ Tsdb::append_page(MetricId mid, TimeSeriesId tid, FileIndex prev_file_idx, Heade
     ASSERT(header != nullptr);
     //ASSERT(mid < m_metrics.size());
     //ASSERT(m_metrics[mid] != nullptr);
+    uint32_t bucket = mid % m_mbucket_count;
     std::lock_guard<std::mutex> guard(m_lock);
     //WriteLock guard(m_lock);
-
-    uint32_t bucket = mid % m_mbucket_count;
 
     // create Metric if necessary
     if (bucket >= m_metrics.size())
@@ -2018,54 +2058,90 @@ Tsdb::append_page(MetricId mid, TimeSeriesId tid, FileIndex prev_file_idx, Heade
 
     ASSERT(bucket < m_metrics.size());
 
+    // Locate a page_info that's not full in a header file;
+    // If the previous one is not full, it take precedence;
+    FileIndex new_file_idx = prev_file_idx;
+    HeaderIndex new_header_idx = prev_header_idx;
     const char *suffix = compact ? TEMP_SUFFIX : nullptr;
     std::string tsdb_dir = get_tsdb_dir_name(m_time_range, suffix);
-    HeaderFile *header_file = m_metrics[bucket]->get_last_header(tsdb_dir, get_page_count(), get_page_size());
+    HeaderFile *header_file =
+        m_metrics[bucket]->get_last_header(this, tsdb_dir, new_file_idx, new_header_idx, get_page_count(), get_page_size());
+    ASSERT(header_file != nullptr);
+    ASSERT(! header_file->is_full(new_header_idx));
 
     //m_load_time = ts_now_sec();
     m_mode |= TSDB_MODE_READ_WRITE;
 
+    // write to the corresponding data file (of the header_file)
     ASSERT(m_metrics[bucket] != nullptr);
-    DataFile *data_file = m_metrics[bucket]->get_last_data();
+    DataFile *data_file = m_metrics[bucket]->get_data_file(new_file_idx);
+    ASSERT(data_file != nullptr);
 
     data_file->ensure_open(false);
     //header_file->ensure_open(false);
     m_index_file.ensure_open(false);
 
-    ASSERT(! header_file->is_full());
     ASSERT(header_file->get_id() == data_file->get_id());
 
-    header->m_offset = data_file->get_offset();
-    header->m_page_index = data_file->append(page, compact?header->get_size():get_page_size());
+    // write to data-file
+    //header->m_offset = data_file->get_offset();
+    PageSize offset = data_file->get_offset();
+    //header->get_page_header_ext()->m_page_index =
+    PageIndex page_idx =
+        data_file->append(page, compact?header->get_size():get_page_size());
 
     struct tsdb_header *tsdb_header = header_file->get_tsdb_header();
     ASSERT(tsdb_header != nullptr);
 
-    if (tsdb_header->m_page_index < header->m_page_index)
-        tsdb_header->m_page_index = header->m_page_index;
+    //if (tsdb_header->m_page_index < header->m_page_index)
+        //tsdb_header->m_page_index = header->m_page_index;
+    if (tsdb_header->m_page_index < page_idx)
+        tsdb_header->m_page_index = page_idx;
     tsdb_header->set_compacted(compact);
 
     // adjust range in tsdb_header
     Timestamp from = m_time_range.get_from() + header->m_tstamp_from;
-    Timestamp to = m_time_range.get_from() + header->m_tstamp_to;
+    Timestamp to = m_time_range.get_from() + header->get_tstamp_to(0);
 
     if (tsdb_header->m_start_tstamp > from)
         tsdb_header->m_start_tstamp = from;
     if (tsdb_header->m_end_tstamp < to)
         tsdb_header->m_end_tstamp = to;
 
-    HeaderIndex header_idx = header_file->new_header_index(this);
-    ASSERT(header_idx != TT_INVALID_HEADER_INDEX);
-    struct page_info_on_disk *new_header = header_file->get_page_header(header_idx);
+    // write to header-file
+    PageCount ext_cnt = Tsdb::get_page_ext_count(tsdb_header->m_page_size);
+    struct page_info_on_disk *new_header = header_file->get_page_header(new_header_idx, ext_cnt);
+if (tid==0)
+Logger::info("mid=%u, tid=%u, prev_header_idx=%u, new_header_idx=%u, new_header=%p", mid, tid, prev_header_idx, new_header_idx, new_header);
+    struct page_info_ext *new_ext = new_header->get_new_ext(ext_cnt); //header_file->get_page_header_ext(new_header_idx, ext_cnt);
+    ASSERT(new_ext != nullptr);
+    new_ext->init();
+    new_ext->m_page_index = page_idx;
+    new_ext->m_tstamp_to = header->get_tstamp_to(0);
+    if (header->m_tstamp_from < new_header->m_tstamp_from)
+        new_header->m_tstamp_from = header->m_tstamp_from;
+    //HeaderIndex header_idx =
+        //header_file->add_header_ext(mid, tid, this, header, offset, prev_header_idx, page_idx, ext_cnt);
+
+    //HeaderIndex header_idx = header_file->new_header_index(this);
+    //ASSERT(header_idx != TT_INVALID_HEADER_INDEX);
+    //struct page_info_on_disk *new_header = header_file->get_page_header(header_idx);
     //ASSERT(header->m_page_index == new_header->m_page_index);
-    new_header->init(header);
+    //new_header->init(header);
 
-    set_indices(mid, tid, prev_file_idx, prev_header_idx, header_file->get_id(), header_idx);
+    if (prev_file_idx != new_file_idx || prev_header_idx != new_header_idx)
+    {
+        bool updated =
+            set_indices(mid, tid, prev_file_idx, prev_header_idx, new_file_idx, new_header_idx);
 
-    // passing our own indices back to caller
-    header->m_next_file = header_file->get_id();
-    header->m_next_header = header_idx;
-    ASSERT(get_header_file(mid, header->m_next_file) == header_file);
+        if (updated)
+        {
+            // passing our own indices back to caller
+            header->m_next_file = new_file_idx;
+            header->m_next_header = new_header_idx;
+            ASSERT(get_header_file(mid, header->m_next_file) == header_file);
+        }
+    }
 
     return data_file->get_next_page_size();
 }

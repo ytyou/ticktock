@@ -109,13 +109,22 @@ public:
     inline PageCount get_page_count() const { return m_page_count; }
     HeaderIndex new_header_index(Tsdb *tsdb);
     struct tsdb_header *get_tsdb_header();
-    struct page_info_on_disk *get_page_header(HeaderIndex header_idx);
+    struct page_info_on_disk *get_page_header(HeaderIndex header_idx, PageCount ext_cnt);
+    struct page_info_on_disk *get_page_header(HeaderIndex header_idx, PageCount ext_cnt, struct page_info_on_disk *header);
+    struct page_info_ext *get_page_header_ext(HeaderIndex header_idx, PageCount ext_cnt);
     int get_compressor_version();
     inline FileIndex get_id() const { return m_id; }
     bool is_full();
-    void update_next(HeaderIndex prev_header_idx, FileIndex this_file_idx, HeaderIndex this_header_idx);
+    bool is_full(HeaderIndex header_idx);
+    bool update_next(HeaderIndex prev_header_idx, FileIndex this_file_idx, HeaderIndex this_header_idx, PageCount ext_cnt);
+    HeaderIndex add_header_ext(MetricId mid, TimeSeriesId tid, Tsdb *tsdb, struct page_info_on_disk *header, PageSize offset, PageIndex page_idx, PageCount ext_cnt);
 
     static HeaderFile *restore(const std::string& file_name);
+    static inline PageCount get_page_ext_count(PageSize page_size)
+    {
+        PageCount cnt = g_sys_page_size / page_size / 8;
+        return (cnt == 0) ? 1 : cnt;
+    }
 
     // for testing only
     int count_pages(bool ooo);

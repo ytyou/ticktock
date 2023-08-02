@@ -48,7 +48,7 @@ PageInMemory::is_full()
     if (m_compressor != nullptr)
         return m_compressor->is_full();
     else
-        return get_page_header()->is_full();
+        return get_page_header_ext()->is_full();
 }
 
 bool
@@ -68,7 +68,7 @@ PageInMemory::get_time_range()
 {
     struct page_info_on_disk *header = get_page_header();
     ASSERT(header != nullptr);
-    return TimeRange(header->m_tstamp_from + m_start, header->m_tstamp_to + m_start);
+    return TimeRange(header->m_tstamp_from + m_start, header->get_tstamp_to(0) + m_start);
 }
 
 int
@@ -145,7 +145,7 @@ PageInMemory::PageInMemory(MetricId mid, TimeSeriesId tid, Tsdb *tsdb, bool is_o
     m_tsdb(nullptr),
     m_start(0)
 {
-    m_page_header.init();
+    m_page_header.init(1);
     ASSERT(m_page == nullptr);
     init(mid, tid, tsdb, is_ooo, actual_size);
 }
@@ -157,7 +157,7 @@ PageInMemory::PageInMemory(MetricId mid, TimeSeriesId tid, Tsdb *tsdb, bool is_o
     m_tsdb(nullptr),
     m_start(0)
 {
-    m_page_header.init();
+    m_page_header.init(1);
     ASSERT(m_page == nullptr);
     init(mid, tid, tsdb, is_ooo, file_idx, header_idx);
 }
@@ -186,8 +186,8 @@ PageInMemory::init(MetricId mid, TimeSeriesId tid, Tsdb *tsdb, bool is_ooo, Page
     FileIndex file_idx = m_page_header.m_next_file;
     HeaderIndex header_idx = m_page_header.m_next_header;
 
-    m_page_header.init();
-    m_page_header.set_out_of_order(is_ooo);
+    m_page_header.init(1);
+    m_page_header.m_pages[0].set_out_of_order(is_ooo);
 
     if (m_tsdb == tsdb)    // same tsdb
     {
@@ -231,8 +231,8 @@ PageInMemory::init(MetricId mid, TimeSeriesId tid, Tsdb *tsdb, bool is_ooo, File
     // tsdb remains the same...
     Timestamp from = tsdb->get_time_range().get_from();
 
-    m_page_header.init();
-    m_page_header.set_out_of_order(is_ooo);
+    m_page_header.init(1);
+    m_page_header.m_pages[0].set_out_of_order(is_ooo);
 
     m_tsdb = tsdb;
     m_start = from;
@@ -267,9 +267,9 @@ PageInMemory::flush(MetricId mid, TimeSeriesId tid, bool compact)
     ciod->m_start = position.m_start;
 
     m_page_header.m_size = m_compressor->size();
-    m_page_header.set_full(m_compressor->is_full());
-    m_page_header.m_next_file = TT_INVALID_FILE_INDEX;
-    m_page_header.m_next_header = TT_INVALID_HEADER_INDEX;
+    m_page_header.m_pages[0].set_full(m_compressor->is_full());
+    //m_page_header.m_next_file = TT_INVALID_FILE_INDEX;
+    //m_page_header.m_next_header = TT_INVALID_HEADER_INDEX;
 
     return m_tsdb->append_page(mid, tid, prev_file_idx, prev_header_idx, &m_page_header, m_page, compact);
 
@@ -319,9 +319,6 @@ PageInMemory::restore(Timestamp tstamp, uint8_t *buff, PageSize offset, uint8_t 
     m_compressor->set_start_tstamp(tstamp);
     m_compressor->restore(dps, position, buff + sizeof(struct compress_info_on_disk));
 
-    struct page_info_on_disk *header = get_page_header();
-    ASSERT(header != nullptr);
-
     m_start = tstamp;
     for (auto dp: dps)
     {
@@ -329,8 +326,8 @@ PageInMemory::restore(Timestamp tstamp, uint8_t *buff, PageSize offset, uint8_t 
         if (ts < m_page_header.m_tstamp_from)
             m_page_header.m_tstamp_from = ts;
         ts++;
-        if (m_page_header.m_tstamp_to < ts)
-            m_page_header.m_tstamp_to = ts;
+        if (m_page_header.get_tstamp_to(0) < ts)
+            m_page_header.set_tstamp_to(0, ts);
     }
 }
 
@@ -346,8 +343,8 @@ PageInMemory::add_data_point(Timestamp tstamp, double value)
         if (ts < m_page_header.m_tstamp_from)
             m_page_header.m_tstamp_from = ts;
         ts++;
-        if (m_page_header.m_tstamp_to < ts)
-            m_page_header.m_tstamp_to = ts;
+        if (m_page_header.get_tstamp_to(0) < ts)
+            m_page_header.set_tstamp_to(0, ts);
     }
     return success;
 }

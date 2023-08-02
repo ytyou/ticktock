@@ -483,6 +483,7 @@ HeaderFile::init_tsdb_header(PageSize page_size)
 
     int compressor_version =
         Config::inst()->get_int(CFG_TSDB_COMPRESSOR_VERSION, CFG_TSDB_COMPRESSOR_VERSION_DEF);
+    PageCount ext_cnt = get_page_ext_count(page_size);
 
     header->m_major_version = TT_MAJOR_VERSION;
     header->m_minor_version = TT_MINOR_VERSION;
@@ -490,12 +491,12 @@ HeaderFile::init_tsdb_header(PageSize page_size)
     header->set_compacted(false);
     header->set_compressor_version(compressor_version);
     header->set_millisecond(g_tstamp_resolution_ms);
-    header->m_page_count = m_page_count;
+    header->m_page_count = m_page_count * ext_cnt;
     header->m_header_index = 0;
     header->m_page_index = 0;
     header->m_start_tstamp = TimeRange::MAX.get_to();   //tsdb->get_time_range().get_from();
     header->m_end_tstamp = TimeRange::MAX.get_from();   //tsdb->get_time_range().get_to();
-    header->m_actual_pg_cnt = m_page_count;
+    header->m_actual_pg_cnt = m_page_count * ext_cnt;
     header->m_page_size = page_size;
 
     ASSERT(header->m_page_count > 0);
@@ -524,8 +525,9 @@ HeaderFile::open(bool for_read)
     if (is_new)
     {
         ASSERT(m_page_count > 0);
+        PageCount cnt = get_page_ext_count(g_page_size) - 1;
         off_t length =
-            sizeof(struct tsdb_header) + m_page_count * sizeof(struct page_info_on_disk);
+            sizeof(struct tsdb_header) + m_page_count * (sizeof(struct page_info_on_disk) + cnt * sizeof(struct page_info_ext));
         MmapFile::open(length, for_read, false, true);
         ASSERT(get_pages() != nullptr);
     }
@@ -586,18 +588,20 @@ HeaderFile::get_compressor_version()
 HeaderIndex
 HeaderFile::new_header_index(Tsdb *tsdb)
 {
+    ASSERT(tsdb != nullptr);
     ASSERT(is_open(false));
 
     struct tsdb_header *tsdb_header = get_tsdb_header();
     ASSERT(tsdb_header != nullptr);
 
-    if (tsdb_header->is_full())
+    if (tsdb_header->is_full() || (tsdb_header->m_header_index >= m_page_count))
         return TT_INVALID_PAGE_INDEX;
 
     HeaderIndex header_idx = tsdb_header->m_header_index++;
-    struct page_info_on_disk *header = get_page_header(header_idx);
-    header->init();
-    //header->m_page_index = tsdb_header->m_page_index++;
+    PageCount ext_cnt = tsdb->get_page_ext_count();
+ASSERT(ext_cnt == 32);
+    struct page_info_on_disk *header = get_page_header(header_idx, ext_cnt);
+    header->init(ext_cnt);
 
     return header_idx;
 }
@@ -612,21 +616,91 @@ HeaderFile::get_tsdb_header()
 }
 
 struct page_info_on_disk *
-HeaderFile::get_page_header(HeaderIndex header_idx)
+HeaderFile::get_page_header(HeaderIndex header_idx, PageCount ext_cnt)
 {
     ASSERT(is_open(true));
-    struct page_info_on_disk *headers =
-        reinterpret_cast<struct page_info_on_disk*>(static_cast<char*>(get_pages())+(sizeof(struct tsdb_header)));
-    return &headers[header_idx];
+    ASSERT(ext_cnt > 0);
+
+    return reinterpret_cast<struct page_info_on_disk*>(
+            static_cast<char*>(get_pages()) +
+            (sizeof(struct tsdb_header)) +
+            header_idx * (sizeof(struct page_info_on_disk) + (ext_cnt-1) * (sizeof(struct page_info_ext))));
 }
 
-void
-HeaderFile::update_next(HeaderIndex prev_header_idx, FileIndex this_file_idx, HeaderIndex this_header_idx)
+struct page_info_on_disk *
+HeaderFile::get_page_header(HeaderIndex header_idx, PageCount ext_cnt, struct page_info_on_disk *header)
 {
-    struct page_info_on_disk *header = get_page_header(prev_header_idx);
-    ASSERT(header != nullptr);
-    header->m_next_file = this_file_idx;
-    header->m_next_header = this_header_idx;
+    struct page_info_on_disk *page_header = get_page_header(header_idx, ext_cnt);
+    int ext_idx = header_idx % ext_cnt;
+    struct page_info_ext *page_ext = &page_header->m_pages[ext_idx];
+
+    header->init(1, page_header);
+    header->m_pages[0].init(page_ext);
+    return header;
+}
+
+struct page_info_ext *
+HeaderFile::get_page_header_ext(HeaderIndex header_idx, PageCount ext_cnt)
+{
+    struct page_info_on_disk *header = get_page_header(header_idx, ext_cnt);
+    return &header->m_pages[header_idx % ext_cnt];
+}
+
+bool
+HeaderFile::update_next(HeaderIndex prev_header_idx, FileIndex this_file_idx, HeaderIndex this_header_idx, PageCount ext_cnt)
+{
+    bool updated = false;
+
+    if ((m_id != this_file_idx) || ((prev_header_idx/ext_cnt) != (this_header_idx/ext_cnt)))
+    {
+        ensure_open(false);
+        struct page_info_on_disk *header = get_page_header(prev_header_idx, ext_cnt);
+        ASSERT(header != nullptr);
+        header->m_next_file = this_file_idx;
+        header->m_next_header = this_header_idx;
+        updated = true;
+    }
+
+    return updated;
+}
+
+/* @return  True if operation was successful; False otherwise;
+ */
+HeaderIndex
+HeaderFile::add_header_ext(MetricId mid, TimeSeriesId tid, Tsdb *tsdb, struct page_info_on_disk *header, PageSize offset, PageIndex page_idx, PageCount ext_cnt)
+{
+    FileIndex prev_file_idx = header->m_next_file;
+    HeaderIndex prev_header_idx = header->m_next_header;
+    struct page_info_on_disk *new_header = nullptr;
+    HeaderIndex new_header_idx = prev_header_idx;
+
+    if (prev_file_idx != TT_INVALID_FILE_INDEX)
+    {
+        ASSERT(prev_header_idx != TT_INVALID_HEADER_INDEX);
+        new_header = get_page_header(prev_header_idx, ext_cnt);
+    }
+
+    if ((new_header == nullptr) || new_header->is_full(ext_cnt))
+    {
+        HeaderIndex header_idx = new_header_index(tsdb);
+
+        if (header_idx != TT_INVALID_HEADER_INDEX)
+        {
+            new_header = get_page_header(header_idx, ext_cnt);
+            new_header->init(ext_cnt, header);
+            new_header_idx = header_idx;
+        }
+        else
+            new_header = nullptr;
+    }
+
+    if (new_header != nullptr)
+    {
+        ASSERT(! new_header->is_full(ext_cnt));
+        new_header->add_ext(header->get_page_ext(0), ext_cnt);
+    }
+
+    return new_header_idx;
 }
 
 bool
@@ -636,7 +710,21 @@ HeaderFile::is_full()
     struct tsdb_header *tsdb_header =
         reinterpret_cast<struct tsdb_header *>(get_pages());
     ASSERT(tsdb_header != nullptr);
-    return tsdb_header->is_full();
+    return tsdb_header->is_full() || (tsdb_header->m_header_index >= m_page_count);
+}
+
+bool
+HeaderFile::is_full(HeaderIndex header_idx)
+{
+    ASSERT(is_open(true));
+    struct tsdb_header *tsdb_header =
+        reinterpret_cast<struct tsdb_header *>(get_pages());
+    ASSERT(tsdb_header != nullptr);
+    PageCount ext_cnt = get_page_ext_count(tsdb_header->m_page_size);
+    struct page_info_on_disk *header = get_page_header(header_idx, ext_cnt);
+//if (header_idx == 0)
+//Logger::info("this=%p, header=%p, header_idx=%u, ext_cnt=%u, is_full=%s", this, header, header_idx, ext_cnt, header->is_full(ext_cnt)?"true":"false");
+    return header->is_full(ext_cnt);
 }
 
 // for testing only
@@ -647,9 +735,10 @@ HeaderFile::count_pages(bool ooo)
     struct tsdb_header *tsdb_header = get_tsdb_header();
     ASSERT(tsdb_header != nullptr);
     int total = 0;
+    PageCount ext_cnt = Tsdb::get_page_ext_count(tsdb_header->m_page_size);
     for (int i = 0; i < tsdb_header->m_header_index; i++)
     {
-        struct page_info_on_disk *page_header = get_page_header(i);
+        struct page_info_ext *page_header = get_page_header_ext(i, ext_cnt);
         ASSERT(page_header != nullptr);
         if ((ooo && page_header->is_out_of_order()) ||
             (!ooo && !page_header->is_out_of_order()))

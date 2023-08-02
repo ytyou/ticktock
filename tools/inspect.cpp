@@ -25,6 +25,7 @@
 #include <iostream>
 #include <locale>
 #include <mutex>
+#include <queue>
 #include <string.h>
 #include <unistd.h>
 #include <sys/mman.h>
@@ -195,17 +196,18 @@ get_tsdb_start_time(const std::string& dir)
 }
 
 uint64_t
-inspect_page(FileIndex file_idx, HeaderIndex header_idx, struct tsdb_header *tsdb_header, struct page_info_on_disk *page_header, char *data_base, Timestamp start_time)
+//inspect_page(FileIndex file_idx, HeaderIndex header_idx, struct tsdb_header *tsdb_header, struct page_info_on_disk *page_header, char *data_base, Timestamp start_time)
+inspect_page(FileIndex file_idx, struct tsdb_header *tsdb_header, PageIndex page_idx, char *data_base, Timestamp start_time, bool ooo)
 {
     uint64_t page_dps = 0;
-    int compressor_version =
-        page_header->is_out_of_order() ? 0 : tsdb_header->get_compressor_version();
+    int compressor_version = ooo ? 0 : tsdb_header->get_compressor_version();
     g_tstamp_resolution_ms = tsdb_header->is_millisecond();
     start_time = validate_resolution(start_time);
 
-    char *page_base = data_base + (page_header->m_page_index * tsdb_header->m_page_size) + page_header->m_offset;
-    ASSERT(page_header->m_page_index <= tsdb_header->m_page_index);
+    char *page_base = data_base + (page_idx * tsdb_header->m_page_size);
+    ASSERT(page_idx <= tsdb_header->m_page_index);
 
+#if 0
     // dump page header
     if (g_verbose)
     {
@@ -223,6 +225,7 @@ inspect_page(FileIndex file_idx, HeaderIndex header_idx, struct tsdb_header *tsd
             page_header->m_next_file,
             page_header->m_next_header);
     }
+#endif
 
     // dump page data
     DataPointVector dps;
@@ -249,6 +252,7 @@ inspect_page(FileIndex file_idx, HeaderIndex header_idx, struct tsdb_header *tsd
     return page_dps;
 }
 
+#if 0
 uint64_t
 inspect_page_for_restore(const char *metric, const char *tags, FileIndex file_idx, HeaderIndex header_idx, struct tsdb_header *tsdb_header, struct page_info_on_disk *page_header, char *data_base, Timestamp start_time)
 {
@@ -288,6 +292,7 @@ inspect_page_for_restore(const char *metric, const char *tags, FileIndex file_id
     g_total_page_cnt++;
     return page_dps;
 }
+#endif
 
 void
 inspect_index_file(const std::string& file_name)
@@ -408,9 +413,9 @@ inspect_tsdb_internal(const std::string& dir)
             struct page_info_on_disk *page_header = (struct page_info_on_disk *)
                 (header_base + sizeof(struct tsdb_header) + header_idx * sizeof(struct page_info_on_disk));
 
-            if (page_header->is_out_of_order()) ooo_page_cnt++;
+            //if (page_header->is_out_of_order()) ooo_page_cnt++;
 
-            tsdb_dps = inspect_page(file_idx, header_idx, tsdb_header, page_header, data_base, start_time);
+            tsdb_dps = 0; //inspect_page(file_idx, header_idx, tsdb_header, page_header, data_base, start_time);
             g_total_dps_cnt.fetch_add(tsdb_dps, std::memory_order_relaxed);
 
             if (file_idx != page_header->m_next_file)
@@ -473,10 +478,12 @@ inspect_tsdb_quick(const std::string& dir)
             size_t header_file_size, data_file_size;
             char *header_base, *data_base;
             struct tsdb_header *tsdb_header;
+            PageCount ext_cnt;
 
             header_base = open_mmap(header_file_name_str, header_file_fd, header_file_size);
             data_base = open_mmap(data_file_name_str, data_file_fd, data_file_size);
             tsdb_header = (struct tsdb_header*)header_base;
+            ext_cnt = HeaderFile::get_page_ext_count(tsdb_header->m_page_size);
 
             if ((header_base == nullptr) || (data_base == nullptr) || (header_file_fd < 0))
             {
@@ -484,6 +491,38 @@ inspect_tsdb_quick(const std::string& dir)
                 continue;
             }
 
+            auto page_info_ext_cmp = [](struct page_info_ext* &lhs, struct page_info_ext* &rhs)
+            {
+                return lhs->m_page_index > rhs->m_page_index;
+            };
+
+            std::priority_queue<struct page_info_ext*, std::vector<struct page_info_ext*>, decltype(page_info_ext_cmp)> pq(page_info_ext_cmp);
+
+            for (PageCount hidx = 0; hidx < tsdb_header->m_header_index; hidx++)
+            {
+                struct page_info_on_disk *page_header = (struct page_info_on_disk *)
+                    (header_base + sizeof(struct tsdb_header) + hidx * (sizeof(struct page_info_on_disk) + (ext_cnt-1) * sizeof(struct page_info_ext)));
+
+                for (PageCount i = 0; i < ext_cnt; i++)
+                {
+                    struct page_info_ext *ext = page_header->get_page_ext(i);
+                    if (ext->m_page_index == TT_INVALID_PAGE_INDEX)
+                        break;
+                    pq.push(ext);
+                }
+
+            }
+
+            while (! pq.empty())
+            {
+                struct page_info_ext *ext = pq.top();
+                pq.pop();
+
+                uint64_t tsdb_dps = inspect_page(fidx, tsdb_header, ext->m_page_index, data_base, 0, ext->is_out_of_order());
+                g_total_dps_cnt.fetch_add(tsdb_dps, std::memory_order_relaxed);
+            }
+
+#if 0
             for (PageCount hidx = 0; hidx < tsdb_header->m_header_index; hidx++)
             {
                 struct page_info_on_disk *page_header = (struct page_info_on_disk *)
@@ -492,6 +531,7 @@ inspect_tsdb_quick(const std::string& dir)
                 uint64_t tsdb_dps = inspect_page(fidx, hidx, tsdb_header, page_header, data_base, 0);
                 g_total_dps_cnt.fetch_add(tsdb_dps, std::memory_order_relaxed);
             }
+#endif
 
             close_mmap(data_file_fd, data_base, data_file_size);
             close_mmap(header_file_fd, header_base, header_file_size);
@@ -499,6 +539,7 @@ inspect_tsdb_quick(const std::string& dir)
     }
 }
 
+#if 0
 void
 inspect_tsdb_for_restore(const std::string& dir)
 {
@@ -615,6 +656,7 @@ inspect_tsdb_for_restore(const std::string& dir)
 
     close_mmap(index_file_fd, index_base, index_file_size);
 }
+#endif
 
 bool
 inspect_tsdb_task(TaskData& data)
@@ -632,7 +674,7 @@ inspect_tsdb(const std::string& dir)
 {
     if (g_restore_mode)
     {
-        inspect_tsdb_for_restore(dir);
+        //inspect_tsdb_for_restore(dir);
     }
     else
     {
