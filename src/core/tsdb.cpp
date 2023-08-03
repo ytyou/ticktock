@@ -1573,7 +1573,7 @@ Tsdb::query_for_data_no_lock(MetricId mid, QueryTask *task)
         PThread_Lock lock(data_file->get_lock());
         lock.lock_for_read();
         data_file->ensure_open(true);
-        void *page = data_file->get_page(page_header->m_page_index, page_header->m_offset);
+        void *page = data_file->get_page(page_header->m_page_index);
 
         if (page == nullptr)
         {
@@ -1582,7 +1582,7 @@ Tsdb::query_for_data_no_lock(MetricId mid, QueryTask *task)
             data_file->remap();
             lock.unlock();
             lock.lock_for_read();
-            page = data_file->get_page(page_header->m_page_index, page_header->m_offset);
+            page = data_file->get_page(page_header->m_page_index);
         }
 
         if (page == nullptr)
@@ -1851,7 +1851,7 @@ Tsdb::get_last_tstamp(MetricId mid, TimeSeriesId tid)
         PThread_Lock lock(data_file->get_lock());
         lock.lock_for_read();
         data_file->ensure_open(true);
-        void *page = data_file->get_page(page_header->m_page_index, page_header->m_offset);
+        void *page = data_file->get_page(page_header->m_page_index);
 
         if (page == nullptr)
         {
@@ -1860,7 +1860,7 @@ Tsdb::get_last_tstamp(MetricId mid, TimeSeriesId tid)
             data_file->remap();
             lock.unlock();
             lock.lock_for_read();
-            page = data_file->get_page(page_header->m_page_index, page_header->m_offset);
+            page = data_file->get_page(page_header->m_page_index);
         }
 
         if (page == nullptr)
@@ -2035,8 +2035,8 @@ Tsdb::append_page(MetricId mid, TimeSeriesId tid, FileIndex prev_file_idx, Heade
     ASSERT(! header_file->is_full());
     ASSERT(header_file->get_id() == data_file->get_id());
 
-    header->m_offset = data_file->get_offset();
-    header->m_page_index = data_file->append(page, compact?header->get_size():get_page_size());
+    //header->m_offset = data_file->get_offset();
+    header->m_page_index = data_file->append(page, get_page_size());
 
     struct tsdb_header *tsdb_header = header_file->get_tsdb_header();
     ASSERT(tsdb_header != nullptr);

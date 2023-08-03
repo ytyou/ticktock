@@ -145,7 +145,7 @@ public:
     inline PageSize get_offset() const { return m_offset; }
     inline PageSize get_next_page_size() const
     { return m_offset?(m_page_size-m_offset):m_page_size; }
-    void *get_page(PageIndex page_idx, PageSize offset);
+    void *get_page(PageIndex page_idx);
     inline FILE *get_file() const { return m_file; }
     bool is_open(bool for_read) const override;
 

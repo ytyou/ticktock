@@ -99,32 +99,32 @@ MiscTests::off_hour_tests()
 
     begin = std::to_string((cur_hour - 1) % 24);
     end = std::to_string((cur_hour + 1) % 24);
-    Config::set_value(CFG_TSDB_OFF_HOUR_BEGIN, begin);
-    Config::set_value(CFG_TSDB_OFF_HOUR_END, end);
+    Config::inst()->set_value(CFG_TSDB_OFF_HOUR_BEGIN, begin);
+    Config::inst()->set_value(CFG_TSDB_OFF_HOUR_END, end);
     CONFIRM(is_off_hour());
 
     begin = std::to_string((cur_hour + 2) % 24);
     end = std::to_string((cur_hour + 3) % 24);
-    Config::set_value(CFG_TSDB_OFF_HOUR_BEGIN, begin);
-    Config::set_value(CFG_TSDB_OFF_HOUR_END, end);
+    Config::inst()->set_value(CFG_TSDB_OFF_HOUR_BEGIN, begin);
+    Config::inst()->set_value(CFG_TSDB_OFF_HOUR_END, end);
     CONFIRM(! is_off_hour());
 
     begin = std::to_string((cur_hour + 2) % 24);
     end = std::to_string((cur_hour + 22) % 24);
-    Config::set_value(CFG_TSDB_OFF_HOUR_BEGIN, begin);
-    Config::set_value(CFG_TSDB_OFF_HOUR_END, end);
+    Config::inst()->set_value(CFG_TSDB_OFF_HOUR_BEGIN, begin);
+    Config::inst()->set_value(CFG_TSDB_OFF_HOUR_END, end);
     CONFIRM(! is_off_hour());
 
     begin = std::to_string((cur_hour - 22) % 24);
     end = std::to_string((cur_hour - 1) % 24);
-    Config::set_value(CFG_TSDB_OFF_HOUR_BEGIN, begin);
-    Config::set_value(CFG_TSDB_OFF_HOUR_END, end);
+    Config::inst()->set_value(CFG_TSDB_OFF_HOUR_BEGIN, begin);
+    Config::inst()->set_value(CFG_TSDB_OFF_HOUR_END, end);
     CONFIRM(! is_off_hour());
 
     begin = std::to_string((cur_hour - 20) % 24);
     end = std::to_string((cur_hour + 1) % 24);
-    Config::set_value(CFG_TSDB_OFF_HOUR_BEGIN, begin);
-    Config::set_value(CFG_TSDB_OFF_HOUR_END, end);
+    Config::inst()->set_value(CFG_TSDB_OFF_HOUR_BEGIN, begin);
+    Config::inst()->set_value(CFG_TSDB_OFF_HOUR_END, end);
     CONFIRM(is_off_hour());
 
     m_stats.add_passed(1);

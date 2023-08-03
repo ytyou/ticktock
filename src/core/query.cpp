@@ -1306,7 +1306,7 @@ DataPointContainer::collect_data(Timestamp from, struct tsdb_header *tsdb_header
     Compressor *compressor = (Compressor*)MemoryManager::alloc_recyclable(type);
     compressor->init(from,
                      reinterpret_cast<uint8_t*>(page) + sizeof(struct compress_info_on_disk),
-                     page_header->m_size);
+                     tsdb_header->m_page_size);
     compressor->restore(m_dps, position, (uint8_t*)page + sizeof(struct compress_info_on_disk));
     ASSERT(! m_dps.empty());
     MemoryManager::free_recyclable(compressor);

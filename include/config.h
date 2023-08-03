@@ -103,7 +103,7 @@
 #define CFG_TSDB_COMPACT_BATCH_SIZE             "tsdb.compact.batch.size"
 #define CFG_TSDB_COMPACT_BATCH_SIZE_DEF         500
 #define CFG_TSDB_COMPACT_FREQUENCY              "tsdb.compact.frequency"
-#define CFG_TSDB_COMPACT_FREQUENCY_DEF          "2h"
+#define CFG_TSDB_COMPACT_FREQUENCY_DEF          "0s"
 #define CFG_TSDB_COMPACT_THRESHOLD              "tsdb.compact.threshold"
 #define CFG_TSDB_COMPACT_THRESHOLD_DEF          "1d"
 #define CFG_TSDB_COMPRESSOR_PRECISION           "tsdb.compressor.precision"

@@ -152,8 +152,8 @@ struct __attribute__ ((__packed__)) compress_info_on_disk
  */
 struct __attribute__ ((__packed__)) page_info_on_disk
 {
-    PageSize m_offset;          // 16-bit
-    PageSize m_size;            // 16-bit
+    //PageSize m_offset;          // 16-bit
+    //PageSize m_size;            // 16-bit
     //PageSize m_cursor;          // 16-bit
     //uint8_t m_start;            //  8-bit
     uint8_t m_flags;            //  8-bit
@@ -167,7 +167,7 @@ struct __attribute__ ((__packed__)) page_info_on_disk
     {
         //m_offset = m_size = m_cursor = 0;
         //m_start = m_flags = 0;
-        m_offset = m_size = 0;
+        //m_offset = m_size = 0;
         m_flags = 0;
         m_page_index = TT_INVALID_PAGE_INDEX;
         m_tstamp_from = UINT32_MAX;
@@ -180,8 +180,8 @@ struct __attribute__ ((__packed__)) page_info_on_disk
     {
         ASSERT(header != nullptr);
 
-        m_offset = header->m_offset;
-        m_size = header->m_size;
+        //m_offset = header->m_offset;
+        //m_size = header->m_size;
         //m_cursor = header->m_cursor;
         //m_start = header->m_start;
         m_flags = header->m_flags;
@@ -196,7 +196,7 @@ struct __attribute__ ((__packed__)) page_info_on_disk
     {
         //m_offset = m_size = m_cursor = 0;
         //m_start = m_flags = 0;
-        m_offset = m_size = 0;
+        //m_offset = m_size = 0;
         m_flags = 0;
         m_page_index = 0;
         m_tstamp_from = 0;
@@ -216,7 +216,7 @@ struct __attribute__ ((__packed__)) page_info_on_disk
     inline bool is_out_of_order() const { return ((m_flags & 0x02) != 0); }
     inline bool is_empty(struct compress_info_on_disk *ciod) const { return ((ciod->m_cursor == 0) && (ciod->m_start == 0)); }
     inline bool is_valid() const { return (m_page_index != TT_INVALID_PAGE_INDEX); }
-    inline PageSize get_size() const { return m_size; }
+    //inline PageSize get_size() const { return m_size; }
     inline long int get_global_page_index(FileIndex file_idx, PageCount page_count) const
     {
         return ((long int)file_idx * (long int)page_count) + (long int)m_page_index;
@@ -230,8 +230,8 @@ struct __attribute__ ((__packed__)) page_info_on_disk
 
     char *c_str(char *buff, size_t size)
     {
-        snprintf(buff, size, "off=%d size=%d flags=%x idx=%d from=%d to=%d",
-            m_offset, m_size, m_flags, m_page_index, m_tstamp_from, m_tstamp_to);
+        snprintf(buff, size, "flags=%x idx=%d from=%d to=%d",
+            m_flags, m_page_index, m_tstamp_from, m_tstamp_to);
         return buff;
     }
 };

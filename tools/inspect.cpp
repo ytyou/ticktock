@@ -203,17 +203,17 @@ inspect_page(FileIndex file_idx, HeaderIndex header_idx, struct tsdb_header *tsd
     g_tstamp_resolution_ms = tsdb_header->is_millisecond();
     start_time = validate_resolution(start_time);
 
-    char *page_base = data_base + (page_header->m_page_index * tsdb_header->m_page_size) + page_header->m_offset;
+    char *page_base = data_base + (page_header->m_page_index * tsdb_header->m_page_size);
     ASSERT(page_header->m_page_index <= tsdb_header->m_page_index);
 
     // dump page header
     if (g_verbose)
     {
-        printf("     [%u,%u][offset=%u,size=%u,flags=%x,page-idx=%u,from=%u,to=%u,next-file=%u,next-header=%u]\n",
+        printf("     [%u,%u][flags=%x,page-idx=%u,from=%u,to=%u,next-file=%u,next-header=%u]\n",
             file_idx,
             header_idx,
-            page_header->m_offset,
-            page_header->m_size,
+            //page_header->m_offset,
+            //page_header->m_size,
             //page_header->m_cursor,
             //page_header->m_start,
             page_header->m_flags,
@@ -258,7 +258,7 @@ inspect_page_for_restore(const char *metric, const char *tags, FileIndex file_id
     g_tstamp_resolution_ms = tsdb_header->is_millisecond();
     start_time = validate_resolution(start_time);
 
-    char *page_base = data_base + (page_header->m_page_index * tsdb_header->m_page_size) + page_header->m_offset;
+    char *page_base = data_base + (page_header->m_page_index * tsdb_header->m_page_size);
     ASSERT(page_header->m_page_index <= tsdb_header->m_page_index);
 
     // dump page data
