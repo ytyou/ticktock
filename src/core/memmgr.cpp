@@ -184,7 +184,11 @@ MemoryManager::init()
     else if (g_page_size > UINT16_MAX)
         g_page_size = ((long)UINT16_MAX / 128) * 128;
     Logger::info("mm::page-size = %u", g_page_size);
-    g_page_count = Config::inst()->get_int(CFG_TSDB_PAGE_COUNT, CFG_TSDB_PAGE_COUNT_DEF);
+    unsigned long page_cnt =
+        Config::inst()->get_int(CFG_TSDB_PAGE_COUNT, CFG_TSDB_PAGE_COUNT_DEF);
+    if (page_cnt > UINT16_MAX)
+        page_cnt = UINT16_MAX;
+    g_page_count = page_cnt;
 
     m_network_buffer_small_len = MAX_HEADER_SIZE + MAX_SMALL_PAYLOAD;
     m_network_buffer_len = Config::inst()->get_bytes(CFG_TCP_BUFFER_SIZE, CFG_TCP_BUFFER_SIZE_DEF);

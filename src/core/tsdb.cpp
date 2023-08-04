@@ -2648,9 +2648,16 @@ Tsdb::init()
     if (tsdb_rotation_freq < 1) tsdb_rotation_freq = 1;
 
     // check if we have enough disk space
-    PageCount page_count =
+    unsigned long page_count =
         Config::inst()->get_int(CFG_TSDB_PAGE_COUNT, CFG_TSDB_PAGE_COUNT_DEF);
     uint64_t avail = get_disk_available_blocks(data_dir);
+
+    // make sure page-count is not greater than UINT16_MAX
+    if (page_count > UINT16_MAX)
+    {
+        Logger::warn("tsdb.page.count too large: %u, using %u", page_count, UINT16_MAX);
+        page_count = UINT16_MAX;
+    }
 
     if (avail <= page_count)
     {
@@ -2661,12 +2668,6 @@ Tsdb::init()
     {
         Logger::warn("Low disk space at %s", data_dir.c_str());
     }
-#ifndef __x86_64__
-    else if (524288 < page_count)
-    {
-        Logger::warn("tsdb.page.count too large: %u", page_count);
-    }
-#endif
 
     // restore all tsdbs
     for_all_dirs(data_dir, Tsdb::restore_tsdb, 3);
