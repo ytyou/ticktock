@@ -1565,7 +1565,9 @@ Tsdb::query_for_data_no_lock(MetricId mid, QueryTask *task)
     header_file->ensure_open(true);
     struct tsdb_header *tsdb_header = header_file->get_tsdb_header();
     struct page_info_on_disk *page_header = header_file->get_page_header(header_idx);
-    TimeRange range(from + page_header->m_tstamp_from, from + page_header->m_tstamp_to);
+    TimeRange range(from + task->get_tstamp_from(), from + page_header->m_tstamp_to);
+
+    task->set_tstamp_from(page_header->m_tstamp_to);
 
     if (query_range.has_intersection(range))
     {
@@ -1979,7 +1981,7 @@ Tsdb::get_header_file(MetricId mid, FileIndex file_idx)
 }
 
 PageSize
-Tsdb::append_page(MetricId mid, TimeSeriesId tid, FileIndex prev_file_idx, HeaderIndex prev_header_idx, struct page_info_on_disk *header, void *page, bool compact)
+Tsdb::append_page(MetricId mid, TimeSeriesId tid, FileIndex prev_file_idx, HeaderIndex prev_header_idx, struct page_info_on_disk *header, uint32_t tstamp_from, void *page, bool compact)
 {
     ASSERT(page != nullptr);
     ASSERT(header != nullptr);
@@ -2046,7 +2048,7 @@ Tsdb::append_page(MetricId mid, TimeSeriesId tid, FileIndex prev_file_idx, Heade
     tsdb_header->set_compacted(compact);
 
     // adjust range in tsdb_header
-    Timestamp from = m_time_range.get_from() + header->m_tstamp_from;
+    Timestamp from = m_time_range.get_from() + tstamp_from;
     Timestamp to = m_time_range.get_from() + header->m_tstamp_to;
 
     if (tsdb_header->m_start_tstamp > from)

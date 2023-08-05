@@ -68,7 +68,7 @@ PageInMemory::get_time_range()
 {
     struct page_info_on_disk *header = get_page_header();
     ASSERT(header != nullptr);
-    return TimeRange(header->m_tstamp_from + m_start, header->m_tstamp_to + m_start);
+    return TimeRange(m_tstamp_from + m_start, header->m_tstamp_to + m_start);
 }
 
 int
@@ -271,7 +271,7 @@ PageInMemory::flush(MetricId mid, TimeSeriesId tid, bool compact)
     m_page_header.m_next_file = TT_INVALID_FILE_INDEX;
     m_page_header.m_next_header = TT_INVALID_HEADER_INDEX;
 
-    return m_tsdb->append_page(mid, tid, prev_file_idx, prev_header_idx, &m_page_header, m_page, compact);
+    return m_tsdb->append_page(mid, tid, prev_file_idx, prev_header_idx, &m_page_header, m_tstamp_from, m_page, compact);
 
     // re-initialize the compressor
     //m_compressor->init(m_start, (uint8_t*)m_page, m_tsdb->get_page_size());
@@ -326,8 +326,8 @@ PageInMemory::restore(Timestamp tstamp, uint8_t *buff, PageSize offset, uint8_t 
     for (auto dp: dps)
     {
         uint32_t ts = dp.first - m_start;
-        if (ts < m_page_header.m_tstamp_from)
-            m_page_header.m_tstamp_from = ts;
+        if (ts < m_tstamp_from)
+            m_tstamp_from = ts;
         ts++;
         if (m_page_header.m_tstamp_to < ts)
             m_page_header.m_tstamp_to = ts;
@@ -343,8 +343,8 @@ PageInMemory::add_data_point(Timestamp tstamp, double value)
     {
         ASSERT(m_start <= tstamp);
         uint32_t ts = tstamp - m_start;
-        if (ts < m_page_header.m_tstamp_from)
-            m_page_header.m_tstamp_from = ts;
+        if (ts < m_tstamp_from)
+            m_tstamp_from = ts;
         ts++;
         if (m_page_header.m_tstamp_to < ts)
             m_page_header.m_tstamp_to = ts;

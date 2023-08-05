@@ -901,6 +901,7 @@ QueryTask::init()
     m_file_index = TT_INVALID_FILE_INDEX;
     m_header_index = TT_INVALID_HEADER_INDEX;
     m_downsampler = nullptr;
+    m_tstamp_from = 0;
     ASSERT(m_data.empty());
 }
 

@@ -265,6 +265,7 @@ public:
                          FileIndex prev_file_idx,
                          HeaderIndex prev_header_idx,
                          struct page_info_on_disk *header,
+                         uint32_t tstamp_from,
                          void *page,
                          bool compact);
     DataFile *get_data_file(MetricId mid, FileIndex file_idx);

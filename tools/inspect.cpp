@@ -209,7 +209,7 @@ inspect_page(FileIndex file_idx, HeaderIndex header_idx, struct tsdb_header *tsd
     // dump page header
     if (g_verbose)
     {
-        printf("     [%u,%u][flags=%x,page-idx=%u,from=%u,to=%u,next-file=%u,next-header=%u]\n",
+        printf("     [%u,%u][flags=%x,page-idx=%u,to=%u,next-file=%u,next-header=%u]\n",
             file_idx,
             header_idx,
             //page_header->m_offset,
@@ -218,7 +218,7 @@ inspect_page(FileIndex file_idx, HeaderIndex header_idx, struct tsdb_header *tsd
             //page_header->m_start,
             page_header->m_flags,
             page_header->m_page_index,
-            page_header->m_tstamp_from,
+            //page_header->m_tstamp_from,
             page_header->m_tstamp_to,
             page_header->m_next_file,
             page_header->m_next_header);

@@ -271,6 +271,16 @@ public:
         header_idx = m_header_index;
     }
 
+    uint32_t get_tstamp_from() const
+    {
+        return m_tstamp_from;
+    }
+
+    void set_tstamp_from(uint32_t tstamp)
+    {
+        m_tstamp_from = tstamp;
+    }
+
     inline TimeRange& get_query_range()
     {
         return m_time_range;
@@ -312,6 +322,7 @@ private:
     std::vector<DataPointContainer*> m_data;
     FileIndex m_file_index;
     HeaderIndex m_header_index;
+    uint32_t m_tstamp_from;
     bool m_has_ooo;
 };
 
