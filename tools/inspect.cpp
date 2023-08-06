@@ -447,12 +447,22 @@ inspect_tsdb_quick(const std::string& dir)
         std::cerr << "Inspecting tsdb " << dir << "..." << std::endl;
     }
 
-    for (int m = 0; ; m++)
+    int max_mid = 0;
+    std::vector<Mapping*> mappings;
+    Tsdb::get_all_mappings(mappings);
+
+    for (Mapping* mapping : mappings)
+    {
+        MetricId mid = mapping->get_id();
+        if (max_mid < mid) max_mid = mid;
+    }
+
+    for (int m = 0; m <= max_mid; m++)
     {
         char metrics_dir[PATH_MAX];
 
         snprintf(metrics_dir, sizeof(metrics_dir), "%s/m%010d", dir.c_str(), m);
-        if (! file_exists(metrics_dir)) break;
+        if (! file_exists(metrics_dir)) continue;
 
         for (int fidx = 0; ; fidx++)
         {
@@ -506,9 +516,9 @@ inspect_tsdb_for_restore(const std::string& dir)
 
     // dump all headers first...
     uint64_t tsdb_dps = 0;
-    std::string header_files_pattern = dir + "/header.*";
-    std::vector<std::string> header_files;
-    find_matching_files(header_files_pattern, header_files);
+    //std::string header_files_pattern = dir + "/header.*";
+    //std::vector<std::string> header_files;
+    //find_matching_files(header_files_pattern, header_files);
 
     std::string index_file_name = dir + "/index";
     int index_file_fd;
@@ -523,6 +533,7 @@ inspect_tsdb_for_restore(const std::string& dir)
 
     for (Mapping* mapping : mappings)
     {
+        MetricId mid = mapping->get_id();
         std::vector<TimeSeries*> tsv;
         mapping->get_all_ts(tsv);
 
@@ -530,7 +541,7 @@ inspect_tsdb_for_restore(const std::string& dir)
         {
             char tag_buff[MAX_TOTAL_TAG_LENGTH + 1];
             Tag *tags = ts->get_tags();
-            TimeSeriesId id = ts->get_id();
+            TimeSeriesId tid = ts->get_id();
 
             tag_buff[0] = 0;
             while (tags != nullptr)
@@ -542,11 +553,11 @@ inspect_tsdb_for_restore(const std::string& dir)
                 tags = tags->next();
             }
 
-            if (((id+1) * sizeof(struct index_entry)) >= index_file_size) continue;
-            if (index_entries[id].file_index == TT_INVALID_FILE_INDEX) continue;
+            if (((tid+1) * sizeof(struct index_entry)) >= index_file_size) continue;
+            if (index_entries[tid].file_index == TT_INVALID_FILE_INDEX) continue;
 
-            FileIndex file_idx = index_entries[id].file_index;
-            HeaderIndex header_idx = index_entries[id].header_index;
+            FileIndex file_idx = index_entries[tid].file_index;
+            HeaderIndex header_idx = index_entries[tid].header_index;
 
             int header_file_fd = -1;
             int data_file_fd = -1;
@@ -561,8 +572,8 @@ inspect_tsdb_for_restore(const std::string& dir)
                     char header_file_name[PATH_MAX];
                     char data_file_name[PATH_MAX];
 
-                    snprintf(header_file_name, sizeof(header_file_name), "%s/header.%u", dir.c_str(), file_idx);
-                    snprintf(data_file_name, sizeof(data_file_name), "%s/data.%u", dir.c_str(), file_idx);
+                    snprintf(header_file_name, sizeof(header_file_name), "%s/m%.10u/header.%.5u", dir.c_str(), mid, file_idx);
+                    snprintf(data_file_name, sizeof(data_file_name), "%s/m%.10u/data.%.5u", dir.c_str(), mid, file_idx);
 
                     std::string header_file_name_str(header_file_name);
                     std::string data_file_name_str(data_file_name);
