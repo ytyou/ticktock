@@ -70,11 +70,18 @@ private:
 };
 
 
+/* The first set of indices points to the 1st header of the time series;
+ * the second set of indices points to the header of the first page, for
+ * the time series, whose data falls into the second half of the Tsdb
+ * time range.
+ */
 struct __attribute__ ((__packed__)) index_entry
 {
     uint8_t flags;
-    FileIndex file_index;
-    HeaderIndex header_index;
+    FileIndex file_index;       // points to the first header
+    HeaderIndex header_index;   // points to the first header
+    FileIndex file_index2;      // points to the second header
+    HeaderIndex header_index2;  // points to the second header
 };
 
 
@@ -85,7 +92,9 @@ public:
     void open(bool for_read) override;
 
     bool set_indices(TimeSeriesId id, FileIndex file_index, HeaderIndex page_index);
+    bool set_indices2(TimeSeriesId id, FileIndex file_index, HeaderIndex page_index);
     void get_indices(TimeSeriesId id, FileIndex& file_index, HeaderIndex& page_index);
+    void get_indices2(TimeSeriesId id, FileIndex& file_index, HeaderIndex& page_index);
 
     bool get_out_of_order(TimeSeriesId id);
     void set_out_of_order(TimeSeriesId id, bool ooo);

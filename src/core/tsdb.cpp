@@ -1643,11 +1643,15 @@ Tsdb::query_for_data_no_lock(MetricId mid, TimeRange& range, std::vector<QueryTa
 
     m_mode |= TSDB_MODE_READ;
     m_index_file.ensure_open(true);
+    Timestamp middle = m_time_range.get_middle();
 
     for (auto task : tasks)
     {
         // figure out first page location before pushing to pq
-        m_index_file.get_indices(task->get_ts_id(), file_idx, header_idx);
+        if (middle < range.get_from())
+            m_index_file.get_indices2(task->get_ts_id(), file_idx, header_idx);
+        else
+            m_index_file.get_indices(task->get_ts_id(), file_idx, header_idx);
         if (file_idx == TT_INVALID_FILE_INDEX || header_idx == TT_INVALID_HEADER_INDEX)
             continue;
         task->set_indices(file_idx, header_idx);
@@ -1822,7 +1826,9 @@ Tsdb::get_last_tstamp(MetricId mid, TimeSeriesId tid)
     std::lock_guard<std::mutex> guard(m_lock);
 
     m_index_file.ensure_open(false);
-    m_index_file.get_indices(tid, fidx, hidx);
+    m_index_file.get_indices2(tid, fidx, hidx);
+    if (fidx == TT_INVALID_FILE_INDEX)
+        m_index_file.get_indices(tid, fidx, hidx);
 
     while (fidx != TT_INVALID_FILE_INDEX)
     {
@@ -1914,7 +1920,10 @@ Tsdb::get_last_header_indices(MetricId mid, TimeSeriesId tid, FileIndex& file_id
     m_mode |= TSDB_MODE_READ;
     m_mode &= ~TSDB_MODE_COMPACTED; // in case it's already compacted
     m_index_file.ensure_open(false);
-    m_index_file.get_indices(tid, fidx, hidx);
+    //m_index_file.get_indices(tid, fidx, hidx);
+    m_index_file.get_indices2(tid, fidx, hidx);
+    if (fidx == TT_INVALID_FILE_INDEX)
+        m_index_file.get_indices(tid, fidx, hidx);
 
     while (fidx != TT_INVALID_FILE_INDEX)
     {
@@ -1934,8 +1943,10 @@ Tsdb::get_last_header_indices(MetricId mid, TimeSeriesId tid, FileIndex& file_id
     }
 }
 
+/* @params  crossed 
+ */
 void
-Tsdb::set_indices(MetricId mid, TimeSeriesId tid, FileIndex prev_file_idx, HeaderIndex prev_header_idx, FileIndex this_file_idx, HeaderIndex this_header_idx)
+Tsdb::set_indices(MetricId mid, TimeSeriesId tid, FileIndex prev_file_idx, HeaderIndex prev_header_idx, FileIndex this_file_idx, HeaderIndex this_header_idx, bool crossed)
 {
     ASSERT(TT_INVALID_FILE_INDEX != this_file_idx);
     ASSERT(TT_INVALID_HEADER_INDEX != this_header_idx);
@@ -1950,6 +1961,15 @@ Tsdb::set_indices(MetricId mid, TimeSeriesId tid, FileIndex prev_file_idx, Heade
         ASSERT(header_file->get_id() == prev_file_idx);
         header_file->ensure_open(false);
         header_file->update_next(prev_header_idx, this_file_idx, this_header_idx);
+    }
+
+    if (crossed)
+    {
+        FileIndex file_idx = TT_INVALID_FILE_INDEX;
+        HeaderIndex header_idx TT_INVALID_HEADER_INDEX;
+        m_index_file.get_indices2(tid, file_idx, header_idx);
+        if (file_idx == TT_INVALID_FILE_INDEX)
+            m_index_file.set_indices2(tid, this_file_idx, this_header_idx);
     }
 }
 
@@ -2051,6 +2071,11 @@ Tsdb::append_page(MetricId mid, TimeSeriesId tid, FileIndex prev_file_idx, Heade
     Timestamp from = m_time_range.get_from() + tstamp_from;
     Timestamp to = m_time_range.get_from() + header->m_tstamp_to;
 
+    ASSERT(to <= m_time_range.get_to());
+
+    Timestamp middle = m_time_range.get_middle();
+    bool crossed = (middle < to);
+
     if (tsdb_header->m_start_tstamp > from)
         tsdb_header->m_start_tstamp = from;
     if (tsdb_header->m_end_tstamp < to)
@@ -2062,7 +2087,7 @@ Tsdb::append_page(MetricId mid, TimeSeriesId tid, FileIndex prev_file_idx, Heade
     //ASSERT(header->m_page_index == new_header->m_page_index);
     new_header->init(header);
 
-    set_indices(mid, tid, prev_file_idx, prev_header_idx, header_file->get_id(), header_idx);
+    set_indices(mid, tid, prev_file_idx, prev_header_idx, header_file->get_id(), header_idx, crossed);
 
     // passing our own indices back to caller
     header->m_next_file = header_file->get_id();

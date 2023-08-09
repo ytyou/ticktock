@@ -259,7 +259,7 @@ public:
     void set_out_of_order(TimeSeriesId tid, bool ooo);
     void get_last_header_indices(MetricId mid, TimeSeriesId tid, FileIndex& file_idx, HeaderIndex& header_idx);
     void set_indices(MetricId mid, TimeSeriesId tid, FileIndex prev_file_idx, HeaderIndex prev_header_idx,
-                     FileIndex this_file_idx, HeaderIndex this_header_idx);
+                     FileIndex this_file_idx, HeaderIndex this_header_idx, bool crossed);
     PageSize append_page(MetricId mid,          // return next page size
                          TimeSeriesId tid,
                          FileIndex prev_file_idx,

@@ -315,7 +315,10 @@ IndexFile::open(bool for_read)
 
         // TODO: memcpy()?
         for (uint64_t i = 0; i < max_idx; i++)
+        {
             entries[i].file_index = TT_INVALID_FILE_INDEX;
+            entries[i].file_index2 = TT_INVALID_FILE_INDEX;
+        }
     }
     else
     {
@@ -348,6 +351,8 @@ IndexFile::expand(off_t new_len)
         entries[old_idx].flags = 0;
         entries[old_idx].file_index = TT_INVALID_FILE_INDEX;
         entries[old_idx].header_index = TT_INVALID_HEADER_INDEX;
+        entries[old_idx].file_index2 = TT_INVALID_FILE_INDEX;
+        entries[old_idx].header_index2 = TT_INVALID_HEADER_INDEX;
     }
 
     Logger::debug("index file %s length: %" PRIu64, m_name.c_str(), get_length());
@@ -381,6 +386,32 @@ IndexFile::set_indices(TimeSeriesId id, FileIndex file_index, HeaderIndex header
     return true;
 }
 
+bool
+IndexFile::set_indices2(TimeSeriesId id, FileIndex file_index, HeaderIndex header_index)
+{
+    void *pages = get_pages();
+    ASSERT(pages != nullptr);
+    ASSERT(! is_read_only());
+
+    size_t new_len = (id+1) * TT_INDEX_SIZE;
+    size_t old_len = get_length();
+    ASSERT(0 < old_len);
+
+    if (old_len < new_len)
+    {
+        // file too small, expand it
+        if (! expand(new_len + TT_SIZE_INCREMENT))
+            return false;
+        pages = get_pages();
+    }
+
+    struct index_entry *entries = (struct index_entry*)pages;
+    entries[id].file_index2 = file_index;
+    entries[id].header_index2 = header_index;
+
+    return true;
+}
+
 void
 IndexFile::get_indices(TimeSeriesId id, FileIndex& file_index, HeaderIndex& header_index)
 {
@@ -400,6 +431,28 @@ IndexFile::get_indices(TimeSeriesId id, FileIndex& file_index, HeaderIndex& head
         struct index_entry entry = entries[id];
         file_index = entry.file_index;
         header_index = entry.header_index;
+    }
+}
+
+void
+IndexFile::get_indices2(TimeSeriesId id, FileIndex& file_index, HeaderIndex& header_index)
+{
+    void *pages = get_pages();
+
+    size_t idx = (id+1) * TT_INDEX_SIZE;
+    size_t len = get_length();
+
+    if ((len <= idx) || (pages == nullptr))
+    {
+        file_index = TT_INVALID_FILE_INDEX;
+        header_index = TT_INVALID_HEADER_INDEX;
+    }
+    else
+    {
+        struct index_entry *entries = (struct index_entry*)pages;
+        struct index_entry entry = entries[id];
+        file_index = entry.file_index2;
+        header_index = entry.header_index2;
     }
 }
 

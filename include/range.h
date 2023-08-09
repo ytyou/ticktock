@@ -103,6 +103,11 @@ public:
         return m_to;
     }
 
+    inline Timestamp get_middle() const
+    {
+        return m_from + ((m_to - m_from) / 2);
+    }
+
     inline Timestamp get_duration() const
     {
         return m_to - m_from;
