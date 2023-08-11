@@ -207,6 +207,46 @@ DataPoint::next_word(char* json, char* &word)
     return curr;
 }
 
+// parse tag value, which could be of bool, double, or (quoted) string type
+char *
+DataPoint::next_value(char* json, char* &value, bool& quote)
+{
+    // skip leading spaces
+    char *curr;
+    for (curr = json; std::isspace(*curr); curr++) /* do nothing */;
+    if (*curr == ':') curr++;
+    for ( ; std::isspace(*curr); curr++) /* do nothing */;
+
+    if (*curr == '"')
+    {
+        curr++;
+        value = curr;
+        curr = strchr(curr, '"');
+        if (curr == nullptr) return nullptr;
+        *curr = 0;
+        for (curr++; std::isspace(*curr); curr++) /* do nothing */;
+        return curr;
+    }
+    else if (std::isdigit(*curr))
+    {
+        value = curr;
+        double dbl;
+        curr = next_double(curr, dbl);
+        if (*curr == '}') quote = true;
+        *curr = 0;
+        return curr+1;
+    }
+    else    // boolean
+    {
+        value = curr;
+        for (curr; std::isalpha(*curr); curr++) /* do nothing */;
+        if (*curr == '}') quote = true;
+        *curr = 0;
+        for (curr++; std::isspace(*curr); curr++) /* do nothing */;
+        return (std::strcmp(value, "true") == 0 || std::strcmp(value, "false") == 0) ? curr : nullptr;
+    }
+}
+
 char *
 DataPoint::next_long(char* json, Timestamp &number)
 {
@@ -231,6 +271,8 @@ DataPoint::next_double(char* json, double &number)
 char *
 DataPoint::next_tags(char* json)
 {
+    bool quote = false;
+
     for (json++; (*json != '}') && (*json != 0); )
     {
         char *name, *value;
@@ -238,7 +280,7 @@ DataPoint::next_tags(char* json)
         if (json == nullptr) return nullptr;
         ASSERT(name != nullptr);
         ASSERT(*name != ',');
-        json = next_word(json, value);
+        json = next_value(json, value, quote);
         if (json == nullptr) return nullptr;
         ASSERT(value != nullptr);
         ASSERT(*value != ':');
@@ -246,7 +288,7 @@ DataPoint::next_tags(char* json)
         while (std::isspace(*json)) json++;
     }
 
-    if (*json == '}') json++;
+    if ((*json == '}') && !quote) json++;
 
     return json;
 }

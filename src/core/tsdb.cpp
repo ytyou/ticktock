@@ -404,12 +404,15 @@ Mapping::get_ts(DataPoint& dp)
 
     if (bt == nullptr)
     {
+        char raw_tags_copy[MAX_TOTAL_TAG_LENGTH];
+
         if (raw_tags != nullptr)
         {
-            raw_tags = STRDUP(raw_tags);
+            std::strncpy(raw_tags_copy, raw_tags, MAX_TOTAL_TAG_LENGTH);
+            raw_tags_copy[MAX_TOTAL_TAG_LENGTH-1] = 0;
+
             if (UNLIKELY(! dp.parse_raw_tags()))
                 return nullptr;
-            //dp.set_raw_tags(raw_tags);
         }
 
         Tag *field = dp.remove_tag(TT_FIELD_TAG_NAME, false);
@@ -445,10 +448,8 @@ Mapping::get_ts(DataPoint& dp)
 
         if (raw_tags != nullptr)
         {
-            if (std::strcmp(raw_tags, buff) != 0)
-                m_map[raw_tags] = bt;
-            else
-                FREE(raw_tags);
+            if (std::strcmp(raw_tags_copy, buff) != 0)
+                m_map[STRDUP(raw_tags_copy)] = bt;
         }
     }
 

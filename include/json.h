@@ -135,9 +135,16 @@ public:
 
     inline const char *to_string() const
     {
-        ASSERT(type == JsonValueType::JVT_STRING);
-        ASSERT(str != nullptr);
-        return str;
+        if (type == JsonValueType::JVT_BOOL)
+        {
+            return boolean ? "true" : "false";
+        }
+        else
+        {
+            ASSERT(type == JsonValueType::JVT_STRING);
+            ASSERT(str != nullptr);
+            return str;
+        }
     }
 
 private:
