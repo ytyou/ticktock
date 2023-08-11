@@ -1566,7 +1566,9 @@ Tsdb::query_for_data_no_lock(MetricId mid, QueryTask *task)
     struct tsdb_header *tsdb_header = header_file->get_tsdb_header();
     struct page_info_on_disk *page_header = header_file->get_page_header(header_idx);
     TimeRange range(from + task->get_tstamp_from(), from + page_header->m_tstamp_to);
+    bool ooo = get_out_of_order(task->get_ts_id());
 
+    if (ooo) task->set_ooo(true);
     task->set_tstamp_from(page_header->m_tstamp_to);
 
     if (query_range.has_intersection(range))
@@ -1601,14 +1603,19 @@ Tsdb::query_for_data_no_lock(MetricId mid, QueryTask *task)
         ASSERT(container->size() > 0);
         lock.unlock();
 
-        if (page_header->is_out_of_order())
-            task->set_ooo(true);
-
         task->add_container(container);
     }
 
-    // prepare for the next page
-    task->set_indices(page_header->get_next_file(), page_header->get_next_header());
+    if (ooo || (range.get_to() <= query_range.get_to()))
+    {
+        // prepare for the next page
+        task->set_indices(page_header->get_next_file(), page_header->get_next_header());
+    }
+    else
+    {
+        // no more data to read for this query
+        task->set_indices(TT_INVALID_FILE_INDEX, TT_INVALID_HEADER_INDEX);
+    }
 }
 
 void
