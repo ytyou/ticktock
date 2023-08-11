@@ -81,6 +81,7 @@ public:
 
 private:
     char* next_word(char* json, char* &word);
+    char* next_value(char* json, char* &value, bool& quote);
     char* next_long(char* json, Timestamp &number);
     char* next_double(char* json, double &number);
     char* next_tags(char* json);
