@@ -25,7 +25,7 @@ try:
     put_req = put_data_point1 +'\n'+put_data_point2+'\n';
 
     response = urlopen(req, put_req.encode())
-    print("Received response:", response.getcode()) 
+    print("Received response code: {} body:{}".format(response.getcode(), response.reason)) 
 
     print("To query:");
     url = "http://%s:%s/api/query?start=1633412100&m=avg:1m-avg:http.cpu.usr{host=foo}" % (HOST, PORT)
