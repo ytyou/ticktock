@@ -36,7 +36,8 @@ int main(void) {
   long total_size=pagesize * pagecount - 1;
   printf("total_size=%ld\n", total_size);
  
-  const int len = pagesize;
+  int fraction=32;
+  const int len = pagesize/fraction; // try 128b write each time to see how io behaves
   // For DirectIO, align mem address
   //char *tmp_str = valloc(len);
   
@@ -58,7 +59,9 @@ int main(void) {
   }  
   tmp_str_unused[pagesize*tmp_str_page_count -1] = '\0';
 
-     for (int j=0; j < pagecount; j++) {
+
+  // Write len bytes 
+  for (int j=0; j < pagecount*fraction; j++) {
          //int curr_page_index = page_index[j];
 
          write(fd, tmp_str, len);
@@ -75,7 +78,8 @@ int main(void) {
              fsync(fd);
          }    
          //sleep(0.01); // sleep for 1ms
-     }
+  }
+
   close(fd);
   free(tmp_str);
   free(tmp_str_unused);
