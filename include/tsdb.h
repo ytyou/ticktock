@@ -193,6 +193,7 @@ public:
 
     DataFile *get_data_file(FileIndex file_idx);
     HeaderFile *get_header_file(FileIndex file_idx);
+    RollupIndex add_rollup_point(RollupIndex header_idx, int entries, uint32_t cnt, double min, double max, double sum);
 
     // for testing only
     int get_page_count(bool ooo);
@@ -205,6 +206,9 @@ private:
     void restore_data(const std::string& file, PageSize page_size, PageCount page_cnt);
 
     MetricId m_id;
+    std::mutex m_rollup_lock;
+    RollupHeaderFile m_rollup_header_file;
+    RollupDataFile m_rollup_data_file;
     std::vector<HeaderFile*> m_header_files;
     std::vector<DataFile*> m_data_files;
 };
@@ -235,6 +239,7 @@ public:
     static void get_all_mappings(std::vector<Mapping*>& mappings);
 
     bool add(DataPoint& dp);
+    void add_rollup_point(MetricId mid, TimeSeriesId tid, uint32_t cnt, double min, double max, double sum);
 
     static MetricId query_for_ts(const char *metric, Tag *tags, std::unordered_set<TimeSeries*>& ts, const char *key, bool explicit_tags);
     //bool query_for_data(TimeSeriesId id, TimeRange& range, std::vector<DataPointContainer*>& data);
@@ -270,6 +275,16 @@ public:
                          bool compact);
     DataFile *get_data_file(MetricId mid, FileIndex file_idx);
     HeaderFile *get_header_file(MetricId mid, FileIndex file_idx);
+
+    inline int get_rollup_entries() const
+    {
+        return std::ceil((double)m_time_range.get_duration_sec() / (double)m_rollup_interval);
+    }
+
+    inline uint32_t get_rollup_interval() const
+    {
+        return m_rollup_interval;
+    }
 
     inline const TimeRange& get_time_range() const
     {
@@ -337,6 +352,7 @@ private:
     void unload_no_lock();
     uint32_t mode_of() const;
 
+    Metric *get_metric(MetricId mid);
     struct page_info_on_disk *get_page_header(FileIndex file_idx, PageIndex page_idx);
 
     static Mapping *get_or_add_mapping(const char *metric);
@@ -382,6 +398,7 @@ private:
     PageSize m_page_size;
     PageCount m_page_count;
     int m_compressor_version;
+    uint32_t m_rollup_interval;     // in seconds
 };
 
 

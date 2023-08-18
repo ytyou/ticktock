@@ -118,7 +118,7 @@
 #define CFG_TSDB_PAGE_COUNT                     "tsdb.page.count"
 #define CFG_TSDB_PAGE_COUNT_DEF                 32768
 #define CFG_TSDB_PAGE_SIZE                      "tsdb.page.size"
-#define CFG_TSDB_PAGE_SIZE_DEF                  "128b"
+#define CFG_TSDB_PAGE_SIZE_DEF                  "256b"
 #define CFG_TSDB_FLUSH_FREQUENCY                "tsdb.flush.frequency"
 #define CFG_TSDB_FLUSH_FREQUENCY_DEF            "5min"
 #define CFG_TSDB_GC_FREQUENCY                   "tsdb.gc.frequency"
@@ -131,6 +131,8 @@
 #define CFG_TSDB_READ_ONLY_THRESHOLD            "tsdb.read_only.threshold"
 #define CFG_TSDB_READ_ONLY_THRESHOLD_DEF        "1h"
 #define CFG_TSDB_RETENTION_THRESHOLD            "tsdb.retention.threshold"
+#define CFG_TSDB_ROLLUP_INTERVAL                "tsdb.rollup.interval"
+#define CFG_TSDB_ROLLUP_INTERVAL_DEF            "1h"
 #define CFG_TSDB_ROTATION_FREQUENCY             "tsdb.rotation.frequency"
 #define CFG_TSDB_ROTATION_FREQUENCY_DEF         "1d"
 #define CFG_TSDB_SELF_METER_ENABLED             "tsdb.self_meter.enabled"

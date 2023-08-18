@@ -82,6 +82,7 @@ struct __attribute__ ((__packed__)) index_entry
     HeaderIndex header_index;   // points to the first header
     FileIndex file_index2;      // points to the second header
     HeaderIndex header_index2;  // points to the second header
+    RollupIndex rollup_index;   // index of rollup-index
 };
 
 
@@ -95,6 +96,8 @@ public:
     bool set_indices2(TimeSeriesId id, FileIndex file_index, HeaderIndex page_index);
     void get_indices(TimeSeriesId id, FileIndex& file_index, HeaderIndex& page_index);
     void get_indices2(TimeSeriesId id, FileIndex& file_index, HeaderIndex& page_index);
+    void set_rollup_index(TimeSeriesId tid, RollupIndex idx);
+    RollupIndex get_rollup_index(TimeSeriesId tid);
 
     bool get_out_of_order(TimeSeriesId id);
     void set_out_of_order(TimeSeriesId id, bool ooo);
@@ -174,6 +177,55 @@ private:
     Timestamp m_last_write;
 
     pthread_rwlock_t m_lock;
+};
+
+
+class RollupHeaderFile : public MmapFile
+{
+public:
+    RollupHeaderFile(const std::string& file_name);
+
+    void open(bool for_read) override;
+
+    RollupIndex new_header(int entries);
+    void add_index(RollupIndex header_idx, uint32_t data_idx, int entries);
+
+private:
+    bool expand(off_t new_len);
+    uint32_t *get_header(RollupIndex header_idx, int entries);
+
+    RollupIndex m_header_count;
+};
+
+
+struct __attribute__ ((__packed__)) rollup_entry
+{
+    uint32_t count;
+    double min;
+    double max;
+    double sum;
+};
+
+
+class RollupDataFile : public MmapFile
+{
+public:
+    RollupDataFile(const std::string& file_name);
+
+    void open(bool read_only) override;
+    void close() override;
+    bool is_open(bool for_read) const override;
+
+    uint32_t add_data_point(uint32_t cnt, double min, double max, double sum);
+
+    inline Timestamp get_last_read() const { return m_last_read; }
+    inline Timestamp get_last_write() const { return m_last_write; }
+
+private:
+    FILE *m_file;
+    Timestamp m_last_read;
+    Timestamp m_last_write;
+    uint32_t m_entry_index;
 };
 
 

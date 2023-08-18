@@ -825,7 +825,9 @@ Mapping::get_ts_count()
 
 /* 'dir' is a full path name. E.g. /tt/data/2023/06/1686441600.1686528000/m0000000001
  */
-Metric::Metric(const std::string& dir, PageSize page_size, PageCount page_cnt)
+Metric::Metric(const std::string& dir, PageSize page_size, PageCount page_cnt) :
+    m_rollup_data_file(dir+"/rollup.data"),
+    m_rollup_header_file(dir+"/rollup.header")
 {
     // try to parse out the id
     auto const pos = dir.find_last_of('/');
@@ -876,6 +878,8 @@ Metric::close()
         data->close();
     for (auto header: m_header_files)
         header->close();
+    m_rollup_data_file.close();
+    m_rollup_header_file.close();
 }
 
 void
@@ -987,6 +991,19 @@ Metric::get_last_header(std::string& tsdb_dir, PageCount page_cnt, PageSize page
     return header_file;
 }
 
+RollupIndex
+Metric::add_rollup_point(RollupIndex header_idx, int entries, uint32_t cnt, double min, double max, double sum)
+{
+    std::lock_guard<std::mutex> guard(m_rollup_lock);
+    m_rollup_header_file.ensure_open(false);
+    if (header_idx == TT_INVALID_ROLLUP_INDEX)
+        header_idx = m_rollup_header_file.new_header(entries);
+    m_rollup_data_file.ensure_open(false);
+    uint32_t data_idx = m_rollup_data_file.add_data_point(cnt, min, max, sum);
+    m_rollup_header_file.add_index(header_idx, data_idx, entries);
+    return header_idx;
+}
+
 bool
 Metric::rotate(Timestamp now_sec, Timestamp thrashing_threshold)
 {
@@ -1030,6 +1047,13 @@ Metric::rotate(Timestamp now_sec, Timestamp thrashing_threshold)
         }
         else
             header_file->close();
+    }
+
+    if (((int64_t)now_sec - (int64_t)m_rollup_data_file.get_last_read()) > (int64_t)thrashing_threshold)
+    {
+        std::lock_guard<std::mutex> guard(m_rollup_lock);
+        m_rollup_data_file.close();
+        m_rollup_header_file.close();
     }
 
     return all_closed;
@@ -1098,6 +1122,10 @@ Tsdb::Tsdb(TimeRange& range, bool existing, const char *suffix) :
     }
     m_compressor_version =
         Config::inst()->get_int(CFG_TSDB_COMPRESSOR_VERSION,CFG_TSDB_COMPRESSOR_VERSION_DEF);
+    m_rollup_interval =
+        Config::inst()->get_time(CFG_TSDB_ROLLUP_INTERVAL,TimeUnit::SEC,CFG_TSDB_ROLLUP_INTERVAL_DEF);
+    if (range.get_duration_sec() < m_rollup_interval)
+        m_rollup_interval = range.get_duration_sec();
     m_mode = mode_of();
     Logger::debug("tsdb %T created (mode=%d)", &range, m_mode);
 }
@@ -1188,6 +1216,7 @@ Tsdb::restore_config(const std::string& dir)
     m_page_size = cfg.get_bytes(CFG_TSDB_PAGE_SIZE, CFG_TSDB_PAGE_SIZE_DEF);
     m_page_count = cfg.get_int(CFG_TSDB_PAGE_COUNT, CFG_TSDB_PAGE_COUNT_DEF);
     m_compressor_version = cfg.get_int(CFG_TSDB_COMPRESSOR_VERSION, CFG_TSDB_COMPRESSOR_VERSION_DEF);
+    m_rollup_interval = cfg.get_time(CFG_TSDB_ROLLUP_INTERVAL, TimeUnit::SEC, CFG_TSDB_ROLLUP_INTERVAL_DEF);
 
     if (cfg.exists(CFG_TSDB_METRIC_BUCKETS))
         m_mbucket_count = cfg.get_int(CFG_TSDB_METRIC_BUCKETS);
@@ -1204,6 +1233,7 @@ Tsdb::write_config(const std::string& dir)
     cfg.set_value(CFG_TSDB_PAGE_SIZE, std::to_string(m_page_size));
     cfg.set_value(CFG_TSDB_PAGE_COUNT, std::to_string(m_page_count));
     cfg.set_value(CFG_TSDB_COMPRESSOR_VERSION, std::to_string(m_compressor_version));
+    cfg.set_value(CFG_TSDB_ROLLUP_INTERVAL, std::to_string(m_rollup_interval)+"sec");
 
     if (m_mbucket_count != UINT32_MAX)
         cfg.set_value(CFG_TSDB_METRIC_BUCKETS, std::to_string(m_mbucket_count));
@@ -1367,6 +1397,64 @@ Tsdb::add(DataPoint& dp)
     Mapping *mapping = get_or_add_mapping(dp.get_metric());
     if (mapping == nullptr) return false;
     return mapping->add(dp);
+}
+
+Metric *
+Tsdb::get_metric(MetricId mid)
+{
+    uint32_t bucket = mid % m_mbucket_count;
+
+    // create Metric if necessary
+    if (bucket >= m_metrics.size())
+    {
+        if (m_metrics.empty())
+            m_metrics.reserve(Mapping::get_metric_count());
+
+        std::string tsdb_dir = get_tsdb_dir_name(m_time_range); // TODO: tsdb may have a suffix?
+        std::string metric_dir = Metric::get_metric_dir(tsdb_dir, bucket);
+        Metric *metric = new Metric(metric_dir, m_page_size, m_page_count);
+
+        if (bucket == m_metrics.size())
+            m_metrics.push_back(metric);
+        else
+        {
+            while (bucket > m_metrics.size())
+                m_metrics.push_back(nullptr);
+            m_metrics.push_back(metric);
+        }
+    }
+    else if (m_metrics[bucket] == nullptr)
+    {
+        std::string tsdb_dir = get_tsdb_dir_name(m_time_range); // TODO: tsdb may have a suffix?
+        std::string metric_dir = Metric::get_metric_dir(tsdb_dir, bucket);
+        m_metrics[bucket] = new Metric(metric_dir, m_page_size, m_page_count);
+    }
+
+    ASSERT(bucket < m_metrics.size());
+    return m_metrics[bucket];
+}
+
+void
+Tsdb::add_rollup_point(MetricId mid, TimeSeriesId tid, uint32_t cnt, double min, double max, double sum)
+{
+    Metric *metric = get_metric(mid);
+    ASSERT(metric != nullptr);
+    int entries = get_rollup_entries();
+    RollupIndex header_idx;
+
+    {
+        std::lock_guard<std::mutex> guard(m_lock);
+        m_index_file.ensure_open(false);
+        header_idx = m_index_file.get_rollup_index(tid);
+    }
+
+    RollupIndex idx = metric->add_rollup_point(header_idx, entries, cnt, min, max, sum);
+
+    if (idx != header_idx)
+    {
+        ASSERT(header_idx == TT_INVALID_ROLLUP_INDEX);
+        m_index_file.set_rollup_index(tid, idx);
+    }
 }
 
 bool
@@ -2017,7 +2105,11 @@ Tsdb::append_page(MetricId mid, TimeSeriesId tid, FileIndex prev_file_idx, Heade
     //ASSERT(m_metrics[mid] != nullptr);
     std::lock_guard<std::mutex> guard(m_lock);
     //WriteLock guard(m_lock);
+    Metric *metric = get_metric(mid);
 
+    ASSERT(metric != nullptr);
+
+#if 0
     uint32_t bucket = mid % m_mbucket_count;
 
     // create Metric if necessary
@@ -2047,16 +2139,17 @@ Tsdb::append_page(MetricId mid, TimeSeriesId tid, FileIndex prev_file_idx, Heade
     }
 
     ASSERT(bucket < m_metrics.size());
+#endif
 
     const char *suffix = compact ? TEMP_SUFFIX : nullptr;
     std::string tsdb_dir = get_tsdb_dir_name(m_time_range, suffix);
-    HeaderFile *header_file = m_metrics[bucket]->get_last_header(tsdb_dir, get_page_count(), get_page_size());
+    HeaderFile *header_file = metric->get_last_header(tsdb_dir, get_page_count(), get_page_size());
 
     //m_load_time = ts_now_sec();
     m_mode |= TSDB_MODE_READ_WRITE;
 
-    ASSERT(m_metrics[bucket] != nullptr);
-    DataFile *data_file = m_metrics[bucket]->get_last_data();
+    //ASSERT(m_metrics[bucket] != nullptr);
+    DataFile *data_file = metric->get_last_data();
 
     data_file->ensure_open(false);
     //header_file->ensure_open(false);

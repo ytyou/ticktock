@@ -24,6 +24,7 @@
 #include "dp.h"
 #include "page.h"
 #include "recycle.h"
+#include "rollup.h"
 #include "serial.h"
 #include "tag.h"
 #include "meta.h"
@@ -87,6 +88,7 @@ public:
 private:
     //char *m_key;            // this uniquely defines the time-series
     //std::mutex m_lock;
+    RollupManager m_rollup;
 
     PageInMemory *m_buff;   // in-memory buffer; if m_id is 0, it's contents are
                             // not on disk; otherwise it's contents are at least

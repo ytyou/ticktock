@@ -227,6 +227,8 @@ TimeSeries::flush_no_lock(MetricId mid, bool close)
             m_buff->init(mid, m_id, nullptr, true);
         }
     }
+
+    m_rollup.flush(mid, m_id);
 }
 
 void
@@ -299,6 +301,9 @@ TimeSeries::add_data_point(MetricId mid, DataPoint& dp)
         ok = m_buff->add_data_point(tstamp, dp.get_value());
         ASSERT(ok);
     }
+
+    // rollup
+    m_rollup.add_data_point(m_buff->get_tsdb(), mid, m_id, dp);
 
     return ok;
 }
