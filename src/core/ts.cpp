@@ -414,6 +414,32 @@ TimeSeries::query_for_data(Tsdb *tsdb, TimeRange& range, std::vector<DataPointCo
 }
 
 void
+TimeSeries::query_for_rollup(Tsdb *tsdb, TimeRange& range, std::vector<DataPointContainer*>& data, RollupType rollup)
+{
+    ASSERT(rollup != RollupType::RU_NONE);
+
+    if ((m_rollup.get_tsdb() == tsdb) && (range.in_range(m_rollup.get_tstamp())))
+    {
+        DataPointPair dp;
+
+        if (m_rollup.query(rollup, dp))
+        {
+            DataPointContainer *container;
+
+            if (data.empty())
+            {
+                container = (DataPointContainer*)
+                    MemoryManager::alloc_recyclable(RecyclableType::RT_DATA_POINT_CONTAINER);
+            }
+            else
+                container = data.back();
+
+            container->add_data_point(dp.first, dp.second);
+        }
+    }
+}
+
+void
 TimeSeries::archive(MetricId mid, Timestamp now_sec, Timestamp threshold_sec)
 {
     std::lock_guard<std::mutex> guard(m_locks[m_id % m_lock_count]);

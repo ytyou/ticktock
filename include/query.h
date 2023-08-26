@@ -24,6 +24,7 @@
 #include "range.h"
 #include "http.h"
 #include "recycle.h"
+#include "rollup.h"
 #include "strbuf.h"
 #include "stop.h"
 #include "sync.h"
@@ -228,7 +229,7 @@ class QueryTask : public Recyclable
 {
 public:
     QueryTask();
-    void query_ts_data(Tsdb *tsdb);
+    void query_ts_data(Tsdb *tsdb, RollupType rollup_type);
     void merge_data();
     void fill();
 
@@ -241,6 +242,7 @@ public:
     Tag *get_cloned_tags(StringBuffer& strbuf);
 
     TimeSeriesId get_ts_id() const;
+    inline Downsampler *get_downsampler() { return m_downsampler; }
 
     inline void set_ooo(bool ooo)
     {
@@ -259,16 +261,21 @@ public:
 
     void add_container(DataPointContainer *container);
 
-    inline void set_indices(FileIndex file_idx, HeaderIndex header_idx)
+    inline void set_indices(uint32_t file_idx, HeaderIndex header_idx)
     {
         m_file_index = file_idx;
         m_header_index = header_idx;
     }
 
-    inline void get_indices(FileIndex& file_idx, HeaderIndex& header_idx)
+    inline void get_indices(uint32_t& file_idx, HeaderIndex& header_idx)
     {
         file_idx = m_file_index;
         header_idx = m_header_index;
+    }
+
+    inline std::vector<RollupIndex> *get_rollup_entries()
+    {
+        return &m_rollup_entries;
     }
 
     uint32_t get_tstamp_from() const
@@ -320,8 +327,10 @@ private:
     DataPointVector m_dps;  // results before aggregation
     QueryResults m_results; // results after aggregation
     std::vector<DataPointContainer*> m_data;
-    FileIndex m_file_index;
+    //FileIndex m_file_index;
+    uint32_t m_file_index;  // used for both rollup-idx and file-idx
     HeaderIndex m_header_index;
+    std::vector<RollupIndex> m_rollup_entries;
     uint32_t m_tstamp_from;
     bool m_has_ooo;
 };
@@ -341,6 +350,7 @@ public:
     void perform(bool lock = true); // perform tasks
     void add_task(TimeSeries *ts);
 
+    RollupType use_rollup(Tsdb *tsdb) const;
     int get_task_count() const { return m_tasks.size(); }
     int get_errno() const { return m_errno; }
     std::vector<QueryTask*>& get_tasks() { return m_tasks; }
@@ -436,12 +446,14 @@ public:
     inline PageIndex get_page_index() const { return m_page_index; }
     inline bool is_out_of_order() const { return m_out_of_order; }
     inline bool is_empty() const { return m_dps.empty(); }
+    inline void add_data_point(Timestamp ts, double val) { m_dps.emplace_back(ts, val); }
 
     void set_out_of_order(bool ooo) { m_out_of_order = ooo; }
     void set_page_index(PageIndex idx) { m_page_index = idx; }
 
     void collect_data(PageInMemory *page);
     void collect_data(Timestamp from, struct tsdb_header *tsdb_header, struct page_info_on_disk *page_header, void *page);
+    void collect_data(RollupManager& rollup_mgr, RollupType rollup_type);
 
 private:
     bool m_out_of_order;

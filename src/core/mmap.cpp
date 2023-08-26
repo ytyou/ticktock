@@ -1012,6 +1012,18 @@ RollupHeaderFile::get_header(RollupIndex idx, int entries)
 }
 
 void
+RollupHeaderFile::get_entries(RollupIndex header_idx, int entries, std::vector<RollupIndex> *results)
+{
+    ASSERT(entries > 0);
+    uint32_t *header = get_header(header_idx, entries);
+    ASSERT(header != nullptr);
+    ASSERT(header > get_pages());
+
+    for (int i = 0; i < entries; i++)
+        results->push_back(header[i]);
+}
+
+void
 RollupHeaderFile::add_index(RollupIndex header_idx, uint32_t data_idx, int entries)
 {
     ASSERT(entries > 0);
@@ -1036,6 +1048,14 @@ RollupDataFile::RollupDataFile(const std::string& file_name) :
     m_last_write(0),
     m_entry_index(0)
 {
+    pthread_rwlockattr_t attr;
+    pthread_rwlockattr_setkind_np(&attr, PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP);
+    pthread_rwlock_init(&m_lock, &attr);
+}
+
+RollupDataFile::~RollupDataFile()
+{
+    pthread_rwlock_destroy(&m_lock);
 }
 
 void
@@ -1115,6 +1135,29 @@ RollupDataFile::add_data_point(uint32_t cnt, double min, double max, double sum)
 
     m_entry_index += sizeof(entry);
     return idx;
+}
+
+bool
+RollupDataFile::query(RollupIndex idx, uint32_t& cnt, double& min, double& max, double& sum)
+{
+    ASSERT(idx != TT_INVALID_ROLLUP_INDEX);
+
+    if ((idx+sizeof(uint32_t)+3*sizeof(double)) > get_length())
+        return false;
+
+    uint8_t *pages = (uint8_t*)get_pages();
+    ASSERT(pages != nullptr);
+
+    pages += idx;
+    cnt = *((uint32_t*)pages);
+    pages += sizeof(uint32_t);
+    min = *((double*)pages);
+    pages += sizeof(double);
+    max = *((double*)pages);
+    pages += sizeof(double);
+    sum = *((double*)pages);
+
+    return true;
 }
 
 

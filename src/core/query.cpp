@@ -667,11 +667,16 @@ QueryTask::QueryTask()
 }
 
 void
-QueryTask::query_ts_data(Tsdb *tsdb)
+QueryTask::query_ts_data(Tsdb *tsdb, RollupType rollup)
 {
     ASSERT(m_ts != nullptr);
 
-    if (m_ts->query_for_data(tsdb, m_time_range, m_data))
+    if (rollup != RollupType::RU_NONE)
+    {
+        m_has_ooo = false;
+        m_ts->query_for_rollup(tsdb, m_time_range, m_data, rollup);
+    }
+    else if (m_ts->query_for_data(tsdb, m_time_range, m_data))
         m_has_ooo = true;
 }
 
@@ -703,7 +708,7 @@ void
 QueryTask::add_container(DataPointContainer *container)
 {
     ASSERT(container != nullptr);
-    ASSERT(container->size() > 0);
+    //ASSERT(container->size() > 0);
     m_data.push_back(container);
 }
 
@@ -911,6 +916,8 @@ QueryTask::recycle()
     m_dps.clear();
     m_dps.shrink_to_fit();
     m_results.recycle();
+    m_rollup_entries.clear();
+    m_rollup_entries.shrink_to_fit();
     ASSERT(m_data.empty());
 
     m_ts = nullptr;
@@ -982,6 +989,31 @@ QuerySuperTask::add_task(TimeSeries *ts)
     m_tasks.push_back(qt);
 }
 
+RollupType
+QuerySuperTask::use_rollup(Tsdb *tsdb) const
+{
+    ASSERT(tsdb != nullptr);
+    RollupType rollup = RollupType::RU_NONE;
+
+    if (! m_tasks.empty())
+    {
+        auto task = m_tasks.front();
+        Downsampler *downsampler = task->get_downsampler();
+
+        if (downsampler != nullptr)
+        {
+            Timestamp interval = to_sec(downsampler->get_interval());
+            Timestamp rollup_interval = tsdb->get_rollup_interval();
+
+            // TODO: config
+            if (((double)rollup_interval * (double)0.9) <= (double)interval)
+                rollup = downsampler->get_rollup_type();
+        }
+    }
+
+    return rollup;
+}
+
 void
 QuerySuperTask::perform(bool lock)
 {
@@ -989,14 +1021,16 @@ QuerySuperTask::perform(bool lock)
     {
         for (auto tsdb: m_tsdbs)
         {
+            RollupType rollup = use_rollup(tsdb);
+
             if (lock)
-                tsdb->query_for_data(m_metric_id, m_time_range, m_tasks, m_compact);
+                tsdb->query_for_data(m_metric_id, m_time_range, m_tasks, m_compact, rollup);
             else
-                tsdb->query_for_data_no_lock(m_metric_id, m_time_range, m_tasks, m_compact);
+                tsdb->query_for_data_no_lock(m_metric_id, m_time_range, m_tasks, m_compact, rollup);
 
             for (QueryTask *task : m_tasks)
             {
-                task->query_ts_data(tsdb);
+                task->query_ts_data(tsdb, rollup);
                 task->merge_data();
             }
         }
@@ -1311,6 +1345,14 @@ DataPointContainer::collect_data(Timestamp from, struct tsdb_header *tsdb_header
     compressor->restore(m_dps, position, (uint8_t*)page + sizeof(struct compress_info_on_disk));
     ASSERT(! m_dps.empty());
     MemoryManager::free_recyclable(compressor);
+}
+
+void
+DataPointContainer::collect_data(RollupManager& rollup_mgr, RollupType rollup_type)
+{
+    DataPointPair dp;
+    if (rollup_mgr.query(rollup_type, dp))
+        m_dps.emplace_back(dp.first, dp.second);
 }
 
 

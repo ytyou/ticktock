@@ -829,6 +829,8 @@ Metric::Metric(const std::string& dir, PageSize page_size, PageCount page_cnt) :
     m_rollup_data_file(dir+"/rollup.data"),
     m_rollup_header_file(dir+"/rollup.header")
 {
+    create_dir(dir);    // create folder, if necessary
+
     // try to parse out the id
     auto const pos = dir.find_last_of('/');
     ASSERT(dir[pos+1] == 'm');
@@ -966,8 +968,8 @@ Metric::get_last_header(std::string& tsdb_dir, PageCount page_cnt, PageSize page
     {
         ASSERT(m_data_files.empty());
         // make sure the metric directory under tsdb exists
-        std::string metric_dir = get_metric_dir(tsdb_dir);
-        create_dir(metric_dir);
+        //std::string metric_dir = get_metric_dir(tsdb_dir);
+        //create_dir(metric_dir);
 
         header_file = new HeaderFile(get_header_file_name(tsdb_dir, 0), 0, page_cnt, page_size),
         m_header_files.push_back(header_file);
@@ -1625,13 +1627,129 @@ Tsdb::query_for_data_no_lock(TimeSeriesId id, TimeRange& query_range, std::vecto
 }
 #endif
 
+void
+Tsdb::read_rollup_headers(Metric *metric, std::vector<QueryTask*>& tasks)
+{
+    ASSERT(metric != nullptr);
+
+    auto query_task_cmp = [](QueryTask* &lhs, QueryTask* &rhs)
+    {
+        uint32_t lhs_file_idx, rhs_file_idx;
+        HeaderIndex header_idx; // value not used
+
+        lhs->get_indices(lhs_file_idx, header_idx);
+        rhs->get_indices(rhs_file_idx, header_idx);
+
+        return lhs_file_idx > rhs_file_idx;
+    };
+    std::priority_queue<QueryTask*, std::vector<QueryTask*>, decltype(query_task_cmp)> pq(query_task_cmp);
+
+    m_index_file.ensure_open(true);
+
+    for (auto task : tasks)
+    {
+        TimeSeriesId tid = task->get_ts_id();
+        RollupIndex idx = m_index_file.get_rollup_index(tid);
+        if (idx != TT_INVALID_ROLLUP_INDEX)
+        {
+            task->set_indices(idx, 0);
+            pq.push(task);
+        }
+        else
+        {
+            std::vector<RollupIndex> *entries = task->get_rollup_entries();
+            ASSERT(entries != nullptr);
+        }
+    }
+
+    int entries = get_rollup_entries();
+    std::lock_guard<std::mutex> guard(metric->m_rollup_lock);
+    RollupHeaderFile *header_file = metric->get_rollup_header_file();
+    header_file->ensure_open(true);
+
+    while (! pq.empty())
+    {
+        QueryTask *task = pq.top();
+        pq.pop();
+
+        RollupIndex idx;
+        HeaderIndex header_idx; // not used
+        task->get_indices(idx, header_idx);
+        header_file->get_entries(idx, entries, task->get_rollup_entries());
+    }
+}
+
+bool
+Tsdb::query_rollup_no_lock(RollupDataFile *data_file, QueryTask *task, RollupType rollup)
+{
+    ASSERT(task != nullptr);
+    ASSERT(data_file != nullptr);
+
+    auto containers = task->get_containers();
+    ASSERT(! containers.empty());
+    auto container = containers.back();
+
+    uint32_t cnt;
+    double min, max, sum, value;
+    uint32_t file_idx;
+    HeaderIndex header_idx;
+
+    task->get_indices(file_idx, header_idx);
+    bool ok = data_file->query(file_idx, cnt, min, max, sum);
+
+    if (! ok) return false;
+
+    if (cnt > 0)
+    {
+        Timestamp tstamp = m_time_range.get_from() + header_idx * validate_resolution(get_rollup_interval());
+
+    switch (rollup)
+    {
+        case RollupType::RU_AVG:
+            value = sum / (double)cnt;
+            break;
+
+        case RollupType::RU_CNT:
+            value = (double)cnt;
+            break;
+
+        case RollupType::RU_MAX:
+            value = max;
+            break;
+
+        case RollupType::RU_MIN:
+            value = min;
+            break;
+
+        case RollupType::RU_SUM:
+            value = sum;
+            break;
+
+        default:
+            return false;
+    }
+
+    container->add_data_point(tstamp, value);
+    }
+
+    // prepare for next entry
+    std::vector<RollupIndex> *entries = task->get_rollup_entries();
+    header_idx++;
+    if (header_idx >= entries->size())
+        task->set_indices(TT_INVALID_FILE_INDEX, TT_INVALID_HEADER_INDEX);
+    else
+        task->set_indices((*entries)[header_idx], header_idx);
+
+    return true;
+}
+
 // Query ONE page, for a single TimeSeries
 void
 Tsdb::query_for_data_no_lock(MetricId mid, QueryTask *task)
 {
     ASSERT(task != nullptr);
 
-    FileIndex file_idx;
+    uint32_t file_idx;
     HeaderIndex header_idx;
     Timestamp from = m_time_range.get_from();
     TimeRange& query_range = task->get_query_range();
@@ -1708,21 +1826,22 @@ Tsdb::query_for_data_no_lock(MetricId mid, QueryTask *task)
 }
 
 void
-Tsdb::query_for_data(MetricId mid, TimeRange& range, std::vector<QueryTask*>& tasks, bool compact)
+Tsdb::query_for_data(MetricId mid, TimeRange& range, std::vector<QueryTask*>& tasks, bool compact, RollupType rollup)
 {
     std::lock_guard<std::mutex> guard(m_lock);
-    query_for_data_no_lock(mid, range, tasks, compact);
+    query_for_data_no_lock(mid, range, tasks, compact, rollup);
 }
 
 // Query for multiple TimeSeries
 void
-Tsdb::query_for_data_no_lock(MetricId mid, TimeRange& range, std::vector<QueryTask*>& tasks, bool compact)
+Tsdb::query_for_data_no_lock(MetricId mid, TimeRange& range, std::vector<QueryTask*>& tasks, bool compact, RollupType rollup)
 {
+    uint32_t file_or_rollup_idx;
     FileIndex file_idx;
     HeaderIndex header_idx;
     auto query_task_cmp = [](QueryTask* &lhs, QueryTask* &rhs)
     {
-        FileIndex lhs_file_idx, rhs_file_idx;
+        uint32_t lhs_file_idx, rhs_file_idx;
         HeaderIndex lhs_header_idx, rhs_header_idx;
 
         lhs->get_indices(lhs_file_idx, lhs_header_idx);
@@ -1740,22 +1859,51 @@ Tsdb::query_for_data_no_lock(MetricId mid, TimeRange& range, std::vector<QueryTa
     m_mode |= TSDB_MODE_READ;
     m_index_file.ensure_open(true);
     Timestamp middle = m_time_range.get_middle();
+    Metric *metric = get_metric(mid);
 
-    for (auto task : tasks)
+    if (rollup != RollupType::RU_NONE)
     {
-        // figure out first page location before pushing to pq
-        if (middle < range.get_from())
-            m_index_file.get_indices2(task->get_ts_id(), file_idx, header_idx);
-        else
-            m_index_file.get_indices(task->get_ts_id(), file_idx, header_idx);
-        if (file_idx == TT_INVALID_FILE_INDEX || header_idx == TT_INVALID_HEADER_INDEX)
-            continue;
-        task->set_indices(file_idx, header_idx);
-        pq.push(task);
+        // query rollup data
+        read_rollup_headers(metric, tasks);
+
+        for (auto task : tasks)
+        {
+            std::vector<RollupIndex> *entries = task->get_rollup_entries();
+            if (! entries->empty())
+            {
+                task->set_indices((*entries)[0], 0);
+                pq.push(task);
+
+                DataPointContainer *container = (DataPointContainer*)
+                    MemoryManager::alloc_recyclable(RecyclableType::RT_DATA_POINT_CONTAINER);
+                //container->set_page_index(page_header->get_global_page_index(file_idx, m_page_count));
+                task->add_container(container);
+            }
+        }
+    }
+    else
+    {
+        // query raw data
+        for (auto task : tasks)
+        {
+            // figure out first page location before pushing to pq
+            if (middle < range.get_from())
+                m_index_file.get_indices2(task->get_ts_id(), file_idx, header_idx);
+            else
+                m_index_file.get_indices(task->get_ts_id(), file_idx, header_idx);
+            if (file_idx == TT_INVALID_FILE_INDEX || header_idx == TT_INVALID_HEADER_INDEX)
+                continue;
+            task->set_indices(file_idx, header_idx);
+            pq.push(task);
+        }
     }
 
-    uint32_t bucket = mid % m_mbucket_count;
-    FileIndex last_file_idx = TT_INVALID_FILE_INDEX;
+    //uint32_t bucket = mid % m_mbucket_count;
+    uint32_t last_file_idx = TT_INVALID_ROLLUP_INDEX;
+    RollupDataFile *data_file = metric->get_rollup_data_file();
+    PThread_Lock lock(data_file->get_lock());
+    lock.lock_for_read();
+    data_file->ensure_open(true);
 
     while (! pq.empty())
     {
@@ -1765,12 +1913,9 @@ Tsdb::query_for_data_no_lock(MetricId mid, TimeRange& range, std::vector<QueryTa
         // try to close previous files
         if (compact)
         {
-            task->get_indices(file_idx, header_idx);
-            if ((file_idx != last_file_idx) && (last_file_idx != TT_INVALID_FILE_INDEX))
+            task->get_indices(file_or_rollup_idx, header_idx);
+            if ((file_or_rollup_idx != last_file_idx) && (last_file_idx != TT_INVALID_ROLLUP_INDEX))
             {
-                ASSERT(bucket < m_metrics.size());
-                Metric *metric = m_metrics[bucket];
-
                 if (metric != nullptr)
                 {
                     metric->get_header_file(last_file_idx)->close();
@@ -1780,15 +1925,35 @@ Tsdb::query_for_data_no_lock(MetricId mid, TimeRange& range, std::vector<QueryTa
             last_file_idx = file_idx;
         }
 
-        query_for_data_no_lock(mid, task);
-        task->get_indices(file_idx, header_idx);
+        if (rollup != RollupType::RU_NONE)
+        {
+            bool ok = query_rollup_no_lock(data_file, task, rollup);
 
-        if (! get_out_of_order(task->get_ts_id()))
+            if (! ok)
+            {
+                // remap
+                lock.unlock();
+                lock.lock_for_write();
+                data_file->remap();
+                lock.unlock();
+                lock.lock_for_read();
+
+                ok = query_rollup_no_lock(data_file, task, rollup);
+                ASSERT(ok);
+            }
+        }
+        else
+            query_for_data_no_lock(mid, task);
+        task->get_indices(file_or_rollup_idx, header_idx);
+
+        if (! get_out_of_order(task->get_ts_id()) && (rollup == RollupType::RU_NONE))
             task->merge_data();
 
-        if (file_idx != TT_INVALID_FILE_INDEX && header_idx != TT_INVALID_HEADER_INDEX)
+        if (file_or_rollup_idx != TT_INVALID_ROLLUP_INDEX && header_idx != TT_INVALID_HEADER_INDEX)
             pq.push(task);
     }
+
+    lock.unlock();
 
     if (compact)
         m_index_file.close();

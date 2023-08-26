@@ -193,7 +193,12 @@ public:
 
     DataFile *get_data_file(FileIndex file_idx);
     HeaderFile *get_header_file(FileIndex file_idx);
+
+    RollupDataFile *get_rollup_data_file() { return &m_rollup_data_file; }
+    RollupHeaderFile *get_rollup_header_file() { return &m_rollup_header_file; }
+
     RollupIndex add_rollup_point(RollupIndex header_idx, int entries, uint32_t cnt, double min, double max, double sum);
+    void get_rollup_point(RollupIndex header_idx, int entry_idx, int entries, uint32_t& cnt, double& min, double& max, double& sum);
 
     // for testing only
     int get_page_count(bool ooo);
@@ -201,12 +206,13 @@ public:
     int get_open_data_file_count(bool for_read);
     int get_open_header_file_count(bool for_read);
 
+    std::mutex m_rollup_lock;
+
 private:
     void restore_header(const std::string& file);
     void restore_data(const std::string& file, PageSize page_size, PageCount page_cnt);
 
     MetricId m_id;
-    std::mutex m_rollup_lock;
     RollupHeaderFile m_rollup_header_file;
     RollupDataFile m_rollup_data_file;
     std::vector<HeaderFile*> m_header_files;
@@ -245,9 +251,12 @@ public:
     //bool query_for_data(TimeSeriesId id, TimeRange& range, std::vector<DataPointContainer*>& data);
     //bool query_for_data_no_lock(TimeSeriesId id, TimeRange& range, std::vector<DataPointContainer*>& data);
 
+    void read_rollup_headers(Metric *metric, std::vector<QueryTask*>& tasks);
+    bool query_rollup_no_lock(RollupDataFile *data_file, QueryTask *task, RollupType rollup);
+
     void query_for_data_no_lock(MetricId mid, QueryTask *task);
-    void query_for_data(MetricId mid, TimeRange& range, std::vector<QueryTask*>& tasks, bool compact = false);
-    void query_for_data_no_lock(MetricId mid, TimeRange& range, std::vector<QueryTask*>& tasks, bool compact = false);
+    void query_for_data(MetricId mid, TimeRange& range, std::vector<QueryTask*>& tasks, bool compact = false, RollupType rollup = RollupType::RU_NONE);
+    void query_for_data_no_lock(MetricId mid, TimeRange& range, std::vector<QueryTask*>& tasks, bool compact = false, RollupType rollup = RollupType::RU_NONE);
 
     void flush(bool sync);
     void flush_for_test();  // for testing only
@@ -283,7 +292,7 @@ public:
 
     inline uint32_t get_rollup_interval() const
     {
-        return m_rollup_interval;
+        return m_rollup_interval;   // seconds
     }
 
     inline const TimeRange& get_time_range() const

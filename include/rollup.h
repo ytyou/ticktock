@@ -29,6 +29,17 @@ namespace tt
 class Tsdb;
 
 
+enum RollupType : unsigned char
+{
+    RU_NONE = 0,
+    RU_AVG = 1,
+    RU_CNT = 2,
+    RU_MAX = 3,
+    RU_MIN = 4,
+    RU_SUM = 5
+};
+
+
 class __attribute__ ((__packed__)) RollupManager
 {
 public:
@@ -38,6 +49,12 @@ public:
     // process in-order dps only
     void add_data_point(Tsdb *tsdb, MetricId mid, TimeSeriesId tid, DataPoint& dp);
     void flush(MetricId mid, TimeSeriesId tid);
+
+    inline Tsdb *get_tsdb() { return m_tsdb; }
+    inline Timestamp get_tstamp() const { return m_tstamp; }
+
+    // return true if data-point found; false if no data
+    bool query(RollupType type, DataPointPair& dp);
 
 private:
     uint32_t m_count;

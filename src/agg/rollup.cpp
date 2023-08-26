@@ -98,5 +98,41 @@ RollupManager::flush(MetricId mid, TimeSeriesId tid)
     m_min = m_max = m_sum = 0.0;
 }
 
+// return false if no data will be returned;
+bool
+RollupManager::query(RollupType type, DataPointPair& dp)
+{
+    if (m_count == 0) return false;
+
+    switch (type)
+    {
+        case RollupType::RU_AVG:
+            dp.second = m_sum / (double)m_count;
+            break;
+
+        case RollupType::RU_CNT:
+            dp.second = (double)m_count;
+            break;
+
+        case RollupType::RU_MAX:
+            dp.second = m_max;
+            break;
+
+        case RollupType::RU_MIN:
+            dp.second = m_min;
+            break;
+
+        case RollupType::RU_SUM:
+            dp.second = m_sum;
+            break;
+
+        default:
+            return false;
+    }
+
+    dp.first = m_tstamp;
+    return true;
+}
+
 
 }

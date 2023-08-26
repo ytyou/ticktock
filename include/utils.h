@@ -114,7 +114,7 @@ extern std::string last_file(const std::string& pattern);
 extern uint64_t get_disk_block_size(const std::string& full_path);
 extern uint64_t get_disk_available_blocks(const std::string& full_path);
 extern void for_all_dirs(const std::string& root, void (*func)(const std::string& dir), int level);
-extern int create_dir(std::string& path);
+extern int create_dir(const std::string& path);
 extern FileIndex get_file_suffix(const std::string& file_name);
 
 extern bool url_unescape(const char *url, char *buff, size_t len);

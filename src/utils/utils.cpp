@@ -838,7 +838,7 @@ get_all_files(const std::string& pattern, std::vector<std::string>& files)
 }
 
 int
-create_dir(std::string& path)
+create_dir(const std::string& path)
 {
     if (path.length() >= PATH_MAX)
     {
