@@ -251,7 +251,7 @@ public:
     //bool query_for_data(TimeSeriesId id, TimeRange& range, std::vector<DataPointContainer*>& data);
     //bool query_for_data_no_lock(TimeSeriesId id, TimeRange& range, std::vector<DataPointContainer*>& data);
 
-    void read_rollup_headers(Metric *metric, std::vector<QueryTask*>& tasks);
+    bool read_rollup_headers(Metric *metric, std::vector<QueryTask*>& tasks);
     bool query_rollup_no_lock(RollupDataFile *data_file, QueryTask *task, RollupType rollup);
 
     void query_for_data_no_lock(MetricId mid, QueryTask *task);

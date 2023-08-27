@@ -1627,7 +1627,9 @@ Tsdb::query_for_data_no_lock(TimeSeriesId id, TimeRange& query_range, std::vecto
 }
 #endif
 
-void
+// return false if out-of-order data was found, which means rollup data
+// can't be used; return true otherwise;
+bool
 Tsdb::read_rollup_headers(Metric *metric, std::vector<QueryTask*>& tasks)
 {
     ASSERT(metric != nullptr);
@@ -1643,12 +1645,20 @@ Tsdb::read_rollup_headers(Metric *metric, std::vector<QueryTask*>& tasks)
         return lhs_file_idx > rhs_file_idx;
     };
     std::priority_queue<QueryTask*, std::vector<QueryTask*>, decltype(query_task_cmp)> pq(query_task_cmp);
+    bool ooo = false;
 
     m_index_file.ensure_open(true);
 
     for (auto task : tasks)
     {
         TimeSeriesId tid = task->get_ts_id();
+
+        if (m_index_file.get_out_of_order(tid))
+        {
+            ooo = true;
+            break;
+        }
+
         RollupIndex idx = m_index_file.get_rollup_index(tid);
         if (idx != TT_INVALID_ROLLUP_INDEX)
         {
@@ -1661,6 +1671,8 @@ Tsdb::read_rollup_headers(Metric *metric, std::vector<QueryTask*>& tasks)
             ASSERT(entries != nullptr);
         }
     }
+
+    if (ooo) return false;
 
     int entries = get_rollup_entries();
     std::lock_guard<std::mutex> guard(metric->m_rollup_lock);
@@ -1677,6 +1689,8 @@ Tsdb::read_rollup_headers(Metric *metric, std::vector<QueryTask*>& tasks)
         task->get_indices(idx, header_idx);
         header_file->get_entries(idx, entries, task->get_rollup_entries());
     }
+
+    return true;
 }
 
 bool
@@ -1864,24 +1878,31 @@ Tsdb::query_for_data_no_lock(MetricId mid, TimeRange& range, std::vector<QueryTa
     if (rollup != RollupType::RU_NONE)
     {
         // query rollup data
-        read_rollup_headers(metric, tasks);
-
-        for (auto task : tasks)
+        if (read_rollup_headers(metric, tasks))
         {
-            std::vector<RollupIndex> *entries = task->get_rollup_entries();
-            if (! entries->empty())
+            for (auto task : tasks)
             {
-                task->set_indices((*entries)[0], 0);
-                pq.push(task);
+                std::vector<RollupIndex> *entries = task->get_rollup_entries();
+                if (! entries->empty())
+                {
+                    task->set_indices((*entries)[0], 0);
+                    pq.push(task);
 
-                DataPointContainer *container = (DataPointContainer*)
-                    MemoryManager::alloc_recyclable(RecyclableType::RT_DATA_POINT_CONTAINER);
-                //container->set_page_index(page_header->get_global_page_index(file_idx, m_page_count));
-                task->add_container(container);
+                    DataPointContainer *container = (DataPointContainer*)
+                        MemoryManager::alloc_recyclable(RecyclableType::RT_DATA_POINT_CONTAINER);
+                    //container->set_page_index(page_header->get_global_page_index(file_idx, m_page_count));
+                    task->add_container(container);
+                }
             }
         }
+        else
+        {
+            // out-of-order data found, can't use rollup data
+            rollup = RollupType::RU_NONE;
+        }
     }
-    else
+
+    if (rollup == RollupType::RU_NONE)
     {
         // query raw data
         for (auto task : tasks)
