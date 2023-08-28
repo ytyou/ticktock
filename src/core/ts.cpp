@@ -416,6 +416,7 @@ TimeSeries::query_for_data(Tsdb *tsdb, TimeRange& range, std::vector<DataPointCo
 void
 TimeSeries::query_for_rollup(Tsdb *tsdb, TimeRange& range, std::vector<DataPointContainer*>& data, RollupType rollup)
 {
+    ASSERT(tsdb != nullptr);
     ASSERT(rollup != RollupType::RU_NONE);
 
     if ((m_rollup.get_tsdb() == tsdb) && (range.in_range(m_rollup.get_tstamp())))
@@ -434,6 +435,7 @@ TimeSeries::query_for_rollup(Tsdb *tsdb, TimeRange& range, std::vector<DataPoint
             else
                 container = data.back();
 
+            ASSERT(tsdb->get_time_range().in_range(dp.first) == 0);
             container->add_data_point(dp.first, dp.second);
         }
     }

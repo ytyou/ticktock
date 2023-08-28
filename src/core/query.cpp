@@ -691,6 +691,7 @@ QueryTask::merge_data()
     for (DataPointContainer *container: m_data)
         MemoryManager::free_recyclable(container);
     m_data.clear();
+    m_rollup_entries.clear();
 }
 
 void
@@ -1002,12 +1003,27 @@ QuerySuperTask::use_rollup(Tsdb *tsdb) const
 
         if (downsampler != nullptr)
         {
-            Timestamp interval = to_sec(downsampler->get_interval());
+            Timestamp interval = downsampler->get_interval();
             Timestamp rollup_interval = tsdb->get_rollup_interval();
+
+            if (g_tstamp_resolution_ms) rollup_interval *= 1000;
 
             // TODO: config
             if (((double)rollup_interval * (double)0.9) <= (double)interval)
+            {
                 rollup = downsampler->get_rollup_type();
+                Timestamp i = (interval / rollup_interval) * rollup_interval;
+
+                if ((i + rollup_interval - interval) < (interval - i))
+                    i += rollup_interval;
+
+                // update downsample interval to i
+                for (QueryTask *task : m_tasks)
+                {
+                    downsampler = task->get_downsampler();
+                    downsampler->set_interval(i);
+                }
+            }
         }
     }
 

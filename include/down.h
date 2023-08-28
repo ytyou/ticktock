@@ -64,6 +64,11 @@ public:
         return m_interval;
     }
 
+    inline void set_interval(Timestamp interval)
+    {
+        m_interval = interval;
+    }
+
     inline Timestamp step_down(Timestamp tstamp) const
     {
         return m_all ? m_start : (tstamp - (tstamp % m_interval));

@@ -1715,35 +1715,38 @@ Tsdb::query_rollup_no_lock(RollupDataFile *data_file, QueryTask *task, RollupTyp
 
     if (cnt > 0)
     {
-        Timestamp tstamp = m_time_range.get_from() + header_idx * validate_resolution(get_rollup_interval());
+        Timestamp rollup_interval = get_rollup_interval();
+        if (g_tstamp_resolution_ms) rollup_interval *= 1000;
+        Timestamp tstamp = m_time_range.get_from() + header_idx * rollup_interval;
+        ASSERT(m_time_range.in_range(tstamp) == 0);
 
-    switch (rollup)
-    {
-        case RollupType::RU_AVG:
-            value = sum / (double)cnt;
-            break;
+        switch (rollup)
+        {
+            case RollupType::RU_AVG:
+                value = sum / (double)cnt;
+                break;
 
-        case RollupType::RU_CNT:
-            value = (double)cnt;
-            break;
+            case RollupType::RU_CNT:
+                value = (double)cnt;
+                break;
 
-        case RollupType::RU_MAX:
-            value = max;
-            break;
+            case RollupType::RU_MAX:
+                value = max;
+                break;
 
-        case RollupType::RU_MIN:
-            value = min;
-            break;
+            case RollupType::RU_MIN:
+                value = min;
+                break;
 
-        case RollupType::RU_SUM:
-            value = sum;
-            break;
+            case RollupType::RU_SUM:
+                value = sum;
+                break;
 
-        default:
-            return false;
-    }
+            default:
+                return false;
+        }
 
-    container->add_data_point(tstamp, value);
+        container->add_data_point(tstamp, value);
     }
 
     // prepare for next entry
