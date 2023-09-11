@@ -180,57 +180,39 @@ private:
 };
 
 
-class RollupHeaderFile : public MmapFile
-{
-public:
-    RollupHeaderFile(const std::string& file_name);
-
-    void open(bool for_read) override;
-
-    RollupIndex new_header(int entries);
-    void add_index(RollupIndex header_idx, uint32_t data_idx, int entries);
-
-    void get_entries(RollupIndex header_idx, int entries, std::vector<RollupIndex> *results);
-
-private:
-    bool expand(off_t new_len);
-    uint32_t *get_header(RollupIndex header_idx, int entries);
-
-    RollupIndex m_header_count;
-};
-
-
 struct __attribute__ ((__packed__)) rollup_entry
 {
     uint32_t count;
     double min;
     double max;
     double sum;
+    uint32_t next;
 };
 
 
-class RollupDataFile : public MmapFile
+class RollupFile : public MmapFile
 {
 public:
-    RollupDataFile(const std::string& file_name);
-    ~RollupDataFile();
+    RollupFile(const std::string& file_name);
+    ~RollupFile();
 
-    void open(bool read_only) override;
-    void close() override;
-    bool is_open(bool for_read) const override;
-    inline pthread_rwlock_t *get_lock() { return &m_lock; }
-
-    uint32_t add_data_point(uint32_t cnt, double min, double max, double sum);
-    bool query(RollupIndex idx, uint32_t& cnt, double& min, double& max, double& sum);
+    void open(bool for_read) override;
+    RollupIndex add_data_point(RollupIndex prev_idx, uint32_t cnt, double min, double max, double sum);
+    bool query(RollupIndex idx, struct rollup_entry& entry_out);
 
     inline Timestamp get_last_read() const { return m_last_read; }
     inline Timestamp get_last_write() const { return m_last_write; }
 
+    inline pthread_rwlock_t *get_lock() { return &m_lock; }
+
 private:
-    FILE *m_file;
+    bool expand(off_t new_len);
+    RollupIndex new_entry_index();
+    struct rollup_entry *get_entry(RollupIndex idx);
+
     Timestamp m_last_read;
     Timestamp m_last_write;
-    uint32_t m_entry_index;
+    RollupIndex m_next;
     pthread_rwlock_t m_lock;
 };
 

@@ -62,6 +62,7 @@ private:
     double m_max;
     double m_sum;
     Timestamp m_tstamp;
+    RollupIndex m_prev_idx;
     Tsdb *m_tsdb;
 };
 

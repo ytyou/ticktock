@@ -193,11 +193,12 @@ public:
 
     DataFile *get_data_file(FileIndex file_idx);
     HeaderFile *get_header_file(FileIndex file_idx);
+    RollupFile *get_rollup_file() { return &m_rollup_file; }
 
-    RollupDataFile *get_rollup_data_file() { return &m_rollup_data_file; }
-    RollupHeaderFile *get_rollup_header_file() { return &m_rollup_header_file; }
+    //RollupDataFile *get_rollup_data_file() { return &m_rollup_data_file; }
+    //RollupHeaderFile *get_rollup_header_file() { return &m_rollup_header_file; }
 
-    RollupIndex add_rollup_point(RollupIndex header_idx, int entries, uint32_t cnt, double min, double max, double sum);
+    RollupIndex add_rollup_point(RollupIndex prev_idx, uint32_t cnt, double min, double max, double sum);
     void get_rollup_point(RollupIndex header_idx, int entry_idx, int entries, uint32_t& cnt, double& min, double& max, double& sum);
 
     // for testing only
@@ -213,8 +214,9 @@ private:
     void restore_data(const std::string& file, PageSize page_size, PageCount page_cnt);
 
     MetricId m_id;
-    RollupHeaderFile m_rollup_header_file;
-    RollupDataFile m_rollup_data_file;
+    //RollupHeaderFile m_rollup_header_file;
+    //RollupDataFile m_rollup_data_file;
+    RollupFile m_rollup_file;
     std::vector<HeaderFile*> m_header_files;
     std::vector<DataFile*> m_data_files;
 };
@@ -245,14 +247,14 @@ public:
     static void get_all_mappings(std::vector<Mapping*>& mappings);
 
     bool add(DataPoint& dp);
-    void add_rollup_point(MetricId mid, TimeSeriesId tid, uint32_t cnt, double min, double max, double sum);
+    RollupIndex add_rollup_point(MetricId mid, TimeSeriesId tid, RollupIndex prev_idx, uint32_t cnt, double min, double max, double sum);
 
     static MetricId query_for_ts(const char *metric, Tag *tags, std::unordered_set<TimeSeries*>& ts, const char *key, bool explicit_tags);
     //bool query_for_data(TimeSeriesId id, TimeRange& range, std::vector<DataPointContainer*>& data);
     //bool query_for_data_no_lock(TimeSeriesId id, TimeRange& range, std::vector<DataPointContainer*>& data);
 
     bool read_rollup_headers(Metric *metric, std::vector<QueryTask*>& tasks);
-    bool query_rollup_no_lock(RollupDataFile *data_file, QueryTask *task, RollupType rollup);
+    bool query_rollup_no_lock(RollupFile *data_file, QueryTask *task, RollupType rollup);
 
     void query_for_data_no_lock(MetricId mid, QueryTask *task);
     void query_for_data(MetricId mid, TimeRange& range, std::vector<QueryTask*>& tasks, bool compact = false, RollupType rollup = RollupType::RU_NONE);

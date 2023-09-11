@@ -31,7 +31,8 @@ RollupManager::RollupManager() :
     m_max(0),
     m_sum(0),
     m_tsdb(nullptr),
-    m_tstamp(TT_INVALID_TIMESTAMP)
+    m_tstamp(TT_INVALID_TIMESTAMP),
+    m_prev_idx(TT_INVALID_ROLLUP_INDEX)
 {
 }
 
@@ -70,7 +71,9 @@ RollupManager::add_data_point(Tsdb *tsdb, MetricId mid, TimeSeriesId tid, DataPo
 
         if (m_tstamp >= end)
         {
+            ASSERT(tsdb != m_tsdb);
             m_tsdb = tsdb;
+            m_prev_idx = TT_INVALID_ROLLUP_INDEX;
             interval = m_tsdb->get_rollup_interval();
 
             for (m_tstamp = m_tsdb->get_time_range().get_from_sec(); m_tstamp < tstamp; m_tstamp += interval)
@@ -91,7 +94,7 @@ RollupManager::flush(MetricId mid, TimeSeriesId tid)
         return;
 
     // write to rollup files
-    m_tsdb->add_rollup_point(mid, tid, m_count, m_min, m_max, m_sum);
+    m_prev_idx = m_tsdb->add_rollup_point(mid, tid, m_prev_idx, m_count, m_min, m_max, m_sum);
 
     // reset
     m_count = 0;
