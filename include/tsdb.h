@@ -61,11 +61,13 @@ namespace tt
 // from metric and tag names to time series;
 //
 // If TSDB_MODE_COMPACTED is set, it means the data file was compacted.
+// If TSDB_MODE_ROLLED_UP is set, it means the rollup data is ready.
 
 #define TSDB_MODE_NONE          0x00000000
 #define TSDB_MODE_READ          0x00000001
 #define TSDB_MODE_WRITE         0x00000002
 #define TSDB_MODE_COMPACTED     0x00000004
+#define TSDB_MODE_ROLLED_UP     0x00000008
 
 #define TSDB_MODE_READ_WRITE    (TSDB_MODE_READ | TSDB_MODE_WRITE)
 
@@ -181,6 +183,7 @@ public:
     void close();
     void flush(bool sync);
     bool rotate(Timestamp now_sec, Timestamp thrashing_threshold);
+    bool rollup(IndexFile *idx_file, int no_entries);
 
     MetricId get_id() const { return m_id; }
     std::string get_metric_dir(std::string& tsdb_dir);
@@ -197,7 +200,7 @@ public:
     RollupDataFile *get_rollup_data_file() { return &m_rollup_data_file; }
     RollupHeaderFile *get_rollup_header_file() { return &m_rollup_header_file; }
 
-    RollupIndex add_rollup_point(RollupIndex header_idx, int entries, uint32_t cnt, double min, double max, double sum);
+    RollupIndex add_rollup_point(TimeSeriesId tid, RollupIndex header_idx, int entries, uint32_t cnt, double min, double max, double sum);
     void get_rollup_point(RollupIndex header_idx, int entry_idx, int entries, uint32_t& cnt, double& min, double& max, double& sum);
 
     // for testing only
@@ -236,6 +239,7 @@ public:
     static void purge_oldest(int threshold);
     static bool compact(TaskData& data);
     static void compact2(); // last compaction step
+    static bool rollup(TaskData& data);
     static void write_to_compacted(MetricId mid, QuerySuperTask& super_task, Tsdb *compacted, PageSize& next_size);
     static bool add_data_point(DataPoint& dp, bool forward);
     static void restore_metrics(MetricId id, std::string& metric);
@@ -323,6 +327,11 @@ public:
     inline bool is_compacted() const
     {
         return ((m_mode & TSDB_MODE_COMPACTED));
+    }
+
+    inline bool is_rolled_up() const
+    {
+        return ((m_mode & TSDB_MODE_ROLLED_UP));
     }
 
     // http add data-point request handler

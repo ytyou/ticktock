@@ -46,6 +46,7 @@ private:
     static bool cmd_gc(KeyValuePair *params, HttpResponse& response);
     static bool cmd_log(KeyValuePair *params, HttpResponse& response);
     static bool cmd_ping(KeyValuePair *params, HttpResponse& response);
+    static bool cmd_rollup(KeyValuePair *params, HttpResponse& response);
     static bool cmd_stat(KeyValuePair *params, HttpResponse& response);
     static bool cmd_stop(KeyValuePair *params, HttpResponse& response);
 

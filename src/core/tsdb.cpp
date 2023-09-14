@@ -994,15 +994,15 @@ Metric::get_last_header(std::string& tsdb_dir, PageCount page_cnt, PageSize page
 }
 
 RollupIndex
-Metric::add_rollup_point(RollupIndex header_idx, int entries, uint32_t cnt, double min, double max, double sum)
+Metric::add_rollup_point(TimeSeriesId tid, RollupIndex header_idx, int entries, uint32_t cnt, double min, double max, double sum)
 {
     std::lock_guard<std::mutex> guard(m_rollup_lock);
-    m_rollup_header_file.ensure_open(false);
-    if (header_idx == TT_INVALID_ROLLUP_INDEX)
-        header_idx = m_rollup_header_file.new_header(entries);
+    //m_rollup_header_file.ensure_open(false);
+    //if (header_idx == TT_INVALID_ROLLUP_INDEX)
+        //header_idx = m_rollup_header_file.new_header(entries);
     m_rollup_data_file.ensure_open(false);
-    uint32_t data_idx = m_rollup_data_file.add_data_point(cnt, min, max, sum);
-    m_rollup_header_file.add_index(header_idx, data_idx, entries);
+    uint32_t data_idx = m_rollup_data_file.add_data_point(tid, cnt, min, max, sum);
+    //m_rollup_header_file.add_index(header_idx, data_idx, entries);
     return header_idx;
 }
 
@@ -1059,6 +1059,19 @@ Metric::rotate(Timestamp now_sec, Timestamp thrashing_threshold)
     }
 
     return all_closed;
+}
+
+// return true if operation was a success; false otherwise
+bool
+Metric::rollup(IndexFile *idx_file, int no_entries)
+{
+    // remove existing, if any
+    m_rollup_header_file.remove();
+    m_rollup_header_file.ensure_open(false);
+    m_rollup_header_file.build(idx_file, &m_rollup_data_file, no_entries);
+    m_rollup_header_file.close();
+
+    return true;
 }
 
 int
@@ -1225,6 +1238,9 @@ Tsdb::restore_config(const std::string& dir)
 
     if (cfg.exists("compacted") && cfg.get_bool("compacted", false))
         m_mode |= TSDB_MODE_COMPACTED;
+
+    if (cfg.exists("rolled_up") && cfg.get_bool("rolled_up", false))
+        m_mode |= TSDB_MODE_ROLLED_UP;
 }
 
 void
@@ -1242,6 +1258,9 @@ Tsdb::write_config(const std::string& dir)
 
     if (m_mode & TSDB_MODE_COMPACTED)
         cfg.set_value("compacted", "true");
+
+    if (m_mode & TSDB_MODE_ROLLED_UP)
+        cfg.set_value("rolled_up", "true");
 
     cfg.persist();
 }
@@ -1450,7 +1469,7 @@ Tsdb::add_rollup_point(MetricId mid, TimeSeriesId tid, uint32_t cnt, double min,
         header_idx = m_index_file.get_rollup_index(tid);
     }
 
-    RollupIndex idx = metric->add_rollup_point(header_idx, entries, cnt, min, max, sum);
+    RollupIndex idx = metric->add_rollup_point(tid, header_idx, entries, cnt, min, max, sum);
 
     if (idx != header_idx)
     {
@@ -1703,13 +1722,14 @@ Tsdb::query_rollup_no_lock(RollupDataFile *data_file, QueryTask *task, RollupTyp
     ASSERT(! containers.empty());
     auto container = containers.back();
 
+    TimeSeriesId tid;
     uint32_t cnt;
     double min, max, sum, value;
     uint32_t file_idx;
     HeaderIndex header_idx;
 
     task->get_indices(file_idx, header_idx);
-    bool ok = data_file->query(file_idx, cnt, min, max, sum);
+    bool ok = data_file->query(file_idx, tid, cnt, min, max, sum);
 
     if (! ok) return false;
 
@@ -1926,8 +1946,12 @@ Tsdb::query_for_data_no_lock(MetricId mid, TimeRange& range, std::vector<QueryTa
     uint32_t last_file_idx = TT_INVALID_ROLLUP_INDEX;
     RollupDataFile *data_file = metric->get_rollup_data_file();
     PThread_Lock lock(data_file->get_lock());
-    lock.lock_for_read();
-    data_file->ensure_open(true);
+
+    if (rollup != RollupType::RU_NONE)
+    {
+        lock.lock_for_read();
+        data_file->ensure_open(true);
+    }
 
     while (! pq.empty())
     {
@@ -1977,7 +2001,8 @@ Tsdb::query_for_data_no_lock(MetricId mid, TimeRange& range, std::vector<QueryTa
             pq.push(task);
     }
 
-    lock.unlock();
+    if (rollup != RollupType::RU_NONE)
+        lock.unlock();
 
     if (compact)
         m_index_file.close();
@@ -2203,7 +2228,7 @@ Tsdb::get_last_header_indices(MetricId mid, TimeSeriesId tid, FileIndex& file_id
     std::lock_guard<std::mutex> guard(m_lock);
 
     m_mode |= TSDB_MODE_READ;
-    m_mode &= ~TSDB_MODE_COMPACTED; // in case it's already compacted
+    m_mode &= ~(TSDB_MODE_COMPACTED|TSDB_MODE_ROLLED_UP);
     m_index_file.ensure_open(false);
     //m_index_file.get_indices(tid, fidx, hidx);
     m_index_file.get_indices2(tid, fidx, hidx);
@@ -3023,6 +3048,15 @@ Tsdb::init()
         Timer::inst()->add_task(task, freq_sec, "tsdb_compact");
         Logger::info("Will try to compact tsdb every %d secs.", freq_sec);
     }
+
+    task.doit = &Tsdb::rollup;
+    task.data.integer = 0;  // indicates this is from scheduled task (vs. interactive cmd)
+    freq_sec = Config::inst()->get_time(CFG_TSDB_ROLLUP_FREQUENCY, TimeUnit::SEC, CFG_TSDB_ROLLUP_FREQUENCY_DEF);
+    if (freq_sec > 0)
+    {
+        Timer::inst()->add_task(task, freq_sec, "tsdb_rollup");
+        Logger::info("Will try to rollup tsdb every %d secs.", freq_sec);
+    }
 }
 
 std::string
@@ -3586,6 +3620,112 @@ Tsdb::compact2()
             //rm_dir(back);
         }
     }
+}
+
+bool
+Tsdb::rollup(TaskData& data)
+{
+    // called from scheduled task? if so, enforce off-hour rule;
+    if ((data.integer == 0) && ! is_off_hour()) return false;
+
+    Meter meter(METRIC_TICKTOCK_TSDB_ROLLUP_MS);
+    Tsdb *tsdb = nullptr;
+    Timestamp rollup_threshold =
+        Config::inst()->get_time(CFG_TSDB_ROLLUP_THRESHOLD, TimeUnit::SEC, CFG_TSDB_ROLLUP_THRESHOLD_DEF);
+
+    Logger::info("[rollup] Finding tsdbs to rollup...");
+    rollup_threshold = ts_now_sec() - rollup_threshold;
+
+    // Go through all the Tsdbs, from the oldest to the newest,
+    // to find the first not-rolled-up Tsdb to rollup.
+    {
+        PThread_ReadLock guard(&m_tsdb_lock);
+
+        for (auto it = m_tsdbs.begin(); it != m_tsdbs.end(); it++)
+        {
+            if (! (*it)->get_time_range().older_than_sec(rollup_threshold))
+                break;
+
+            std::lock_guard<std::mutex> guard((*it)->m_lock);
+            //WriteLock guard((*it)->m_lock);
+
+            // also make sure it's not readable nor writable while we are rolling up
+            //if ((*it)->m_mode & (TSDB_MODE_COMPACTED | TSDB_MODE_READ_WRITE))
+            if ((*it)->m_mode & TSDB_MODE_ROLLED_UP)
+            {
+                Logger::debug("[rollup] %T is already rolled up, ref-count = %d", (*it), (*it)->m_ref_count);
+                continue;
+            }
+            else if (((*it)->m_mode & TSDB_MODE_READ_WRITE) && (data.integer == 0))
+            {
+                Logger::debug("[rollup] %T is still being accessed, ref-count = %d", (*it), (*it)->m_ref_count);
+                continue;
+            }
+            else if ((*it)->m_ref_count > 0)
+            {
+                Logger::debug("[rollup] ref-count of %T is not zero: %d", (*it), (*it)->m_ref_count);
+                continue;
+            }
+
+            tsdb = *it;
+            break;
+        }
+    }
+
+    if (tsdb != nullptr)
+    {
+        std::lock_guard<std::mutex> guard(tsdb->m_lock);
+        //WriteLock guard(tsdb->m_lock);
+
+        if (tsdb->m_ref_count <= 0)
+        {
+            TimeRange range = tsdb->get_time_range();
+
+            tsdb->m_index_file.ensure_open(false);
+            Logger::info("[rollup] Found this tsdb to rollup: %T", tsdb);
+
+            // perform rollup
+            try
+            {
+                bool success = true;
+
+                for (auto metric: tsdb->m_metrics)
+                {
+                    if (! metric->rollup(&tsdb->m_index_file, tsdb->get_rollup_entries()))
+                    {
+                        success = false;
+                        Logger::debug("[rollup] Metric::rollup(%u) failed", metric->get_id());
+                        break;
+                    }
+                }
+
+                if (success)
+                {
+                    // mark it as rolled-up
+                    tsdb->m_mode |= TSDB_MODE_ROLLED_UP;
+                    Logger::info("[rollup] 1 Tsdb rolled-up");
+                }
+            }
+            catch (const std::exception& ex)
+            {
+                Logger::error("[rollup] rollup failed: %s", ex.what());
+            }
+            catch (...)
+            {
+                Logger::error("[rollup] rollup failed for unknown reasons");
+            }
+        }
+        else
+        {
+            Logger::debug("[rollup] Tsdb busy, not rolling up. ref = %d", tsdb->m_ref_count);
+        }
+    }
+    else
+    {
+        Logger::info("[rollup] Did not find any appropriate Tsdb to rollup.");
+    }
+
+    return false;
 }
 
 void

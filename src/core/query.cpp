@@ -996,7 +996,7 @@ QuerySuperTask::use_rollup(Tsdb *tsdb) const
     ASSERT(tsdb != nullptr);
     RollupType rollup = RollupType::RU_NONE;
 
-    if (! m_tasks.empty())
+    if (! m_tasks.empty() && tsdb->is_rolled_up())
     {
         auto task = m_tasks.front();
         Downsampler *downsampler = task->get_downsampler();
@@ -1048,6 +1048,7 @@ QuerySuperTask::perform(bool lock)
             {
                 task->query_ts_data(tsdb, rollup);
                 task->merge_data();
+                task->set_tstamp_from(0);
             }
         }
 

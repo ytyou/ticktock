@@ -37,6 +37,7 @@ const char *METRIC_TICKTOCK_QUERY_AGGREGATE_LATENCY_MS = "ticktock.query.aggrega
 const char *METRIC_TICKTOCK_QUERY_TS_LATENCY_MS = "ticktock.query.ts.latency.ms";
 const char *METRIC_TICKTOCK_TSDB_COMPACT_MS = "ticktock.tsdb.compact.ms";
 const char *METRIC_TICKTOCK_TSDB_LOAD_TOTAL_MS = "ticktock.tsdb.load.total.ms";
+const char *METRIC_TICKTOCK_TSDB_ROLLUP_MS = "ticktock.tsdb.rollup.ms";
 const char *METRIC_TICKTOCK_TSDB_ROTATE_MS = "ticktock.tsdb.rotate.ms";
 
 

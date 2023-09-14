@@ -20,6 +20,7 @@
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <unordered_map>
 #include "config.h"
 #include "fd.h"
 #include "global.h"
@@ -942,6 +943,7 @@ DataFile::get_page(PageIndex idx)
 
 
 RollupHeaderFile::RollupHeaderFile(const std::string& file_name) :
+    m_file(nullptr),
     m_header_count(0),
     MmapFile(file_name)
 {
@@ -950,18 +952,112 @@ RollupHeaderFile::RollupHeaderFile(const std::string& file_name) :
 void
 RollupHeaderFile::open(bool for_read)
 {
-    bool is_new = ! exists();
-    if (is_new && for_read) return;
+    if (for_read)
+    {
+        if (m_file != nullptr)  // open for write?
+            MmapFile::open(4096*sizeof(uint32_t), true, false, false);   // TODO:
+        else
+            MmapFile::open_existing(true, false);
+        Logger::info("opening %s for read", m_name.c_str());
+    }
+    else    // for write
+    {
+        ASSERT(m_file == nullptr);
+        int fd = ::open(m_name.c_str(), O_WRONLY|O_CREAT|O_APPEND|O_NONBLOCK, S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH);
+        fd = FileDescriptorManager::dup_fd(fd, FileDescriptorType::FD_FILE);
 
-    if (is_new)
-        MmapFile::open(4096*sizeof(uint32_t), for_read, false, true);
-    else
-        MmapFile::open_existing(for_read, false);
+        if (fd == -1)
+        {
+            Logger::error("Failed to open file %s for append: %d", m_name.c_str(), errno);
+        }
+        else
+        {
+            // get file size
+            struct stat sb;
+            if (fstat(fd, &sb) == -1)
+                Logger::error("Failed to fstat file %s, errno = %d", m_name.c_str(), errno);
+            Logger::info("opening %s for write", m_name.c_str());
 
-    ASSERT(get_pages() != nullptr);
-    Logger::info("opening %s for %s", m_name.c_str(), for_read?"read":"write");
+            m_file = fdopen(fd, "ab");
+            ASSERT(m_file != nullptr);
+        }
+    }
 }
 
+bool
+RollupHeaderFile::is_open(bool for_read) const
+{
+    if (for_read)
+        return MmapFile::is_open(true);
+    else
+        return (m_file != nullptr);
+}
+
+void
+RollupHeaderFile::remove()
+{
+    rm_file(m_name);
+}
+
+void
+RollupHeaderFile::build(IndexFile *idx_file, RollupDataFile *data_file, int no_entries)
+{
+    ASSERT(idx_file != nullptr);
+    ASSERT(data_file != nullptr);
+    ASSERT(no_entries > 0);
+
+    data_file->ensure_open(true);
+
+    struct ts_entry
+    {
+        int next;
+        uint32_t entries[1];
+    };
+
+    TimeSeriesId tid;
+    uint32_t cnt;
+    double min, max, sum;
+    std::unordered_map<TimeSeriesId, struct ts_entry*> map;
+
+    // read from rollup-data file
+    for (RollupIndex idx = 0; ; idx++)
+    {
+        if (! data_file->query(idx, tid, cnt, min, max, sum))
+            break;
+
+        auto it = map.find(tid);
+        struct ts_entry *entries;
+
+        if (it == map.end())
+        {
+            entries = (struct ts_entry*)std::malloc(sizeof(struct ts_entry)+sizeof(uint32_t)*(no_entries-1));
+            entries->next = 0;
+            map[tid] = entries;
+        }
+        else
+        {
+            entries = it->second;
+        }
+
+        ASSERT(entries->next < no_entries);
+        entries->entries[entries->next++] = idx;
+    }
+
+    // write to rollup-header file
+    RollupIndex header_idx = 0;
+
+    for (auto it : map)
+    {
+        TimeSeriesId tid = it.first;
+        struct ts_entry *entries = it.second;
+        std::fwrite(&entries->entries[0], sizeof(uint32_t)*no_entries, 1, m_file);
+        idx_file->set_rollup_index(tid, header_idx);
+        std::free(entries);
+    }
+    std::fflush(m_file);
+}
+
+/*
 bool
 RollupHeaderFile::expand(off_t new_len)
 {
@@ -993,20 +1089,24 @@ RollupHeaderFile::new_header(int entries)
         header[i] = TT_INVALID_ROLLUP_INDEX;
     return idx;
 }
+*/
 
 uint32_t *
 RollupHeaderFile::get_header(RollupIndex idx, int entries)
 {
     ASSERT(entries > 0);
-    size_t old_len = get_length();
+    //size_t old_len = get_length();
     size_t new_len = (idx+1) * entries * sizeof(uint32_t);
+    ASSERT(new_len <= get_length());
 
+/*
     if (old_len < new_len)
     {
         // file too small, expand it
         if (! expand(new_len + 4096 * sizeof(uint32_t)))
             return nullptr;
     }
+*/
 
     return (uint32_t*)get_pages() + (idx * entries);
 }
@@ -1023,6 +1123,7 @@ RollupHeaderFile::get_entries(RollupIndex header_idx, int entries, std::vector<R
         results->push_back(header[i]);
 }
 
+/*
 void
 RollupHeaderFile::add_index(RollupIndex header_idx, uint32_t data_idx, int entries)
 {
@@ -1039,6 +1140,7 @@ RollupHeaderFile::add_index(RollupIndex header_idx, uint32_t data_idx, int entri
         }
     }
 }
+*/
 
 
 RollupDataFile::RollupDataFile(const std::string& file_name) :
@@ -1117,17 +1219,17 @@ RollupDataFile::is_open(bool for_read) const
 }
 
 uint32_t
-RollupDataFile::add_data_point(uint32_t cnt, double min, double max, double sum)
+RollupDataFile::add_data_point(TimeSeriesId tid, uint32_t cnt, double min, double max, double sum)
 {
     struct rollup_entry entry;
 
-    entry.count = cnt;
+    entry.tid = tid;
+    entry.cnt = cnt;
     entry.min = min;
     entry.max = max;
     entry.sum = sum;
 
     PageIndex idx = m_entry_index;
-    //if (m_file == nullptr) open(false);
     ASSERT(m_file != nullptr);
     std::fwrite(&entry, sizeof(entry), 1, m_file);
     std::fflush(m_file);
@@ -1138,24 +1240,20 @@ RollupDataFile::add_data_point(uint32_t cnt, double min, double max, double sum)
 }
 
 bool
-RollupDataFile::query(RollupIndex idx, uint32_t& cnt, double& min, double& max, double& sum)
+RollupDataFile::query(RollupIndex idx, TimeSeriesId& tid, uint32_t& cnt, double& min, double& max, double& sum)
 {
     ASSERT(idx != TT_INVALID_ROLLUP_INDEX);
 
-    if ((idx+sizeof(uint32_t)+3*sizeof(double)) > get_length())
+    if (((idx+1)*sizeof(struct rollup_entry)) > get_length())
         return false;
 
-    uint8_t *pages = (uint8_t*)get_pages();
-    ASSERT(pages != nullptr);
+    struct rollup_entry *entry = &(((struct rollup_entry*)get_pages())[idx]);
 
-    pages += idx;
-    cnt = *((uint32_t*)pages);
-    pages += sizeof(uint32_t);
-    min = *((double*)pages);
-    pages += sizeof(double);
-    max = *((double*)pages);
-    pages += sizeof(double);
-    sum = *((double*)pages);
+    tid = entry->tid;
+    cnt = entry->cnt;
+    min = entry->min;
+    max = entry->max;
+    sum = entry->sum;
 
     return true;
 }

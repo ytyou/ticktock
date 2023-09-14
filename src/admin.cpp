@@ -94,6 +94,10 @@ Admin::http_post_api_admin_handler(HttpRequest& request, HttpResponse& response)
         {
             status = cmd_ping(params, response);
         }
+        else if (strcmp(cmd, "rollup") == 0)
+        {
+            status = cmd_rollup(params, response);
+        }
         else if (strcmp(cmd, "stat") == 0)
         {
             status = cmd_stat(params, response);
@@ -205,6 +209,19 @@ bool
 Admin::cmd_ping(KeyValuePair *params, HttpResponse& response)
 {
     response.init(200, HttpContentType::PLAIN, strlen(HTTP_MSG_PONG), HTTP_MSG_PONG);
+    return true;
+}
+
+bool
+Admin::cmd_rollup(KeyValuePair *params, HttpResponse& response)
+{
+    TaskData data;
+
+    data.integer = 1;   // indicate this is from interactive cmd (vs. scheduled task)
+    Tsdb::rollup(data);
+    char buff[32];
+    int len = snprintf(buff, sizeof(buff), "1 tsdbs rolled-up");
+    response.init(200, HttpContentType::PLAIN, len, buff);
     return true;
 }
 
