@@ -200,7 +200,7 @@ public:
     RollupDataFile *get_rollup_data_file() { return &m_rollup_data_file; }
     RollupHeaderFile *get_rollup_header_file() { return &m_rollup_header_file; }
 
-    RollupIndex add_rollup_point(TimeSeriesId tid, RollupIndex header_idx, int entries, uint32_t cnt, double min, double max, double sum);
+    void add_rollup_point(TimeSeriesId tid, uint32_t cnt, double min, double max, double sum);
     void get_rollup_point(RollupIndex header_idx, int entry_idx, int entries, uint32_t& cnt, double& min, double& max, double& sum);
 
     // for testing only

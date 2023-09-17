@@ -187,13 +187,15 @@ public:
     RollupHeaderFile(const std::string& file_name);
 
     void open(bool for_read) override;
+    void open(bool for_read, bool is_temp);
+    void close() override;
     bool is_open(bool for_read) const override;
 
     void remove();
-    void build(IndexFile *idx_file, RollupDataFile *data_file, int no_entries);
+    void build(IndexFile *idx_file, int no_entries);
 
     RollupIndex new_header(int entries);
-    //void add_index(RollupIndex header_idx, uint32_t data_idx, int entries);
+    void add_index(TimeSeriesId tid, RollupIndex data_idx);
 
     void get_entries(RollupIndex header_idx, int entries, std::vector<RollupIndex> *results);
 
@@ -208,7 +210,6 @@ private:
 
 struct __attribute__ ((__packed__)) rollup_entry
 {
-    TimeSeriesId tid;
     uint32_t cnt;
     double min;
     double max;
@@ -227,8 +228,8 @@ public:
     bool is_open(bool for_read) const override;
     inline pthread_rwlock_t *get_lock() { return &m_lock; }
 
-    uint32_t add_data_point(TimeSeriesId tid, uint32_t cnt, double min, double max, double sum);
-    bool query(RollupIndex idx, TimeSeriesId& tid, uint32_t& cnt, double& min, double& max, double& sum);
+    uint32_t add_data_point(uint32_t cnt, double min, double max, double sum);
+    bool query(RollupIndex idx, uint32_t& cnt, double& min, double& max, double& sum);
 
     inline Timestamp get_last_read() const { return m_last_read; }
     inline Timestamp get_last_write() const { return m_last_write; }

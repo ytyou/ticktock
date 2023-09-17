@@ -18,6 +18,7 @@
 
 #include <fstream>
 #include <cctype>
+#include <chrono>
 #include <algorithm>
 #include <cassert>
 #include <dirent.h>
@@ -993,17 +994,14 @@ Metric::get_last_header(std::string& tsdb_dir, PageCount page_cnt, PageSize page
     return header_file;
 }
 
-RollupIndex
-Metric::add_rollup_point(TimeSeriesId tid, RollupIndex header_idx, int entries, uint32_t cnt, double min, double max, double sum)
+void
+Metric::add_rollup_point(TimeSeriesId tid, uint32_t cnt, double min, double max, double sum)
 {
     std::lock_guard<std::mutex> guard(m_rollup_lock);
-    //m_rollup_header_file.ensure_open(false);
-    //if (header_idx == TT_INVALID_ROLLUP_INDEX)
-        //header_idx = m_rollup_header_file.new_header(entries);
     m_rollup_data_file.ensure_open(false);
-    uint32_t data_idx = m_rollup_data_file.add_data_point(tid, cnt, min, max, sum);
-    //m_rollup_header_file.add_index(header_idx, data_idx, entries);
-    return header_idx;
+    uint32_t data_idx = m_rollup_data_file.add_data_point(cnt, min, max, sum);
+    m_rollup_header_file.ensure_open(false);
+    m_rollup_header_file.add_index(tid, data_idx);
 }
 
 bool
@@ -1065,11 +1063,12 @@ Metric::rotate(Timestamp now_sec, Timestamp thrashing_threshold)
 bool
 Metric::rollup(IndexFile *idx_file, int no_entries)
 {
+    std::lock_guard<std::mutex> guard(m_rollup_lock);
+
     // remove existing, if any
     m_rollup_header_file.remove();
-    m_rollup_header_file.ensure_open(false);
-    m_rollup_header_file.build(idx_file, &m_rollup_data_file, no_entries);
     m_rollup_header_file.close();
+    m_rollup_header_file.build(idx_file, no_entries);
 
     return true;
 }
@@ -1460,22 +1459,7 @@ Tsdb::add_rollup_point(MetricId mid, TimeSeriesId tid, uint32_t cnt, double min,
 {
     Metric *metric = get_metric(mid);
     ASSERT(metric != nullptr);
-    int entries = get_rollup_entries();
-    RollupIndex header_idx;
-
-    {
-        std::lock_guard<std::mutex> guard(m_lock);
-        m_index_file.ensure_open(false);
-        header_idx = m_index_file.get_rollup_index(tid);
-    }
-
-    RollupIndex idx = metric->add_rollup_point(tid, header_idx, entries, cnt, min, max, sum);
-
-    if (idx != header_idx)
-    {
-        ASSERT(header_idx == TT_INVALID_ROLLUP_INDEX);
-        m_index_file.set_rollup_index(tid, idx);
-    }
+    metric->add_rollup_point(tid, cnt, min, max, sum);
 }
 
 bool
@@ -1722,14 +1706,13 @@ Tsdb::query_rollup_no_lock(RollupDataFile *data_file, QueryTask *task, RollupTyp
     ASSERT(! containers.empty());
     auto container = containers.back();
 
-    TimeSeriesId tid;
     uint32_t cnt;
     double min, max, sum, value;
     uint32_t file_idx;
     HeaderIndex header_idx;
 
     task->get_indices(file_idx, header_idx);
-    bool ok = data_file->query(file_idx, tid, cnt, min, max, sum);
+    bool ok = data_file->query(file_idx, cnt, min, max, sum);
 
     if (! ok) return false;
 
@@ -3674,10 +3657,12 @@ Tsdb::rollup(TaskData& data)
 
     if (tsdb != nullptr)
     {
-        std::lock_guard<std::mutex> guard(tsdb->m_lock);
+        //std::lock_guard<std::mutex> guard(tsdb->m_lock);
         //WriteLock guard(tsdb->m_lock);
 
-        if (tsdb->m_ref_count <= 0)
+        tsdb->inc_ref_count();
+
+        if (tsdb->m_ref_count <= 1)
         {
             TimeRange range = tsdb->get_time_range();
 
@@ -3688,20 +3673,32 @@ Tsdb::rollup(TaskData& data)
             try
             {
                 bool success = true;
+                int i = 0;
+                size_t size = tsdb->m_metrics.size();
+                Timestamp delay_ms =
+                    Config::inst()->get_time(CFG_TSDB_ROLLUP_DELAY, TimeUnit::MS, CFG_TSDB_ROLLUP_DELAY_DEF);
 
-                for (auto metric: tsdb->m_metrics)
+                //for (auto metric: tsdb->m_metrics)
+                while (size > 0)
                 {
+                    Metric *metric = tsdb->m_metrics[i];
+
                     if (! metric->rollup(&tsdb->m_index_file, tsdb->get_rollup_entries()))
                     {
                         success = false;
                         Logger::debug("[rollup] Metric::rollup(%u) failed", metric->get_id());
                         break;
                     }
+
+                    if (size <= ++i)
+                        break;
+                    std::this_thread::sleep_for(std::chrono::milliseconds(delay_ms/size));
                 }
 
                 if (success)
                 {
                     // mark it as rolled-up
+                    std::lock_guard<std::mutex> guard(tsdb->m_lock);
                     tsdb->m_mode |= TSDB_MODE_ROLLED_UP;
                     Logger::info("[rollup] 1 Tsdb rolled-up");
                 }
@@ -3719,6 +3716,8 @@ Tsdb::rollup(TaskData& data)
         {
             Logger::debug("[rollup] Tsdb busy, not rolling up. ref = %d", tsdb->m_ref_count);
         }
+
+        tsdb->dec_ref_count();
     }
     else
     {

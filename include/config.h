@@ -131,6 +131,8 @@
 #define CFG_TSDB_READ_ONLY_THRESHOLD            "tsdb.read_only.threshold"
 #define CFG_TSDB_READ_ONLY_THRESHOLD_DEF        "1h"
 #define CFG_TSDB_RETENTION_THRESHOLD            "tsdb.retention.threshold"
+#define CFG_TSDB_ROLLUP_DELAY                   "tsdb.rollup.delay"
+#define CFG_TSDB_ROLLUP_DELAY_DEF               "2min"
 #define CFG_TSDB_ROLLUP_FREQUENCY               "tsdb.rollup.frequency"
 #define CFG_TSDB_ROLLUP_FREQUENCY_DEF           "1d"
 #define CFG_TSDB_ROLLUP_INTERVAL                "tsdb.rollup.interval"
