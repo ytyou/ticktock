@@ -1005,7 +1005,7 @@ RollupHeaderFile::close()
         m_file = nullptr;
     }
 
-    Logger::info("closing rollup header file %s (for both read & write), length = %lu", m_name.c_str(), get_length());
+    //Logger::info("closing rollup header file %s (for both read & write), length = %lu", m_name.c_str(), get_length());
     MmapFile::close();
 }
 
@@ -1019,19 +1019,25 @@ RollupHeaderFile::is_open(bool for_read) const
 }
 
 void
-RollupHeaderFile::remove()
+RollupHeaderFile::remove(bool temp)
 {
-    rm_file(m_name);
+    rm_file(temp ? m_name + ".tmp" : m_name);
 }
 
-void
+bool
 RollupHeaderFile::build(IndexFile *idx_file, int no_entries)
 {
     ASSERT(idx_file != nullptr);
     ASSERT(data_file != nullptr);
     ASSERT(no_entries > 0);
 
-    //data_file->ensure_open(true);
+    if (! this->exists(true))
+    {
+        ASSERT(this->exists(false));
+        return false;   // nothing to do
+    }
+
+    this->remove(false);
     this->open(true, true);     // read temp file
 
     struct ts_entry
@@ -1096,41 +1102,10 @@ RollupHeaderFile::build(IndexFile *idx_file, int no_entries)
     std::fflush(m_file);
     std::fclose(m_file);
     m_file = nullptr;
-}
 
-/*
-bool
-RollupHeaderFile::expand(off_t new_len)
-{
-    size_t old_len = get_length();
-    ASSERT(old_len < new_len);
-
-    if (! this->resize(new_len))
-        return false;
-
-    uint32_t *entries = (uint32_t*)((char*)get_pages() + old_len);
-    uint32_t *end = (uint32_t*)((char*)get_pages() + new_len);
-
-    // TODO: memcpy()?
-    for ( ; entries < end; entries++)
-        *entries = TT_INVALID_ROLLUP_INDEX;
-
-    Logger::debug("rollup header file %s length: %" PRIu64, m_name.c_str(), get_length());
+    this->remove(true);
     return true;
 }
-
-RollupIndex
-RollupHeaderFile::new_header(int entries)
-{
-    ASSERT(entries > 0);
-    RollupIndex idx = m_header_count++;
-    uint32_t *header = get_header(idx, entries);
-    ASSERT(header != nullptr);
-    for (int i = 0; i < entries; i++)
-        header[i] = TT_INVALID_ROLLUP_INDEX;
-    return idx;
-}
-*/
 
 uint32_t *
 RollupHeaderFile::get_header(RollupIndex idx, int entries)
@@ -1139,16 +1114,6 @@ RollupHeaderFile::get_header(RollupIndex idx, int entries)
     //size_t old_len = get_length();
     size_t new_len = (idx+1) * entries * sizeof(uint32_t);
     ASSERT(new_len <= get_length());
-
-/*
-    if (old_len < new_len)
-    {
-        // file too small, expand it
-        if (! expand(new_len + 4096 * sizeof(uint32_t)))
-            return nullptr;
-    }
-*/
-
     return (uint32_t*)get_pages() + (idx * entries);
 }
 

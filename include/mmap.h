@@ -54,7 +54,10 @@ public:
 
     virtual bool is_open(bool for_read) const;
     inline bool is_read_only() const { return m_read_only; }
-    inline bool exists() const { return file_exists(m_name); }
+    inline bool exists(bool temp = false) const
+    {
+        return file_exists(temp ? m_name + ".tmp" : m_name);
+    }
 
 protected:
     void open(off_t length, bool read_only, bool append_only, bool resize);
@@ -191,16 +194,15 @@ public:
     void close() override;
     bool is_open(bool for_read) const override;
 
-    void remove();
-    void build(IndexFile *idx_file, int no_entries);
-
-    RollupIndex new_header(int entries);
+    // return false if nothing to do;
+    // true if header file was built;
+    bool build(IndexFile *idx_file, int no_entries);
     void add_index(TimeSeriesId tid, RollupIndex data_idx);
 
     void get_entries(RollupIndex header_idx, int entries, std::vector<RollupIndex> *results);
 
 private:
-    //bool expand(off_t new_len);
+    void remove(bool temp);
     uint32_t *get_header(RollupIndex header_idx, int entries);
 
     FILE *m_file;

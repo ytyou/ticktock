@@ -1066,7 +1066,6 @@ Metric::rollup(IndexFile *idx_file, int no_entries)
     std::lock_guard<std::mutex> guard(m_rollup_lock);
 
     // remove existing, if any
-    m_rollup_header_file.remove();
     m_rollup_header_file.close();
     m_rollup_header_file.build(idx_file, no_entries);
 
@@ -3634,7 +3633,7 @@ Tsdb::rollup(TaskData& data)
 
             // also make sure it's not readable nor writable while we are rolling up
             //if ((*it)->m_mode & (TSDB_MODE_COMPACTED | TSDB_MODE_READ_WRITE))
-            if ((*it)->m_mode & TSDB_MODE_ROLLED_UP)
+            if ((*it)->is_rolled_up())
             {
                 Logger::debug("[rollup] %T is already rolled up, ref-count = %d", (*it), (*it)->m_ref_count);
                 continue;
