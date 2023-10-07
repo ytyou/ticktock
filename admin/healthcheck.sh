@@ -5,8 +5,6 @@
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 . $DIR/common.sh
 
-HOST=192.168.1.42
-
 RESPONSE=`$CURL -XPOST "http://$HOST:$PORT/api/admin?cmd=ping"`
 
 # exit 0 means healthy; exit 1 means unhealthy;
