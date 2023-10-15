@@ -64,7 +64,7 @@ MetaFile::restore_metrics(void (*restore_metrics)(MetricId, std::string& name))
     m_metrics_name.assign(buff);
     m_metrics_file = nullptr;
 
-    bool restore_needed = AppendLog::restore_needed();
+    //bool restore_needed = AppendLog::restore_needed();
     std::vector<TimeSeries*> tsv;
     std::ifstream is(m_metrics_name);
 

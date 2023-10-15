@@ -62,6 +62,7 @@ public:
 protected:
     void open(off_t length, bool read_only, bool append_only, bool resize);
     void open_existing(bool read_only, bool append_only);
+    void remove() { rm_file(m_name); }
 
     std::string m_name;
 
@@ -184,6 +185,66 @@ private:
 };
 
 
+/* The format of this file is just series of entries of
+ * <TimeSeriesId,RollupIndex>. They will not be used for
+ * query until a background job transform it into
+ * RollupHeaderFile, which is suited for query.
+ */
+class RollupHeaderTmpFile : public MmapFile
+{
+public:
+    RollupHeaderTmpFile(const std::string& file_name);
+
+    void open(bool read_only) override;
+    void close() override;
+    bool is_open(bool read_only) const override;
+    void add_index(TimeSeriesId tid, RollupIndex data_idx);
+
+    struct __attribute__ ((__packed__)) rollup_header_tmp_entry
+    {
+        TimeSeriesId tid;
+        RollupIndex data_idx;
+    };
+
+    // forward-iterator
+    struct Iterator
+    {
+        using iterator_category = std::input_iterator_tag;
+        using difference_type   = std::ptrdiff_t;
+        using value_type        = struct rollup_header_tmp_entry;
+        using pointer           = struct rollup_header_tmp_entry*;
+        using reference         = struct rollup_header_tmp_entry&;
+
+        Iterator(pointer ptr) : m_ptr(ptr) { ASSERT(m_ptr != nullptr); }
+
+        reference operator*() const { return *m_ptr; }
+        pointer operator->() { return m_ptr; }
+
+        // Prefix increment
+        Iterator& operator++() { m_ptr++; return *this; }
+        // Postfix increment
+        Iterator operator++(int) { Iterator tmp = *this; ++(*this); return tmp; }
+
+        friend bool operator== (const Iterator& l, const Iterator& r) { return l.m_ptr == r.m_ptr; }
+        friend bool operator!= (const Iterator& l, const Iterator& r) { return l.m_ptr != r.m_ptr; }
+
+    private:
+        pointer m_ptr;
+    };
+
+    Iterator begin() { return Iterator((struct rollup_header_tmp_entry*)get_pages()); }
+    Iterator end() { return Iterator((struct rollup_header_tmp_entry*)get_pages()+m_entry_count); }
+
+private:
+    FILE *m_file;
+    RollupIndex m_entry_count;
+};
+
+
+/* The format of this file is suited for query. All the data file
+ * indices of a TimeSeries are stored together in an array. The
+ * location of this array is stored in the 'index' file of each Tsdb.
+ */
 class RollupHeaderFile : public MmapFile
 {
 public:

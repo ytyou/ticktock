@@ -46,6 +46,8 @@ public:
     RollupManager();
     ~RollupManager();
 
+    void init(Timestamp tstmap, uint32_t cnt, double min, double max, double sum);
+
     // process in-order dps only
     void add_data_point(Tsdb *tsdb, MetricId mid, TimeSeriesId tid, DataPoint& dp);
     void flush(MetricId mid, TimeSeriesId tid);
@@ -57,7 +59,9 @@ public:
     bool query(RollupType type, DataPointPair& dp);
 
 private:
-    uint32_t m_count;
+    Timestamp step_down(Timestamp tstamp);
+
+    uint32_t m_cnt;
     double m_min;
     double m_max;
     double m_sum;

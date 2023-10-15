@@ -26,7 +26,7 @@ namespace tt
 
 
 RollupManager::RollupManager() :
-    m_count(0),
+    m_cnt(0),
     m_min(0),
     m_max(0),
     m_sum(0),
@@ -78,7 +78,7 @@ RollupManager::add_data_point(Tsdb *tsdb, MetricId mid, TimeSeriesId tid, DataPo
         }
     }
 
-    m_count++;
+    m_cnt++;
     m_min = std::min(m_min, value);
     m_max = std::max(m_min, value);
     m_sum += value;
@@ -91,10 +91,10 @@ RollupManager::flush(MetricId mid, TimeSeriesId tid)
         return;
 
     // write to rollup files
-    m_tsdb->add_rollup_point(mid, tid, m_count, m_min, m_max, m_sum);
+    m_tsdb->add_rollup_point(mid, tid, m_cnt, m_min, m_max, m_sum);
 
     // reset
-    m_count = 0;
+    m_cnt = 0;
     m_min = m_max = m_sum = 0.0;
 }
 
@@ -102,16 +102,16 @@ RollupManager::flush(MetricId mid, TimeSeriesId tid)
 bool
 RollupManager::query(RollupType type, DataPointPair& dp)
 {
-    if (m_count == 0) return false;
+    if (m_cnt == 0) return false;
 
     switch (type)
     {
         case RollupType::RU_AVG:
-            dp.second = m_sum / (double)m_count;
+            dp.second = m_sum / (double)m_cnt;
             break;
 
         case RollupType::RU_CNT:
-            dp.second = (double)m_count;
+            dp.second = (double)m_cnt;
             break;
 
         case RollupType::RU_MAX:
@@ -132,6 +132,19 @@ RollupManager::query(RollupType type, DataPointPair& dp)
 
     dp.first = m_tstamp;
     return true;
+}
+
+/* @return Stepped down timestamp of the input, in seconds.
+ */
+Timestamp
+RollupManager::step_down(Timestamp tstamp)
+{
+    ASSERT(m_tsdb != nullptr);
+
+    Timestamp interval = m_tsdb->get_rollup_interval();
+    ASSERT(interval > 0);
+    tstamp = to_sec(tstamp);
+    return tstamp - (tstamp % interval);
 }
 
 

@@ -942,6 +942,78 @@ DataFile::get_page(PageIndex idx)
 }
 
 
+RollupHeaderTmpFile::RollupHeaderTmpFile(const std::string& file_name) :
+    m_file(nullptr),
+    m_entry_count(0),
+    MmapFile(file_name)
+{
+    ASSERT(ends_with(file_name, "/rollup.header.tmp"));
+}
+
+void
+RollupHeaderTmpFile::open(bool read_only)
+{
+    if (read_only)
+    {
+        MmapFile::open_existing(true, true);
+        Logger::info("opening %s for read", m_name.c_str());
+        m_entry_count = get_length() / sizeof(struct rollup_header_tmp_entry);
+    }
+    else
+    {
+        ASSERT(m_file == nullptr);
+        int fd = ::open(m_name.c_str(), O_WRONLY|O_CREAT|O_APPEND|O_NONBLOCK, S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH);
+        fd = FileDescriptorManager::dup_fd(fd, FileDescriptorType::FD_FILE);
+
+        if (fd == -1)
+        {
+            Logger::error("Failed to open file %s for append: %d", m_name.c_str(), errno);
+        }
+        else
+        {
+            m_file = fdopen(fd, "ab");
+            Logger::info("opening %s for write", m_name.c_str());
+            ASSERT(m_file != nullptr);
+        }
+    }
+}
+
+void
+RollupHeaderTmpFile::close()
+{
+    if (m_file != nullptr)
+    {
+        std::fclose(m_file);
+        m_file = nullptr;
+    }
+
+    MmapFile::close();
+}
+
+bool
+RollupHeaderTmpFile::is_open(bool for_read) const
+{
+    if (for_read)
+        return MmapFile::is_open(true);
+    else
+        return (m_file != nullptr);
+}
+
+// used for on-the-fly rollup.
+void
+RollupHeaderTmpFile::add_index(TimeSeriesId tid, RollupIndex data_idx)
+{
+    ASSERT(m_file != nullptr);
+    struct rollup_header_tmp_entry entry;
+
+    entry.tid = tid;
+    entry.data_idx = data_idx;
+
+    std::fwrite(&entry, sizeof(struct rollup_header_tmp_entry), 1, m_file);
+    std::fflush(m_file);
+}
+
+
 RollupHeaderFile::RollupHeaderFile(const std::string& file_name) :
     m_file(nullptr),
     m_header_count(0),
@@ -1028,7 +1100,6 @@ bool
 RollupHeaderFile::build(IndexFile *idx_file, int no_entries)
 {
     ASSERT(idx_file != nullptr);
-    ASSERT(data_file != nullptr);
     ASSERT(no_entries > 0);
 
     if (! this->exists(true))
@@ -1240,6 +1311,8 @@ RollupDataFile::add_data_point(uint32_t cnt, double min, double max, double sum)
     return m_entry_index++;
 }
 
+/* @param idx The idx-th entry (struct rollup_entry) in the rollup.data file.
+ */
 bool
 RollupDataFile::query(RollupIndex idx, uint32_t& cnt, double& min, double& max, double& sum)
 {

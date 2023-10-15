@@ -137,6 +137,7 @@ AppendLog::restore(std::vector<TimeSeries*>& tsv)
     size_t header_size = sizeof(struct append_log_entry);
     char *buff = MemoryManager::alloc_network_buffer();
     FILE *file = fopen(name.c_str(), "rb");
+    Tsdb *oldest_tsdb = nullptr;
 
     for ( ; ; )
     {
@@ -171,6 +172,9 @@ AppendLog::restore(std::vector<TimeSeries*>& tsv)
 
         Tsdb *tsdb = Tsdb::inst(tstamp, false);
 
+        if ((oldest_tsdb == nullptr) || (tsdb->get_time_range().older_than_sec(oldest_tsdb->get_time_range().get_from_sec())))
+            oldest_tsdb = tsdb;
+
         if (tsdb == nullptr)
         {
             Logger::error("Can't recover time series %u, tstamp %" PRIu64 " not exist", tid, tstamp);
@@ -185,6 +189,9 @@ AppendLog::restore(std::vector<TimeSeries*>& tsv)
 
     rm_file(tmp_name);
     MemoryManager::free_network_buffer(buff);
+
+    if (oldest_tsdb != nullptr)
+        Tsdb::set_crashes(oldest_tsdb);
 }
 
 

@@ -253,11 +253,13 @@ TimeSeries::add_data_point(MetricId mid, DataPoint& dp)
     // Make sure we have a valid m_buff (PageInMemory)
     if (UNLIKELY(m_buff == nullptr))
     {
-        ASSERT(m_ooo_buff == nullptr);
+        //ASSERT(m_ooo_buff == nullptr);
         Tsdb *tsdb = Tsdb::inst(tstamp, true);
-        m_buff = new PageInMemory(mid, m_id, tsdb, false);
-        Timestamp last_tstamp = m_buff->get_last_tstamp(mid, m_id);
+        ASSERT(tsdb != nullptr);
+        Timestamp last_tstamp = tsdb->get_last_tstamp(mid, m_id);
         is_ooo = (tstamp < last_tstamp);
+        if (! is_ooo)
+            m_buff = new PageInMemory(mid, m_id, tsdb, false);
     }
     else if ((in_range = m_buff->in_range(tstamp)) != 0)
     {
@@ -277,11 +279,11 @@ TimeSeries::add_data_point(MetricId mid, DataPoint& dp)
         is_ooo = (tstamp < last_tstamp);
     }
 
-    ASSERT(m_buff != nullptr);
-    ASSERT(m_buff->in_range(tstamp) == 0);
-
     if (is_ooo)
         return add_ooo_data_point(mid, dp);
+
+    ASSERT(m_buff != nullptr);
+    ASSERT(m_buff->in_range(tstamp) == 0);
 
     bool ok = m_buff->add_data_point(tstamp, dp.get_value());
 

@@ -806,6 +806,8 @@ Mapping::restore_measurement(std::string& measurement, std::string& tags, std::v
         mm->add_ts(i++, ts);
         tsv.push_back(ts);
     }
+
+    MemoryManager::free_network_buffer(buff);
 }
 
 void
@@ -828,7 +830,8 @@ Mapping::get_ts_count()
  */
 Metric::Metric(const std::string& dir, PageSize page_size, PageCount page_cnt) :
     m_rollup_data_file(dir+"/rollup.data"),
-    m_rollup_header_file(dir+"/rollup.header")
+    m_rollup_header_file(dir+"/rollup.header"),
+    m_rollup_header_tmp_file(dir+"/rollup.header.tmp")
 {
     create_dir(dir);    // create folder, if necessary
 
@@ -1000,8 +1003,8 @@ Metric::add_rollup_point(TimeSeriesId tid, uint32_t cnt, double min, double max,
     std::lock_guard<std::mutex> guard(m_rollup_lock);
     m_rollup_data_file.ensure_open(false);
     uint32_t data_idx = m_rollup_data_file.add_data_point(cnt, min, max, sum);
-    m_rollup_header_file.ensure_open(false);
-    m_rollup_header_file.add_index(tid, data_idx);
+    m_rollup_header_tmp_file.ensure_open(false);
+    m_rollup_header_tmp_file.add_index(tid, data_idx);
 }
 
 bool
@@ -1123,16 +1126,12 @@ Tsdb::Tsdb(TimeRange& range, bool existing, const char *suffix) :
     m_time_range(range),
     m_index_file(Tsdb::get_index_file_name(range, suffix)),
     m_page_size(g_page_size),
-    m_page_count(g_page_count),
-    m_mbucket_count(UINT32_MAX)
+    m_page_count(g_page_count)
 {
     ASSERT(g_tstamp_resolution_ms ? is_ms(range.get_from()) : is_sec(range.get_from()));
 
-    if (Config::inst()->exists(CFG_TSDB_METRIC_BUCKETS))
-    {
-        m_mbucket_count = Config::inst()->get_int(CFG_TSDB_METRIC_BUCKETS);
-        m_metrics.reserve(m_mbucket_count);
-    }
+    m_mbucket_count = Config::inst()->get_int(CFG_TSDB_METRIC_BUCKETS,CFG_TSDB_METRIC_BUCKETS_DEF);
+    m_metrics.reserve(m_mbucket_count);
     m_compressor_version =
         Config::inst()->get_int(CFG_TSDB_COMPRESSOR_VERSION,CFG_TSDB_COMPRESSOR_VERSION_DEF);
     m_rollup_interval =
@@ -1239,6 +1238,9 @@ Tsdb::restore_config(const std::string& dir)
 
     if (cfg.exists("rolled_up") && cfg.get_bool("rolled_up", false))
         m_mode |= TSDB_MODE_ROLLED_UP;
+
+    if (cfg.exists("crashed") && cfg.get_bool("crashed", false))
+        m_mode |= TSDB_MODE_CRASHED;
 }
 
 void
@@ -1259,6 +1261,9 @@ Tsdb::write_config(const std::string& dir)
 
     if (m_mode & TSDB_MODE_ROLLED_UP)
         cfg.set_value("rolled_up", "true");
+
+    if (m_mode & TSDB_MODE_CRASHED)
+        cfg.set_value("crashed", "true");
 
     cfg.persist();
 }
@@ -3760,6 +3765,19 @@ Tsdb::write_to_compacted(MetricId mid, QuerySuperTask& super_task, Tsdb *compact
         }
 
         task->recycle();    // release memory
+    }
+}
+
+void
+Tsdb::set_crashes(Tsdb *oldest_tsdb)
+{
+    PThread_ReadLock guard(&m_tsdb_lock);
+
+    for (auto it = m_tsdbs.rbegin(); it != m_tsdbs.rend(); it++)
+    {
+        Tsdb *tsdb = *it;
+        tsdb->m_mode |= TSDB_MODE_CRASHED;
+        if (tsdb == oldest_tsdb) break;
     }
 }
 

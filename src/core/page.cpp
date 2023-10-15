@@ -118,6 +118,7 @@ PageInMemory::get_last_tstamp(MetricId mid, TimeSeriesId tid) const
 {
     ASSERT(m_tsdb != nullptr);
     ASSERT(m_compressor != nullptr);
+    ASSERT(! m_compressor->is_empty());
 
     if (m_compressor->is_empty())
         return m_tsdb->get_last_tstamp(mid, tid);

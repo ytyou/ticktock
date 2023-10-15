@@ -73,7 +73,7 @@
 #define CFG_TCP_BUFFER_SIZE                     "tcp.buffer.size"
 #define CFG_TCP_BUFFER_SIZE_DEF                 "512kb"
 #define CFG_TCP_MIN_FILE_DESCRIPTOR             "tcp.min.file.descriptor"
-#define CFG_TCP_MIN_FILE_DESCRIPTOR_DEF         64
+#define CFG_TCP_MIN_FILE_DESCRIPTOR_DEF         128
 #define CFG_TCP_MIN_HTTP_STEP                   "tcp.min.http.step"
 #define CFG_TCP_MIN_HTTP_STEP_DEF               100
 #define CFG_TCP_RESPONDERS_PER_LISTENER         "tcp.responders.per.listener"
@@ -126,6 +126,7 @@
 #define CFG_TSDB_MAX_DP_LINE                    "tsdb.max.dp.line"
 #define CFG_TSDB_MAX_DP_LINE_DEF                256
 #define CFG_TSDB_METRIC_BUCKETS                 "tsdb.metric.buckets"
+#define CFG_TSDB_METRIC_BUCKETS_DEF             100
 #define CFG_TSDB_MIN_DISK_SPACE                 "tsdb.min.disk.space"
 #define CFG_TSDB_MIN_DISK_SPACE_DEF             4
 #define CFG_TSDB_READ_ONLY_THRESHOLD            "tsdb.read_only.threshold"

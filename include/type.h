@@ -39,6 +39,7 @@ typedef uint16_t PageIndex;
 typedef uint16_t HeaderIndex;
 typedef uint32_t TagId;
 typedef uint16_t TagCount;
+typedef uint32_t RollupEntry;   // the n-th entry of rollup point in a Tsdb
 typedef uint32_t RollupIndex;
 
 #define TT_INVALID_FILE_INDEX   UINT16_MAX

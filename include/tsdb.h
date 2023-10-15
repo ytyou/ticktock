@@ -62,12 +62,14 @@ namespace tt
 //
 // If TSDB_MODE_COMPACTED is set, it means the data file was compacted.
 // If TSDB_MODE_ROLLED_UP is set, it means the rollup data is ready.
+// If TSDB_MODE_CRASHED is set, it means the last shutdown was abnormal.
 
 #define TSDB_MODE_NONE          0x00000000
 #define TSDB_MODE_READ          0x00000001
 #define TSDB_MODE_WRITE         0x00000002
 #define TSDB_MODE_COMPACTED     0x00000004
 #define TSDB_MODE_ROLLED_UP     0x00000008
+#define TSDB_MODE_CRASHED       0x80000000
 
 #define TSDB_MODE_READ_WRITE    (TSDB_MODE_READ | TSDB_MODE_WRITE)
 
@@ -217,6 +219,7 @@ private:
 
     MetricId m_id;
     RollupHeaderFile m_rollup_header_file;
+    RollupHeaderTmpFile m_rollup_header_tmp_file;
     RollupDataFile m_rollup_data_file;
     std::vector<HeaderFile*> m_header_files;
     std::vector<DataFile*> m_data_files;
@@ -333,6 +336,18 @@ public:
     {
         return ((m_mode & TSDB_MODE_ROLLED_UP));
     }
+
+    inline bool is_crashed() const
+    {
+        return ((m_mode & TSDB_MODE_CRASHED));
+    }
+
+    inline void set_crashed()
+    {
+        m_mode |= TSDB_MODE_CRASHED;
+    }
+
+    static void set_crashes(Tsdb *oldest_tsdb);
 
     // http add data-point request handler
     static bool http_api_put_handler(HttpRequest& request, HttpResponse& response); // json or plain

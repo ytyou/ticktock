@@ -996,7 +996,7 @@ QuerySuperTask::use_rollup(Tsdb *tsdb) const
     ASSERT(tsdb != nullptr);
     RollupType rollup = RollupType::RU_NONE;
 
-    if (! m_tasks.empty() && tsdb->is_rolled_up())
+    if (! m_tasks.empty() && tsdb->is_rolled_up() && !tsdb->is_crashed())
     {
         auto task = m_tasks.front();
         Downsampler *downsampler = task->get_downsampler();
