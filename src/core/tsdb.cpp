@@ -369,7 +369,7 @@ Mapping::~Mapping()
 }
 
 void
-Mapping::flush(bool close)
+Mapping::flush()
 {
     //ReadLock guard(m_lock);
     //std::lock_guard<std::mutex> guard(m_lock);
@@ -377,7 +377,17 @@ Mapping::flush(bool close)
     for (TimeSeries *ts = m_ts_head.load(); ts != nullptr; ts = ts->m_next)
     {
         Logger::trace("Flushing ts: %u", ts->get_id());
-        ts->flush(m_id, close);
+        ts->flush(m_id);
+    }
+}
+
+void
+Mapping::close()
+{
+    for (TimeSeries *ts = m_ts_head.load(); ts != nullptr; ts = ts->m_next)
+    {
+        Logger::trace("Closing ts: %u", ts->get_id());
+        ts->close(m_id);
     }
 }
 
@@ -811,6 +821,21 @@ Mapping::restore_measurement(std::string& measurement, std::string& tags, std::v
 }
 
 void
+Tsdb::restore_rollup_mgr(std::unordered_map<TimeSeriesId,RollupManager>& map)
+{
+    std::vector<TimeSeries*> tsv;
+
+    get_all_ts(tsv);
+
+    for (auto ts: tsv)
+    {
+        auto search = map.find(ts->get_id());
+        if (search == map.end()) continue;
+        ts->restore_rollup_mgr(search->second);
+    }
+}
+
+void
 Mapping::set_tag_count(int tag_count)
 {
     if (tag_count != m_tag_count)
@@ -1070,7 +1095,7 @@ Metric::rollup(IndexFile *idx_file, int no_entries)
 
     // remove existing, if any
     m_rollup_header_file.close();
-    m_rollup_header_file.build(idx_file, no_entries);
+    m_rollup_header_file.build(idx_file, &m_rollup_header_tmp_file, no_entries);
 
     return true;
 }
@@ -2022,7 +2047,7 @@ Tsdb::flush_for_test()
     std::vector<Mapping*> mappings;
     get_all_mappings(mappings);
     for (auto mapping: mappings)
-        mapping->flush(false);
+        mapping->flush();
 
     for (auto metric: m_metrics)
     {
@@ -2041,7 +2066,7 @@ Tsdb::shutdown()
         for (auto it = g_metric_map.begin(); it != g_metric_map.end(); it++)
         {
             Mapping *mapping = it->second;
-            mapping->flush(true);
+            mapping->close();
 #ifdef _DEBUG
             //TimeSeries *next;
             //for (TimeSeries *ts = mapping->get_ts_head(); ts != nullptr; ts = next)

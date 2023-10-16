@@ -184,11 +184,37 @@ TimeSeries::restore(Tsdb *tsdb, MetricId mid, Timestamp tstamp, PageSize offset,
 }
 
 void
-TimeSeries::flush(MetricId mid, bool close)
+TimeSeries::close(MetricId mid)
+{
+    std::lock_guard<std::mutex> guard(m_locks[m_id % m_lock_count]);
+
+    if (m_buff != nullptr)
+    {
+        m_buff->flush(mid, m_id);
+
+        if (m_ooo_buff != nullptr)
+            m_ooo_buff->update_indices(m_buff);
+
+        delete m_buff;
+        m_buff = nullptr;
+    }
+
+    if (m_ooo_buff != nullptr)
+    {
+        m_ooo_buff->flush(mid, m_id);
+        delete m_ooo_buff;
+        m_ooo_buff = nullptr;
+    }
+
+    m_rollup.close(m_id);
+}
+
+void
+TimeSeries::flush(MetricId mid)
 {
     //std::lock_guard<std::mutex> guard(m_lock);
     std::lock_guard<std::mutex> guard(m_locks[m_id % m_lock_count]);
-    flush_no_lock(mid, close);
+    flush_no_lock(mid);
 }
 
 void

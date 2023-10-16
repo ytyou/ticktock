@@ -54,15 +54,12 @@ public:
 
     virtual bool is_open(bool for_read) const;
     inline bool is_read_only() const { return m_read_only; }
-    inline bool exists(bool temp = false) const
-    {
-        return file_exists(temp ? m_name + ".tmp" : m_name);
-    }
+    inline bool exists() const { return file_exists(m_name); }
+    void remove() { rm_file(m_name); }
 
 protected:
     void open(off_t length, bool read_only, bool append_only, bool resize);
     void open_existing(bool read_only, bool append_only);
-    void remove() { rm_file(m_name); }
 
     std::string m_name;
 
@@ -194,6 +191,7 @@ class RollupHeaderTmpFile : public MmapFile
 {
 public:
     RollupHeaderTmpFile(const std::string& file_name);
+    ~RollupHeaderTmpFile();
 
     void open(bool read_only) override;
     void close() override;
@@ -249,15 +247,15 @@ class RollupHeaderFile : public MmapFile
 {
 public:
     RollupHeaderFile(const std::string& file_name);
+    ~RollupHeaderFile();
 
     void open(bool for_read) override;
-    void open(bool for_read, bool is_temp);
     void close() override;
     bool is_open(bool for_read) const override;
 
     // return false if nothing to do;
     // true if header file was built;
-    bool build(IndexFile *idx_file, int no_entries);
+    bool build(IndexFile *idx_file, RollupHeaderTmpFile *tmp_file, int no_entries);
     void add_index(TimeSeriesId tid, RollupIndex data_idx);
 
     void get_entries(RollupIndex header_idx, int entries, std::vector<RollupIndex> *results);
@@ -280,6 +278,17 @@ struct __attribute__ ((__packed__)) rollup_entry
 };
 
 
+// Used for shutdown/restart only
+struct __attribute__ ((__packed__)) rollup_entry_ext
+{
+    Timestamp tstamp;
+    uint32_t cnt;
+    double min;
+    double max;
+    double sum;
+};
+
+
 class RollupDataFile : public MmapFile
 {
 public:
@@ -292,7 +301,9 @@ public:
     inline pthread_rwlock_t *get_lock() { return &m_lock; }
 
     uint32_t add_data_point(uint32_t cnt, double min, double max, double sum);
+    uint32_t add_data_point(Timestamp tstamp, uint32_t cnt, double min, double max, double sum);    // called during shutdown
     bool query(RollupIndex idx, uint32_t& cnt, double& min, double& max, double& sum);
+    bool query(RollupIndex idx, Timestamp& tstamp, uint32_t& cnt, double& min, double& max, double& sum);   // called during restart
 
     inline Timestamp get_last_read() const { return m_last_read; }
     inline Timestamp get_last_write() const { return m_last_write; }

@@ -19,6 +19,7 @@
 #pragma once
 
 #include "dp.h"
+#include "mmap.h"
 #include "type.h"
 
 
@@ -44,13 +45,20 @@ class __attribute__ ((__packed__)) RollupManager
 {
 public:
     RollupManager();
+    RollupManager(const RollupManager& copy);   // copy constructor
+    RollupManager(Timestamp tstmap, uint32_t cnt, double min, double max, double sum);
     ~RollupManager();
 
-    void init(Timestamp tstmap, uint32_t cnt, double min, double max, double sum);
+    void copy_from(const RollupManager& other);
+    RollupManager& operator=(const RollupManager& other);
+
+    static void init();
+    static void shutdown();
 
     // process in-order dps only
     void add_data_point(Tsdb *tsdb, MetricId mid, TimeSeriesId tid, DataPoint& dp);
     void flush(MetricId mid, TimeSeriesId tid);
+    void close(TimeSeriesId tid);   // called during TT shutdown
 
     inline Tsdb *get_tsdb() { return m_tsdb; }
     inline Timestamp get_tstamp() const { return m_tstamp; }
@@ -67,6 +75,10 @@ private:
     double m_sum;
     Timestamp m_tstamp;
     Tsdb *m_tsdb;
+
+    // these 2 files are used during shutdown/restart of TT
+    static RollupHeaderTmpFile *m_backup_header_tmp_file;
+    static RollupDataFile *m_backup_data_file;
 };
 
 

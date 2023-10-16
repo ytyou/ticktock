@@ -134,7 +134,8 @@ private:
     Mapping(MetricId id, const char *name); // restore
     ~Mapping();
 
-    void flush(bool close);
+    void flush();
+    void close();   // called during TT shutdown
 
     char *m_metric;
     bool add(DataPoint& dp);
@@ -248,6 +249,7 @@ public:
     static void restore_metrics(MetricId id, std::string& metric);
     static TimeSeries *restore_ts(std::string& metric, std::string& key, TimeSeriesId id);
     static void restore_measurement(std::string& measurement, std::string& tags, std::vector<std::pair<std::string,TimeSeriesId>>& fields, std::vector<TimeSeries*>& tsv);
+    static void restore_rollup_mgr(std::unordered_map<TimeSeriesId,RollupManager>& map);
     static void get_all_ts(std::vector<TimeSeries*>& tsv);
     static void get_all_mappings(std::vector<Mapping*>& mappings);
 

@@ -344,6 +344,7 @@ initialize()
     MemoryManager::init();
     Compressor_v3::initialize();
     Tsdb::init();
+    RollupManager::init();
     AppendLog::init();
     Stats::init();
     //QueryExecutor::init();
@@ -374,6 +375,7 @@ shutdown()
         Timer::inst()->stop();
         //QueryExecutor::inst()->shutdown();
         Tsdb::shutdown();
+        RollupManager::shutdown();
         // MM are thread-local singletons, and can't be cleaned up from another thread
         //MemoryManager::cleanup();
         AppendLog::shutdown();  // normal shutdown

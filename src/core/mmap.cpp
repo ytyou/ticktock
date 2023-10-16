@@ -950,6 +950,11 @@ RollupHeaderTmpFile::RollupHeaderTmpFile(const std::string& file_name) :
     ASSERT(ends_with(file_name, "/rollup.header.tmp"));
 }
 
+RollupHeaderTmpFile::~RollupHeaderTmpFile()
+{
+    this->close();
+}
+
 void
 RollupHeaderTmpFile::open(bool read_only)
 {
@@ -1021,46 +1026,39 @@ RollupHeaderFile::RollupHeaderFile(const std::string& file_name) :
 {
 }
 
-void
-RollupHeaderFile::open(bool for_read)
+RollupHeaderFile::~RollupHeaderFile()
 {
-    this->open(for_read, true);
+    this->close();
 }
 
 void
-RollupHeaderFile::open(bool for_read, bool is_temp)
+RollupHeaderFile::open(bool for_read)
 {
     if (for_read)
     {
-        if (is_temp)
-            m_name += ".tmp";
         if (m_file != nullptr)  // open for write?
             MmapFile::open(4096*sizeof(uint32_t), true, false, false);   // TODO:
         else
             MmapFile::open_existing(true, false);
         Logger::info("opening %s for read", m_name.c_str());
-        if (is_temp)
-            m_name.erase(m_name.length() - 4);
     }
     else    // for write
     {
         ASSERT(m_file == nullptr);
-        std::string file_name(m_name);
-        if (is_temp) file_name += ".tmp";
-        int fd = ::open(file_name.c_str(), O_WRONLY|O_CREAT|O_APPEND|O_NONBLOCK, S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH);
+        int fd = ::open(m_name.c_str(), O_WRONLY|O_CREAT|O_APPEND|O_NONBLOCK, S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH);
         fd = FileDescriptorManager::dup_fd(fd, FileDescriptorType::FD_FILE);
 
         if (fd == -1)
         {
-            Logger::error("Failed to open file %s for append: %d", file_name.c_str(), errno);
+            Logger::error("Failed to open file %s for append: %d", m_name.c_str(), errno);
         }
         else
         {
             // get file size
             struct stat sb;
             if (fstat(fd, &sb) == -1)
-                Logger::error("Failed to fstat file %s, errno = %d", file_name.c_str(), errno);
-            Logger::info("opening %s for write", file_name.c_str());
+                Logger::error("Failed to fstat file %s, errno = %d", m_name.c_str(), errno);
+            Logger::info("opening %s for write", m_name.c_str());
 
             m_file = fdopen(fd, "ab");
             ASSERT(m_file != nullptr);
@@ -1097,19 +1095,20 @@ RollupHeaderFile::remove(bool temp)
 }
 
 bool
-RollupHeaderFile::build(IndexFile *idx_file, int no_entries)
+RollupHeaderFile::build(IndexFile *idx_file, RollupHeaderTmpFile *tmp_file, int no_entries)
 {
     ASSERT(idx_file != nullptr);
+    ASSERT(tmp_file != nullptr);
     ASSERT(no_entries > 0);
 
-    if (! this->exists(true))
+    if (! tmp_file->exists())
     {
-        ASSERT(this->exists(false));
+        ASSERT(this->exists());
         return false;   // nothing to do
     }
 
     this->remove(false);
-    this->open(true, true);     // read temp file
+    tmp_file->open(true);   // read temp file
 
     struct ts_entry
     {
@@ -1127,8 +1126,8 @@ RollupHeaderFile::build(IndexFile *idx_file, int no_entries)
     uint32_t cnt;
     double min, max, sum;
     std::unordered_map<TimeSeriesId, struct ts_entry*> map;
-    struct rollup_header_tmp *tmp_entry = (struct rollup_header_tmp*)get_pages();
-    size_t length = get_length();
+    struct rollup_header_tmp *tmp_entry = (struct rollup_header_tmp*)tmp_file->get_pages();
+    size_t length = tmp_file->get_length();
 
     // read from rollup-header-tmp file
     for (size_t i = 0; i < length; i += sizeof(struct rollup_header_tmp), tmp_entry++)
@@ -1154,12 +1153,12 @@ RollupHeaderFile::build(IndexFile *idx_file, int no_entries)
         entries->entries[entries->next++] = data_idx;
     }
 
-    this->close();
+    tmp_file->close();
 
     // write to rollup-header file
     RollupIndex header_idx = 0;
     ASSERT(m_file == nullptr);
-    this->open(false, false);
+    this->open(false);
     ASSERT(m_file != nullptr);
 
     for (auto it : map)
@@ -1174,7 +1173,7 @@ RollupHeaderFile::build(IndexFile *idx_file, int no_entries)
     std::fclose(m_file);
     m_file = nullptr;
 
-    this->remove(true);
+    tmp_file->remove();
     return true;
 }
 
@@ -1232,6 +1231,7 @@ RollupDataFile::RollupDataFile(const std::string& file_name) :
 
 RollupDataFile::~RollupDataFile()
 {
+    this->close();
     pthread_rwlock_destroy(&m_lock);
 }
 
@@ -1311,6 +1311,25 @@ RollupDataFile::add_data_point(uint32_t cnt, double min, double max, double sum)
     return m_entry_index++;
 }
 
+uint32_t
+RollupDataFile::add_data_point(Timestamp tstamp, uint32_t cnt, double min, double max, double sum)
+{
+    struct rollup_entry_ext entry;
+
+    entry.cnt = cnt;
+    entry.min = min;
+    entry.max = max;
+    entry.sum = sum;
+    entry.tstamp = tstamp;
+
+    ASSERT(m_file != nullptr);
+    std::fwrite(&entry, sizeof(entry), 1, m_file);
+    std::fflush(m_file);
+    m_last_write = ts_now_sec();
+
+    return m_entry_index++;
+}
+
 /* @param idx The idx-th entry (struct rollup_entry) in the rollup.data file.
  */
 bool
@@ -1327,6 +1346,27 @@ RollupDataFile::query(RollupIndex idx, uint32_t& cnt, double& min, double& max, 
     min = entry->min;
     max = entry->max;
     sum = entry->sum;
+
+    return true;
+}
+
+/* @param idx The idx-th entry (struct rollup_entry) in the rollup.data file.
+ */
+bool
+RollupDataFile::query(RollupIndex idx, Timestamp& tstamp, uint32_t& cnt, double& min, double& max, double& sum)
+{
+    ASSERT(idx != TT_INVALID_ROLLUP_INDEX);
+
+    if (((idx+1)*sizeof(struct rollup_entry_ext)) > get_length())
+        return false;
+
+    struct rollup_entry_ext *entry = &(((struct rollup_entry_ext*)get_pages())[idx]);
+
+    cnt = entry->cnt;
+    min = entry->min;
+    max = entry->max;
+    sum = entry->sum;
+    tstamp = entry->tstamp;
 
     return true;
 }

@@ -53,11 +53,13 @@ public:
     static void cleanup();  // called by Tsdb::shutdown()
     void init(TimeSeriesId id, const char *metric, const char *key, Tag *tags);
     void restore(Tsdb *tsdb, MetricId mid, Timestamp tstamp, PageSize offset, uint8_t start, uint8_t *buff, bool is_ooo, FileIndex file_idx, HeaderIndex header_idx);
+    void restore_rollup_mgr(const RollupManager& mgr) { m_rollup = mgr; }
 
     inline TimeSeriesId get_id() const { return m_id; }
     static inline TimeSeriesId get_next_id() { return m_next_id.load(std::memory_order_relaxed); }
 
-    void flush(MetricId mid, bool close = false);
+    void close(MetricId mid);   // called during TT shutdown
+    void flush(MetricId mid);
     void flush_no_lock(MetricId mid, bool close = false);
     //bool compact(MetaFile& meta_file);
     void set_check_point();

@@ -16,13 +16,20 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+#include <unordered_map>
+#include "config.h"
 #include "logger.h"
 #include "rollup.h"
 #include "tsdb.h"
+#include "utils.h"
 
 
 namespace tt
 {
+
+
+RollupDataFile *RollupManager::m_backup_data_file = nullptr;
+RollupHeaderTmpFile *RollupManager::m_backup_header_tmp_file = nullptr;
 
 
 RollupManager::RollupManager() :
@@ -35,8 +42,110 @@ RollupManager::RollupManager() :
 {
 }
 
+// Copy Constructor
+RollupManager::RollupManager(const RollupManager& copy)
+{
+    copy_from(copy);
+}
+
+RollupManager::RollupManager(Timestamp tstamp, uint32_t cnt, double min, double max, double sum) :
+    m_cnt(cnt),
+    m_min(min),
+    m_max(max),
+    m_sum(sum),
+    m_tstamp(tstamp)
+{
+    ASSERT(cnt != 0);
+    ASSERT(tstamp != TT_INVALID_TIMESTAMP);
+    m_tsdb = Tsdb::inst(validate_resolution(tstamp), false);
+    ASSERT(m_tsdb != nullptr);
+}
+
 RollupManager::~RollupManager()
 {
+    if (m_tsdb != nullptr)
+    {
+        m_tsdb->dec_ref_count();
+        m_tsdb = nullptr;
+    }
+}
+
+void
+RollupManager::copy_from(const RollupManager& other)
+{
+    m_cnt = other.m_cnt;
+    m_min = other.m_min;
+    m_max = other.m_max;
+    m_sum = other.m_sum;
+    m_tsdb = other.m_tsdb;
+    m_tstamp = other.m_tstamp;
+
+    if (m_tsdb != nullptr)
+        m_tsdb->inc_ref_count();
+}
+
+RollupManager&
+RollupManager::operator=(const RollupManager& other)
+{
+    if (this == &other)
+        return *this;
+
+    copy_from(other);
+    return *this;
+}
+
+void
+RollupManager::init()
+{
+    std::string backup_dir = Config::get_data_dir() + "/backup";
+    create_dir(backup_dir);
+    m_backup_data_file = new RollupDataFile(backup_dir + "/rollup.data");
+    m_backup_header_tmp_file = new RollupHeaderTmpFile(backup_dir + "/rollup.header.tmp");
+
+    // restore if necessary
+    if (m_backup_data_file->exists() && m_backup_header_tmp_file->exists())
+    {
+        std::unordered_map<TimeSeriesId,RollupManager> map;
+
+        m_backup_data_file->ensure_open(true);
+        m_backup_header_tmp_file->ensure_open(true);
+
+        for (auto h : *m_backup_header_tmp_file)
+        {
+            TimeSeriesId tid = h.tid;
+            RollupIndex idx = h.data_idx;
+
+            Timestamp tstamp;
+            uint32_t cnt;
+            double min, max, sum;
+
+            m_backup_data_file->query(idx, tstamp, cnt, min, max, sum);
+            map.emplace(tid, RollupManager(tstamp, cnt, min, max, sum));
+        }
+
+        Tsdb::restore_rollup_mgr(map);
+
+        m_backup_data_file->close();
+        m_backup_header_tmp_file->close();
+        m_backup_data_file->remove();
+        m_backup_header_tmp_file->remove();
+    }
+}
+
+void
+RollupManager::shutdown()
+{
+    if (m_backup_data_file != nullptr)
+    {
+        delete m_backup_data_file;
+        m_backup_data_file = nullptr;
+    }
+
+    if (m_backup_header_tmp_file != nullptr)
+    {
+        delete m_backup_header_tmp_file;
+        m_backup_header_tmp_file = nullptr;
+    }
 }
 
 // Here we only handle in-order dps!
@@ -46,7 +155,10 @@ RollupManager::add_data_point(Tsdb *tsdb, MetricId mid, TimeSeriesId tid, DataPo
     ASSERT(tsdb != nullptr);
 
     if (m_tsdb == nullptr)
+    {
         m_tsdb = tsdb;
+        m_tsdb->inc_ref_count();
+    }
 
     Timestamp tstamp = to_sec(dp.get_timestamp());
     Timestamp interval = m_tsdb->get_rollup_interval();
@@ -70,7 +182,9 @@ RollupManager::add_data_point(Tsdb *tsdb, MetricId mid, TimeSeriesId tid, DataPo
 
         if (m_tstamp >= end)
         {
+            m_tsdb->dec_ref_count();
             m_tsdb = tsdb;
+            m_tsdb->inc_ref_count();
             interval = m_tsdb->get_rollup_interval();
 
             for (m_tstamp = m_tsdb->get_time_range().get_from_sec(); m_tstamp < tstamp; m_tstamp += interval)
@@ -96,6 +210,18 @@ RollupManager::flush(MetricId mid, TimeSeriesId tid)
     // reset
     m_cnt = 0;
     m_min = m_max = m_sum = 0.0;
+}
+
+void
+RollupManager::close(TimeSeriesId tid)
+{
+    if (m_tstamp == TT_INVALID_TIMESTAMP || m_cnt == 0)
+        return;
+
+    m_backup_data_file->ensure_open(false);
+    uint32_t data_idx = m_backup_data_file->add_data_point(m_tstamp, m_cnt, m_min, m_max, m_sum);
+    m_backup_header_tmp_file->ensure_open(false);
+    m_backup_header_tmp_file->add_index(tid, data_idx);
 }
 
 // return false if no data will be returned;
