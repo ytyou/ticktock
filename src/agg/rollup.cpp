@@ -218,10 +218,21 @@ RollupManager::close(TimeSeriesId tid)
     if (m_tstamp == TT_INVALID_TIMESTAMP || m_cnt == 0)
         return;
 
-    m_backup_data_file->ensure_open(false);
-    uint32_t data_idx = m_backup_data_file->add_data_point(m_tstamp, m_cnt, m_min, m_max, m_sum);
-    m_backup_header_tmp_file->ensure_open(false);
-    m_backup_header_tmp_file->add_index(tid, data_idx);
+    RollupEntry data_idx = TT_INVALID_ROLLUP_ENTRY;
+
+    if (m_backup_data_file != nullptr)
+    {
+        m_backup_data_file->ensure_open(false);
+        data_idx = m_backup_data_file->add_data_point(m_tstamp, m_cnt, m_min, m_max, m_sum);
+        m_backup_data_file = nullptr;
+    }
+
+    if (m_backup_header_tmp_file != nullptr)
+    {
+        m_backup_header_tmp_file->ensure_open(false);
+        m_backup_header_tmp_file->add_index(tid, data_idx);
+        m_backup_header_tmp_file = nullptr;
+    }
 }
 
 // return false if no data will be returned;

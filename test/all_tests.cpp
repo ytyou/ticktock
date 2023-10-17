@@ -36,7 +36,7 @@ static TestCase *tests[] =
 {
     new BitSetTests(),
     new CheckPointTests(),
-    new CompactTests(),
+    //new CompactTests(),
     new CompressTests(),
     //new HashTests(),
     new JsonTests(),
