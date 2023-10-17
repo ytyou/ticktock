@@ -104,6 +104,7 @@ main(int argc, char *argv[])
     std::free(log_file);
     std::free(config_file);
     delete MetaFile::instance();
+    delete Config::inst();
 
     printf("PASSED: %d, FAILED: %d, TOTAL: %d, SEED-USED: %ld\n", stats.get_passed(), stats.get_failed(), stats.get_total(), seed);
     return 0;

@@ -64,6 +64,7 @@ QueryTests::update_config(Timestamp archive_ms)
     configs.emplace_back(CFG_TCP_BUFFER_SIZE, "1mb");
 
     create_config(configs);
+    delete Config::inst();
     Config::init();
 
     std::free(log_file);
