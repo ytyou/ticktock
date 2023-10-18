@@ -97,6 +97,9 @@ RollupManager::operator=(const RollupManager& other)
 void
 RollupManager::init()
 {
+    ASSERT(m_backup_data_file == nullptr);
+    ASSERT(m_backup_header_tmp_file == nullptr);
+
     std::string backup_dir = Config::get_data_dir() + "/backup";
     create_dir(backup_dir);
     m_backup_data_file = new RollupDataFile(backup_dir + "/rollup.data");
@@ -135,6 +138,9 @@ RollupManager::init()
 void
 RollupManager::shutdown()
 {
+    ASSERT(m_backup_data_file != nullptr);
+    ASSERT(m_backup_header_tmp_file != nullptr);
+
     if (m_backup_data_file != nullptr)
     {
         delete m_backup_data_file;
@@ -224,14 +230,14 @@ RollupManager::close(TimeSeriesId tid)
     {
         m_backup_data_file->ensure_open(false);
         data_idx = m_backup_data_file->add_data_point(m_tstamp, m_cnt, m_min, m_max, m_sum);
-        m_backup_data_file = nullptr;
+        //m_backup_data_file = nullptr;
     }
 
     if (m_backup_header_tmp_file != nullptr)
     {
         m_backup_header_tmp_file->ensure_open(false);
         m_backup_header_tmp_file->add_index(tid, data_idx);
-        m_backup_header_tmp_file = nullptr;
+        //m_backup_header_tmp_file = nullptr;
     }
 }
 

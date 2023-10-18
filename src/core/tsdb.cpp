@@ -1821,7 +1821,8 @@ Tsdb::query_for_data_no_lock(MetricId mid, QueryTask *task)
     header_file->ensure_open(true);
     struct tsdb_header *tsdb_header = header_file->get_tsdb_header();
     struct page_info_on_disk *page_header = header_file->get_page_header(header_idx);
-    TimeRange range(from + task->get_tstamp_from(), from + page_header->m_tstamp_to);
+    Timestamp from1 = from + page_header->is_out_of_order() ? 0 : task->get_tstamp_from();
+    TimeRange range(from1, from + page_header->m_tstamp_to);
     bool ooo = get_out_of_order(task->get_ts_id());
 
     if (ooo) task->set_ooo(true);
