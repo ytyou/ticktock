@@ -17,6 +17,7 @@
  */
 
 #include "admin.h"
+#include "append.h"
 #include "global.h"
 #include "cp.h"
 #include "kv.h"
@@ -74,7 +75,11 @@ Admin::http_post_api_admin_handler(HttpRequest& request, HttpResponse& response)
 
     try
     {
-        if (strcmp(cmd, "compact") == 0)
+        if (strcmp(cmd, "append") == 0)
+        {
+            status = cmd_append(params, response);
+        }
+        else if (strcmp(cmd, "compact") == 0)
         {
             status = cmd_compact(params, response);
         }
@@ -139,6 +144,19 @@ Admin::http_post_api_admin_handler(HttpRequest& request, HttpResponse& response)
     }
 
     return status;
+}
+
+bool
+Admin::cmd_append(KeyValuePair *params, HttpResponse& response)
+{
+    TaskData data;
+
+    data.integer = 1;   // indicate this is from interactive cmd (vs. scheduled task)
+    AppendLog::flush_all(data);
+    char buff[32];
+    int len = snprintf(buff, sizeof(buff), "append log generated");
+    response.init(200, HttpContentType::PLAIN, len, buff);
+    return true;
 }
 
 bool

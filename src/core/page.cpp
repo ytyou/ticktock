@@ -302,7 +302,7 @@ PageInMemory::append(MetricId mid, TimeSeriesId tid, FILE *file)
     int ret;
     ret = fwrite(&header, 1, sizeof(header), file);
     if (ret != sizeof(header)) Logger::error("PageInMemory::append() failed");
-    ret = fwrite(m_page, 1, position.m_offset, file);
+    ret = fwrite(((uint8_t*)m_page + sizeof(struct compress_info_on_disk)), 1, position.m_offset, file);
     //std::fflush(file);
     if (ret != position.m_offset) Logger::error("PageInMemory::append() failed");
     ASSERT(m_page != nullptr);
@@ -318,7 +318,8 @@ PageInMemory::restore(Timestamp tstamp, uint8_t *buff, PageSize offset, uint8_t 
     DataPointVector dps;
     CompressorPosition position(offset, start);
     m_compressor->set_start_tstamp(tstamp);
-    m_compressor->restore(dps, position, buff + sizeof(struct compress_info_on_disk));
+    m_compressor->restore(dps, position, buff);
+    //m_compressor->restore(dps, position, buff + sizeof(struct compress_info_on_disk));
 
     struct page_info_on_disk *header = get_page_header();
     ASSERT(header != nullptr);

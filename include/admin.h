@@ -41,6 +41,7 @@ private:
     friend class MemoryManager;
     Admin() = delete;
 
+    static bool cmd_append(KeyValuePair *params, HttpResponse& response);
     static bool cmd_compact(KeyValuePair *params, HttpResponse& response);
     static bool cmd_cp(KeyValuePair *params, HttpResponse& response);
     static bool cmd_gc(KeyValuePair *params, HttpResponse& response);
