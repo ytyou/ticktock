@@ -1258,8 +1258,8 @@ Tsdb::restore_config(const std::string& dir)
     if (cfg.exists(CFG_TSDB_METRIC_BUCKETS))
         m_mbucket_count = cfg.get_int(CFG_TSDB_METRIC_BUCKETS);
 
-    if (cfg.exists("compacted") && cfg.get_bool("compacted", false))
-        m_mode |= TSDB_MODE_COMPACTED;
+    //if (cfg.exists("compacted") && cfg.get_bool("compacted", false))
+        //m_mode |= TSDB_MODE_COMPACTED;
 
     if (cfg.exists("rolled_up") && cfg.get_bool("rolled_up", false))
         m_mode |= TSDB_MODE_ROLLED_UP;
@@ -1281,8 +1281,8 @@ Tsdb::write_config(const std::string& dir)
     if (m_mbucket_count != UINT32_MAX)
         cfg.set_value(CFG_TSDB_METRIC_BUCKETS, std::to_string(m_mbucket_count));
 
-    if (m_mode & TSDB_MODE_COMPACTED)
-        cfg.set_value("compacted", "true");
+    //if (m_mode & TSDB_MODE_COMPACTED)
+        //cfg.set_value("compacted", "true");
 
     if (m_mode & TSDB_MODE_ROLLED_UP)
         cfg.set_value("rolled_up", "true");
@@ -3032,7 +3032,7 @@ Tsdb::init()
 
     MetaFile::init(Tsdb::restore_metrics, Tsdb::restore_ts, Tsdb::restore_measurement);
 
-    compact2();
+    //compact2();
 
     // Setup maintenance tasks
     Task task;
@@ -3054,6 +3054,7 @@ Tsdb::init()
         Logger::info("Will try to archive ts every %d secs.", freq_sec);
     }
 
+/*
     task.doit = &Tsdb::compact;
     task.data.integer = 0;  // indicates this is from scheduled task (vs. interactive cmd)
     freq_sec = Config::inst()->get_time(CFG_TSDB_COMPACT_FREQUENCY, TimeUnit::SEC, CFG_TSDB_COMPACT_FREQUENCY_DEF);
@@ -3062,6 +3063,7 @@ Tsdb::init()
         Timer::inst()->add_task(task, freq_sec, "tsdb_compact");
         Logger::info("Will try to compact tsdb every %d secs.", freq_sec);
     }
+*/
 
     task.doit = &Tsdb::rollup;
     task.data.integer = 0;  // indicates this is from scheduled task (vs. interactive cmd)

@@ -148,7 +148,7 @@ process_cmdline_opts(int argc, char *argv[])
         { CFG_TCP_SERVER_PORT,                      required_argument,  0,  0 },
         { CFG_TICKTOCK_HOME,                        required_argument,  0,  0 },
         { CFG_TSDB_ARCHIVE_THRESHOLD,               required_argument,  0,  0 },
-        { CFG_TSDB_COMPACT_FREQUENCY,               required_argument,  0,  0 },
+        //{ CFG_TSDB_COMPACT_FREQUENCY,               required_argument,  0,  0 },
         { CFG_TSDB_COMPRESSOR_VERSION,              required_argument,  0,  0 },
         { CFG_TSDB_DATA_DIR,                        required_argument,  0,  0 },
         { CFG_TSDB_FLUSH_FREQUENCY,                 required_argument,  0,  0 },
