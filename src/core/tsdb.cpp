@@ -1027,7 +1027,7 @@ Metric::add_rollup_point(TimeSeriesId tid, uint32_t cnt, double min, double max,
 {
     std::lock_guard<std::mutex> guard(m_rollup_lock);
     m_rollup_data_file.ensure_open(false);
-    uint32_t data_idx = m_rollup_data_file.add_data_point(cnt, min, max, sum);
+    RollupEntry data_idx = m_rollup_data_file.add_data_point(cnt, min, max, sum);
     m_rollup_header_tmp_file.ensure_open(false);
     m_rollup_header_tmp_file.add_index(tid, data_idx);
 }
@@ -1737,11 +1737,12 @@ Tsdb::query_rollup_no_lock(RollupDataFile *data_file, QueryTask *task, RollupTyp
 
     uint32_t cnt;
     double min, max, sum, value;
-    uint32_t file_idx;
+    RollupIndex data_idx;
     HeaderIndex header_idx;
 
-    task->get_indices(file_idx, header_idx);
-    bool ok = data_file->query(file_idx, cnt, min, max, sum);
+    task->get_indices(data_idx, header_idx);
+    if (data_idx == TT_INVALID_ROLLUP_ENTRY) return false;
+    bool ok = data_file->query(data_idx, cnt, min, max, sum);
 
     if (! ok) return false;
 
@@ -2000,7 +2001,7 @@ Tsdb::query_for_data_no_lock(MetricId mid, TimeRange& range, std::vector<QueryTa
                 lock.lock_for_read();
 
                 ok = query_rollup_no_lock(data_file, task, rollup);
-                ASSERT(ok);
+                if (! ok) continue;
             }
         }
         else

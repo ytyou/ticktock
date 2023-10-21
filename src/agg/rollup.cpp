@@ -16,6 +16,7 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+#include <limits.h>
 #include <unordered_map>
 #include "config.h"
 #include "logger.h"
@@ -34,9 +35,9 @@ RollupHeaderTmpFile *RollupManager::m_backup_header_tmp_file = nullptr;
 
 RollupManager::RollupManager() :
     m_cnt(0),
-    m_min(0),
-    m_max(0),
-    m_sum(0),
+    m_min(std::numeric_limits<double>::max()),
+    m_max(std::numeric_limits<double>::min()),
+    m_sum(0.0),
     m_tsdb(nullptr),
     m_tstamp(TT_INVALID_TIMESTAMP)
 {
@@ -175,7 +176,7 @@ RollupManager::add_data_point(Tsdb *tsdb, MetricId mid, TimeSeriesId tid, DataPo
     tstamp = tstamp - (tstamp % interval);
 
     if (m_tstamp == TT_INVALID_TIMESTAMP)
-        m_tstamp = tstamp;
+        m_tstamp = m_tsdb->get_time_range().get_from_sec();
 
     if (tstamp != m_tstamp)
     {
@@ -215,7 +216,9 @@ RollupManager::flush(MetricId mid, TimeSeriesId tid)
 
     // reset
     m_cnt = 0;
-    m_min = m_max = m_sum = 0.0;
+    m_min = std::numeric_limits<double>::max();
+    m_max = std::numeric_limits<double>::min();
+    m_sum = 0.0;
 }
 
 void
