@@ -549,27 +549,14 @@ Query::execute(std::vector<QueryResults*>& results, StringBuffer& strbuf)
     QuerySuperTask super_task(m_time_range, m_downsample, m_ms);
 
     get_query_tasks(super_task);
-    super_task.perform();
 
-    //for (QueryTask *qt: qtv)
-        //qt->perform();
-
-    aggregate(super_task.get_tasks(), results, strbuf);
-    calculate_rate(results);
-
-    m_errno = super_task.get_errno();
-/*
-    // cleanup
-    for (QueryTask *qt: qtv)
+    if (super_task.get_metric_id() != TT_INVALID_METRIC_ID)
     {
-        if (qt->get_errno() != 0)
-            m_errno = qt->get_errno();
-        MemoryManager::free_recyclable(qt);
+        super_task.perform();
+        aggregate(super_task.get_tasks(), results, strbuf);
+        calculate_rate(results);
+        m_errno = super_task.get_errno();
     }
-
-    for (Tsdb *tsdb: tsdbs)
-        tsdb->dec_ref_count();
-*/
 }
 
 #if 0

@@ -355,6 +355,7 @@ public:
     int get_errno() const { return m_errno; }
     std::vector<QueryTask*>& get_tasks() { return m_tasks; }
     void empty_tasks();
+    MetricId get_metric_id() const { return m_metric_id; }
     void set_metric_id(MetricId mid) { m_metric_id = mid; }
 
 private:

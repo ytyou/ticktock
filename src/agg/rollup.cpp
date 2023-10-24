@@ -165,6 +165,7 @@ RollupManager::add_data_point(Tsdb *tsdb, MetricId mid, TimeSeriesId tid, DataPo
     {
         m_tsdb = tsdb;
         m_tsdb->inc_ref_count();
+        m_tstamp = m_tsdb->get_time_range().get_from_sec();
     }
 
     Timestamp tstamp = to_sec(dp.get_timestamp());
@@ -173,18 +174,17 @@ RollupManager::add_data_point(Tsdb *tsdb, MetricId mid, TimeSeriesId tid, DataPo
 
     // step-down
     ASSERT(interval > 0);
-    tstamp = tstamp - (tstamp % interval);
+    Timestamp tstamp1 = tstamp - (tstamp % interval);
+    ASSERT(tstamp1 >= m_tstamp);
+    ASSERT(m_tstamp != TT_INVALID_TIMESTAMP);
 
-    if (m_tstamp == TT_INVALID_TIMESTAMP)
-        m_tstamp = m_tsdb->get_time_range().get_from_sec();
-
-    if (tstamp != m_tstamp)
+    if (tstamp1 > m_tstamp)
     {
         flush(mid, tid);
 
         Timestamp end = m_tsdb->get_time_range().get_to_sec();
 
-        for (m_tstamp += interval; (m_tstamp < end) && (m_tstamp < tstamp); m_tstamp += interval)
+        for (m_tstamp += interval; (m_tstamp < end) && (m_tstamp < tstamp1); m_tstamp += interval)
             flush(mid, tid);
 
         if (m_tstamp >= end)
@@ -193,8 +193,9 @@ RollupManager::add_data_point(Tsdb *tsdb, MetricId mid, TimeSeriesId tid, DataPo
             m_tsdb = tsdb;
             m_tsdb->inc_ref_count();
             interval = m_tsdb->get_rollup_interval();
+            tstamp1 = tstamp - (tstamp % interval);
 
-            for (m_tstamp = m_tsdb->get_time_range().get_from_sec(); m_tstamp < tstamp; m_tstamp += interval)
+            for (m_tstamp = m_tsdb->get_time_range().get_from_sec(); m_tstamp < tstamp1; m_tstamp += interval)
                 flush(mid, tid);
         }
     }

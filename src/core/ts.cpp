@@ -254,7 +254,7 @@ TimeSeries::flush_no_lock(MetricId mid, bool close)
         }
     }
 
-    m_rollup.flush(mid, m_id);
+    //m_rollup.flush(mid, m_id);
 }
 
 void

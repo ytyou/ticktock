@@ -1135,6 +1135,9 @@ RollupHeaderFile::build(IndexFile *idx_file, RollupHeaderTmpFile *tmp_file, int 
         TimeSeriesId tid = tmp_entry->tid;
         RollupIndex data_idx = tmp_entry->data_idx;
 
+        if (idx_file->get_out_of_order(tid))
+            continue;   // skip ooo cases
+
         auto it = map.find(tid);
         struct ts_entry *entries;
 

@@ -911,6 +911,7 @@ Metric::close()
         header->close();
     m_rollup_data_file.close();
     m_rollup_header_file.close();
+    m_rollup_header_tmp_file.close();
 }
 
 void
@@ -1177,6 +1178,7 @@ Tsdb::~Tsdb()
             delete metric;
     }
 
+    std::lock_guard<std::mutex> guard(m_metrics_lock);
     m_metrics.clear();
     //for (DataFile *file: m_data_files) delete file;
     //for (HeaderFile *file: m_header_files) delete file;
@@ -1451,6 +1453,19 @@ Tsdb::add(DataPoint& dp)
 Metric *
 Tsdb::get_metric(MetricId mid)
 {
+    std::lock_guard<std::mutex> guard(m_metrics_lock);
+    uint32_t bucket = mid % m_mbucket_count;
+
+    if (bucket < m_metrics.size())
+        return m_metrics[bucket];
+    else
+        return nullptr;
+}
+
+Metric *
+Tsdb::get_or_create_metric(MetricId mid)
+{
+    std::lock_guard<std::mutex> guard(m_metrics_lock);
     uint32_t bucket = mid % m_mbucket_count;
 
     // create Metric if necessary
@@ -1480,13 +1495,14 @@ Tsdb::get_metric(MetricId mid)
     }
 
     ASSERT(bucket < m_metrics.size());
+    ASSERT(m_metrics[bucket] != nullptr);
     return m_metrics[bucket];
 }
 
 void
 Tsdb::add_rollup_point(MetricId mid, TimeSeriesId tid, uint32_t cnt, double min, double max, double sum)
 {
-    Metric *metric = get_metric(mid);
+    Metric *metric = get_or_create_metric(mid);
     ASSERT(metric != nullptr);
     metric->add_rollup_point(tid, cnt, min, max, sum);
 }
@@ -1803,20 +1819,17 @@ Tsdb::query_for_data_no_lock(MetricId mid, QueryTask *task)
     HeaderIndex header_idx;
     Timestamp from = m_time_range.get_from();
     TimeRange& query_range = task->get_query_range();
-    uint32_t bucket = mid % m_mbucket_count;
-
-    task->get_indices(file_idx, header_idx);
-    ASSERT(file_idx != TT_INVALID_FILE_INDEX);
-    ASSERT(header_idx != TT_INVALID_HEADER_INDEX);
-
-    ASSERT(bucket < m_metrics.size());
-    Metric *metric = m_metrics[bucket];
+    Metric *metric = get_metric(mid);
 
     if (metric == nullptr)
     {
         task->set_indices(TT_INVALID_FILE_INDEX, TT_INVALID_HEADER_INDEX);
         return;
     }
+
+    task->get_indices(file_idx, header_idx);
+    ASSERT(file_idx != TT_INVALID_FILE_INDEX);
+    ASSERT(header_idx != TT_INVALID_HEADER_INDEX);
 
     HeaderFile *header_file = metric->get_header_file(file_idx);
     header_file->ensure_open(true);
@@ -1956,7 +1969,6 @@ Tsdb::query_for_data_no_lock(MetricId mid, TimeRange& range, std::vector<QueryTa
         }
     }
 
-    //uint32_t bucket = mid % m_mbucket_count;
     uint32_t last_file_idx = TT_INVALID_ROLLUP_INDEX;
     RollupDataFile *data_file = metric->get_rollup_data_file();
     PThread_Lock lock(data_file->get_lock());
@@ -2137,6 +2149,11 @@ Tsdb::inc_ref_count()
 Timestamp
 Tsdb::get_last_tstamp(MetricId mid, TimeSeriesId tid)
 {
+    // returning TT_INVALID_TIMESTAMP will treat future dps as out of order,
+    // which in turn will invalidate rollup data.
+    if (is_rolled_up())
+        return TT_INVALID_TIMESTAMP;
+
     Timestamp tstamp = 0;
     FileIndex fidx, file_idx;
     HeaderIndex hidx, header_idx;
@@ -2333,7 +2350,7 @@ Tsdb::append_page(MetricId mid, TimeSeriesId tid, FileIndex prev_file_idx, Heade
     //ASSERT(m_metrics[mid] != nullptr);
     std::lock_guard<std::mutex> guard(m_lock);
     //WriteLock guard(m_lock);
-    Metric *metric = get_metric(mid);
+    Metric *metric = get_or_create_metric(mid);
 
     ASSERT(metric != nullptr);
 
@@ -3715,6 +3732,7 @@ Tsdb::rollup(TaskData& data)
                 while (size > 0)
                 {
                     Metric *metric = tsdb->m_metrics[i];
+                    ASSERT(metric != nullptr);
 
                     if (! metric->rollup(&tsdb->m_index_file, tsdb->get_rollup_entries()))
                     {

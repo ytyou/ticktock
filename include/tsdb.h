@@ -388,6 +388,7 @@ private:
     uint32_t mode_of() const;
 
     Metric *get_metric(MetricId mid);
+    Metric *get_or_create_metric(MetricId mid);
     struct page_info_on_disk *get_page_header(FileIndex file_idx, PageIndex page_idx);
 
     static Mapping *get_or_add_mapping(const char *metric);
@@ -419,6 +420,7 @@ private:
     IndexFile m_index_file;
     //std::vector<HeaderFile*> m_header_files;
     //std::vector<DataFile*> m_data_files;
+    std::mutex m_metrics_lock;
     uint32_t m_mbucket_count;   // max size of m_metrics[]
     std::vector<Metric*> m_metrics; // indexed by MetricId
 
