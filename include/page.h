@@ -244,7 +244,7 @@ struct __attribute__ ((__packed__)) append_log_entry
     Timestamp tstamp;
     PageSize offset;
     uint8_t start;
-    uint8_t is_ooo;
+    uint8_t flags;  // ooo, compressor-version
     FileIndex file_idx;
     HeaderIndex header_idx;
 };

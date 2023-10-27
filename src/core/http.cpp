@@ -929,9 +929,9 @@ HttpResponse::init(uint16_t code, HttpContentType type, size_t length)
 void
 HttpResponse::init(uint16_t code, HttpContentType type, size_t length, const char *body)
 {
-    size_t buff_size = MemoryManager::get_network_buffer_size() - 1;
+    //size_t buff_size = MemoryManager::get_network_buffer_size() - 1;
 
-    ASSERT(buff_size > length);
+    //ASSERT(buff_size > length);
 
     status_code = code;
     content_type = type;
@@ -941,7 +941,7 @@ HttpResponse::init(uint16_t code, HttpContentType type, size_t length, const cha
 
     if (id == nullptr)
     {
-        response_size = snprintf(response, buff_size,
+        response_size = snprintf(response, buffer_size,
             "HTTP/1.1 %3d %s%sContent-Length: %d%sContent-Type: %s%s%s%s",
             (int)status_code, status_code_to_reason(status_code), CRLF,
             (int)content_length, CRLF,
@@ -951,7 +951,7 @@ HttpResponse::init(uint16_t code, HttpContentType type, size_t length, const cha
     }
     else
     {
-        response_size = snprintf(response, buff_size,
+        response_size = snprintf(response, buffer_size,
             "HTTP/1.1 %3d %s%sContent-Length: %d%sContent-Type: %s%sX-Request-ID: %s%s%s%s",
             (int)status_code, status_code_to_reason(status_code), CRLF,
             (int)content_length, CRLF,

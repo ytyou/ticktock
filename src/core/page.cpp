@@ -283,9 +283,13 @@ void
 PageInMemory::append(MetricId mid, TimeSeriesId tid, FILE *file)
 {
     if (m_compressor == nullptr) return;
+    if (m_compressor->is_empty()) return;
 
     CompressorPosition position;
     m_compressor->save(position);
+
+    uint8_t flags = (uint8_t)m_compressor->get_version();
+    if (is_out_of_order()) flags |= 0x80;
 
     struct append_log_entry header =
         {
@@ -294,18 +298,17 @@ PageInMemory::append(MetricId mid, TimeSeriesId tid, FILE *file)
             .tstamp = m_compressor->get_start_tstamp(),
             .offset = position.m_offset,
             .start = position.m_start,
-            .is_ooo = is_out_of_order() ? (uint8_t)1 : (uint8_t)0,
+            .flags = flags,
             .file_idx = m_page_header.m_next_file,
             .header_idx = m_page_header.m_next_header
         };
 
     int ret;
     ret = fwrite(&header, 1, sizeof(header), file);
-    if (ret != sizeof(header)) Logger::error("PageInMemory::append() failed");
-    ret = fwrite(((uint8_t*)m_page + sizeof(struct compress_info_on_disk)), 1, position.m_offset, file);
-    //std::fflush(file);
-    if (ret != position.m_offset) Logger::error("PageInMemory::append() failed");
-    ASSERT(m_page != nullptr);
+    if (ret != sizeof(header))
+        Logger::error("PageInMemory::append() failed, expected=%d, actual=%d", sizeof(header), ret);
+    ret = m_compressor->append(file);
+    ASSERT(ret > 0);
 }
 
 void
@@ -321,8 +324,8 @@ PageInMemory::restore(Timestamp tstamp, uint8_t *buff, PageSize offset, uint8_t 
     m_compressor->restore(dps, position, buff);
     //m_compressor->restore(dps, position, buff + sizeof(struct compress_info_on_disk));
 
-    struct page_info_on_disk *header = get_page_header();
-    ASSERT(header != nullptr);
+    //struct page_info_on_disk *header = get_page_header();
+    //ASSERT(header != nullptr);
 
     m_start = tstamp;
     for (auto dp: dps)

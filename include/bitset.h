@@ -67,6 +67,9 @@ public:
     // false if there's not enough space left in the buffer;
     void append(uint8_t *bits, uint8_t len, uint8_t start);
 
+    // write content to a file (append.log)
+    int append(FILE *file);
+
     // this is the opposite of append(); it will retrieve
     // 'len' bits from this bitset starting at 'cursor';
     // 'start' indicates where in the first byte of the

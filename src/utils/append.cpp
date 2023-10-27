@@ -149,9 +149,16 @@ AppendLog::restore(std::vector<TimeSeries*>& tsv)
         Timestamp tstamp = ((struct append_log_entry*)buff)->tstamp;
         PageSize offset = ((struct append_log_entry*)buff)->offset;
         uint8_t start = ((struct append_log_entry*)buff)->start;
-        uint8_t is_ooo = ((struct append_log_entry*)buff)->is_ooo;
+        uint8_t flags = ((struct append_log_entry*)buff)->flags;
         FileIndex file_idx = ((struct append_log_entry*)buff)->file_idx;
         HeaderIndex header_idx = ((struct append_log_entry*)buff)->header_idx;
+
+        int bytes = offset;
+
+        if ((flags & 0x03) == 0)    // version 0 compressor
+            bytes *= sizeof(DataPointPair);
+        else if (start != 0)
+            bytes++;
 
         if (tsv.size() <= tid)
         {
@@ -162,7 +169,7 @@ AppendLog::restore(std::vector<TimeSeries*>& tsv)
         TimeSeries *ts = tsv[tid];
         ASSERT(ts != nullptr);
 
-        size = ::fread(buff, offset, 1, file);
+        size = ::fread(buff, bytes, 1, file);
 
         if (size < 1)
         {
@@ -181,7 +188,7 @@ AppendLog::restore(std::vector<TimeSeries*>& tsv)
             continue;
         }
 
-        ts->restore(tsdb, mid, tstamp, offset, start, (uint8_t*)buff, (is_ooo==(uint8_t)1), file_idx, header_idx);
+        ts->restore(tsdb, mid, tstamp, offset, start, (uint8_t*)buff, ((flags&0x80)==0x80), file_idx, header_idx);
     }
 
     if (file != nullptr)

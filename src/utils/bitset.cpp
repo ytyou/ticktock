@@ -252,6 +252,13 @@ BitSet::append(uint8_t bits, uint8_t& len, uint8_t& start)
     }
 }
 
+int
+BitSet::append(FILE *file)
+{
+    ASSERT(file != nullptr);
+    return fwrite(m_bits, 1, size_in_bytes(), file);
+}
+
 void
 BitSet::copy_to(uint8_t *base) const
 {

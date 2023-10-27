@@ -193,6 +193,13 @@ Compressor_v3::save(CompressorPosition& position)
         position.m_offset, position.m_start, m_dp_count);
 }
 
+int
+Compressor_v3::append(FILE *file)
+{
+    ASSERT(file != nullptr);
+    return m_bitset.append(file);
+}
+
 void
 Compressor_v3::compress1(Timestamp timestamp, double value)
 {
@@ -568,6 +575,13 @@ Compressor_v2::save(CompressorPosition& position)
 
     Logger::debug("cv2: saved position: offset=%d, start=%d, #dp=%d",
         position.m_offset, position.m_start, m_dp_count);
+}
+
+int
+Compressor_v2::append(FILE *file)
+{
+    ASSERT(file != nullptr);
+    return m_bitset.append(file);
 }
 
 void
@@ -954,6 +968,13 @@ Compressor_v1::rebase(uint8_t *base)
     m_base = base;
 }
 
+int
+Compressor_v1::append(FILE *file)
+{
+    ASSERT(file != nullptr);
+    return fwrite(m_base, 1, (m_cursor-m_base), file);
+}
+
 void
 Compressor_v1::compress1(
     Timestamp timestamp,        // t_1: tstamp of the new dp
@@ -1233,6 +1254,17 @@ Compressor_v0::save(uint8_t *base)
     {
         *dps = *it;
     }
+}
+
+int
+Compressor_v0::append(FILE *file)
+{
+    ASSERT(file != nullptr);
+    ASSERT(m_data_points != nullptr);
+    ASSERT(m_size >= m_dps.size());
+
+    this->save((uint8_t*)m_data_points);
+    return fwrite(m_data_points, 1, m_dps.size()*sizeof(DataPointPair), file);
 }
 
 bool
