@@ -1275,7 +1275,7 @@ Tsdb::write_config(const std::string& dir)
 {
     Config cfg(dir + "/config");
 
-    cfg.set_value(CFG_TSDB_PAGE_SIZE, std::to_string(m_page_size));
+    cfg.set_value(CFG_TSDB_PAGE_SIZE, std::to_string(m_page_size)+"b");
     cfg.set_value(CFG_TSDB_PAGE_COUNT, std::to_string(m_page_count));
     cfg.set_value(CFG_TSDB_COMPRESSOR_VERSION, std::to_string(m_compressor_version));
     cfg.set_value(CFG_TSDB_ROLLUP_INTERVAL, std::to_string(m_rollup_interval)+"sec");
