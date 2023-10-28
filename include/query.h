@@ -44,6 +44,14 @@ class TimeSeries;
 class Tsdb;
 
 
+enum class RollupUsage : unsigned char
+{
+    RU_UNKNOWN = 0,
+    RU_RAW  = 1,
+    RU_FALLBACK_RAW = 2
+};
+
+
 class QueryResults : public TagOwner, public Recyclable
 {
 // TODO: make them private
@@ -214,6 +222,7 @@ private:
 
     bool m_ms;  // milli-second resolution?
     bool m_explicit_tags;
+    RollupUsage m_rollup;
     int m_errno;
     const char *m_metric;
     const char *m_aggregate;
@@ -344,7 +353,7 @@ class QuerySuperTask
 public:
     // passing in query range and downsampler to use
     QuerySuperTask(Tsdb *tsdb); // called by Tsdb::compact()
-    QuerySuperTask(TimeRange& range, const char* ds, bool ms);
+    QuerySuperTask(TimeRange& range, const char* ds, bool ms, RollupUsage rollup);
     ~QuerySuperTask();
 
     void perform(bool lock = true); // perform tasks
@@ -361,6 +370,7 @@ public:
 private:
     bool m_ms;
     bool m_compact;
+    RollupUsage m_rollup;
     int m_errno;
     MetricId m_metric_id;
     TimeRange m_time_range;

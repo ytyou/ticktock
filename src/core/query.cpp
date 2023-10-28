@@ -60,6 +60,7 @@ Query::Query(JsonMap& map, TimeRange& range, StringBuffer& strbuf, bool ms) :
     m_rate_calculator(nullptr),
     m_ms(ms),
     m_explicit_tags(false),
+    m_rollup(RollupUsage::RU_FALLBACK_RAW),
     m_non_grouping_tags(nullptr),
     m_errno(0),
     TagOwner(false)
@@ -77,6 +78,20 @@ Query::Query(JsonMap& map, TimeRange& range, StringBuffer& strbuf, bool ms) :
     search = map.find("downsample");
     if (search != map.end())
         m_downsample = search->second->to_string();
+
+    search = map.find("rollupUsage");
+    if (search != map.end())
+    {
+        const char *rollup = search->second->to_string();
+        ASSERT(rollup != nullptr);
+
+        if (std::strcmp(rollup, "ROLLUP_RAW") == 0)
+            m_rollup = RollupUsage::RU_RAW;
+        else if (std::strcmp(rollup, "ROLLUP_FALLBACK_RAW") == 0)
+            m_rollup = RollupUsage::RU_FALLBACK_RAW;
+        else
+            Logger::warn("Ignoring unrecognized rollupUsage: %s", rollup);
+    }
 
     if (! m_ms && (m_downsample == nullptr))
     {
@@ -160,6 +175,7 @@ Query::Query(JsonMap& map, StringBuffer& strbuf) :
     m_rate_calculator(nullptr),
     m_ms(false),
     m_explicit_tags(false),
+    m_rollup(RollupUsage::RU_FALLBACK_RAW),
     m_non_grouping_tags(nullptr),
     m_errno(0),
     TagOwner(false)
@@ -265,6 +281,16 @@ Query::Query(JsonMap& map, StringBuffer& strbuf) :
         else if (std::strcmp(token, "explicit_tags") == 0)
         {
             m_explicit_tags = true;
+        }
+        else if (std::strncmp(token, "rollupUsage=", 12) == 0)
+        {
+            // token example: rollupUsage=ROLLUP_RAW
+            if (std::strcmp(token+12, "ROLLUP_RAW") == 0)
+                m_rollup = RollupUsage::RU_RAW;
+            else if (std::strcmp(token+12, "ROLLUP_FALLBACK_RAW") == 0)
+                m_rollup = RollupUsage::RU_FALLBACK_RAW;
+            else
+                Logger::warn("Ignoring unrecognized rollupUsage: %s", token);
         }
         else    // it's downsampler
         {
@@ -546,7 +572,7 @@ Query::execute(std::vector<QueryResults*>& results, StringBuffer& strbuf)
 {
     //std::vector<QueryTask*> qtv;
     //std::vector<Tsdb*> tsdbs;
-    QuerySuperTask super_task(m_time_range, m_downsample, m_ms);
+    QuerySuperTask super_task(m_time_range, m_downsample, m_ms, m_rollup);
 
     get_query_tasks(super_task);
 
@@ -920,12 +946,13 @@ QueryTask::recycle()
 }
 
 
-QuerySuperTask::QuerySuperTask(TimeRange& range, const char* ds, bool ms) :
+QuerySuperTask::QuerySuperTask(TimeRange& range, const char* ds, bool ms, RollupUsage rollup) :
     m_ms(ms),
     m_errno(0),
     m_downsample(ds),
     m_compact(false),
-    m_time_range(range)
+    m_time_range(range),
+    m_rollup(rollup)
 {
     Tsdb::insts(m_time_range, m_tsdbs);
 }
@@ -983,6 +1010,9 @@ QuerySuperTask::use_rollup(Tsdb *tsdb) const
     ASSERT(tsdb != nullptr);
     RollupType rollup = RollupType::RU_NONE;
 
+    if ((m_rollup == RollupUsage::RU_UNKNOWN) || (m_rollup == RollupUsage::RU_RAW))
+        return rollup;  // do not use rollup data
+
     if (! m_tasks.empty() && tsdb->is_rolled_up() && !tsdb->is_crashed())
     {
         auto task = m_tasks.front();
@@ -990,18 +1020,20 @@ QuerySuperTask::use_rollup(Tsdb *tsdb) const
 
         if (downsampler != nullptr)
         {
-            Timestamp interval = downsampler->get_interval();
-            Timestamp rollup_interval = tsdb->get_rollup_interval();
+            Timestamp downsample_interval = downsampler->get_interval();
+            Timestamp rollup_interval = tsdb->get_rollup_interval();    // always in sec
 
             if (g_tstamp_resolution_ms) rollup_interval *= 1000;
 
             // TODO: config
-            if (((double)rollup_interval * (double)0.9) <= (double)interval)
+            if (rollup_interval <= downsample_interval)
             {
                 rollup = downsampler->get_rollup_type();
-                Timestamp i = (interval / rollup_interval) * rollup_interval;
 
-                if ((i + rollup_interval - interval) < (interval - i))
+                // round to nearest multiple of rollup_interval
+                Timestamp i = (downsample_interval / rollup_interval) * rollup_interval;
+
+                if ((i + rollup_interval - downsample_interval) < (downsample_interval - i))
                     i += rollup_interval;
 
                 // update downsample interval to i
