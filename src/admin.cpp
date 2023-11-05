@@ -238,7 +238,7 @@ Admin::cmd_rollup(KeyValuePair *params, HttpResponse& response)
     data.integer = 1;   // indicate this is from interactive cmd (vs. scheduled task)
     Tsdb::rollup(data);
     char buff[32];
-    int len = snprintf(buff, sizeof(buff), "1 tsdbs rolled-up");
+    int len = snprintf(buff, sizeof(buff), "%d tsdbs rolled-up", data.integer);
     response.init(200, HttpContentType::PLAIN, len, buff);
     return true;
 }

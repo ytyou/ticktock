@@ -1295,6 +1295,15 @@ Tsdb::write_config(const std::string& dir)
     cfg.persist();
 }
 
+// Not thread safe. Caller should acquire m_lock before calling!
+void
+Tsdb::add_config(const std::string& name, const std::string& value)
+{
+    std::string dir = get_tsdb_dir_name(m_time_range);
+    Config cfg(dir + "/config");
+    cfg.append(name, value);
+}
+
 void
 Tsdb::reload_header_data_files(const std::string& dir)
 {
@@ -2259,6 +2268,7 @@ Tsdb::get_last_header_indices(MetricId mid, TimeSeriesId tid, FileIndex& file_id
     std::lock_guard<std::mutex> guard(m_lock);
 
     m_mode |= TSDB_MODE_READ;
+    if (is_rolled_up()) add_config("rolled_up", "false");
     m_mode &= ~(TSDB_MODE_COMPACTED|TSDB_MODE_ROLLED_UP);
     m_index_file.ensure_open(false);
     //m_index_file.get_indices(tid, fidx, hidx);
@@ -3705,6 +3715,8 @@ Tsdb::rollup(TaskData& data)
         }
     }
 
+    data.integer = 0;
+
     if (tsdb != nullptr)
     {
         //std::lock_guard<std::mutex> guard(tsdb->m_lock);
@@ -3751,6 +3763,8 @@ Tsdb::rollup(TaskData& data)
                     // mark it as rolled-up
                     std::lock_guard<std::mutex> guard(tsdb->m_lock);
                     tsdb->m_mode |= TSDB_MODE_ROLLED_UP;
+                    tsdb->add_config("rolled_up", "true");
+                    data.integer = 1;
                     Logger::info("[rollup] 1 Tsdb rolled-up");
                 }
             }
@@ -3768,6 +3782,7 @@ Tsdb::rollup(TaskData& data)
             Logger::debug("[rollup] Tsdb busy, not rolling up. ref = %d", tsdb->m_ref_count);
         }
 
+        tsdb->m_mode |= TSDB_MODE_READ; // allowing rotate() to archive it
         tsdb->dec_ref_count();
     }
     else

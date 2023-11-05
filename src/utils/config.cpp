@@ -125,6 +125,14 @@ Config::persist()
 }
 
 void
+Config::append(const std::string& name, const std::string& value)
+{
+    std::lock_guard<std::mutex> guard(m_lock);
+    std::fstream file(m_file_name, std::ios::out | std::ios::app);
+    file << name << " = " << value << std::endl;
+}
+
+void
 Config::set_value(const std::string& name, const std::string& value)
 {
     std::lock_guard<std::mutex> guard(m_lock);

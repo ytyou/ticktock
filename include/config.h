@@ -260,6 +260,7 @@ public:
 
     void load();        // read
     void persist();     // write
+    void append(const std::string& name, const std::string& value);
 
     static std::string get_data_dir();
     static std::string get_log_dir();

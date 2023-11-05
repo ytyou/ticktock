@@ -398,6 +398,7 @@ private:
     static Tsdb *create(TimeRange& range, bool existing, const char *suffix = nullptr); // caller needs to acquire m_tsdb_lock!
     static void restore_tsdb(const std::string& dir);
 
+    void add_config(const std::string& name, const std::string& value);
     void write_config(const std::string& dir);
     void restore_config(const std::string& dir);
     void reload_header_data_files(const std::string& dir);
