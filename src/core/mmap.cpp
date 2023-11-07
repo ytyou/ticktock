@@ -835,9 +835,9 @@ DataFile::close()
     {
         std::fclose(m_file);
         m_file = nullptr;
+        Logger::info("closing data file %s (for both read & write), length = %lu", m_name.c_str(), get_length());
     }
 
-    Logger::info("closing data file %s (for both read & write), length = %lu", m_name.c_str(), get_length());
     MmapFile::close();
 }
 
@@ -1281,9 +1281,9 @@ RollupDataFile::close()
     {
         std::fclose(m_file);
         m_file = nullptr;
+        Logger::info("closing rollup data file %s (for both read & write), length = %lu", m_name.c_str(), get_length());
     }
 
-    Logger::info("closing rollup data file %s (for both read & write), length = %lu", m_name.c_str(), get_length());
     MmapFile::close();
 }
 
