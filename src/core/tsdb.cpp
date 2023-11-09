@@ -851,7 +851,7 @@ Mapping::get_ts_count()
 }
 
 
-/* 'dir' is a full path name. E.g. /tt/data/2023/06/1686441600.1686528000/m0000000001
+/* 'dir' is a full path name. E.g. /tt/data/2023/06/1686441600.1686528000/m000001
  */
 Metric::Metric(const std::string& dir, PageSize page_size, PageCount page_cnt) :
     m_rollup_data_file(dir+"/rollup.data"),
@@ -931,7 +931,7 @@ std::string
 Metric::get_metric_dir(std::string& tsdb_dir, MetricId id)
 {
     std::ostringstream oss;
-    oss << tsdb_dir << "/m" << std::setfill('0') << std::setw(10) << id;
+    oss << tsdb_dir << "/m" << std::setfill('0') << std::setw(6) << id;
     return oss.str();
 }
 
@@ -939,7 +939,7 @@ std::string
 Metric::get_data_file_name(std::string& tsdb_dir, FileIndex fidx)
 {
     std::ostringstream oss;
-    oss << tsdb_dir << "/m" << std::setfill('0') << std::setw(10) << m_id << "/data." << std::setw(5) << fidx;
+    oss << tsdb_dir << "/m" << std::setfill('0') << std::setw(6) << m_id << "/data." << std::setw(5) << fidx;
     return oss.str();
 }
 
@@ -947,7 +947,7 @@ std::string
 Metric::get_header_file_name(std::string& tsdb_dir, FileIndex fidx)
 {
     std::ostringstream oss;
-    oss << tsdb_dir << "/m" << std::setfill('0') << std::setw(10) << m_id << "/header." << std::setw(5) << fidx;
+    oss << tsdb_dir << "/m" << std::setfill('0') << std::setw(6) << m_id << "/header." << std::setw(5) << fidx;
     return oss.str();
 }
 
@@ -1157,6 +1157,11 @@ Tsdb::Tsdb(TimeRange& range, bool existing, const char *suffix) :
     ASSERT(g_tstamp_resolution_ms ? is_ms(range.get_from()) : is_sec(range.get_from()));
 
     m_mbucket_count = Config::inst()->get_int(CFG_TSDB_METRIC_BUCKETS,CFG_TSDB_METRIC_BUCKETS_DEF);
+    if (m_mbucket_count > MAX_METRIC_BUCKET_COUNT)
+    {
+        m_mbucket_count = MAX_METRIC_BUCKET_COUNT;
+        Logger::warn("config %s exceeded max %d", CFG_TSDB_METRIC_BUCKETS, MAX_METRIC_BUCKET_COUNT);
+    }
     m_metrics.reserve(m_mbucket_count);
     m_compressor_version =
         Config::inst()->get_int(CFG_TSDB_COMPRESSOR_VERSION,CFG_TSDB_COMPRESSOR_VERSION_DEF);
@@ -1258,7 +1263,10 @@ Tsdb::restore_config(const std::string& dir)
     m_rollup_interval = cfg.get_time(CFG_TSDB_ROLLUP_INTERVAL, TimeUnit::SEC, CFG_TSDB_ROLLUP_INTERVAL_DEF);
 
     if (cfg.exists(CFG_TSDB_METRIC_BUCKETS))
+    {
         m_mbucket_count = cfg.get_int(CFG_TSDB_METRIC_BUCKETS);
+        ASSERT(m_mbucket_count <= MAX_METRIC_BUCKET_COUNT);
+    }
 
     //if (cfg.exists("compacted") && cfg.get_bool("compacted", false))
         //m_mode |= TSDB_MODE_COMPACTED;
@@ -1281,7 +1289,10 @@ Tsdb::write_config(const std::string& dir)
     cfg.set_value(CFG_TSDB_ROLLUP_INTERVAL, std::to_string(m_rollup_interval)+"sec");
 
     if (m_mbucket_count != UINT32_MAX)
+    {
+        ASSERT(m_mbucket_count <= MAX_METRIC_BUCKET_COUNT);
         cfg.set_value(CFG_TSDB_METRIC_BUCKETS, std::to_string(m_mbucket_count));
+    }
 
     //if (m_mode & TSDB_MODE_COMPACTED)
         //cfg.set_value("compacted", "true");
