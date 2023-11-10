@@ -1165,8 +1165,8 @@ Tsdb::Tsdb(TimeRange& range, bool existing, const char *suffix) :
     m_metrics.reserve(m_mbucket_count);
     m_compressor_version =
         Config::inst()->get_int(CFG_TSDB_COMPRESSOR_VERSION,CFG_TSDB_COMPRESSOR_VERSION_DEF);
-    m_rollup_interval =
-        Config::inst()->get_time(CFG_TSDB_ROLLUP_INTERVAL,TimeUnit::SEC,CFG_TSDB_ROLLUP_INTERVAL_DEF);
+    m_rollup_interval = 3600;   // fixed 1 hour
+        //Config::inst()->get_time(CFG_TSDB_ROLLUP_INTERVAL,TimeUnit::SEC,CFG_TSDB_ROLLUP_INTERVAL_DEF);
     if (range.get_duration_sec() < m_rollup_interval)
         m_rollup_interval = range.get_duration_sec();
     m_mode = mode_of();
@@ -1260,7 +1260,7 @@ Tsdb::restore_config(const std::string& dir)
     m_page_size = cfg.get_bytes(CFG_TSDB_PAGE_SIZE, CFG_TSDB_PAGE_SIZE_DEF);
     m_page_count = cfg.get_int(CFG_TSDB_PAGE_COUNT, CFG_TSDB_PAGE_COUNT_DEF);
     m_compressor_version = cfg.get_int(CFG_TSDB_COMPRESSOR_VERSION, CFG_TSDB_COMPRESSOR_VERSION_DEF);
-    m_rollup_interval = cfg.get_time(CFG_TSDB_ROLLUP_INTERVAL, TimeUnit::SEC, CFG_TSDB_ROLLUP_INTERVAL_DEF);
+    //m_rollup_interval = cfg.get_time(CFG_TSDB_ROLLUP_INTERVAL, TimeUnit::SEC, CFG_TSDB_ROLLUP_INTERVAL_DEF);
 
     if (cfg.exists(CFG_TSDB_METRIC_BUCKETS))
     {
@@ -1286,7 +1286,7 @@ Tsdb::write_config(const std::string& dir)
     cfg.set_value(CFG_TSDB_PAGE_SIZE, std::to_string(m_page_size)+"b");
     cfg.set_value(CFG_TSDB_PAGE_COUNT, std::to_string(m_page_count));
     cfg.set_value(CFG_TSDB_COMPRESSOR_VERSION, std::to_string(m_compressor_version));
-    cfg.set_value(CFG_TSDB_ROLLUP_INTERVAL, std::to_string(m_rollup_interval)+"sec");
+    //cfg.set_value(CFG_TSDB_ROLLUP_INTERVAL, std::to_string(m_rollup_interval)+"sec");
 
     if (m_mbucket_count != UINT32_MAX)
     {

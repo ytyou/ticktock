@@ -461,7 +461,7 @@ inspect_tsdb_quick(const std::string& dir)
     {
         char metrics_dir[PATH_MAX];
 
-        snprintf(metrics_dir, sizeof(metrics_dir), "%s/m%010d", dir.c_str(), m);
+        snprintf(metrics_dir, sizeof(metrics_dir), "%s/m%06d", dir.c_str(), m);
         if (! file_exists(metrics_dir)) continue;
 
         for (int fidx = 0; ; fidx++)
@@ -572,8 +572,8 @@ inspect_tsdb_for_restore(const std::string& dir)
                     char header_file_name[PATH_MAX];
                     char data_file_name[PATH_MAX];
 
-                    snprintf(header_file_name, sizeof(header_file_name), "%s/m%.10u/header.%.5u", dir.c_str(), mid, file_idx);
-                    snprintf(data_file_name, sizeof(data_file_name), "%s/m%.10u/data.%.5u", dir.c_str(), mid, file_idx);
+                    snprintf(header_file_name, sizeof(header_file_name), "%s/m%.6u/header.%.5u", dir.c_str(), mid, file_idx);
+                    snprintf(data_file_name, sizeof(data_file_name), "%s/m%.6u/data.%.5u", dir.c_str(), mid, file_idx);
 
                     std::string header_file_name_str(header_file_name);
                     std::string data_file_name_str(data_file_name);
