@@ -41,6 +41,7 @@ bool g_tstamp_resolution_ms = true;
 bool g_cluster_enabled = false;
 bool g_self_meter_enabled = CFG_TSDB_SELF_METER_ENABLED_DEF;
 std::atomic<bool> g_shutdown_requested{false};
+uint32_t g_rollup_interval = 3600;  // 1 hour, in sec
 
 std::string g_config_file("tt.conf");
 thread_local std::string g_thread_id("unknown");

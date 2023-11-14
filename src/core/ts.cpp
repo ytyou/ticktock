@@ -331,7 +331,7 @@ TimeSeries::add_data_point(MetricId mid, DataPoint& dp)
     }
 
     // rollup
-    m_rollup.add_data_point(m_buff->get_tsdb(), mid, m_id, dp);
+    m_rollup.add_data_point(mid, m_id, dp);
 
     return ok;
 }
@@ -447,7 +447,7 @@ TimeSeries::query_for_rollup(Tsdb *tsdb, TimeRange& range, std::vector<DataPoint
     ASSERT(tsdb != nullptr);
     ASSERT(rollup != RollupType::RU_NONE);
 
-    if ((m_rollup.get_tsdb() == tsdb) && (range.in_range(m_rollup.get_tstamp())))
+    if (range.in_range(m_rollup.get_tstamp()))
     {
         DataPointPair dp;
 

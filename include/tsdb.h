@@ -186,7 +186,7 @@ public:
     void close();
     void flush(bool sync);
     bool rotate(Timestamp now_sec, Timestamp thrashing_threshold);
-    bool rollup(IndexFile *idx_file, int no_entries);
+    //bool rollup(IndexFile *idx_file, int no_entries);
 
     MetricId get_id() const { return m_id; }
     std::string get_metric_dir(std::string& tsdb_dir);
@@ -200,10 +200,10 @@ public:
     DataFile *get_data_file(FileIndex file_idx);
     HeaderFile *get_header_file(FileIndex file_idx);
 
-    RollupDataFile *get_rollup_data_file() { return &m_rollup_data_file; }
-    RollupHeaderFile *get_rollup_header_file() { return &m_rollup_header_file; }
+    //RollupDataFile *get_rollup_data_file() { return &m_rollup_data_file; }
+    //RollupHeaderFile *get_rollup_header_file() { return &m_rollup_header_file; }
 
-    void add_rollup_point(TimeSeriesId tid, uint32_t cnt, double min, double max, double sum);
+    //void add_rollup_point(TimeSeriesId tid, uint32_t cnt, double min, double max, double sum);
     void get_rollup_point(RollupIndex header_idx, int entry_idx, int entries, uint32_t& cnt, double& min, double& max, double& sum);
 
     // for testing only
@@ -219,9 +219,9 @@ private:
     void restore_data(const std::string& file, PageSize page_size, PageCount page_cnt);
 
     MetricId m_id;
-    RollupHeaderFile m_rollup_header_file;
-    RollupHeaderTmpFile m_rollup_header_tmp_file;
-    RollupDataFile m_rollup_data_file;
+    //RollupHeaderFile m_rollup_header_file;
+    //RollupHeaderTmpFile m_rollup_header_tmp_file;
+    //RollupDataFile m_rollup_data_file;
     std::vector<HeaderFile*> m_header_files;
     std::vector<DataFile*> m_data_files;
 };
@@ -243,7 +243,7 @@ public:
     static void purge_oldest(int threshold);
     static bool compact(TaskData& data);
     static void compact2(); // last compaction step
-    static bool rollup(TaskData& data);
+    //static bool rollup(TaskData& data);
     static void write_to_compacted(MetricId mid, QuerySuperTask& super_task, Tsdb *compacted, PageSize& next_size);
     static bool add_data_point(DataPoint& dp, bool forward);
     static void restore_metrics(MetricId id, std::string& metric);
@@ -254,13 +254,13 @@ public:
     static void get_all_mappings(std::vector<Mapping*>& mappings);
 
     bool add(DataPoint& dp);
-    void add_rollup_point(MetricId mid, TimeSeriesId tid, uint32_t cnt, double min, double max, double sum);
+    //void add_rollup_point(MetricId mid, TimeSeriesId tid, uint32_t cnt, double min, double max, double sum);
 
     static MetricId query_for_ts(const char *metric, Tag *tags, std::unordered_set<TimeSeries*>& ts, const char *key, bool explicit_tags);
     //bool query_for_data(TimeSeriesId id, TimeRange& range, std::vector<DataPointContainer*>& data);
     //bool query_for_data_no_lock(TimeSeriesId id, TimeRange& range, std::vector<DataPointContainer*>& data);
 
-    bool read_rollup_headers(Metric *metric, std::vector<QueryTask*>& tasks);
+    //bool read_rollup_headers(Metric *metric, std::vector<QueryTask*>& tasks);
     bool query_rollup_no_lock(RollupDataFile *data_file, QueryTask *task, RollupType rollup);
 
     void query_for_data_no_lock(MetricId mid, QueryTask *task);
@@ -296,12 +296,7 @@ public:
 
     inline int get_rollup_entries() const
     {
-        return std::ceil((double)m_time_range.get_duration_sec() / (double)m_rollup_interval);
-    }
-
-    inline uint32_t get_rollup_interval() const
-    {
-        return m_rollup_interval;   // seconds
+        return std::ceil((double)m_time_range.get_duration_sec() / (double)g_rollup_interval);
     }
 
     inline const TimeRange& get_time_range() const
@@ -436,7 +431,6 @@ private:
     PageSize m_page_size;
     PageCount m_page_count;
     int m_compressor_version;
-    uint32_t m_rollup_interval;     // in seconds
 };
 
 

@@ -233,12 +233,13 @@ Admin::cmd_ping(KeyValuePair *params, HttpResponse& response)
 bool
 Admin::cmd_rollup(KeyValuePair *params, HttpResponse& response)
 {
-    TaskData data;
+    //TaskData data;
 
-    data.integer = 1;   // indicate this is from interactive cmd (vs. scheduled task)
-    Tsdb::rollup(data);
+    //data.integer = 1;   // indicate this is from interactive cmd (vs. scheduled task)
+    //Tsdb::rollup(data);
     char buff[32];
-    int len = snprintf(buff, sizeof(buff), "%d tsdbs rolled-up", data.integer);
+    //int len = snprintf(buff, sizeof(buff), "%d tsdbs rolled-up", data.integer);
+    int len = snprintf(buff, sizeof(buff), "rollup cmd disabled");
     response.init(200, HttpContentType::PLAIN, len, buff);
     return true;
 }

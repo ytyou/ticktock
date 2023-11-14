@@ -116,7 +116,7 @@
 #define CFG_TSDB_OFF_HOUR_END                   "tsdb.off_hour.end"
 #define CFG_TSDB_OFF_HOUR_END_DEF               5
 #define CFG_TSDB_PAGE_COUNT                     "tsdb.page.count"
-#define CFG_TSDB_PAGE_COUNT_DEF                 UINT16_MAX
+#define CFG_TSDB_PAGE_COUNT_DEF                 32768
 #define CFG_TSDB_PAGE_SIZE                      "tsdb.page.size"
 #define CFG_TSDB_PAGE_SIZE_DEF                  "256b"
 #define CFG_TSDB_FLUSH_FREQUENCY                "tsdb.flush.frequency"
@@ -132,6 +132,8 @@
 #define CFG_TSDB_READ_ONLY_THRESHOLD            "tsdb.read_only.threshold"
 #define CFG_TSDB_READ_ONLY_THRESHOLD_DEF        "1h"
 #define CFG_TSDB_RETENTION_THRESHOLD            "tsdb.retention.threshold"
+#define CFG_TSDB_ROLLUP_BUCKETS                 "tsdb.rollup.buckets"
+#define CFG_TSDB_ROLLUP_BUCKETS_DEF             1000
 #define CFG_TSDB_ROLLUP_DELAY                   "tsdb.rollup.delay"
 #define CFG_TSDB_ROLLUP_DELAY_DEF               "2min"
 #define CFG_TSDB_ROLLUP_FREQUENCY               "tsdb.rollup.frequency"

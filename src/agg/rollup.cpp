@@ -19,6 +19,7 @@
 #include <limits.h>
 #include <unordered_map>
 #include "config.h"
+#include "limit.h"
 #include "logger.h"
 #include "rollup.h"
 #include "tsdb.h"
@@ -29,8 +30,9 @@ namespace tt
 {
 
 
+std::mutex RollupManager::m_lock;
+std::unordered_map<uint64_t, RollupDataFile*> RollupManager::m_data_files;
 RollupDataFile *RollupManager::m_backup_data_file = nullptr;
-RollupHeaderTmpFile *RollupManager::m_backup_header_tmp_file = nullptr;
 
 
 RollupManager::RollupManager() :
@@ -38,7 +40,6 @@ RollupManager::RollupManager() :
     m_min(std::numeric_limits<double>::max()),
     m_max(std::numeric_limits<double>::min()),
     m_sum(0.0),
-    m_tsdb(nullptr),
     m_tstamp(TT_INVALID_TIMESTAMP)
 {
 }
@@ -58,17 +59,10 @@ RollupManager::RollupManager(Timestamp tstamp, uint32_t cnt, double min, double 
 {
     ASSERT(cnt != 0);
     ASSERT(tstamp != TT_INVALID_TIMESTAMP);
-    m_tsdb = Tsdb::inst(validate_resolution(tstamp), false);
-    ASSERT(m_tsdb != nullptr);
 }
 
 RollupManager::~RollupManager()
 {
-    if (m_tsdb != nullptr)
-    {
-        m_tsdb->dec_ref_count();
-        m_tsdb = nullptr;
-    }
 }
 
 void
@@ -78,11 +72,7 @@ RollupManager::copy_from(const RollupManager& other)
     m_min = other.m_min;
     m_max = other.m_max;
     m_sum = other.m_sum;
-    m_tsdb = other.m_tsdb;
     m_tstamp = other.m_tstamp;
-
-    if (m_tsdb != nullptr)
-        m_tsdb->inc_ref_count();
 }
 
 RollupManager&
@@ -98,21 +88,17 @@ RollupManager::operator=(const RollupManager& other)
 void
 RollupManager::init()
 {
-    ASSERT(m_backup_data_file == nullptr);
-    ASSERT(m_backup_header_tmp_file == nullptr);
-
     std::string backup_dir = Config::get_data_dir() + "/backup";
     create_dir(backup_dir);
     m_backup_data_file = new RollupDataFile(backup_dir + "/rollup.data");
-    m_backup_header_tmp_file = new RollupHeaderTmpFile(backup_dir + "/rollup.header.tmp");
 
     // restore if necessary
-    if (m_backup_data_file->exists() && m_backup_header_tmp_file->exists())
+    if (m_backup_data_file->exists())
     {
         std::unordered_map<TimeSeriesId,RollupManager> map;
 
-        m_backup_data_file->ensure_open(true);
-        m_backup_header_tmp_file->ensure_open(true);
+/******
+        m_backup_data_file->open();
 
         for (auto h : *m_backup_header_tmp_file)
         {
@@ -133,71 +119,65 @@ RollupManager::init()
         m_backup_header_tmp_file->close();
         m_backup_data_file->remove();
         m_backup_header_tmp_file->remove();
+******/
     }
 }
 
 void
 RollupManager::shutdown()
 {
-    ASSERT(m_backup_data_file != nullptr);
-    ASSERT(m_backup_header_tmp_file != nullptr);
+    std::lock_guard<std::mutex> guard(m_lock);
+
+    for (const auto& entry: m_data_files)
+    {
+        RollupDataFile *file = entry.second;
+        delete file;
+    }
+
+    m_data_files.clear();
 
     if (m_backup_data_file != nullptr)
     {
         delete m_backup_data_file;
         m_backup_data_file = nullptr;
     }
-
-    if (m_backup_header_tmp_file != nullptr)
-    {
-        delete m_backup_header_tmp_file;
-        m_backup_header_tmp_file = nullptr;
-    }
 }
 
 // Here we only handle in-order dps!
 void
-RollupManager::add_data_point(Tsdb *tsdb, MetricId mid, TimeSeriesId tid, DataPoint& dp)
+RollupManager::add_data_point(MetricId mid, TimeSeriesId tid, DataPoint& dp)
 {
-    ASSERT(tsdb != nullptr);
-
-    if (m_tsdb == nullptr)
-    {
-        m_tsdb = tsdb;
-        m_tsdb->inc_ref_count();
-        m_tstamp = m_tsdb->get_time_range().get_from_sec();
-    }
-
     Timestamp tstamp = to_sec(dp.get_timestamp());
-    Timestamp interval = m_tsdb->get_rollup_interval();
+    Timestamp interval = g_rollup_interval;
     double value = dp.get_value();
+
+    if (m_tstamp == TT_INVALID_TIMESTAMP)
+        m_tstamp = begin_month(tstamp);
 
     // step-down
     ASSERT(interval > 0);
     Timestamp tstamp1 = tstamp - (tstamp % interval);
     ASSERT(tstamp1 >= m_tstamp);
-    ASSERT(m_tstamp != TT_INVALID_TIMESTAMP);
 
     if (tstamp1 > m_tstamp)
     {
         flush(mid, tid);
 
-        Timestamp end = m_tsdb->get_time_range().get_to_sec();
+        Timestamp end = end_month(m_tstamp);
 
         for (m_tstamp += interval; (m_tstamp < end) && (m_tstamp < tstamp1); m_tstamp += interval)
             flush(mid, tid);
 
         if (m_tstamp >= end)
         {
-            m_tsdb->dec_ref_count();
-            m_tsdb = tsdb;
-            m_tsdb->inc_ref_count();
-            interval = m_tsdb->get_rollup_interval();
-            tstamp1 = tstamp - (tstamp % interval);
-
-            for (m_tstamp = m_tsdb->get_time_range().get_from_sec(); m_tstamp < tstamp1; m_tstamp += interval)
+            for (m_tstamp = begin_month(tstamp); m_tstamp < tstamp1; m_tstamp += interval)
                 flush(mid, tid);
         }
+    }
+    else if (tstamp1 < m_tstamp)
+    {
+        // out-of-order!!!
+        Logger::warn("Out-of-order rollup dp ignored!");
     }
 
     m_cnt++;
@@ -209,11 +189,14 @@ RollupManager::add_data_point(Tsdb *tsdb, MetricId mid, TimeSeriesId tid, DataPo
 void
 RollupManager::flush(MetricId mid, TimeSeriesId tid)
 {
+    ASSERT(m_tstamp != TT_INVALID_TIMESTAMP);
+
     if (m_tstamp == TT_INVALID_TIMESTAMP)
         return;
 
     // write to rollup files
-    m_tsdb->add_rollup_point(mid, tid, m_cnt, m_min, m_max, m_sum);
+    RollupDataFile *file = get_rollup_data_file(mid, m_tstamp);
+    file->add_data_point(tid, m_cnt, m_min, m_max, m_sum);
 
     // reset
     m_cnt = 0;
@@ -228,21 +211,8 @@ RollupManager::close(TimeSeriesId tid)
     if (m_tstamp == TT_INVALID_TIMESTAMP || m_cnt == 0)
         return;
 
-    RollupEntry data_idx = TT_INVALID_ROLLUP_ENTRY;
-
     if (m_backup_data_file != nullptr)
-    {
-        m_backup_data_file->ensure_open(false);
-        data_idx = m_backup_data_file->add_data_point(m_tstamp, m_cnt, m_min, m_max, m_sum);
-        //m_backup_data_file = nullptr;
-    }
-
-    if (m_backup_header_tmp_file != nullptr)
-    {
-        m_backup_header_tmp_file->ensure_open(false);
-        m_backup_header_tmp_file->add_index(tid, data_idx);
-        //m_backup_header_tmp_file = nullptr;
-    }
+        m_backup_data_file->add_data_point(tid, m_tstamp, m_cnt, m_min, m_max, m_sum);
 }
 
 // return false if no data will be returned;
@@ -286,12 +256,53 @@ RollupManager::query(RollupType type, DataPointPair& dp)
 Timestamp
 RollupManager::step_down(Timestamp tstamp)
 {
-    ASSERT(m_tsdb != nullptr);
-
-    Timestamp interval = m_tsdb->get_rollup_interval();
-    ASSERT(interval > 0);
     tstamp = to_sec(tstamp);
-    return tstamp - (tstamp % interval);
+    return tstamp - (tstamp % g_rollup_interval);
+}
+
+int
+RollupManager::get_rollup_bucket(MetricId mid)
+{
+    // TODO: CFG_TSDB_ROLLUP_BUCKETS shouldn't be changed
+    return mid % Config::inst()->get_int(CFG_TSDB_ROLLUP_BUCKETS,CFG_TSDB_ROLLUP_BUCKETS_DEF);
+}
+
+RollupDataFile *
+RollupManager::get_rollup_data_file(MetricId mid, Timestamp tstamp)
+{
+    std::time_t begin = begin_month(tstamp);
+    uint64_t bucket = begin * MAX_ROLLUP_BUCKET_COUNT + get_rollup_bucket(mid);
+    std::lock_guard<std::mutex> guard(m_lock);
+    auto search = m_data_files.find(bucket);
+    RollupDataFile *data_file = nullptr;
+
+    if (search == m_data_files.end())
+    {
+        data_file = new RollupDataFile(mid, begin);
+        m_data_files.insert(std::make_pair(bucket, data_file));
+    }
+    else
+        data_file = search->second;
+
+    return data_file;
+}
+
+void
+RollupManager::rotate()
+{
+    uint64_t thrashing_threshold =
+        Config::inst()->get_time(CFG_TSDB_THRASHING_THRESHOLD, TimeUnit::SEC, CFG_TSDB_THRASHING_THRESHOLD_DEF);
+    Timestamp now = ts_now_sec();
+    std::lock_guard<std::mutex> guard(m_lock);
+
+    for (const auto& entry: m_data_files)
+    {
+        RollupDataFile *file = entry.second;
+        Timestamp last = file->get_last_access();
+
+        if (thrashing_threshold < (now - last))
+            file->close();
+    }
 }
 
 

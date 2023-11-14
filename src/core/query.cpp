@@ -1021,7 +1021,7 @@ QuerySuperTask::use_rollup(Tsdb *tsdb) const
         if (downsampler != nullptr)
         {
             Timestamp downsample_interval = downsampler->get_interval();
-            Timestamp rollup_interval = tsdb->get_rollup_interval();    // always in sec
+            Timestamp rollup_interval = g_rollup_interval;  // always in sec
 
             if (g_tstamp_resolution_ms) rollup_interval *= 1000;
 

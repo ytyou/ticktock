@@ -84,7 +84,6 @@ struct __attribute__ ((__packed__)) index_entry
     HeaderIndex header_index;   // points to the first header
     FileIndex file_index2;      // points to the second header
     HeaderIndex header_index2;  // points to the second header
-    RollupIndex rollup_index;   // index of rollup-index
 };
 
 
@@ -98,8 +97,6 @@ public:
     bool set_indices2(TimeSeriesId id, FileIndex file_index, HeaderIndex page_index);
     void get_indices(TimeSeriesId id, FileIndex& file_index, HeaderIndex& page_index);
     void get_indices2(TimeSeriesId id, FileIndex& file_index, HeaderIndex& page_index);
-    void set_rollup_index(TimeSeriesId tid, RollupIndex idx);
-    RollupIndex get_rollup_index(TimeSeriesId tid);
 
     bool get_out_of_order(TimeSeriesId id);
     void set_out_of_order(TimeSeriesId id, bool ooo);
@@ -182,6 +179,7 @@ private:
 };
 
 
+#if 0
 /* The format of this file is just series of entries of
  * <TimeSeriesId,RollupIndex>. They will not be used for
  * query until a background job transform it into
@@ -267,10 +265,12 @@ private:
     FILE *m_file;
     RollupIndex m_header_count;
 };
+#endif
 
 
 struct __attribute__ ((__packed__)) rollup_entry
 {
+    TimeSeriesId tid;
     uint32_t cnt;
     double min;
     double max;
@@ -281,6 +281,7 @@ struct __attribute__ ((__packed__)) rollup_entry
 // Used for shutdown/restart only
 struct __attribute__ ((__packed__)) rollup_entry_ext
 {
+    TimeSeriesId tid;
     Timestamp tstamp;
     uint32_t cnt;
     double min;
@@ -289,31 +290,34 @@ struct __attribute__ ((__packed__)) rollup_entry_ext
 };
 
 
-class RollupDataFile : public MmapFile
+class RollupDataFile
 {
 public:
-    RollupDataFile(const std::string& file_name);
+    RollupDataFile(const std::string& name);
+    RollupDataFile(MetricId mid, Timestamp begin);
     ~RollupDataFile();
 
-    void open(bool read_only) override;
-    void close() override;
-    bool is_open(bool for_read) const override;
-    inline pthread_rwlock_t *get_lock() { return &m_lock; }
+    void open();
+    void close();
+    bool is_open() const;
 
-    uint32_t add_data_point(uint32_t cnt, double min, double max, double sum);
-    uint32_t add_data_point(Timestamp tstamp, uint32_t cnt, double min, double max, double sum);    // called during shutdown
+    inline bool exists() const { return file_exists(m_name); }
+    inline void remove() { rm_file(m_name); }
+
+    void add_data_point(TimeSeriesId tid, uint32_t cnt, double min, double max, double sum);
+    void add_data_point(TimeSeriesId tid, Timestamp tstamp, uint32_t cnt, double min, double max, double sum);  // called during shutdown
     bool query(RollupIndex idx, uint32_t& cnt, double& min, double& max, double& sum);
     bool query(RollupIndex idx, Timestamp& tstamp, uint32_t& cnt, double& min, double& max, double& sum);   // called during restart
 
-    inline Timestamp get_last_read() const { return m_last_read; }
-    inline Timestamp get_last_write() const { return m_last_write; }
+    inline Timestamp get_last_access() const { return m_last_access; }
 
 private:
+    std::string m_name;
     FILE *m_file;
-    Timestamp m_last_read;
-    Timestamp m_last_write;
-    uint32_t m_entry_index;
-    pthread_rwlock_t m_lock;
+    int m_index;    // index of m_buff[]
+    char m_buff[4096];
+    Timestamp m_last_access;
+    std::mutex m_lock;
 };
 
 

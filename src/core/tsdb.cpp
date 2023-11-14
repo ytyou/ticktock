@@ -853,10 +853,7 @@ Mapping::get_ts_count()
 
 /* 'dir' is a full path name. E.g. /tt/data/2023/06/1686441600.1686528000/m000001
  */
-Metric::Metric(const std::string& dir, PageSize page_size, PageCount page_cnt) :
-    m_rollup_data_file(dir+"/rollup.data"),
-    m_rollup_header_file(dir+"/rollup.header"),
-    m_rollup_header_tmp_file(dir+"/rollup.header.tmp")
+Metric::Metric(const std::string& dir, PageSize page_size, PageCount page_cnt)
 {
     create_dir(dir);    // create folder, if necessary
 
@@ -909,9 +906,6 @@ Metric::close()
         data->close();
     for (auto header: m_header_files)
         header->close();
-    m_rollup_data_file.close();
-    m_rollup_header_file.close();
-    m_rollup_header_tmp_file.close();
 }
 
 void
@@ -1023,6 +1017,7 @@ Metric::get_last_header(std::string& tsdb_dir, PageCount page_cnt, PageSize page
     return header_file;
 }
 
+/**
 void
 Metric::add_rollup_point(TimeSeriesId tid, uint32_t cnt, double min, double max, double sum)
 {
@@ -1032,6 +1027,7 @@ Metric::add_rollup_point(TimeSeriesId tid, uint32_t cnt, double min, double max,
     m_rollup_header_tmp_file.ensure_open(false);
     m_rollup_header_tmp_file.add_index(tid, data_idx);
 }
+**/
 
 bool
 Metric::rotate(Timestamp now_sec, Timestamp thrashing_threshold)
@@ -1078,17 +1074,20 @@ Metric::rotate(Timestamp now_sec, Timestamp thrashing_threshold)
             header_file->close();
     }
 
+/*
     if (((int64_t)now_sec - (int64_t)m_rollup_data_file.get_last_read()) > (int64_t)thrashing_threshold)
     {
         std::lock_guard<std::mutex> guard(m_rollup_lock);
         m_rollup_data_file.close();
         m_rollup_header_file.close();
     }
+*/
 
     return all_closed;
 }
 
 // return true if operation was a success; false otherwise
+/**
 bool
 Metric::rollup(IndexFile *idx_file, int no_entries)
 {
@@ -1100,6 +1099,7 @@ Metric::rollup(IndexFile *idx_file, int no_entries)
 
     return true;
 }
+**/
 
 int
 Metric::get_page_count(bool ooo)
@@ -1165,10 +1165,11 @@ Tsdb::Tsdb(TimeRange& range, bool existing, const char *suffix) :
     m_metrics.reserve(m_mbucket_count);
     m_compressor_version =
         Config::inst()->get_int(CFG_TSDB_COMPRESSOR_VERSION,CFG_TSDB_COMPRESSOR_VERSION_DEF);
-    m_rollup_interval = 3600;   // fixed 1 hour
-        //Config::inst()->get_time(CFG_TSDB_ROLLUP_INTERVAL,TimeUnit::SEC,CFG_TSDB_ROLLUP_INTERVAL_DEF);
-    if (range.get_duration_sec() < m_rollup_interval)
-        m_rollup_interval = range.get_duration_sec();
+    if (range.get_duration_sec() < g_rollup_interval)
+    {
+        Logger::error("Tsdb range %" PRIu64 " can't be shorter than rollup-interval (1 hour)",
+            range.get_duration_sec());
+    }
     m_mode = mode_of();
     Logger::debug("tsdb %T created (mode=%d)", &range, m_mode);
 }
@@ -1260,7 +1261,6 @@ Tsdb::restore_config(const std::string& dir)
     m_page_size = cfg.get_bytes(CFG_TSDB_PAGE_SIZE, CFG_TSDB_PAGE_SIZE_DEF);
     m_page_count = cfg.get_int(CFG_TSDB_PAGE_COUNT, CFG_TSDB_PAGE_COUNT_DEF);
     m_compressor_version = cfg.get_int(CFG_TSDB_COMPRESSOR_VERSION, CFG_TSDB_COMPRESSOR_VERSION_DEF);
-    //m_rollup_interval = cfg.get_time(CFG_TSDB_ROLLUP_INTERVAL, TimeUnit::SEC, CFG_TSDB_ROLLUP_INTERVAL_DEF);
 
     if (cfg.exists(CFG_TSDB_METRIC_BUCKETS))
     {
@@ -1286,7 +1286,6 @@ Tsdb::write_config(const std::string& dir)
     cfg.set_value(CFG_TSDB_PAGE_SIZE, std::to_string(m_page_size)+"b");
     cfg.set_value(CFG_TSDB_PAGE_COUNT, std::to_string(m_page_count));
     cfg.set_value(CFG_TSDB_COMPRESSOR_VERSION, std::to_string(m_compressor_version));
-    //cfg.set_value(CFG_TSDB_ROLLUP_INTERVAL, std::to_string(m_rollup_interval)+"sec");
 
     if (m_mbucket_count != UINT32_MAX)
     {
@@ -1519,6 +1518,7 @@ Tsdb::get_or_create_metric(MetricId mid)
     return m_metrics[bucket];
 }
 
+/**
 void
 Tsdb::add_rollup_point(MetricId mid, TimeSeriesId tid, uint32_t cnt, double min, double max, double sum)
 {
@@ -1526,6 +1526,7 @@ Tsdb::add_rollup_point(MetricId mid, TimeSeriesId tid, uint32_t cnt, double min,
     ASSERT(metric != nullptr);
     metric->add_rollup_point(tid, cnt, min, max, sum);
 }
+**/
 
 bool
 Tsdb::add_data_point(DataPoint& dp, bool forward)
@@ -1695,6 +1696,7 @@ Tsdb::query_for_data_no_lock(TimeSeriesId id, TimeRange& query_range, std::vecto
 }
 #endif
 
+#if 0
 // return false if out-of-order data was found, which means rollup data
 // can't be used; return true otherwise;
 bool
@@ -1760,6 +1762,7 @@ Tsdb::read_rollup_headers(Metric *metric, std::vector<QueryTask*>& tasks)
 
     return true;
 }
+#endif
 
 bool
 Tsdb::query_rollup_no_lock(RollupDataFile *data_file, QueryTask *task, RollupType rollup)
@@ -1784,7 +1787,7 @@ Tsdb::query_rollup_no_lock(RollupDataFile *data_file, QueryTask *task, RollupTyp
 
     if (cnt > 0)
     {
-        Timestamp rollup_interval = get_rollup_interval();
+        Timestamp rollup_interval = g_rollup_interval;
         if (g_tstamp_resolution_ms) rollup_interval *= 1000;
         Timestamp tstamp = m_time_range.get_from() + header_idx * rollup_interval;
         ASSERT(m_time_range.in_range(tstamp) == 0);
@@ -1947,6 +1950,7 @@ Tsdb::query_for_data_no_lock(MetricId mid, TimeRange& range, std::vector<QueryTa
 
     if (rollup != RollupType::RU_NONE)
     {
+#if 0
         // query rollup data
         if (read_rollup_headers(metric, tasks))
         {
@@ -1970,6 +1974,7 @@ Tsdb::query_for_data_no_lock(MetricId mid, TimeRange& range, std::vector<QueryTa
             // out-of-order data found, can't use rollup data
             rollup = RollupType::RU_NONE;
         }
+#endif
     }
 
     if (rollup == RollupType::RU_NONE)
@@ -1990,13 +1995,13 @@ Tsdb::query_for_data_no_lock(MetricId mid, TimeRange& range, std::vector<QueryTa
     }
 
     uint32_t last_file_idx = TT_INVALID_ROLLUP_INDEX;
-    RollupDataFile *data_file = metric->get_rollup_data_file();
-    PThread_Lock lock(data_file->get_lock());
+    //RollupDataFile *data_file = metric->get_rollup_data_file();
+    //PThread_Lock lock(data_file->get_lock());
 
     if (rollup != RollupType::RU_NONE)
     {
-        lock.lock_for_read();
-        data_file->ensure_open(true);
+        //lock.lock_for_read();
+        //data_file->ensure_open(true);
     }
 
     while (! pq.empty())
@@ -2021,6 +2026,7 @@ Tsdb::query_for_data_no_lock(MetricId mid, TimeRange& range, std::vector<QueryTa
 
         if (rollup != RollupType::RU_NONE)
         {
+#if 0
             bool ok = query_rollup_no_lock(data_file, task, rollup);
 
             if (! ok)
@@ -2035,6 +2041,7 @@ Tsdb::query_for_data_no_lock(MetricId mid, TimeRange& range, std::vector<QueryTa
                 ok = query_rollup_no_lock(data_file, task, rollup);
                 if (! ok) continue;
             }
+#endif
         }
         else
             query_for_data_no_lock(mid, task);
@@ -2047,8 +2054,8 @@ Tsdb::query_for_data_no_lock(MetricId mid, TimeRange& range, std::vector<QueryTa
             pq.push(task);
     }
 
-    if (rollup != RollupType::RU_NONE)
-        lock.unlock();
+    //if (rollup != RollupType::RU_NONE)
+        //lock.unlock();
 
     if (compact)
         m_index_file.close();
@@ -3101,7 +3108,6 @@ Tsdb::init()
         Timer::inst()->add_task(task, freq_sec, "tsdb_compact");
         Logger::info("Will try to compact tsdb every %d secs.", freq_sec);
     }
-*/
 
     task.doit = &Tsdb::rollup;
     task.data.integer = 0;  // indicates this is from scheduled task (vs. interactive cmd)
@@ -3111,6 +3117,7 @@ Tsdb::init()
         Timer::inst()->add_task(task, freq_sec, "tsdb_rollup");
         Logger::info("Will try to rollup tsdb every %d secs.", freq_sec);
     }
+*/
 }
 
 std::string
@@ -3385,6 +3392,8 @@ Tsdb::rotate(TaskData& data)
 
     if (Config::inst()->exists(CFG_TSDB_RETENTION_THRESHOLD))
         purge_oldest(Config::inst()->get_int(CFG_TSDB_RETENTION_THRESHOLD));
+
+    RollupManager::rotate();
 
     return false;
 }
@@ -3676,6 +3685,7 @@ Tsdb::compact2()
     }
 }
 
+#if 0
 bool
 Tsdb::rollup(TaskData& data)
 {
@@ -3803,6 +3813,7 @@ Tsdb::rollup(TaskData& data)
 
     return false;
 }
+#endif
 
 void
 Tsdb::write_to_compacted(MetricId mid, QuerySuperTask& super_task, Tsdb *compacted, PageSize& next_size)

@@ -58,6 +58,7 @@ extern bool g_self_meter_enabled;
 extern std::atomic<bool> g_shutdown_requested;
 extern std::atomic<std::thread::id> g_handler_thread_id;
 extern std::string g_working_dir;
+extern uint32_t g_rollup_interval;
 
 
 }

@@ -65,6 +65,10 @@ extern double random(double from, double to);
 extern Timestamp ts_now();  // return ts in either ms or sec, depending on g_tstamp_resolution_ms
 extern Timestamp ts_now_ms();
 extern Timestamp ts_now_sec();
+extern std::time_t begin_month(int year, int month);    // return beginning of month time in UTC
+extern std::time_t begin_month(std::time_t ts);         // return beginning of month time in UTC
+extern std::time_t end_month(std::time_t ts);           // return beginning of next month in UTC
+extern void get_year_month(std::time_t ts, int& year, int& month);
 extern void ts_now(char *buff, const size_t size);
 extern void ts_now(time_t& sec, unsigned int& msec);
 extern bool is_ms(Timestamp tstamp);

@@ -143,6 +143,75 @@ ts_now(char *buff, const size_t size)
     sprintf(buff+std::strlen(buff), ".%03d", msec);    // add the fraction of sec part
 }
 
+/* return beginning of month time in UTC
+ *
+ * @param year Year minus 1900
+ * @param month Month [0, 11] (January = 0)
+ * @return Unix time of the beginning of the specified month
+ */
+std::time_t
+begin_month(int year, int month)
+{
+    struct tm timeinfo;
+
+    timeinfo.tm_sec = 0;
+    timeinfo.tm_min = 0;
+    timeinfo.tm_hour = 0;
+    timeinfo.tm_mday = 1;
+    timeinfo.tm_mon = month;
+    timeinfo.tm_year = year;
+
+    timeinfo.tm_wday = 0;
+    timeinfo.tm_yday = 0;
+    timeinfo.tm_isdst = 0;
+    timeinfo.tm_gmtoff = 0;
+    timeinfo.tm_zone = nullptr;
+
+    return timegm(&timeinfo);
+}
+
+/* return beginning of month time in UTC
+ *
+ * @param ts Current time
+ * @return Beginning of the month of given ts, in seconds
+ */
+std::time_t
+begin_month(time_t ts)
+{
+    struct tm timeinfo;
+    gmtime_r(&ts, &timeinfo);
+    return begin_month(timeinfo.tm_year, timeinfo.tm_mon);
+}
+
+/* return beginning of month time in UTC
+ *
+ * @param ts Current time
+ * @return Beginning of next month of given ts, in seconds
+ */
+std::time_t
+end_month(std::time_t ts)
+{
+    struct tm timeinfo;
+    gmtime_r(&ts, &timeinfo);
+    int month = timeinfo.tm_mon + 1;    // next month
+    int year = timeinfo.tm_year;
+    if (month > 11)
+    {
+        month = 0;
+        year++;
+    }
+    return begin_month(year, month);
+}
+
+void
+get_year_month(std::time_t ts, int& year, int& month)
+{
+    struct tm timeinfo;
+    gmtime_r(&ts, &timeinfo);
+    month = timeinfo.tm_mon + 1;
+    year = timeinfo.tm_year + 1900;
+}
+
 bool
 is_off_hour()
 {

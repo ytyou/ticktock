@@ -56,15 +56,18 @@ public:
     static void shutdown();
 
     // process in-order dps only
-    void add_data_point(Tsdb *tsdb, MetricId mid, TimeSeriesId tid, DataPoint& dp);
+    void add_data_point(MetricId mid, TimeSeriesId tid, DataPoint& dp);
     void flush(MetricId mid, TimeSeriesId tid);
     void close(TimeSeriesId tid);   // called during TT shutdown
 
-    inline Tsdb *get_tsdb() { return m_tsdb; }
     inline Timestamp get_tstamp() const { return m_tstamp; }
 
     // return true if data-point found; false if no data
     bool query(RollupType type, DataPointPair& dp);
+
+    static int get_rollup_bucket(MetricId mid);
+    static RollupDataFile *get_rollup_data_file(MetricId mid, Timestamp tstamp);
+    static void rotate();
 
 private:
     Timestamp step_down(Timestamp tstamp);
@@ -74,11 +77,12 @@ private:
     double m_max;
     double m_sum;
     Timestamp m_tstamp;
-    Tsdb *m_tsdb;
 
-    // these 2 files are used during shutdown/restart of TT
-    static RollupHeaderTmpFile *m_backup_header_tmp_file;
+    // used during shutdown/restart of TT
     static RollupDataFile *m_backup_data_file;
+
+    static std::mutex m_lock;
+    static std::unordered_map<uint64_t, RollupDataFile*> m_data_files;
 };
 
 
