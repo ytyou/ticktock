@@ -154,18 +154,10 @@ begin_month(int year, int month)
 {
     struct tm timeinfo;
 
-    timeinfo.tm_sec = 0;
-    timeinfo.tm_min = 0;
-    timeinfo.tm_hour = 0;
+    std::memset(&timeinfo, 0, sizeof(timeinfo));
     timeinfo.tm_mday = 1;
     timeinfo.tm_mon = month;
     timeinfo.tm_year = year;
-
-    timeinfo.tm_wday = 0;
-    timeinfo.tm_yday = 0;
-    timeinfo.tm_isdst = 0;
-    timeinfo.tm_gmtoff = 0;
-    timeinfo.tm_zone = nullptr;
 
     return timegm(&timeinfo);
 }
@@ -203,6 +195,8 @@ end_month(std::time_t ts)
     return begin_month(year, month);
 }
 
+/* @param ts Number of seconds since the Epoch
+ */
 void
 get_year_month(std::time_t ts, int& year, int& month)
 {

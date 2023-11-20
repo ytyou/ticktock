@@ -21,6 +21,7 @@
 #include "config.h"
 #include "limit.h"
 #include "logger.h"
+#include "query.h"
 #include "rollup.h"
 #include "tsdb.h"
 #include "utils.h"
@@ -161,6 +162,8 @@ RollupManager::add_data_point(MetricId mid, TimeSeriesId tid, DataPoint& dp)
 
     if (tstamp1 > m_tstamp)
     {
+        std::lock_guard<std::mutex> guard(m_lock);
+
         flush(mid, tid);
 
         Timestamp end = end_month(m_tstamp);
@@ -195,7 +198,7 @@ RollupManager::flush(MetricId mid, TimeSeriesId tid)
         return;
 
     // write to rollup files
-    RollupDataFile *file = get_rollup_data_file(mid, m_tstamp);
+    RollupDataFile *file = get_data_file(mid, m_tstamp);
     file->add_data_point(tid, m_cnt, m_min, m_max, m_sum);
 
     // reset
@@ -213,6 +216,44 @@ RollupManager::close(TimeSeriesId tid)
 
     if (m_backup_data_file != nullptr)
         m_backup_data_file->add_data_point(tid, m_tstamp, m_cnt, m_min, m_max, m_sum);
+}
+
+double
+RollupManager::query(struct rollup_entry *entry, RollupType type)
+{
+    ASSERT(entry != nullptr);
+    ASSERT(entry->cnt != 0);
+    ASSERT(type != RollupType::RU_NONE);
+
+    double val = 0;
+
+    switch (type)
+    {
+        case RollupType::RU_AVG:
+            val = entry->sum / (double)entry->cnt;
+            break;
+
+        case RollupType::RU_CNT:
+            val = (double)entry->cnt;
+            break;
+
+        case RollupType::RU_MAX:
+            val = entry->max;
+            break;
+
+        case RollupType::RU_MIN:
+            val = entry->min;
+            break;
+
+        case RollupType::RU_SUM:
+            val = entry->sum;
+            break;
+
+        default:
+            ASSERT(false);
+    }
+
+    return val;
 }
 
 // return false if no data will be returned;
@@ -251,6 +292,37 @@ RollupManager::query(RollupType type, DataPointPair& dp)
     return true;
 }
 
+void
+RollupManager::query(MetricId mid, TimeRange& range, std::vector<QueryTask*>& tasks, RollupType rollup)
+{
+    std::lock_guard<std::mutex> guard(m_lock);
+    query_no_lock(mid, range, tasks, rollup);
+}
+
+void
+RollupManager::query_no_lock(MetricId mid, TimeRange& range, std::vector<QueryTask*>& tasks, RollupType rollup)
+{
+    ASSERT(! tasks.empty());
+    ASSERT(rollup != RollupType::RU_NONE);
+
+    std::vector<RollupDataFile*> data_files;
+    std::unordered_map<TimeSeriesId,QueryTask*> map;
+
+    for (auto task: tasks)
+    {
+        ASSERT(map.find(task->get_ts_id()) == map.end());
+        map[task->get_ts_id()] = task;
+    }
+
+    get_data_files(mid, range, data_files);
+
+    for (auto file: data_files)
+    {
+        file->query(map, rollup);
+        file->dec_ref_count();
+    }
+}
+
 /* @return Stepped down timestamp of the input, in seconds.
  */
 Timestamp
@@ -268,11 +340,10 @@ RollupManager::get_rollup_bucket(MetricId mid)
 }
 
 RollupDataFile *
-RollupManager::get_rollup_data_file(MetricId mid, Timestamp tstamp)
+RollupManager::get_data_file(MetricId mid, Timestamp tstamp)
 {
     std::time_t begin = begin_month(tstamp);
     uint64_t bucket = begin * MAX_ROLLUP_BUCKET_COUNT + get_rollup_bucket(mid);
-    std::lock_guard<std::mutex> guard(m_lock);
     auto search = m_data_files.find(bucket);
     RollupDataFile *data_file = nullptr;
 
@@ -284,7 +355,41 @@ RollupManager::get_rollup_data_file(MetricId mid, Timestamp tstamp)
     else
         data_file = search->second;
 
+    ASSERT(data_file != nullptr);
+    data_file->inc_ref_count();
+
     return data_file;
+}
+
+void
+RollupManager::get_data_files(MetricId mid, TimeRange& range, std::vector<RollupDataFile*>& files)
+{
+    int year, month;
+    Timestamp end = range.get_to_sec();
+
+    get_year_month(range.get_from_sec(), year, month);
+    month--;
+    year -= 1900;
+
+    for ( ; ; )
+    {
+        std::time_t ts = begin_month(year, month);
+        if (end <= ts) break;
+
+        RollupDataFile *data_file = get_data_file(mid, ts);
+
+        if (! data_file->exists())
+            delete data_file;
+        else
+            files.push_back(data_file);
+
+        month++;
+        if (month >= 12)
+        {
+            month = 0;
+            year++;
+        }
+    }
 }
 
 void
@@ -295,13 +400,17 @@ RollupManager::rotate()
     Timestamp now = ts_now_sec();
     std::lock_guard<std::mutex> guard(m_lock);
 
-    for (const auto& entry: m_data_files)
+    for (auto it = m_data_files.begin(); it != m_data_files.end(); )
     {
-        RollupDataFile *file = entry.second;
-        Timestamp last = file->get_last_access();
+        RollupDataFile *file = it->second;
 
-        if (thrashing_threshold < (now - last))
-            file->close();
+        if (file->close_if_idle(thrashing_threshold, now))
+        {
+            it = m_data_files.erase(it);
+            delete file;
+        }
+        else
+            it++;
     }
 }
 

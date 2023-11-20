@@ -87,5 +87,15 @@ public:
     virtual ~BaseType() {};
 };
 
+enum RollupType : unsigned char
+{
+    RU_NONE = 0,
+    RU_AVG = 1,
+    RU_CNT = 2,
+    RU_MAX = 3,
+    RU_MIN = 4,
+    RU_SUM = 5
+};
+
 
 }

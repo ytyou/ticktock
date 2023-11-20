@@ -28,6 +28,7 @@
 #include "logger.h"
 #include "mmap.h"
 #include "page.h"
+#include "query.h"
 #include "tsdb.h"
 
 
@@ -1228,6 +1229,7 @@ RollupHeaderFile::add_index(TimeSeriesId tid, RollupIndex data_idx)
  */
 RollupDataFile::RollupDataFile(MetricId mid, Timestamp begin) :
     m_file(nullptr),
+    m_begin(begin),
     m_last_access(0),
     m_index(0)
 {
@@ -1245,6 +1247,7 @@ RollupDataFile::RollupDataFile(MetricId mid, Timestamp begin) :
 
 RollupDataFile::RollupDataFile(const std::string& name) :
     m_file(nullptr),
+    m_begin(TT_INVALID_TIMESTAMP),
     m_last_access(0),
     m_index(0),
     m_name(name)
@@ -1293,6 +1296,20 @@ RollupDataFile::close()
 }
 
 bool
+RollupDataFile::close_if_idle(Timestamp threshold, Timestamp now)
+{
+    std::lock_guard<std::mutex> guard(m_lock);
+
+    if ((m_ref_count <= 0) && (threshold < (now - m_last_access)))
+    {
+        close();
+        return true;
+    }
+
+    return false;
+}
+
+bool
 RollupDataFile::is_open() const
 {
     return (m_file != nullptr);
@@ -1319,11 +1336,12 @@ RollupDataFile::add_data_point(TimeSeriesId tid, uint32_t cnt, double min, doubl
         std::fwrite(m_buff, m_index, 1, m_file);
         std::fflush(m_file);
         m_index = 0;
-        m_last_access = ts_now_sec();
     }
 
     std::memcpy(m_buff+m_index, &entry, sizeof(entry));
     m_index += sizeof(entry);
+    m_last_access = ts_now_sec();
+    dec_ref_count_no_lock();
 }
 
 void
@@ -1343,49 +1361,66 @@ RollupDataFile::add_data_point(TimeSeriesId tid, Timestamp tstamp, uint32_t cnt,
     std::fflush(m_file);
 }
 
-/* @param idx The idx-th entry (struct rollup_entry) in the rollup.data file.
- */
-bool
-RollupDataFile::query(RollupIndex idx, uint32_t& cnt, double& min, double& max, double& sum)
+void
+RollupDataFile::query(std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupType rollup)
 {
-/***
-    ASSERT(idx != TT_INVALID_ROLLUP_INDEX);
+    std::lock_guard<std::mutex> guard(m_lock);
+    uint8_t buff[4096];
+    std::size_t n;
 
-    if (((idx+1)*sizeof(struct rollup_entry)) > get_length())
-        return false;
+    m_last_access = ts_now_sec();
+    if (! is_open()) open();
+    std::fseek(m_file, 0, SEEK_SET);    // seek to beginning of file
 
-    struct rollup_entry *entry = &(((struct rollup_entry*)get_pages())[idx]);
+    while ((n = std::fread(&buff[0], 1, sizeof(buff), m_file)) > 0)
+    {
+        ASSERT((n % sizeof(struct rollup_entry)) == 0);
 
-    cnt = entry->cnt;
-    min = entry->min;
-    max = entry->max;
-    sum = entry->sum;
-***/
+        for (std::size_t i = 0; i < n; i += sizeof(struct rollup_entry))
+        {
+            struct rollup_entry *entry = (struct rollup_entry*)&buff[i];
 
-    return true;
+            auto search = map.find(entry->tid);
+
+            if (search != map.end())
+            {
+                QueryTask *task = search->second;
+                Timestamp ts;
+
+                if (task->get_last_tstamp() == TT_INVALID_TIMESTAMP)
+                {
+                    ts = m_begin;
+                    task->set_last_tstamp(ts = m_begin);    // in seconds
+                }
+                else
+                {
+                    ts = task->get_last_tstamp() + g_rollup_interval;   // in seconds
+                    task->set_last_tstamp(ts);
+                }
+
+                if (entry->cnt != 0)
+                {
+                    DataPointVector& dps = task->get_dps();
+                    double val = RollupManager::query(entry, rollup);
+                    dps.emplace_back(ts, val);
+                }
+            }
+        }
+    }
 }
 
-/* @param idx The idx-th entry (struct rollup_entry) in the rollup.data file.
- */
-bool
-RollupDataFile::query(RollupIndex idx, Timestamp& tstamp, uint32_t& cnt, double& min, double& max, double& sum)
+void
+RollupDataFile::dec_ref_count()
 {
-/***
-    ASSERT(idx != TT_INVALID_ROLLUP_INDEX);
+    std::lock_guard<std::mutex> guard(m_lock);
+    m_ref_count--;
+}
 
-    if (((idx+1)*sizeof(struct rollup_entry_ext)) > get_length())
-        return false;
-
-    struct rollup_entry_ext *entry = &(((struct rollup_entry_ext*)get_pages())[idx]);
-
-    cnt = entry->cnt;
-    min = entry->min;
-    max = entry->max;
-    sum = entry->sum;
-    tstamp = entry->tstamp;
-***/
-
-    return true;
+void
+RollupDataFile::inc_ref_count()
+{
+    std::lock_guard<std::mutex> guard(m_lock);
+    m_ref_count++;
 }
 
 

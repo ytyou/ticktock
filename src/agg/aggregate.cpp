@@ -180,41 +180,56 @@ AggregatorNone::aggregate(const char *metric, std::vector<QueryTask*>& qtv, std:
 void
 AggregatorAvg::merge(std::vector<std::reference_wrapper<DataPointVector>>& src, DataPointVector& dst)
 {
-    PQ pq(src);
-    double sum;
-    int count = 0;
-    Timestamp prev_tstamp = 0L;
+    int size = src.size();
+    int idx[size];
+    Timestamp ts = TT_INVALID_TIMESTAMP;
 
-    while (! pq.empty())
+    for (int i = 0; i < size; i++)
+        idx[i] = 0;
+
+    for (DataPointVector& v: src)
     {
-        DataPointPair& dp = pq.next();
-        Timestamp curr_tstamp = dp.first;
-
-        if (prev_tstamp == curr_tstamp)
+        if (! v.empty())
         {
-            count++;
-            sum += dp.second;
-        }
-        else
-        {
-            ASSERT(prev_tstamp < curr_tstamp);
-
-            if (prev_tstamp != 0L)
-            {
-                ASSERT(count > 0);
-                dst.emplace_back(prev_tstamp, sum/(double)count);
-            }
-
-            count = 1;
-            sum = dp.second;
-            prev_tstamp = curr_tstamp;
+            DataPointPair dp = v.front();
+            if (ts > dp.first) ts = dp.first;
         }
     }
 
-    if (prev_tstamp != 0L)
+    while (ts != TT_INVALID_TIMESTAMP)
     {
-        ASSERT(count > 0);
-        dst.emplace_back(prev_tstamp, sum/(double)count);
+        int count = 0;
+        double sum = 0;
+        Timestamp next_ts = TT_INVALID_TIMESTAMP;
+
+        for (int i = 0; i < size; i++)
+        {
+            DataPointVector& v = src[i];
+            if (v.size() <= idx[i]) continue;
+
+            auto dp = v[idx[i]];
+
+            if (dp.first == ts)
+            {
+                count++;
+                sum += dp.second;
+                idx[i]++;
+
+                if (idx[i] < v.size())
+                {
+                    dp = v[idx[i]];
+                    if (next_ts > dp.first)
+                        next_ts = dp.first;
+                }
+            }
+            else if (next_ts > dp.first)
+                next_ts = dp.first;
+        }
+
+        if (count <= 0) break;
+
+        dst.emplace_back(ts, sum/(double)count);
+        ts = next_ts;
     }
 }
 
@@ -248,38 +263,54 @@ AggregatorBottom::aggregate(const char *metric, std::vector<QueryTask*>& qtv, st
 void
 AggregatorCount::merge(std::vector<std::reference_wrapper<DataPointVector>>& src, DataPointVector& dst)
 {
-    PQ pq(src);
-    int count = 0;
-    Timestamp prev_tstamp = 0L;
+    int size = src.size();
+    int idx[size];
+    Timestamp ts = TT_INVALID_TIMESTAMP;
 
-    while (! pq.empty())
+    for (int i = 0; i < size; i++)
+        idx[i] = 0;
+
+    for (DataPointVector& v: src)
     {
-        DataPointPair& dp = pq.next();
-        Timestamp curr_tstamp = dp.first;
-
-        if (prev_tstamp == curr_tstamp)
+        if (! v.empty())
         {
-            count++;
-        }
-        else
-        {
-            ASSERT(prev_tstamp < curr_tstamp);
-
-            if (prev_tstamp != 0L)
-            {
-                ASSERT(count > 0);
-                dst.emplace_back(prev_tstamp, (double)count);
-            }
-
-            count = 1;
-            prev_tstamp = curr_tstamp;
+            DataPointPair dp = v.front();
+            if (ts > dp.first) ts = dp.first;
         }
     }
 
-    if (prev_tstamp != 0L)
+    while (ts != TT_INVALID_TIMESTAMP)
     {
-        ASSERT(count > 0);
-        dst.emplace_back(prev_tstamp, (double)count);
+        int count = 0;
+        Timestamp next_ts = TT_INVALID_TIMESTAMP;
+
+        for (int i = 0; i < size; i++)
+        {
+            DataPointVector& v = src[i];
+            if (v.size() <= idx[i]) continue;
+
+            auto dp = v[idx[i]];
+
+            if (dp.first == ts)
+            {
+                count++;
+                idx[i]++;
+
+                if (idx[i] < v.size())
+                {
+                    dp = v[idx[i]];
+                    if (next_ts > dp.first)
+                        next_ts = dp.first;
+                }
+            }
+            else if (next_ts > dp.first)
+                next_ts = dp.first;
+        }
+
+        if (count <= 0) break;
+
+        dst.emplace_back(ts, (double)count);
+        ts = next_ts;
     }
 }
 
@@ -287,37 +318,57 @@ AggregatorCount::merge(std::vector<std::reference_wrapper<DataPointVector>>& src
 void
 AggregatorDev::merge(std::vector<std::reference_wrapper<DataPointVector>>& src, DataPointVector& dst)
 {
-    PQ pq(src);
-    std::vector<double> values;
-    Timestamp prev_tstamp = 0L;
+    int size = src.size();
+    int idx[size];
+    Timestamp ts = TT_INVALID_TIMESTAMP;
 
-    while (! pq.empty())
+    for (int i = 0; i < size; i++)
+        idx[i] = 0;
+
+    for (DataPointVector& v: src)
     {
-        DataPointPair& dp = pq.next();
-        Timestamp curr_tstamp = dp.first;
-
-        if (prev_tstamp != curr_tstamp)
+        if (! v.empty())
         {
-            ASSERT(prev_tstamp < curr_tstamp);
-
-            if (prev_tstamp != 0L)
-            {
-                dst.emplace_back(prev_tstamp, stddev(values));
-            }
-
-            prev_tstamp = curr_tstamp;
-            values.clear();
-        }
-
-        if (! std::isnan(dp.second))
-        {
-            values.push_back(dp.second);
+            DataPointPair dp = v.front();
+            if (ts > dp.first) ts = dp.first;
         }
     }
 
-    if (prev_tstamp != 0L)
+    while (ts != TT_INVALID_TIMESTAMP)
     {
-        dst.emplace_back(prev_tstamp, stddev(values));
+        bool has_data = false;
+        std::vector<double> values;
+        Timestamp next_ts = TT_INVALID_TIMESTAMP;
+
+        for (int i = 0; i < size; i++)
+        {
+            DataPointVector& v = src[i];
+            if (v.size() <= idx[i]) continue;
+
+            auto dp = v[idx[i]];
+
+            if (dp.first == ts)
+            {
+                if (! std::isnan(dp.second))
+                    values.push_back(dp.second);
+                idx[i]++;
+                has_data = true;
+
+                if (idx[i] < v.size())
+                {
+                    dp = v[idx[i]];
+                    if (next_ts > dp.first)
+                        next_ts = dp.first;
+                }
+            }
+            else if (next_ts > dp.first)
+                next_ts = dp.first;
+        }
+
+        if (! has_data) break;
+
+        dst.emplace_back(ts, stddev(values));
+        ts = next_ts;
     }
 }
 
@@ -354,36 +405,56 @@ AggregatorDev::stddev(const std::vector<double>& values)
 void
 AggregatorMax::merge(std::vector<std::reference_wrapper<DataPointVector>>& src, DataPointVector& dst)
 {
-    PQ pq(src);
-    double max = std::numeric_limits<double>::min();
-    Timestamp prev_tstamp = 0L;
+    int size = src.size();
+    int idx[size];
+    Timestamp ts = TT_INVALID_TIMESTAMP;
 
-    while (! pq.empty())
+    for (int i = 0; i < size; i++)
+        idx[i] = 0;
+
+    for (DataPointVector& v: src)
     {
-        DataPointPair& dp = pq.next();
-        Timestamp curr_tstamp = dp.first;
-
-        if (prev_tstamp == curr_tstamp)
+        if (! v.empty())
         {
-            max = std::max(max, dp.second);
-        }
-        else
-        {
-            ASSERT(prev_tstamp < curr_tstamp);
-
-            if (prev_tstamp != 0L)
-            {
-                dst.emplace_back(prev_tstamp, max);
-            }
-
-            max = dp.second;
-            prev_tstamp = curr_tstamp;
+            DataPointPair dp = v.front();
+            if (ts > dp.first) ts = dp.first;
         }
     }
 
-    if (prev_tstamp != 0L)
+    while (ts != TT_INVALID_TIMESTAMP)
     {
-        dst.emplace_back(prev_tstamp, max);
+        int count = 0;
+        double max = std::numeric_limits<double>::min();
+        Timestamp next_ts = TT_INVALID_TIMESTAMP;
+
+        for (int i = 0; i < size; i++)
+        {
+            DataPointVector& v = src[i];
+            if (v.size() <= idx[i]) continue;
+
+            auto dp = v[idx[i]];
+
+            if (dp.first == ts)
+            {
+                count++;
+                max = std::max(max, dp.second);
+                idx[i]++;
+
+                if (idx[i] < v.size())
+                {
+                    dp = v[idx[i]];
+                    if (next_ts > dp.first)
+                        next_ts = dp.first;
+                }
+            }
+            else if (next_ts > dp.first)
+                next_ts = dp.first;
+        }
+
+        if (count <= 0) break;
+
+        dst.emplace_back(ts, max);
+        ts = next_ts;
     }
 }
 
@@ -391,36 +462,56 @@ AggregatorMax::merge(std::vector<std::reference_wrapper<DataPointVector>>& src, 
 void
 AggregatorMin::merge(std::vector<std::reference_wrapper<DataPointVector>>& src, DataPointVector& dst)
 {
-    PQ pq(src);
-    double min = std::numeric_limits<double>::max();
-    Timestamp prev_tstamp = 0L;
+    int size = src.size();
+    int idx[size];
+    Timestamp ts = TT_INVALID_TIMESTAMP;
 
-    while (! pq.empty())
+    for (int i = 0; i < size; i++)
+        idx[i] = 0;
+
+    for (DataPointVector& v: src)
     {
-        DataPointPair& dp = pq.next();
-        Timestamp curr_tstamp = dp.first;
-
-        if (prev_tstamp == curr_tstamp)
+        if (! v.empty())
         {
-            min = std::min(min, dp.second);
-        }
-        else
-        {
-            ASSERT(prev_tstamp < curr_tstamp);
-
-            if (prev_tstamp != 0L)
-            {
-                dst.emplace_back(prev_tstamp, min);
-            }
-
-            min = dp.second;
-            prev_tstamp = curr_tstamp;
+            DataPointPair dp = v.front();
+            if (ts > dp.first) ts = dp.first;
         }
     }
 
-    if (prev_tstamp != 0L)
+    while (ts != TT_INVALID_TIMESTAMP)
     {
-        dst.emplace_back(prev_tstamp, min);
+        int count = 0;
+        double min = std::numeric_limits<double>::max();
+        Timestamp next_ts = TT_INVALID_TIMESTAMP;
+
+        for (int i = 0; i < size; i++)
+        {
+            DataPointVector& v = src[i];
+            if (v.size() <= idx[i]) continue;
+
+            auto dp = v[idx[i]];
+
+            if (dp.first == ts)
+            {
+                count++;
+                min = std::min(min, dp.second);
+                idx[i]++;
+
+                if (idx[i] < v.size())
+                {
+                    dp = v[idx[i]];
+                    if (next_ts > dp.first)
+                        next_ts = dp.first;
+                }
+            }
+            else if (next_ts > dp.first)
+                next_ts = dp.first;
+        }
+
+        if (count <= 0) break;
+
+        dst.emplace_back(ts, min);
+        ts = next_ts;
     }
 }
 
@@ -440,42 +531,62 @@ AggregatorPercentile::set_quantile(double quantile)
 void
 AggregatorPercentile::merge(std::vector<std::reference_wrapper<DataPointVector>>& src, DataPointVector& dst)
 {
-    PQ pq(src);
-    std::vector<double> values;
-    Timestamp prev_tstamp = 0L;
+    int size = src.size();
+    int idx[size];
+    Timestamp ts = TT_INVALID_TIMESTAMP;
 
-    while (! pq.empty())
+    for (int i = 0; i < size; i++)
+        idx[i] = 0;
+
+    for (DataPointVector& v: src)
     {
-        DataPointPair& dp = pq.next();
-        Timestamp curr_tstamp = dp.first;
-
-        if (prev_tstamp != curr_tstamp)
+        if (! v.empty())
         {
-            ASSERT(prev_tstamp < curr_tstamp);
-
-            if (prev_tstamp != 0L)
-            {
-                dst.emplace_back(prev_tstamp, percentile(values));
-            }
-
-            prev_tstamp = curr_tstamp;
-            values.clear();
-        }
-
-        if (! std::isnan(dp.second))
-        {
-            values.push_back(dp.second);
+            DataPointPair dp = v.front();
+            if (ts > dp.first) ts = dp.first;
         }
     }
 
-    if (prev_tstamp != 0L)
+    while (ts != TT_INVALID_TIMESTAMP)
     {
-        dst.emplace_back(prev_tstamp, percentile(values));
+        bool has_data = false;
+        std::vector<double> values;
+        Timestamp next_ts = TT_INVALID_TIMESTAMP;
+
+        for (int i = 0; i < size; i++)
+        {
+            DataPointVector& v = src[i];
+            if (v.size() <= idx[i]) continue;
+
+            auto dp = v[idx[i]];
+
+            if (dp.first == ts)
+            {
+                if (! std::isnan(dp.second))
+                    values.push_back(dp.second);
+                idx[i]++;
+                has_data = true;
+
+                if (idx[i] < v.size())
+                {
+                    dp = v[idx[i]];
+                    if (next_ts > dp.first)
+                        next_ts = dp.first;
+                }
+            }
+            else if (next_ts > dp.first)
+                next_ts = dp.first;
+        }
+
+        if (! has_data) break;
+
+        dst.emplace_back(ts, percentile(values));
+        ts = next_ts;
     }
 }
 
 double
-AggregatorPercentile::percentile(const std::vector<double>& values) const
+AggregatorPercentile::percentile(std::vector<double>& values) const
 {
     int length = values.size();
 
@@ -491,6 +602,8 @@ AggregatorPercentile::percentile(const std::vector<double>& values) const
     {
         double idx = index(length);
         double p;
+
+        std::sort(values.begin(), values.end());
 
         if (idx < 1.0)
         {
@@ -528,36 +641,56 @@ AggregatorPercentile::index(int length) const
 void
 AggregatorSum::merge(std::vector<std::reference_wrapper<DataPointVector>>& src, DataPointVector& dst)
 {
-    PQ pq(src);
-    double sum = 0;
-    Timestamp prev_tstamp = 0L;
+    int size = src.size();
+    int idx[size];
+    Timestamp ts = TT_INVALID_TIMESTAMP;
 
-    while (! pq.empty())
+    for (int i = 0; i < size; i++)
+        idx[i] = 0;
+
+    for (DataPointVector& v: src)
     {
-        DataPointPair& dp = pq.next();
-        Timestamp curr_tstamp = dp.first;
-
-        if (prev_tstamp == curr_tstamp)
+        if (! v.empty())
         {
-            sum += dp.second;
-        }
-        else
-        {
-            ASSERT(prev_tstamp < curr_tstamp);
-
-            if (prev_tstamp != 0L)
-            {
-                dst.emplace_back(prev_tstamp, sum);
-            }
-
-            sum = dp.second;
-            prev_tstamp = curr_tstamp;
+            DataPointPair dp = v.front();
+            if (ts > dp.first) ts = dp.first;
         }
     }
 
-    if (prev_tstamp != 0L)
+    while (ts != TT_INVALID_TIMESTAMP)
     {
-        dst.emplace_back(prev_tstamp, sum);
+        bool has_data = false;
+        double sum = 0;
+        Timestamp next_ts = TT_INVALID_TIMESTAMP;
+
+        for (int i = 0; i < size; i++)
+        {
+            DataPointVector& v = src[i];
+            if (v.size() <= idx[i]) continue;
+
+            auto dp = v[idx[i]];
+
+            if (dp.first == ts)
+            {
+                has_data = true;
+                sum += dp.second;
+                idx[i]++;
+
+                if (idx[i] < v.size())
+                {
+                    dp = v[idx[i]];
+                    if (next_ts > dp.first)
+                        next_ts = dp.first;
+                }
+            }
+            else if (next_ts > dp.first)
+                next_ts = dp.first;
+        }
+
+        if (! has_data) break;
+
+        dst.emplace_back(ts, sum);
+        ts = next_ts;
     }
 }
 

@@ -20,6 +20,7 @@
 
 #include <cstdio>
 #include <mutex>
+#include <unordered_map>
 #include "lock.h"
 #include "range.h"
 #include "type.h"
@@ -31,6 +32,7 @@ namespace tt
 
 
 class Tsdb;
+class QueryTask;
 class RollupDataFile;
 
 
@@ -299,6 +301,7 @@ public:
 
     void open();
     void close();
+    bool close_if_idle(Timestamp threshold, Timestamp now);
     bool is_open() const;
 
     inline bool exists() const { return file_exists(m_name); }
@@ -306,18 +309,21 @@ public:
 
     void add_data_point(TimeSeriesId tid, uint32_t cnt, double min, double max, double sum);
     void add_data_point(TimeSeriesId tid, Timestamp tstamp, uint32_t cnt, double min, double max, double sum);  // called during shutdown
-    bool query(RollupIndex idx, uint32_t& cnt, double& min, double& max, double& sum);
-    bool query(RollupIndex idx, Timestamp& tstamp, uint32_t& cnt, double& min, double& max, double& sum);   // called during restart
+    void query(std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupType rollup);
 
-    inline Timestamp get_last_access() const { return m_last_access; }
+    void dec_ref_count();
+    void dec_ref_count_no_lock() { m_ref_count--; }
+    void inc_ref_count();
 
 private:
     std::string m_name;
     FILE *m_file;
+    Timestamp m_begin;
     int m_index;    // index of m_buff[]
     char m_buff[4096];
     Timestamp m_last_access;
     std::mutex m_lock;
+    int m_ref_count;        // prevent unload when in use
 };
 
 

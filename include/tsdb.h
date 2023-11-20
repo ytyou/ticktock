@@ -260,12 +260,9 @@ public:
     //bool query_for_data(TimeSeriesId id, TimeRange& range, std::vector<DataPointContainer*>& data);
     //bool query_for_data_no_lock(TimeSeriesId id, TimeRange& range, std::vector<DataPointContainer*>& data);
 
-    //bool read_rollup_headers(Metric *metric, std::vector<QueryTask*>& tasks);
-    bool query_rollup_no_lock(RollupDataFile *data_file, QueryTask *task, RollupType rollup);
-
     void query_for_data_no_lock(MetricId mid, QueryTask *task);
-    void query_for_data(MetricId mid, TimeRange& range, std::vector<QueryTask*>& tasks, bool compact = false, RollupType rollup = RollupType::RU_NONE);
-    void query_for_data_no_lock(MetricId mid, TimeRange& range, std::vector<QueryTask*>& tasks, bool compact = false, RollupType rollup = RollupType::RU_NONE);
+    void query_for_data(MetricId mid, TimeRange& range, std::vector<QueryTask*>& tasks, bool compact = false);
+    void query_for_data_no_lock(MetricId mid, TimeRange& range, std::vector<QueryTask*>& tasks, bool compact = false);
 
     void flush(bool sync);
     void flush_for_test();  // for testing only

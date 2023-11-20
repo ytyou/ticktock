@@ -136,12 +136,8 @@
 #define CFG_TSDB_ROLLUP_BUCKETS_DEF             1000
 #define CFG_TSDB_ROLLUP_DELAY                   "tsdb.rollup.delay"
 #define CFG_TSDB_ROLLUP_DELAY_DEF               "2min"
-#define CFG_TSDB_ROLLUP_FREQUENCY               "tsdb.rollup.frequency"
-#define CFG_TSDB_ROLLUP_FREQUENCY_DEF           "2h"
 #define CFG_TSDB_ROLLUP_INTERVAL                "tsdb.rollup.interval"
 #define CFG_TSDB_ROLLUP_INTERVAL_DEF            "1h"
-#define CFG_TSDB_ROLLUP_THRESHOLD               "tsdb.rollup.threshold"
-#define CFG_TSDB_ROLLUP_THRESHOLD_DEF           "2d"
 #define CFG_TSDB_ROTATION_FREQUENCY             "tsdb.rotation.frequency"
 #define CFG_TSDB_ROTATION_FREQUENCY_DEF         "1d"
 #define CFG_TSDB_SELF_METER_ENABLED             "tsdb.self_meter.enabled"

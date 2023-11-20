@@ -157,8 +157,6 @@ process_cmdline_opts(int argc, char *argv[])
         { CFG_TSDB_PAGE_SIZE,                       required_argument,  0,  0 },
         { CFG_TSDB_READ_ONLY_THRESHOLD,             required_argument,  0,  0 },
         { CFG_TSDB_RETENTION_THRESHOLD,             required_argument,  0,  0 },
-        { CFG_TSDB_ROLLUP_FREQUENCY,                required_argument,  0,  0 },
-        { CFG_TSDB_ROLLUP_THRESHOLD,                required_argument,  0,  0 },
         { CFG_TSDB_ROTATION_FREQUENCY,              required_argument,  0,  0 },
         { CFG_TSDB_SELF_METER_ENABLED,              required_argument,  0,  0 },
         { CFG_TSDB_THRASHING_THRESHOLD,             required_argument,  0,  0 },

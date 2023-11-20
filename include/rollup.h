@@ -27,18 +27,8 @@ namespace tt
 {
 
 
+class QueryTask;
 class Tsdb;
-
-
-enum RollupType : unsigned char
-{
-    RU_NONE = 0,
-    RU_AVG = 1,
-    RU_CNT = 2,
-    RU_MAX = 3,
-    RU_MIN = 4,
-    RU_SUM = 5
-};
 
 
 class __attribute__ ((__packed__)) RollupManager
@@ -66,7 +56,11 @@ public:
     bool query(RollupType type, DataPointPair& dp);
 
     static int get_rollup_bucket(MetricId mid);
-    static RollupDataFile *get_rollup_data_file(MetricId mid, Timestamp tstamp);
+    static RollupDataFile *get_data_file(MetricId mid, Timestamp tstamp);
+    static void get_data_files(MetricId mid, TimeRange& range, std::vector<RollupDataFile*>& files);
+    static void query(MetricId mid, TimeRange& range, std::vector<QueryTask*>& tasks, RollupType rollup);
+    static void query_no_lock(MetricId mid, TimeRange& range, std::vector<QueryTask*>& tasks, RollupType rollup);
+    static double query(struct rollup_entry *entry, RollupType type);
     static void rotate();
 
 private:

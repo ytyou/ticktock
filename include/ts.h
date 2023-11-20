@@ -81,7 +81,7 @@ public:
     void get_values(std::set<std::string>& values) const { m_tags.get_values(values); }
 
     bool query_for_data(Tsdb *tsdb, TimeRange& range, std::vector<DataPointContainer*>& data);
-    void query_for_rollup(Tsdb *tsdb, TimeRange& range, std::vector<DataPointContainer*>& data, RollupType rollup);
+    void query_for_rollup(TimeRange& range, DataPointVector& dps, RollupType rollup);
 
     inline bool is_type(int type) const override
     { return TT_TYPE_TIME_SERIES == type; }

@@ -442,9 +442,8 @@ TimeSeries::query_for_data(Tsdb *tsdb, TimeRange& range, std::vector<DataPointCo
 }
 
 void
-TimeSeries::query_for_rollup(Tsdb *tsdb, TimeRange& range, std::vector<DataPointContainer*>& data, RollupType rollup)
+TimeSeries::query_for_rollup(TimeRange& range, DataPointVector& dps, RollupType rollup)
 {
-    ASSERT(tsdb != nullptr);
     ASSERT(rollup != RollupType::RU_NONE);
 
     if (range.in_range(m_rollup.get_tstamp()))
@@ -452,20 +451,7 @@ TimeSeries::query_for_rollup(Tsdb *tsdb, TimeRange& range, std::vector<DataPoint
         DataPointPair dp;
 
         if (m_rollup.query(rollup, dp))
-        {
-            DataPointContainer *container;
-
-            if (data.empty())
-            {
-                container = (DataPointContainer*)
-                    MemoryManager::alloc_recyclable(RecyclableType::RT_DATA_POINT_CONTAINER);
-            }
-            else
-                container = data.back();
-
-            ASSERT(tsdb->get_time_range().in_range(dp.first) == 0);
-            container->add_data_point(dp.first, dp.second);
-        }
+            dps.emplace_back(dp.first, dp.second);
     }
 }
 

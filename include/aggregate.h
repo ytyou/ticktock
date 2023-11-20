@@ -32,6 +32,7 @@ namespace tt
 class QueryResults;
 
 
+#if 0
 typedef DataPointVector::iterator it_t;
 typedef std::pair<it_t,it_t> it_pair_t;
 
@@ -87,6 +88,7 @@ public:
 private:
     std::priority_queue<it_pair_t, std::vector<it_pair_t>, it_pair_greater> m_pq;
 };
+#endif
 
 
 // Base class of the Aggregators.
@@ -178,7 +180,7 @@ class AggregatorPercentile : public Aggregator
 {
 public:
     void set_quantile(double quantile);
-    double percentile(const std::vector<double>& values) const;
+    double percentile(std::vector<double>& values) const;
 
 protected:
     void merge(std::vector<std::reference_wrapper<DataPointVector>>& src, DataPointVector& dst) override;

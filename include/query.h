@@ -238,9 +238,11 @@ class QueryTask : public Recyclable
 {
 public:
     QueryTask();
-    void query_ts_data(Tsdb *tsdb, RollupType rollup_type);
+    void query_ts_data(Tsdb *tsdb);
+    void query_ts_data(RollupType rollup_type);
     void merge_data();
     void fill();
+    void convert_to_ms();
 
     // return max/min value of the last n dps in m_dps[]
     double get_max(int n) const;
@@ -282,11 +284,6 @@ public:
         header_idx = m_header_index;
     }
 
-    inline std::vector<RollupIndex> *get_rollup_entries()
-    {
-        return &m_rollup_entries;
-    }
-
     uint32_t get_tstamp_from() const
     {
         return m_tstamp_from;
@@ -295,6 +292,16 @@ public:
     void set_tstamp_from(uint32_t tstamp)
     {
         m_tstamp_from = tstamp;
+    }
+
+    inline Timestamp get_last_tstamp() const
+    {
+        return m_last_tstamp;
+    }
+
+    inline void set_last_tstamp(Timestamp ts)
+    {
+        m_last_tstamp = ts;
     }
 
     inline TimeRange& get_query_range()
@@ -330,6 +337,7 @@ private:
     void query_with_ooo();
     void query_without_ooo();
 
+    Timestamp m_last_tstamp;
     TimeRange m_time_range;
     Downsampler *m_downsampler;
     TimeSeries *m_ts;   // should NEVER be nullptr
@@ -339,7 +347,6 @@ private:
     //FileIndex m_file_index;
     uint32_t m_file_index;  // used for both rollup-idx and file-idx
     HeaderIndex m_header_index;
-    std::vector<RollupIndex> m_rollup_entries;
     uint32_t m_tstamp_from;
     bool m_has_ooo;
 };
@@ -359,7 +366,7 @@ public:
     void perform(bool lock = true); // perform tasks
     void add_task(TimeSeries *ts);
 
-    RollupType use_rollup(Tsdb *tsdb) const;
+    RollupType use_rollup() const;
     int get_task_count() const { return m_tasks.size(); }
     int get_errno() const { return m_errno; }
     std::vector<QueryTask*>& get_tasks() { return m_tasks; }
