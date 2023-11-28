@@ -817,9 +817,17 @@ DataFile::open(bool for_read)
         {
             // get file size
             struct stat sb;
+            std::memset(&sb, 0, sizeof(sb));
             if (fstat(fd, &sb) == -1)
                 Logger::error("Failed to fstat file %s, errno = %d", m_name.c_str(), errno);
             off_t length = sb.st_size;
+
+            // allocate enough disk space for this file
+            if (length == 0)
+            {
+                if (fallocate(fd, FALLOC_FL_KEEP_SIZE, 0, g_page_size*g_page_count) != 0)
+                    Logger::warn("fallocate(%d) failed, errno = %d", fd, errno);
+            }
 
             m_page_index = length / m_page_size;
             Logger::info("opening %s for write", m_name.c_str());
@@ -1231,7 +1239,8 @@ RollupDataFile::RollupDataFile(MetricId mid, Timestamp begin) :
     m_file(nullptr),
     m_begin(begin),
     m_last_access(0),
-    m_index(0)
+    m_index(0),
+    m_size(0)
 {
     // name of the file
     int year, month;
@@ -1250,6 +1259,7 @@ RollupDataFile::RollupDataFile(const std::string& name) :
     m_begin(TT_INVALID_TIMESTAMP),
     m_last_access(0),
     m_index(0),
+    m_size(0),
     m_name(name)
 {
 }
@@ -1260,7 +1270,7 @@ RollupDataFile::~RollupDataFile()
 }
 
 void
-RollupDataFile::open()
+RollupDataFile::open(bool for_read)
 {
     ASSERT(m_file == nullptr);
     int fd = ::open(m_name.c_str(), O_RDWR|O_CREAT|O_APPEND|O_NONBLOCK, S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH);
@@ -1272,6 +1282,21 @@ RollupDataFile::open()
     }
     else
     {
+        if (! for_read)
+        {
+            struct stat sb;
+            std::memset(&sb, 0, sizeof(sb));
+
+            if (sb.st_size == 0)
+            {
+                off_t length = RollupManager::get_rollup_data_file_size();
+                if (fallocate(fd, FALLOC_FL_KEEP_SIZE, 0, length) != 0)
+                    Logger::warn("fallocate(%d) failed, errno = %d", fd, errno);
+            }
+            else
+                m_size = sb.st_size;
+        }
+
         m_file = fdopen(fd, "a+b");
         ASSERT(m_file != nullptr);
         Logger::info("opening %s for read/write", m_name.c_str());
@@ -1331,7 +1356,7 @@ RollupDataFile::add_data_point(TimeSeriesId tid, uint32_t cnt, double min, doubl
     if (sizeof(m_buff) < (m_index + sizeof(entry)))
     {
         // write the m_buff[] out
-        if (! is_open()) open();
+        if (! is_open()) open(false);
         ASSERT(m_file != nullptr);
         std::fwrite(m_buff, m_index, 1, m_file);
         std::fflush(m_file);
@@ -1340,10 +1365,12 @@ RollupDataFile::add_data_point(TimeSeriesId tid, uint32_t cnt, double min, doubl
 
     std::memcpy(m_buff+m_index, &entry, sizeof(entry));
     m_index += sizeof(entry);
+    m_size += sizeof(entry);
     m_last_access = ts_now_sec();
     dec_ref_count_no_lock();
 }
 
+// This is for backup file.
 void
 RollupDataFile::add_data_point(TimeSeriesId tid, Timestamp tstamp, uint32_t cnt, double min, double max, double sum)
 {
@@ -1356,9 +1383,10 @@ RollupDataFile::add_data_point(TimeSeriesId tid, Timestamp tstamp, uint32_t cnt,
     entry.sum = sum;
     entry.tstamp = tstamp;
 
-    if (! is_open()) open();
+    if (! is_open()) open(false);
     std::fwrite(&entry, sizeof(entry), 1, m_file);
     std::fflush(m_file);
+    m_size += sizeof(entry);
 }
 
 void
@@ -1369,7 +1397,7 @@ RollupDataFile::query(std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupTy
     std::size_t n;
 
     m_last_access = ts_now_sec();
-    if (! is_open()) open();
+    if (! is_open()) open(true);
     std::fseek(m_file, 0, SEEK_SET);    // seek to beginning of file
 
     while ((n = std::fread(&buff[0], 1, sizeof(buff), m_file)) > 0)

@@ -299,10 +299,11 @@ public:
     RollupDataFile(MetricId mid, Timestamp begin);
     ~RollupDataFile();
 
-    void open();
+    void open(bool for_read);
     void close();
     bool close_if_idle(Timestamp threshold, Timestamp now);
     bool is_open() const;
+    inline off_t size() const { return m_size; }
 
     inline bool exists() const { return file_exists(m_name); }
     inline void remove() { rm_file(m_name); }
@@ -322,6 +323,7 @@ private:
     int m_index;    // index of m_buff[]
     char m_buff[4096];
     Timestamp m_last_access;
+    off_t m_size;
     std::mutex m_lock;
     int m_ref_count;        // prevent unload when in use
 };

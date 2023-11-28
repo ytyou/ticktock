@@ -18,6 +18,7 @@
 
 #pragma once
 
+#include <queue>
 #include "dp.h"
 #include "mmap.h"
 #include "type.h"
@@ -55,6 +56,8 @@ public:
     // return true if data-point found; false if no data
     bool query(RollupType type, DataPointPair& dp);
 
+    static void add_data_file_size(off_t size);
+    static off_t get_rollup_data_file_size();
     static int get_rollup_bucket(MetricId mid);
     static RollupDataFile *get_data_file(MetricId mid, Timestamp tstamp);
     static void get_data_files(MetricId mid, TimeRange& range, std::vector<RollupDataFile*>& files);
@@ -77,6 +80,8 @@ private:
 
     static std::mutex m_lock;
     static std::unordered_map<uint64_t, RollupDataFile*> m_data_files;
+    static std::queue<off_t> m_sizes;   // sizes of 'recent' data files
+    static off_t m_size_hint;
 };
 
 

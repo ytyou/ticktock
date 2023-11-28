@@ -34,6 +34,8 @@ namespace tt
 std::mutex RollupManager::m_lock;
 std::unordered_map<uint64_t, RollupDataFile*> RollupManager::m_data_files;
 RollupDataFile *RollupManager::m_backup_data_file = nullptr;
+std::queue<off_t> RollupManager::m_sizes;
+off_t RollupManager::m_size_hint;
 
 
 RollupManager::RollupManager() :
@@ -395,8 +397,7 @@ RollupManager::get_data_files(MetricId mid, TimeRange& range, std::vector<Rollup
 void
 RollupManager::rotate()
 {
-    uint64_t thrashing_threshold =
-        Config::inst()->get_time(CFG_TSDB_THRASHING_THRESHOLD, TimeUnit::SEC, CFG_TSDB_THRASHING_THRESHOLD_DEF);
+    uint64_t thrashing_threshold = g_rollup_interval;   // 1 hour
     Timestamp now = ts_now_sec();
     std::lock_guard<std::mutex> guard(m_lock);
 
@@ -406,12 +407,34 @@ RollupManager::rotate()
 
         if (file->close_if_idle(thrashing_threshold, now))
         {
+            RollupManager::add_data_file_size(file->size());
             it = m_data_files.erase(it);
             delete file;
         }
         else
             it++;
     }
+}
+
+// Remember sizes of recent rollup data files
+void
+RollupManager::add_data_file_size(off_t size)
+{
+    if (m_sizes.size() >= 10)   // keep 10 most recent sizes
+    {
+        m_size_hint -= m_sizes.front();
+        m_sizes.pop();
+    }
+
+    m_sizes.push(size);
+    m_size_hint += size;
+}
+
+off_t
+RollupManager::get_rollup_data_file_size()
+{
+    std::lock_guard<std::mutex> guard(m_lock);
+    return m_sizes.empty() ? 409600 : m_size_hint/m_sizes.size();
 }
 
 
