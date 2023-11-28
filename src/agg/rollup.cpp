@@ -433,7 +433,7 @@ RollupManager::add_data_file_size(off_t size)
 off_t
 RollupManager::get_rollup_data_file_size()
 {
-    std::lock_guard<std::mutex> guard(m_lock);
+    //std::lock_guard<std::mutex> guard(m_lock);
     return m_sizes.empty() ? 409600 : m_size_hint/m_sizes.size();
 }
 
