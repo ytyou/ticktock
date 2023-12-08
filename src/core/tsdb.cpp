@@ -2908,6 +2908,7 @@ Tsdb::init()
         Timer::inst()->add_task(task, freq_sec, "tsdb_compact");
         Logger::info("Will try to compact tsdb every %d secs.", freq_sec);
     }
+*/
 
     task.doit = &Tsdb::rollup;
     task.data.integer = 0;  // indicates this is from scheduled task (vs. interactive cmd)
@@ -2917,7 +2918,6 @@ Tsdb::init()
         Timer::inst()->add_task(task, freq_sec, "tsdb_rollup");
         Logger::info("Will try to rollup tsdb every %d secs.", freq_sec);
     }
-*/
 }
 
 std::string
@@ -3520,6 +3520,146 @@ Tsdb::write_to_compacted(MetricId mid, QuerySuperTask& super_task, Tsdb *compact
 
         task->recycle();    // release memory
     }
+}
+
+bool
+Tsdb::rollup(TaskData& data)
+{
+    // called from scheduled task? if so, enforce off-hour rule;
+    if ((data.integer == 0) && ! is_off_hour()) return false;
+
+    Tsdb *tsdb = nullptr;
+    Logger::info("[rollup] Finding tsdbs to rollup...");
+
+    // Go through all the Tsdbs, from the oldest to the newest,
+    // to find the first not-yet-rolled-up Tsdb to rollup.
+    {
+        PThread_ReadLock guard(&m_tsdb_lock);
+
+        for (auto it = m_tsdbs.begin(); it != m_tsdbs.end(); it++)
+        {
+            std::lock_guard<std::mutex> guard((*it)->m_lock);
+            //WriteLock guard((*it)->m_lock);
+
+            if ((*it)->is_rolled_up())
+            {
+                Logger::debug("[rollup] %T is already rolled up, ref-count = %d", (*it), (*it)->m_ref_count);
+                continue;
+            }
+            else if (((*it)->m_mode & TSDB_MODE_READ_WRITE) && (data.integer == 0))
+            {
+                Logger::debug("[rollup] %T is still being accessed, ref-count = %d", (*it), (*it)->m_ref_count);
+                break;
+            }
+            else if ((*it)->m_ref_count > 0)
+            {
+                Logger::debug("[rollup] ref-count of %T is not zero: %d", (*it), (*it)->m_ref_count);
+                break;
+            }
+
+            tsdb = *it;
+            break;
+        }
+    }
+
+#if 0
+    if (tsdb != nullptr)
+    {
+        std::lock_guard<std::mutex> guard(tsdb->m_lock);
+        //WriteLock guard(tsdb->m_lock);
+
+        if (tsdb->m_ref_count <= 0)
+        {
+            TimeRange range = tsdb->get_time_range();
+
+            Logger::info("[compact] Found this tsdb to compact: %T", tsdb);
+
+            // perform compaction
+            try
+            {
+                // cleanup existing temporary tsdb, if any
+                std::string dir = get_tsdb_dir_name(range, TEMP_SUFFIX);
+                if (ends_with(dir, TEMP_SUFFIX)) // safty check
+                    rm_dir(dir);
+
+                // create a temporary tsdb to compact data into
+                Tsdb *compacted = Tsdb::create(range, false, TEMP_SUFFIX);
+#ifdef __x86_64__
+                compacted->m_page_size = g_sys_page_size;
+#endif
+
+                std::vector<Mapping*> mappings;
+                int batch_size =
+                    Config::inst()->get_int(CFG_TSDB_COMPACT_BATCH_SIZE, CFG_TSDB_COMPACT_BATCH_SIZE_DEF);
+
+                Tsdb::get_all_mappings(mappings);
+                tsdb->m_index_file.ensure_open(true);
+
+                QuerySuperTask super_task(tsdb);
+                PageSize next_size = compacted->get_page_size();
+
+                for (Mapping *mapping : mappings)
+                {
+                    super_task.set_metric_id(mapping->get_id());
+
+                    for (TimeSeries *ts = mapping->get_ts_head(); ts != nullptr; ts = ts->m_next)
+                    {
+                        super_task.add_task(ts);
+
+                        if (super_task.get_task_count() >= batch_size)
+                        {
+                            super_task.perform(false);
+                            write_to_compacted(mapping->get_id(), super_task, compacted, next_size);
+                            super_task.empty_tasks();
+                        }
+                    }
+
+                    if (super_task.get_task_count() > 0)
+                    {
+                        super_task.perform(false);
+                        write_to_compacted(mapping->get_id(), super_task, compacted, next_size);
+                        super_task.empty_tasks();
+                    }
+                }
+
+                compacted->unload_no_lock();
+                delete compacted;
+                tsdb->unload_no_lock();
+
+                // rename to indicate compaction was successful
+                std::string temp_name = get_tsdb_dir_name(range, TEMP_SUFFIX);
+                std::string done_name = get_tsdb_dir_name(range, DONE_SUFFIX);
+                rm_dir(done_name);  // in case it already exists
+                int rc = std::rename(temp_name.c_str(), done_name.c_str());
+                compact2();
+
+                // mark it as compacted
+                tsdb->m_mode |= TSDB_MODE_COMPACTED;
+                dir = get_tsdb_dir_name(range);
+                tsdb->reload_header_data_files(dir);
+                Logger::info("[compact] 1 Tsdb compacted");
+            }
+            catch (const std::exception& ex)
+            {
+                Logger::error("[compact] compaction failed: %s", ex.what());
+            }
+            catch (...)
+            {
+                Logger::error("[compact] compaction failed for unknown reasons");
+            }
+        }
+        else
+        {
+            Logger::debug("[compact] Tsdb busy, not compacting. ref = %d", tsdb->m_ref_count);
+        }
+    }
+    else
+    {
+        Logger::info("[compact] Did not find any appropriate Tsdb to compact.");
+    }
+#endif
+
+    return false;
 }
 
 void

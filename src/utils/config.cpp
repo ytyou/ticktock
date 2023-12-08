@@ -314,6 +314,12 @@ Config::get_data_dir()
 }
 
 std::string
+Config::get_wal_dir()
+{
+    return get_data_dir() + "/WAL";
+}
+
+std::string
 Config::get_log_dir()
 {
     // if 'log.file' is specified, use it to find the log dir

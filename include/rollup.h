@@ -76,7 +76,7 @@ private:
     Timestamp m_tstamp;
 
     // used during shutdown/restart of TT
-    static RollupDataFile *m_backup_data_file;
+    static RollupDataFile *m_wal_data_file;
 
     static std::mutex m_lock;
     static std::unordered_map<uint64_t, RollupDataFile*> m_data_files;

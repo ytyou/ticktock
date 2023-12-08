@@ -453,6 +453,9 @@ main(int argc, char *argv[])
     std::signal(SIGBUS, intr_handler);
     std::set_terminate(terminate_handler);
 
+    if (! g_run_as_daemon)
+        printf("TickTockDB is ready...\n");
+
     // wait for HTTP server to stop
     http_server.wait(0);
     http_server.close_conns();

@@ -60,7 +60,7 @@ AppendLog::flush_all(TaskData& data)
     if (g_shutdown_requested)
         return false;
 
-    std::string append_dir = Config::get_data_dir();
+    std::string append_dir = Config::get_wal_dir();
     std::string tmp_name = append_dir + "/append.tmp";
     std::string log_name = append_dir + "/append.log";
     std::lock_guard<std::mutex> guard(m_lock);
@@ -107,7 +107,7 @@ AppendLog::open(std::string& name)
 void
 AppendLog::shutdown()
 {
-    std::string append_dir = Config::get_data_dir();
+    std::string append_dir = Config::get_wal_dir();
     std::string tmp_name = append_dir + "/append.tmp";
     std::string log_name = append_dir + "/append.log";
     std::lock_guard<std::mutex> guard(m_lock);
@@ -119,7 +119,7 @@ AppendLog::shutdown()
 bool
 AppendLog::restore_needed()
 {
-    std::string append_dir = Config::get_data_dir();
+    std::string append_dir = Config::get_wal_dir();
     std::string tmp_name = append_dir + "/append.tmp";
     std::string log_name = append_dir + "/append.log";
 
@@ -129,7 +129,7 @@ AppendLog::restore_needed()
 void
 AppendLog::restore(std::vector<TimeSeries*>& tsv)
 {
-    std::string append_dir = Config::get_data_dir();
+    std::string append_dir = Config::get_wal_dir();
     std::string tmp_name = append_dir + "/append.tmp";
     std::string log_name = append_dir + "/append.log";
     std::string name = file_exists(log_name) ? log_name : tmp_name;

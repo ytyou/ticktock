@@ -33,7 +33,7 @@ namespace tt
 
 std::mutex RollupManager::m_lock;
 std::unordered_map<uint64_t, RollupDataFile*> RollupManager::m_data_files;
-RollupDataFile *RollupManager::m_backup_data_file = nullptr;
+RollupDataFile *RollupManager::m_wal_data_file = nullptr;
 std::queue<off_t> RollupManager::m_sizes;
 off_t RollupManager::m_size_hint;
 
@@ -91,12 +91,12 @@ RollupManager::operator=(const RollupManager& other)
 void
 RollupManager::init()
 {
-    std::string backup_dir = Config::get_data_dir() + "/backup";
-    create_dir(backup_dir);
-    m_backup_data_file = new RollupDataFile(backup_dir + "/rollup.data");
+    std::string wal_dir = Config::get_wal_dir();
+    create_dir(wal_dir);
+    m_wal_data_file = new RollupDataFile(wal_dir + "/rollup.data");
 
     // restore if necessary
-    if (m_backup_data_file->exists())
+    if (m_wal_data_file->exists())
     {
         std::unordered_map<TimeSeriesId,RollupManager> map;
 
@@ -139,10 +139,10 @@ RollupManager::shutdown()
 
     m_data_files.clear();
 
-    if (m_backup_data_file != nullptr)
+    if (m_wal_data_file != nullptr)
     {
-        delete m_backup_data_file;
-        m_backup_data_file = nullptr;
+        delete m_wal_data_file;
+        m_wal_data_file = nullptr;
     }
 }
 
@@ -216,8 +216,8 @@ RollupManager::close(TimeSeriesId tid)
     if (m_tstamp == TT_INVALID_TIMESTAMP || m_cnt == 0)
         return;
 
-    if (m_backup_data_file != nullptr)
-        m_backup_data_file->add_data_point(tid, m_tstamp, m_cnt, m_min, m_max, m_sum);
+    if (m_wal_data_file != nullptr)
+        m_wal_data_file->add_data_point(tid, m_tstamp, m_cnt, m_min, m_max, m_sum);
 }
 
 double

@@ -243,7 +243,7 @@ public:
     static void purge_oldest(int threshold);
     static bool compact(TaskData& data);
     static void compact2(); // last compaction step
-    //static bool rollup(TaskData& data);
+    static bool rollup(TaskData& data);
     static void write_to_compacted(MetricId mid, QuerySuperTask& super_task, Tsdb *compacted, PageSize& next_size);
     static bool add_data_point(DataPoint& dp, bool forward);
     static void restore_metrics(MetricId id, std::string& metric);

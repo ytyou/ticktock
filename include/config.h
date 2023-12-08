@@ -26,7 +26,6 @@
 // All the recognized configurations in the config file,
 // along with their default values, if any.
 
-#define CFG_APPEND_LOG_DIR                      "append.log.dir"
 #define CFG_APPEND_LOG_ENABLED                  "append.log.enabled"
 #define CFG_APPEND_LOG_ENABLED_DEF              true
 #define CFG_APPEND_LOG_FLUSH_FREQUENCY          "append.log.flush.frequency"
@@ -136,6 +135,8 @@
 #define CFG_TSDB_ROLLUP_BUCKETS_DEF             1000
 #define CFG_TSDB_ROLLUP_DELAY                   "tsdb.rollup.delay"
 #define CFG_TSDB_ROLLUP_DELAY_DEF               "2min"
+#define CFG_TSDB_ROLLUP_FREQUENCY               "tsdb.rollup.frequency"
+#define CFG_TSDB_ROLLUP_FREQUENCY_DEF           "2h"
 #define CFG_TSDB_ROLLUP_INTERVAL                "tsdb.rollup.interval"
 #define CFG_TSDB_ROLLUP_INTERVAL_DEF            "1h"
 #define CFG_TSDB_ROTATION_FREQUENCY             "tsdb.rotation.frequency"
@@ -261,6 +262,7 @@ public:
     void append(const std::string& name, const std::string& value);
 
     static std::string get_data_dir();
+    static std::string get_wal_dir();
     static std::string get_log_dir();
     static std::string get_log_file();
 
