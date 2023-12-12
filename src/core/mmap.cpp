@@ -1235,20 +1235,27 @@ RollupHeaderFile::add_index(TimeSeriesId tid, RollupIndex data_idx)
 /* @param mid Metric ID
  * @param begin Timestamp (in seconds) of beginning of a month
  */
-RollupDataFile::RollupDataFile(MetricId mid, Timestamp begin) :
+RollupDataFile::RollupDataFile(MetricId mid, Timestamp begin, bool monthly) :
     m_file(nullptr),
     m_begin(begin),
     m_last_access(0),
     m_index(0),
-    m_size(0)
+    m_size(0),
+    m_monthly(monthly)
 {
     // name of the file
     int year, month;
     get_year_month(begin, year, month);
     std::ostringstream oss;
+    //oss << Config::get_data_dir() << "/"
+        //<< std::to_string(year) << "/"
+        //<< std::setfill('0') << std::setw(2) << month << "/rollup";
     oss << Config::get_data_dir() << "/"
-        << std::to_string(year) << "/"
-        << std::setfill('0') << std::setw(2) << month << "/rollup";
+        << std::to_string(year) << "/";
+    if (monthly)
+        oss << std::setfill('0') << std::setw(2) << month << "/rollup";
+    else
+        oss << "rollup";
     create_dir(oss.str());
     oss << "/r" << std::setfill('0') << std::setw(6) << RollupManager::get_rollup_bucket(mid) << ".data";
     m_name = oss.str();
@@ -1289,7 +1296,7 @@ RollupDataFile::open(bool for_read)
 
             if (sb.st_size == 0)
             {
-                off_t length = RollupManager::get_rollup_data_file_size();
+                off_t length = RollupManager::get_rollup_data_file_size(m_monthly);
                 if (fallocate(fd, FALLOC_FL_KEEP_SIZE, 0, length) != 0)
                     Logger::warn("fallocate(%d) failed, errno = %d", fd, errno);
             }
@@ -1431,6 +1438,46 @@ RollupDataFile::query(std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupTy
                     DataPointVector& dps = task->get_dps();
                     double val = RollupManager::query(entry, rollup);
                     dps.emplace_back(ts, val);
+                }
+            }
+        }
+    }
+}
+
+void
+RollupDataFile::query(TimeRange& range, std::unordered_map<TimeSeriesId,struct rollup_entry_ext>& outputs)
+{
+    std::lock_guard<std::mutex> guard(m_lock);
+    uint8_t buff[4096];
+    std::size_t n;
+
+    m_last_access = ts_now_sec();
+    if (! is_open()) open(true);
+    std::fseek(m_file, 0, SEEK_SET);    // seek to beginning of file
+
+    while ((n = std::fread(&buff[0], 1, sizeof(buff), m_file)) > 0)
+    {
+        ASSERT((n % sizeof(struct rollup_entry)) == 0);
+
+        for (std::size_t i = 0; i < n; i += sizeof(struct rollup_entry))
+        {
+            struct rollup_entry *entry = (struct rollup_entry*)&buff[i];
+
+            auto search = outputs.find(entry->tid);
+
+            if (search != outputs.end())
+            {
+                if (search->second.tstamp == TT_INVALID_TIMESTAMP)
+                    search->second.tstamp = m_begin;    // in seconds
+                else
+                    search->second.tstamp += g_rollup_interval; // in seconds
+
+                if (entry->cnt != 0)
+                {
+                    search->second.cnt += entry->cnt;
+                    search->second.min = std::min(search->second.min,entry->min);
+                    search->second.max = std::max(search->second.max,entry->max);
+                    search->second.sum += entry->sum;
                 }
             }
         }

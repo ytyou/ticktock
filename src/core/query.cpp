@@ -874,7 +874,7 @@ QueryTask::get_ts_id() const
 double
 QueryTask::get_max(int n) const
 {
-    double max = std::numeric_limits<double>::min();
+    double max = std::numeric_limits<double>::lowest();
 
     for (int i = m_dps.size()-1; i >= 0 && n > 0; i--, n--)
     {
@@ -962,7 +962,8 @@ QuerySuperTask::QuerySuperTask(TimeRange& range, const char* ds, bool ms, Rollup
     m_downsample(ds),
     m_compact(false),
     m_time_range(range),
-    m_rollup(rollup)
+    m_rollup(rollup),
+    m_metric_id(TT_INVALID_METRIC_ID)
 {
 }
 
@@ -971,7 +972,9 @@ QuerySuperTask::QuerySuperTask(Tsdb *tsdb) :
     m_ms(true),
     m_errno(0),
     m_downsample(nullptr),
-    m_time_range(tsdb->get_time_range())
+    m_metric_id(TT_INVALID_METRIC_ID),
+    m_time_range(tsdb->get_time_range()),
+    m_rollup(RollupUsage::RU_FALLBACK_RAW)
 {
     m_tsdbs.push_back(tsdb);
     m_compact = true;

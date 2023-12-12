@@ -296,7 +296,7 @@ class RollupDataFile
 {
 public:
     RollupDataFile(const std::string& name);
-    RollupDataFile(MetricId mid, Timestamp begin);
+    RollupDataFile(MetricId mid, Timestamp begin, bool monthly);
     ~RollupDataFile();
 
     void open(bool for_read);
@@ -311,6 +311,8 @@ public:
     void add_data_point(TimeSeriesId tid, uint32_t cnt, double min, double max, double sum);
     void add_data_point(TimeSeriesId tid, Timestamp tstamp, uint32_t cnt, double min, double max, double sum);  // called during shutdown
     void query(std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupType rollup);
+    // used by Tsdb::rollup() for offline processing
+    void query(TimeRange& range, std::unordered_map<TimeSeriesId,struct rollup_entry_ext>& map);
 
     void dec_ref_count();
     void dec_ref_count_no_lock() { m_ref_count--; }
@@ -326,6 +328,7 @@ private:
     off_t m_size;
     std::mutex m_lock;
     int m_ref_count;        // prevent unload when in use
+    bool m_monthly;         // true: monthly; false: annually
 };
 
 

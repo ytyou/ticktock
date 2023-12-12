@@ -68,6 +68,7 @@ extern Timestamp ts_now_sec();
 extern std::time_t begin_month(int year, int month);    // return beginning of month time in UTC
 extern std::time_t begin_month(std::time_t ts);         // return beginning of month time in UTC
 extern std::time_t end_month(std::time_t ts);           // return beginning of next month in UTC
+extern std::time_t begin_year(std::time_t ts);          // return beginning of year time in UTC
 extern void get_year_month(std::time_t ts, int& year, int& month);
 extern void ts_now(char *buff, const size_t size);
 extern void ts_now(time_t& sec, unsigned int& msec);

@@ -19,6 +19,7 @@
 #pragma once
 
 #include <queue>
+#include <unordered_map>
 #include "dp.h"
 #include "mmap.h"
 #include "type.h"
@@ -57,17 +58,20 @@ public:
     bool query(RollupType type, DataPointPair& dp);
 
     static void add_data_file_size(off_t size);
-    static off_t get_rollup_data_file_size();
+    static off_t get_rollup_data_file_size(bool monthly);
     static int get_rollup_bucket(MetricId mid);
-    static RollupDataFile *get_data_file(MetricId mid, Timestamp tstamp);
+    static RollupDataFile *get_data_file(MetricId mid, Timestamp tstamp);   // get monthly data files
+    static RollupDataFile *get_data_file2(MetricId mid, Timestamp tstamp);  // get annually data files
     static void get_data_files(MetricId mid, TimeRange& range, std::vector<RollupDataFile*>& files);
     static void query(MetricId mid, TimeRange& range, std::vector<QueryTask*>& tasks, RollupType rollup);
     static void query_no_lock(MetricId mid, TimeRange& range, std::vector<QueryTask*>& tasks, RollupType rollup);
+    static void query(MetricId mid, TimeRange& range, std::unordered_map<TimeSeriesId,struct rollup_entry_ext>& output);
     static double query(struct rollup_entry *entry, RollupType type);
     static void rotate();
 
 private:
     Timestamp step_down(Timestamp tstamp);
+    static RollupDataFile *get_data_file(MetricId mid, std::time_t tstamp, std::unordered_map<uint64_t, RollupDataFile*>& map, bool monthly);
 
     uint32_t m_cnt;
     double m_min;
@@ -79,7 +83,9 @@ private:
     static RollupDataFile *m_wal_data_file;
 
     static std::mutex m_lock;
-    static std::unordered_map<uint64_t, RollupDataFile*> m_data_files;
+    static std::unordered_map<uint64_t, RollupDataFile*> m_data_files;  // monthly
+    static std::mutex m_lock2;
+    static std::unordered_map<uint64_t, RollupDataFile*> m_data_files2; // annually
     static std::queue<off_t> m_sizes;   // sizes of 'recent' data files
     static off_t m_size_hint;
 };

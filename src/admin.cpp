@@ -79,6 +79,10 @@ Admin::http_post_api_admin_handler(HttpRequest& request, HttpResponse& response)
         {
             status = cmd_append(params, response);
         }
+        else if (strcmp(cmd, "cfg") == 0)
+        {
+            status = cmd_cfg(params, response);
+        }
         else if (strcmp(cmd, "compact") == 0)
         {
             status = cmd_compact(params, response);
@@ -156,6 +160,16 @@ Admin::cmd_append(KeyValuePair *params, HttpResponse& response)
     char buff[32];
     int len = snprintf(buff, sizeof(buff), "append log generated");
     response.init(200, HttpContentType::PLAIN, len, buff);
+    return true;
+}
+
+bool
+Admin::cmd_cfg(KeyValuePair *params, HttpResponse& response)
+{
+    for (KeyValuePair *kv = params; kv != nullptr; kv = kv->next())
+        Config::inst()->set_value(kv->m_key, kv->m_value);
+
+    response.init(200);
     return true;
 }
 

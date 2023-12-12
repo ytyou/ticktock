@@ -170,6 +170,7 @@ begin_month(int year, int month)
 std::time_t
 begin_month(time_t ts)
 {
+    ASSERT(is_sec(ts));
     struct tm timeinfo;
     gmtime_r(&ts, &timeinfo);
     return begin_month(timeinfo.tm_year, timeinfo.tm_mon);
@@ -183,6 +184,7 @@ begin_month(time_t ts)
 std::time_t
 end_month(std::time_t ts)
 {
+    ASSERT(is_sec(ts));
     struct tm timeinfo;
     gmtime_r(&ts, &timeinfo);
     int month = timeinfo.tm_mon + 1;    // next month
@@ -193,6 +195,20 @@ end_month(std::time_t ts)
         year++;
     }
     return begin_month(year, month);
+}
+
+/* return beginning of year time in UTC
+ *
+ * @param ts Current time
+ * @return Beginning of the year of given ts, in seconds
+ */
+std::time_t
+begin_year(time_t ts)
+{
+    ASSERT(is_sec(ts));
+    struct tm timeinfo;
+    gmtime_r(&ts, &timeinfo);
+    return begin_month(timeinfo.tm_year, 0);
 }
 
 /* @param ts Number of seconds since the Epoch

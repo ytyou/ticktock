@@ -24,6 +24,7 @@
 #include <dirent.h>
 #include <functional>
 #include <glob.h>
+#include <limits>
 #include <stdio.h>
 #include <iomanip>
 #include <sstream>
@@ -3562,7 +3563,6 @@ Tsdb::rollup(TaskData& data)
         }
     }
 
-#if 0
     if (tsdb != nullptr)
     {
         std::lock_guard<std::mutex> guard(tsdb->m_lock);
@@ -3572,92 +3572,78 @@ Tsdb::rollup(TaskData& data)
         {
             TimeRange range = tsdb->get_time_range();
 
-            Logger::info("[compact] Found this tsdb to compact: %T", tsdb);
+            Logger::info("[rollup] Found this tsdb to rollup: %T", tsdb);
 
-            // perform compaction
+            // perform rollup
             try
             {
-                // cleanup existing temporary tsdb, if any
-                std::string dir = get_tsdb_dir_name(range, TEMP_SUFFIX);
-                if (ends_with(dir, TEMP_SUFFIX)) // safty check
-                    rm_dir(dir);
-
-                // create a temporary tsdb to compact data into
-                Tsdb *compacted = Tsdb::create(range, false, TEMP_SUFFIX);
-#ifdef __x86_64__
-                compacted->m_page_size = g_sys_page_size;
-#endif
-
                 std::vector<Mapping*> mappings;
-                int batch_size =
-                    Config::inst()->get_int(CFG_TSDB_COMPACT_BATCH_SIZE, CFG_TSDB_COMPACT_BATCH_SIZE_DEF);
+                struct rollup_entry_ext entry;
 
                 Tsdb::get_all_mappings(mappings);
                 tsdb->m_index_file.ensure_open(true);
 
-                QuerySuperTask super_task(tsdb);
-                PageSize next_size = compacted->get_page_size();
+                entry.tstamp = TT_INVALID_TIMESTAMP;
+                entry.cnt = 0;
+                entry.min = std::numeric_limits<double>::max();
+                entry.max = std::numeric_limits<double>::lowest();
+                entry.sum = 0.0;
 
                 for (Mapping *mapping : mappings)
                 {
-                    super_task.set_metric_id(mapping->get_id());
+                    std::unordered_map<TimeSeriesId,struct rollup_entry_ext> map;
 
                     for (TimeSeries *ts = mapping->get_ts_head(); ts != nullptr; ts = ts->m_next)
                     {
-                        super_task.add_task(ts);
-
-                        if (super_task.get_task_count() >= batch_size)
-                        {
-                            super_task.perform(false);
-                            write_to_compacted(mapping->get_id(), super_task, compacted, next_size);
-                            super_task.empty_tasks();
-                        }
+                        TimeSeriesId tid = ts->get_id();
+                        entry.tid = tid;
+                        ASSERT(map.find(tid) == map.end());
+                        map.emplace(std::make_pair(tid,entry));
                     }
 
-                    if (super_task.get_task_count() > 0)
+                    if (! map.empty())
                     {
-                        super_task.perform(false);
-                        write_to_compacted(mapping->get_id(), super_task, compacted, next_size);
-                        super_task.empty_tasks();
+                        RollupManager::query(mapping->get_id(), range, map);
+
+                        // write to data files
+                        RollupDataFile *data_file =
+                            RollupManager::get_data_file2(mapping->get_id(), range.get_from_sec());
+
+                        ASSERT(data_file != nullptr);
+                        data_file->open(false); // open for write
+
+                        for (const std::pair<TimeSeriesId,struct rollup_entry_ext>& e: map)
+                            data_file->add_data_point(e.second.tid, e.second.cnt, e.second.min, e.second.max, e.second.sum);
+
+                        data_file->close_if_idle(g_rollup_interval, ts_now_sec());
+                        data_file->dec_ref_count();
                     }
                 }
 
-                compacted->unload_no_lock();
-                delete compacted;
                 tsdb->unload_no_lock();
 
-                // rename to indicate compaction was successful
-                std::string temp_name = get_tsdb_dir_name(range, TEMP_SUFFIX);
-                std::string done_name = get_tsdb_dir_name(range, DONE_SUFFIX);
-                rm_dir(done_name);  // in case it already exists
-                int rc = std::rename(temp_name.c_str(), done_name.c_str());
-                compact2();
-
                 // mark it as compacted
-                tsdb->m_mode |= TSDB_MODE_COMPACTED;
-                dir = get_tsdb_dir_name(range);
-                tsdb->reload_header_data_files(dir);
-                Logger::info("[compact] 1 Tsdb compacted");
+                tsdb->m_mode |= TSDB_MODE_ROLLED_UP;
+                Logger::info("[rollup] 1 Tsdb rolled up");
             }
             catch (const std::exception& ex)
             {
-                Logger::error("[compact] compaction failed: %s", ex.what());
+                Logger::error("[rollup] rollup failed: %s", ex.what());
             }
             catch (...)
             {
-                Logger::error("[compact] compaction failed for unknown reasons");
+                Logger::error("[rollup] rollup failed for unknown reasons");
             }
         }
         else
         {
-            Logger::debug("[compact] Tsdb busy, not compacting. ref = %d", tsdb->m_ref_count);
+            Logger::debug("[rollup] Tsdb busy, not rolling up. ref = %d", tsdb->m_ref_count);
         }
     }
     else
     {
-        Logger::info("[compact] Did not find any appropriate Tsdb to compact.");
+        Logger::info("[rollup] Did not find any appropriate Tsdb to rollup.");
     }
-#endif
 
     return false;
 }

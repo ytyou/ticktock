@@ -94,7 +94,8 @@ enum RollupType : unsigned char
     RU_CNT = 2,
     RU_MAX = 3,
     RU_MIN = 4,
-    RU_SUM = 5
+    RU_SUM = 5,
+    RU_RAW = 6
 };
 
 

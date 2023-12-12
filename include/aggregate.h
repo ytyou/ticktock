@@ -194,7 +194,7 @@ private:
 class AggregatorMax : public Aggregator
 {
 protected:
-    void init() override { m_max = std::numeric_limits<double>::min(); m_has_data = false; }
+    void init() override { m_max = std::numeric_limits<double>::lowest(); m_has_data = false; }
     void add_data_point(DataPointPair& dp) override
     { m_max = std::max(m_max, dp.second); m_has_data = true; }
     bool has_data() override { return m_has_data; }
