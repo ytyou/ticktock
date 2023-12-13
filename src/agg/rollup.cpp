@@ -466,7 +466,18 @@ off_t
 RollupManager::get_rollup_data_file_size(bool monthly)
 {
     //std::lock_guard<std::mutex> guard(m_lock);
-    off_t monthly_size = m_sizes.empty() ? 409600 : m_size_hint/m_sizes.size();
+    off_t monthly_size;
+
+    if (m_sizes.empty())
+    {
+        // estimate rollup data file size
+        monthly_size = TimeSeries::get_next_id();
+        monthly_size *= 24 * 30 * sizeof(struct rollup_entry);
+        monthly_size /= Config::inst()->get_int(CFG_TSDB_ROLLUP_BUCKETS, CFG_TSDB_ROLLUP_BUCKETS_DEF);
+    }
+    else
+        monthly_size = m_size_hint / m_sizes.size();
+
     if (monthly) return monthly_size;
     return (monthly_size / (2 * sizeof(struct rollup_entry))) * sizeof(struct rollup_entry_ext);
 }

@@ -827,6 +827,8 @@ DataFile::open(bool for_read)
             {
                 if (fallocate(fd, FALLOC_FL_KEEP_SIZE, 0, g_page_size*g_page_count) != 0)
                     Logger::warn("fallocate(%d) failed, errno = %d", fd, errno);
+                else
+                    Logger::debug("fallocate(%s, %u) called", m_name.c_str(), g_page_size*g_page_count);
             }
 
             m_page_index = length / m_page_size;
@@ -1294,11 +1296,16 @@ RollupDataFile::open(bool for_read)
             struct stat sb;
             std::memset(&sb, 0, sizeof(sb));
 
+            if (fstat(fd, &sb) == -1)
+                Logger::error("Failed to fstat file %s, errno = %d", m_name.c_str(), errno);
+
             if (sb.st_size == 0)
             {
                 off_t length = RollupManager::get_rollup_data_file_size(m_monthly);
                 if (fallocate(fd, FALLOC_FL_KEEP_SIZE, 0, length) != 0)
                     Logger::warn("fallocate(%d) failed, errno = %d", fd, errno);
+                else
+                    Logger::debug("fallocate(%s, %lu) called", m_name.c_str(), length);
             }
             else
                 m_size = sb.st_size;
