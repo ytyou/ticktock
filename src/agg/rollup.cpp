@@ -468,7 +468,7 @@ RollupManager::get_rollup_data_file_size(bool monthly)
     //std::lock_guard<std::mutex> guard(m_lock);
     off_t monthly_size = m_sizes.empty() ? 409600 : m_size_hint/m_sizes.size();
     if (monthly) return monthly_size;
-    return (monthly_size / 2 * sizeof(struct rollup_entry)) * sizeof(struct rollup_entry_ext);
+    return (monthly_size / (2 * sizeof(struct rollup_entry))) * sizeof(struct rollup_entry_ext);
 }
 
 

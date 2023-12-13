@@ -1423,8 +1423,11 @@ Tsdb::get_compressor_version()
 void
 Tsdb::get_range(Timestamp tstamp, TimeRange& range)
 {
-    Timestamp start = (tstamp / tsdb_rotation_freq) * tsdb_rotation_freq;
-    range.init(start, start + tsdb_rotation_freq);
+    //Timestamp start = (tstamp / tsdb_rotation_freq) * tsdb_rotation_freq;
+    //range.init(start, start + tsdb_rotation_freq);
+    std::time_t begin, end;
+    get_day_range(to_sec(tstamp), begin, end);
+    range.init(validate_resolution(begin), validate_resolution(end));
 }
 
 Mapping *
@@ -2926,7 +2929,7 @@ Tsdb::get_tsdb_dir_name(const TimeRange& range, const char *suffix)
 {
     time_t sec = range.get_from_sec();
     struct tm timeinfo;
-    localtime_r(&sec, &timeinfo);
+    gmtime_r(&sec, &timeinfo);
     char buff[PATH_MAX];
     snprintf(buff, sizeof(buff), "%s/%d/%02d/%" PRIu64 ".%" PRIu64 "%s",
         Config::get_data_dir().c_str(),

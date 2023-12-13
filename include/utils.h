@@ -70,6 +70,7 @@ extern std::time_t begin_month(std::time_t ts);         // return beginning of m
 extern std::time_t end_month(std::time_t ts);           // return beginning of next month in UTC
 extern std::time_t begin_year(std::time_t ts);          // return beginning of year time in UTC
 extern void get_year_month(std::time_t ts, int& year, int& month);
+extern void get_day_range(std::time_t ts, std::time_t& begin, std::time_t& end);    // all times are in secs
 extern void ts_now(char *buff, const size_t size);
 extern void ts_now(time_t& sec, unsigned int& msec);
 extern bool is_ms(Timestamp tstamp);

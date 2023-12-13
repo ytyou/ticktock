@@ -168,7 +168,7 @@ begin_month(int year, int month)
  * @return Beginning of the month of given ts, in seconds
  */
 std::time_t
-begin_month(time_t ts)
+begin_month(std::time_t ts)
 {
     ASSERT(is_sec(ts));
     struct tm timeinfo;
@@ -220,6 +220,33 @@ get_year_month(std::time_t ts, int& year, int& month)
     gmtime_r(&ts, &timeinfo);
     month = timeinfo.tm_mon + 1;
     year = timeinfo.tm_year + 1900;
+}
+
+/* @param ts Number of seconds since the Epoch
+ * @param begin Returns beginning of the day, in secs
+ * @param end Returns beginning of the next day, in secs
+ */
+void
+get_day_range(std::time_t ts, std::time_t& begin, std::time_t& end)
+{
+    ASSERT(is_sec(ts));
+
+    struct tm timeinfo;
+    gmtime_r(&ts, &timeinfo);
+
+    timeinfo.tm_sec = 0;
+    timeinfo.tm_min = 0;
+    timeinfo.tm_hour = 0;
+
+    begin = timegm(&timeinfo);
+    ts = begin + 86460;         // this should fall into next day
+
+    gmtime_r(&ts, &timeinfo);
+
+    timeinfo.tm_sec = 0;
+    timeinfo.tm_min = 0;
+    timeinfo.tm_hour = 0;
+    end = timegm(&timeinfo);    // beginning of next day
 }
 
 bool
