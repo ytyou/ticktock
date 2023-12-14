@@ -3613,7 +3613,7 @@ Tsdb::rollup(TaskData& data)
                             RollupManager::get_data_file2(mapping->get_id(), range.get_from_sec());
 
                         ASSERT(data_file != nullptr);
-                        data_file->open(false); // open for write
+                        //data_file->open(false); // open for write
 
                         for (const std::pair<TimeSeriesId,struct rollup_entry_ext>& e: map)
                             data_file->add_data_point(e.second.tid, e.second.cnt, e.second.min, e.second.max, e.second.sum);
