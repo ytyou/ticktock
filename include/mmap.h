@@ -284,11 +284,11 @@ struct __attribute__ ((__packed__)) rollup_entry
 struct __attribute__ ((__packed__)) rollup_entry_ext
 {
     TimeSeriesId tid;
-    Timestamp tstamp;
     uint32_t cnt;
     double min;
     double max;
     double sum;
+    Timestamp tstamp;   // this must be the last entry
 };
 
 
@@ -310,7 +310,8 @@ public:
 
     void add_data_point(TimeSeriesId tid, uint32_t cnt, double min, double max, double sum);
     void add_data_point(TimeSeriesId tid, Timestamp tstamp, uint32_t cnt, double min, double max, double sum);  // called during shutdown
-    void query(std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupType rollup);
+    void query(std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupType rollup);    // query hourly rollup
+    void query2(std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupType rollup);   // query daily rollup
     // used by Tsdb::rollup() for offline processing
     void query(TimeRange& range, std::unordered_map<TimeSeriesId,struct rollup_entry_ext>& map);
 

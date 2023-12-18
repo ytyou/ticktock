@@ -89,13 +89,19 @@ public:
 
 enum RollupType : unsigned char
 {
-    RU_NONE = 0,
-    RU_AVG = 1,
-    RU_CNT = 2,
-    RU_MAX = 3,
-    RU_MIN = 4,
-    RU_SUM = 5,
-    RU_RAW = 6
+    RU_NONE = 0x00,
+    RU_AVG = 0x01,
+    RU_CNT = 0x02,
+    RU_MAX = 0x03,
+    RU_MIN = 0x04,
+    RU_SUM = 0x05,
+    RU_RAW = 0x06,
+    RU_AVG2 = 0x81,     // level2 rollup
+    RU_CNT2 = 0x82,     // level2 rollup
+    RU_MAX2 = 0x83,     // level2 rollup
+    RU_MIN2 = 0x84,     // level2 rollup
+    RU_SUM2 = 0x85,     // level2 rollup
+    RU_LEVEL2 = 0x80    // level2 mask
 };
 
 

@@ -1032,14 +1032,27 @@ QuerySuperTask::use_rollup() const
         if (downsampler != nullptr)
         {
             Timestamp downsample_interval = downsampler->get_interval();
-            Timestamp rollup_interval = g_rollup_interval;  // always in sec
+            Timestamp rollup_interval = g_rollup_interval;      // always in secs
+            Timestamp rollup_interval2 = g_rollup_interval2;    // always in secs
+            bool level2 = false;    // default to 'use rollup_interval' instead of rollup_interval2
 
-            if (g_tstamp_resolution_ms) rollup_interval *= 1000;
+            if (g_tstamp_resolution_ms)
+            {
+                rollup_interval *= 1000;
+                rollup_interval2 *= 1000;
+            }
 
             // TODO: config
+            if (rollup_interval2 <= downsample_interval)
+            {
+                level2 = true;
+                rollup_interval = rollup_interval2;     // use rollup_interval2
+            }
+
             if (rollup_interval <= downsample_interval)
             {
                 rollup = downsampler->get_rollup_type();
+                set_rollup_level(rollup, level2);
 
                 if (rollup != RollupType::RU_NONE)
                 {

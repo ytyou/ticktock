@@ -1173,5 +1173,18 @@ max_subset_4k(int16_t set[], size_t size, std::vector<int>& subset)
     return sum;
 }
 
+void set_rollup_level(RollupType& rollup, bool level2)
+{
+    if (level2)
+        rollup = (RollupType) (rollup | RU_LEVEL2);
+    else
+        rollup = (RollupType) (rollup & ~RU_LEVEL2);
+}
+
+bool is_rollup_level2(RollupType rollup)
+{
+    return (rollup & RU_LEVEL2) == RU_LEVEL2;
+}
+
 
 }

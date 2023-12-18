@@ -1452,6 +1452,55 @@ RollupDataFile::query(std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupTy
 }
 
 void
+RollupDataFile::query2(std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupType rollup)
+{
+    set_rollup_level(rollup, false);    // unset level2
+
+    std::lock_guard<std::mutex> guard(m_lock);
+    uint8_t buff[4096];
+    std::size_t n;
+
+    m_last_access = ts_now_sec();
+    if (! is_open()) open(true);
+    std::fseek(m_file, 0, SEEK_SET);    // seek to beginning of file
+
+    while ((n = std::fread(&buff[0], 1, sizeof(buff), m_file)) > 0)
+    {
+        ASSERT((n % sizeof(struct rollup_entry_ext)) == 0);
+
+        for (std::size_t i = 0; i < n; i += sizeof(struct rollup_entry_ext))
+        {
+            struct rollup_entry_ext *entry = (struct rollup_entry_ext*)&buff[i];
+
+            auto search = map.find(entry->tid);
+
+            if (search != map.end())
+            {
+                QueryTask *task = search->second;
+                Timestamp ts = entry->tstamp;
+                Timestamp last_ts = task->get_last_tstamp();
+
+                // out-of-order?
+                if ((last_ts != TT_INVALID_TIMESTAMP) && (ts <= last_ts))
+                {
+                    // TODO: handle OOO
+                }
+
+                task->set_last_tstamp(ts);
+
+                if (entry->cnt != 0)
+                {
+                    DataPointVector& dps = task->get_dps();
+                    double val = RollupManager::query((struct rollup_entry*)entry, rollup);
+                    // TODO: downsample!
+                    dps.emplace_back(ts, val);
+                }
+            }
+        }
+    }
+}
+
+void
 RollupDataFile::query(TimeRange& range, std::unordered_map<TimeSeriesId,struct rollup_entry_ext>& outputs)
 {
     std::lock_guard<std::mutex> guard(m_lock);

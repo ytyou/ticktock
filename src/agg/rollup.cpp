@@ -228,6 +228,7 @@ RollupManager::query(struct rollup_entry *entry, RollupType type)
     ASSERT(entry != nullptr);
     ASSERT(entry->cnt != 0);
     ASSERT(type != RollupType::RU_NONE);
+    ASSERT((type & RollupType::RU_LEVEL2) == 0);
 
     double val = 0;
 
@@ -318,11 +319,19 @@ RollupManager::query_no_lock(MetricId mid, TimeRange& range, std::vector<QueryTa
         map[task->get_ts_id()] = task;
     }
 
-    get_data_files(mid, range, data_files);
+    bool level2 = is_rollup_level2(rollup);
+
+    if (level2)
+        get_data_files2(mid, range, data_files);
+    else
+        get_data_files(mid, range, data_files);
 
     for (auto file: data_files)
     {
-        file->query(map, rollup);
+        if (level2)
+            file->query2(map, rollup);
+        else
+            file->query(map, rollup);
         file->dec_ref_count();
     }
 }
@@ -414,6 +423,32 @@ RollupManager::get_data_files(MetricId mid, TimeRange& range, std::vector<Rollup
             month = 0;
             year++;
         }
+    }
+}
+
+void
+RollupManager::get_data_files2(MetricId mid, TimeRange& range, std::vector<RollupDataFile*>& files)
+{
+    int year, month;
+    Timestamp end = range.get_to_sec();
+
+    get_year_month(range.get_from_sec(), year, month);
+    month--;
+    year -= 1900;
+
+    for ( ; ; )
+    {
+        std::time_t ts = begin_month(year, 0);
+        if (end <= ts) break;
+
+        RollupDataFile *data_file = get_data_file2(mid, ts);
+
+        if (! data_file->exists())
+            delete data_file;
+        else
+            files.push_back(data_file);
+
+        year++;
     }
 }
 
