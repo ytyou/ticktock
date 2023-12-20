@@ -444,7 +444,7 @@ RollupManager::get_data_files2(MetricId mid, TimeRange& range, std::vector<Rollu
         RollupDataFile *data_file = get_data_file2(mid, ts);
 
         if (! data_file->exists())
-            delete data_file;
+            data_file->dec_ref_count();
         else
             files.push_back(data_file);
 
