@@ -131,15 +131,29 @@ RollupManager::init()
 void
 RollupManager::shutdown()
 {
-    std::lock_guard<std::mutex> guard(m_lock);
-
-    for (const auto& entry: m_data_files)
     {
-        RollupDataFile *file = entry.second;
-        delete file;
+        std::lock_guard<std::mutex> guard(m_lock);
+
+        for (const auto& entry: m_data_files)
+        {
+            RollupDataFile *file = entry.second;
+            delete file;
+        }
+
+        m_data_files.clear();
     }
 
-    m_data_files.clear();
+    {
+        std::lock_guard<std::mutex> guard(m_lock2);
+
+        for (const auto& entry: m_data_files2)
+        {
+            RollupDataFile *file = entry.second;
+            delete file;
+        }
+
+        m_data_files2.clear();
+    }
 
     if (m_wal_data_file != nullptr)
     {

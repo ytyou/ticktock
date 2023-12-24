@@ -1105,11 +1105,43 @@ QuerySuperTask::perform(bool lock)
         }
         else
         {
+            if (is_rollup_level2(rollup))
+            {
+                Tsdb::insts(m_time_range, m_tsdbs);
+
+                // remove those whose rollup data are ready
+                for (auto it = m_tsdbs.begin(); it != m_tsdbs.end(); )
+                {
+                    Tsdb *tsdb = *it;
+
+                    if (tsdb->is_rolled_up())
+                        m_tsdbs.erase(it);
+                    else
+                        it++;
+                }
+            }
+
             // query rollup data
             if (lock)
                 RollupManager::query(m_metric_id, m_time_range, m_tasks, rollup);
             else
                 RollupManager::query_no_lock(m_metric_id, m_time_range, m_tasks, rollup);
+
+            // if necessary, query raw data for those tsdbs whose rollup data are not yet ready
+            for (auto tsdb: m_tsdbs)
+            {
+                if (lock)
+                    tsdb->query_for_data(m_metric_id, m_time_range, m_tasks, m_compact);
+                else
+                    tsdb->query_for_data_no_lock(m_metric_id, m_time_range, m_tasks, m_compact);
+
+                for (QueryTask *task : m_tasks)
+                {
+                    task->query_ts_data(tsdb);
+                    task->merge_data();
+                    task->set_tstamp_from(0);
+                }
+            }
 
             for (QueryTask *task : m_tasks)
             {
