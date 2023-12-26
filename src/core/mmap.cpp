@@ -1403,8 +1403,45 @@ RollupDataFile::add_data_point(TimeSeriesId tid, Timestamp tstamp, uint32_t cnt,
     m_size += sizeof(entry);
 }
 
+int
+RollupDataFile::query_entry(TimeRange& range, struct rollup_entry *entry, std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupType rollup)
+{
+    ASSERT(entry != nullptr);
+
+    int found = 1;
+    auto search = map.find(entry->tid);
+
+    if (search != map.end())
+    {
+        QueryTask *task = search->second;
+        Timestamp ts;
+
+        if (task->get_last_tstamp() == TT_INVALID_TIMESTAMP)
+        {
+            ts = m_begin;
+            task->set_last_tstamp(ts = m_begin);    // in seconds
+        }
+        else
+        {
+            ts = task->get_last_tstamp() + g_rollup_interval;   // in seconds
+            task->set_last_tstamp(ts);
+        }
+
+        found = range.in_range(validate_resolution(ts));
+
+        if (entry->cnt != 0 && found == 0)
+        {
+            DataPointVector& dps = task->get_dps();
+            double val = RollupManager::query(entry, rollup);
+            dps.emplace_back(ts, val);
+        }
+    }
+
+    return found;
+}
+
 void
-RollupDataFile::query(std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupType rollup)
+RollupDataFile::query(TimeRange& range, std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupType rollup)
 {
     std::lock_guard<std::mutex> guard(m_lock);
     uint8_t buff[4096];
@@ -1421,38 +1458,20 @@ RollupDataFile::query(std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupTy
         for (std::size_t i = 0; i < n; i += sizeof(struct rollup_entry))
         {
             struct rollup_entry *entry = (struct rollup_entry*)&buff[i];
-
-            auto search = map.find(entry->tid);
-
-            if (search != map.end())
-            {
-                QueryTask *task = search->second;
-                Timestamp ts;
-
-                if (task->get_last_tstamp() == TT_INVALID_TIMESTAMP)
-                {
-                    ts = m_begin;
-                    task->set_last_tstamp(ts = m_begin);    // in seconds
-                }
-                else
-                {
-                    ts = task->get_last_tstamp() + g_rollup_interval;   // in seconds
-                    task->set_last_tstamp(ts);
-                }
-
-                if (entry->cnt != 0)
-                {
-                    DataPointVector& dps = task->get_dps();
-                    double val = RollupManager::query(entry, rollup);
-                    dps.emplace_back(ts, val);
-                }
-            }
+            if (query_entry(range, entry, map, rollup) > 0) break;
         }
+    }
+
+    // look into m_buff...
+    for (off_t size = 0; size < m_size; size += sizeof(struct rollup_entry))
+    {
+        struct rollup_entry *entry = (struct rollup_entry*)(&m_buff[size]);
+        if (query_entry(range, entry, map, rollup) > 0) break;
     }
 }
 
 void
-RollupDataFile::query2(std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupType rollup)
+RollupDataFile::query2(TimeRange& range, std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupType rollup)
 {
     set_rollup_level(rollup, false);    // unset level2
 

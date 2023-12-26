@@ -203,7 +203,7 @@ RollupManager::add_data_point(MetricId mid, TimeSeriesId tid, DataPoint& dp)
 
     m_cnt++;
     m_min = std::min(m_min, value);
-    m_max = std::max(m_min, value);
+    m_max = std::max(m_max, value);
     m_sum += value;
 }
 
@@ -343,9 +343,9 @@ RollupManager::query_no_lock(MetricId mid, TimeRange& range, std::vector<QueryTa
     for (auto file: data_files)
     {
         if (level2)
-            file->query2(map, rollup);
+            file->query2(range, map, rollup);
         else
-            file->query(map, rollup);
+            file->query(range, map, rollup);
         file->dec_ref_count();
     }
 }
