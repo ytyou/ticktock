@@ -442,16 +442,22 @@ TimeSeries::query_for_data(Tsdb *tsdb, TimeRange& range, std::vector<DataPointCo
 }
 
 void
-TimeSeries::query_for_rollup(TimeRange& range, DataPointVector& dps, RollupType rollup)
+TimeSeries::query_for_rollup(TimeRange& range, QueryTask *qt, RollupType rollup, bool ms)
 {
     ASSERT(rollup != RollupType::RU_NONE);
 
-    if (range.in_range(m_rollup.get_tstamp()))
-    {
-        DataPointPair dp;
+    Timestamp ts = m_rollup.get_tstamp();
+    if (ms) ts *= 1000;
 
-        if (m_rollup.query(rollup, dp))
-            dps.emplace_back(dp.first, dp.second);
+    if (range.in_range(ts) == 0)
+    {
+        struct rollup_entry_ext entry;
+
+        if (m_rollup.get(entry))
+        {
+            if (ms) entry.tstamp *= 1000;
+            qt->add_data_point(&entry, rollup);
+        }
     }
 }
 

@@ -689,13 +689,13 @@ QueryTask::query_ts_data(Tsdb *tsdb)
 }
 
 void
-QueryTask::query_ts_data(RollupType rollup)
+QueryTask::query_ts_data(RollupType rollup, bool ms)
 {
     ASSERT(rollup != RollupType::RU_NONE);
     ASSERT(m_ts != nullptr);
 
     m_has_ooo = false;
-    m_ts->query_for_rollup(m_time_range, m_dps, rollup);
+    m_ts->query_for_rollup(m_time_range, this, rollup, ms);
 }
 
 void
@@ -719,6 +719,23 @@ QueryTask::fill()
         m_downsampler->fill_if_needed(m_dps);
         MemoryManager::free_recyclable(m_downsampler);
         m_downsampler = nullptr;
+    }
+}
+
+// add rolled-up data
+void
+QueryTask::add_data_point(struct rollup_entry_ext *entry, RollupType rollup)
+{
+    ASSERT(entry != nullptr);
+
+    if (m_downsampler == nullptr)
+    {
+        double val = RollupManager::query((struct rollup_entry*)entry, rollup);
+        m_dps.emplace_back((Timestamp)entry->tstamp, val);
+    }
+    else
+    {
+        m_downsampler->add_data_point(entry, rollup, m_dps);
     }
 }
 
@@ -1123,9 +1140,9 @@ QuerySuperTask::perform(bool lock)
 
             // query rollup data
             if (lock)
-                RollupManager::query(m_metric_id, m_time_range, m_tasks, rollup);
+                RollupManager::query(m_metric_id, m_time_range, m_tasks, rollup, m_ms);
             else
-                RollupManager::query_no_lock(m_metric_id, m_time_range, m_tasks, rollup);
+                RollupManager::query_no_lock(m_metric_id, m_time_range, m_tasks, rollup, m_ms);
 
             // if necessary, query raw data for those tsdbs whose rollup data are not yet ready
             for (auto tsdb: m_tsdbs)
@@ -1145,9 +1162,7 @@ QuerySuperTask::perform(bool lock)
 
             for (QueryTask *task : m_tasks)
             {
-                task->query_ts_data(rollup);
-                if (m_ms) task->convert_to_ms();
-                //task->merge_data();
+                task->query_ts_data(rollup, m_ms);
                 task->set_tstamp_from(0);
             }
         }

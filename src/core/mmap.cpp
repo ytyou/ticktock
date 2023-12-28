@@ -1400,11 +1400,12 @@ RollupDataFile::add_data_point(TimeSeriesId tid, Timestamp tstamp, uint32_t cnt,
     if (! is_open()) open(false);
     std::fwrite(&entry, sizeof(entry), 1, m_file);
     std::fflush(m_file);
+    m_index += sizeof(entry);
     m_size += sizeof(entry);
 }
 
 int
-RollupDataFile::query_entry(TimeRange& range, struct rollup_entry *entry, std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupType rollup)
+RollupDataFile::query_entry(TimeRange& range, struct rollup_entry *entry, std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupType rollup, bool ms)
 {
     ASSERT(entry != nullptr);
 
@@ -1427,13 +1428,16 @@ RollupDataFile::query_entry(TimeRange& range, struct rollup_entry *entry, std::u
             task->set_last_tstamp(ts);
         }
 
-        found = range.in_range(validate_resolution(ts));
+        if (ms) ts *= 1000;
+        found = range.in_range(ts);
 
         if (entry->cnt != 0 && found == 0)
         {
-            DataPointVector& dps = task->get_dps();
-            double val = RollupManager::query(entry, rollup);
-            dps.emplace_back(ts, val);
+            //double val = RollupManager::query(entry, rollup);
+            //task->add_data_point(ts, val);
+            struct rollup_entry_ext ext(entry);
+            ext.tstamp = ts;
+            task->add_data_point(&ext, rollup);
         }
     }
 
@@ -1441,7 +1445,7 @@ RollupDataFile::query_entry(TimeRange& range, struct rollup_entry *entry, std::u
 }
 
 void
-RollupDataFile::query(TimeRange& range, std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupType rollup)
+RollupDataFile::query(TimeRange& range, std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupType rollup, bool ms)
 {
     std::lock_guard<std::mutex> guard(m_lock);
     uint8_t buff[4096];
@@ -1458,20 +1462,20 @@ RollupDataFile::query(TimeRange& range, std::unordered_map<TimeSeriesId,QueryTas
         for (std::size_t i = 0; i < n; i += sizeof(struct rollup_entry))
         {
             struct rollup_entry *entry = (struct rollup_entry*)&buff[i];
-            if (query_entry(range, entry, map, rollup) > 0) break;
+            if (query_entry(range, entry, map, rollup, ms) > 0) break;
         }
     }
 
     // look into m_buff...
-    for (off_t size = 0; size < m_size; size += sizeof(struct rollup_entry))
+    for (off_t idx = 0; idx < m_index; idx += sizeof(struct rollup_entry))
     {
-        struct rollup_entry *entry = (struct rollup_entry*)(&m_buff[size]);
-        if (query_entry(range, entry, map, rollup) > 0) break;
+        struct rollup_entry *entry = (struct rollup_entry*)(m_buff+idx);
+        if (query_entry(range, entry, map, rollup, ms) > 0) break;
     }
 }
 
 void
-RollupDataFile::query2(TimeRange& range, std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupType rollup)
+RollupDataFile::query2(TimeRange& range, std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupType rollup, bool ms)
 {
     set_rollup_level(rollup, false);    // unset level2
 
@@ -1506,13 +1510,13 @@ RollupDataFile::query2(TimeRange& range, std::unordered_map<TimeSeriesId,QueryTa
                 }
 
                 task->set_last_tstamp(ts);
+                if (ms) ts *= 1000;
 
-                if (entry->cnt != 0)
+                if (entry->cnt != 0 && range.in_range(ts) == 0)
                 {
-                    DataPointVector& dps = task->get_dps();
-                    double val = RollupManager::query((struct rollup_entry*)entry, rollup);
-                    // TODO: downsample!
-                    dps.emplace_back(ts, val);
+                    //double val = RollupManager::query((struct rollup_entry*)entry, rollup);
+                    //task->add_data_point(ts, val);
+                    task->add_data_point(entry, rollup);
                 }
             }
         }

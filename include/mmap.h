@@ -289,6 +289,26 @@ struct __attribute__ ((__packed__)) rollup_entry_ext
     double max;
     double sum;
     Timestamp tstamp;   // this must be the last entry
+
+    rollup_entry_ext() :
+        tid(TT_INVALID_TIME_SERIES_ID),
+        cnt(0),
+        min(0.0),
+        max(0.0),
+        sum(0.0),
+        tstamp(TT_INVALID_TIMESTAMP)
+    {
+    }
+
+    rollup_entry_ext(struct rollup_entry *entry) :
+        tid(entry->tid),
+        cnt(entry->cnt),
+        min(entry->min),
+        max(entry->max),
+        sum(entry->sum),
+        tstamp(TT_INVALID_TIMESTAMP)
+    {
+    }
 };
 
 
@@ -305,13 +325,13 @@ public:
     bool is_open() const;
     inline off_t size() const { return m_size; }
 
-    inline bool exists() const { return file_exists(m_name); }
+    inline bool empty() const { return (m_index == 0) && !file_exists(m_name); }
     inline void remove() { rm_file(m_name); }
 
     void add_data_point(TimeSeriesId tid, uint32_t cnt, double min, double max, double sum);
     void add_data_point(TimeSeriesId tid, Timestamp tstamp, uint32_t cnt, double min, double max, double sum);  // called during shutdown
-    void query(TimeRange& range, std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupType rollup);    // query hourly rollup
-    void query2(TimeRange& range, std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupType rollup);   // query daily rollup
+    void query(TimeRange& range, std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupType rollup, bool ms);    // query hourly rollup
+    void query2(TimeRange& range, std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupType rollup, bool ms);   // query daily rollup
     // used by Tsdb::rollup() for offline processing
     void query(TimeRange& range, std::unordered_map<TimeSeriesId,struct rollup_entry_ext>& map);
 
@@ -320,7 +340,7 @@ public:
     void inc_ref_count();
 
 private:
-    int query_entry(TimeRange& range, struct rollup_entry *entry, std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupType rollup);
+    int query_entry(TimeRange& range, struct rollup_entry *entry, std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupType rollup, bool ms);
 
     std::string m_name;
     FILE *m_file;

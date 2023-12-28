@@ -98,7 +98,7 @@ RollupManager::init()
     m_wal_data_file = new RollupDataFile(wal_dir + "/rollup.data");
 
     // restore if necessary
-    if (m_wal_data_file->exists())
+    if (! m_wal_data_file->empty())
     {
         std::unordered_map<TimeSeriesId,RollupManager> map;
 
@@ -311,15 +311,30 @@ RollupManager::query(RollupType type, DataPointPair& dp)
     return true;
 }
 
-void
-RollupManager::query(MetricId mid, TimeRange& range, std::vector<QueryTask*>& tasks, RollupType rollup)
+// return false if no data will be returned;
+bool
+RollupManager::get(struct rollup_entry_ext& entry)
 {
-    std::lock_guard<std::mutex> guard(m_lock);
-    query_no_lock(mid, range, tasks, rollup);
+    if (m_cnt == 0) return false;
+
+    entry.cnt = m_cnt;
+    entry.max = m_max;
+    entry.min = m_min;
+    entry.sum = m_sum;
+    entry.tstamp = m_tstamp;
+
+    return true;
 }
 
 void
-RollupManager::query_no_lock(MetricId mid, TimeRange& range, std::vector<QueryTask*>& tasks, RollupType rollup)
+RollupManager::query(MetricId mid, TimeRange& range, std::vector<QueryTask*>& tasks, RollupType rollup, bool ms)
+{
+    std::lock_guard<std::mutex> guard(m_lock);
+    query_no_lock(mid, range, tasks, rollup, ms);
+}
+
+void
+RollupManager::query_no_lock(MetricId mid, TimeRange& range, std::vector<QueryTask*>& tasks, RollupType rollup, bool ms)
 {
     ASSERT(! tasks.empty());
     ASSERT(rollup != RollupType::RU_NONE);
@@ -343,9 +358,9 @@ RollupManager::query_no_lock(MetricId mid, TimeRange& range, std::vector<QueryTa
     for (auto file: data_files)
     {
         if (level2)
-            file->query2(range, map, rollup);
+            file->query2(range, map, rollup, ms);
         else
-            file->query(range, map, rollup);
+            file->query(range, map, rollup, ms);
         file->dec_ref_count();
     }
 }
@@ -426,7 +441,7 @@ RollupManager::get_data_files(MetricId mid, TimeRange& range, std::vector<Rollup
 
         RollupDataFile *data_file = get_data_file(mid, ts);
 
-        if (! data_file->exists())
+        if (data_file->empty())
             delete data_file;
         else
             files.push_back(data_file);
@@ -457,7 +472,7 @@ RollupManager::get_data_files2(MetricId mid, TimeRange& range, std::vector<Rollu
 
         RollupDataFile *data_file = get_data_file2(mid, ts);
 
-        if (! data_file->exists())
+        if (data_file->empty())
             data_file->dec_ref_count();
         else
             files.push_back(data_file);

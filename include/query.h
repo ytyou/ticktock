@@ -239,10 +239,11 @@ class QueryTask : public Recyclable
 public:
     QueryTask();
     void query_ts_data(Tsdb *tsdb);
-    void query_ts_data(RollupType rollup_type);
+    void query_ts_data(RollupType rollup_type, bool ms);
     void merge_data();
     void fill();
     void convert_to_ms();
+    void add_data_point(struct rollup_entry_ext *entry, RollupType rollup);
 
     // return max/min value of the last n dps in m_dps[]
     double get_max(int n) const;
