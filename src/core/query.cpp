@@ -1160,10 +1160,13 @@ QuerySuperTask::perform(bool lock)
                 }
             }
 
-            for (QueryTask *task : m_tasks)
+            if (m_tsdbs.empty())
             {
-                task->query_ts_data(rollup, m_ms);
-                task->set_tstamp_from(0);
+                for (QueryTask *task : m_tasks)
+                {
+                    task->query_ts_data(rollup, m_ms);
+                    task->set_tstamp_from(0);
+                }
             }
         }
 
