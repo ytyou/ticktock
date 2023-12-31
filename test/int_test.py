@@ -448,21 +448,23 @@ class Test(object):
     # return anything in this situation, we need to remove them
     # from OpenTsdb's results in order to match results from TickTock.
     def remove_empty_dps(self, arr):
+        result = []
         if isinstance(arr, list):
             for d in arr:
                 if isinstance(d, dict):
                     if d.has_key("dps"):
                         dps = d["dps"]
-                        if len(dps) == 0:
-                            arr.remove(d)
+                        if len(dps) != 0:
+                            result.append(d)
+        return result
 
     def query_and_verify(self, query):
         if self._options.verbose:
             print "query: " + str(query.to_json())
         expected = self.query_opentsdb(query)
         actual = self.query_ticktock(query)
-        self.remove_empty_dps(expected)
-        if self.verify_json(expected, actual):
+        expected2 = self.remove_empty_dps(expected)
+        if self.verify_json(expected2, actual):
             self._passed = self._passed + 1
         else:
             self._failed = self._failed + 1
@@ -1309,6 +1311,7 @@ class Rate_Tests(Test):
 
         # generate config
         config = TickTockConfig(self._options)
+        config.add_entry("tcp.buffer.size", "2mb")
         config()
 
         self.start_tt()
