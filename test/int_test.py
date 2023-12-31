@@ -300,10 +300,14 @@ class Test(object):
         response = requests.post("http://"+self._options.ip+":"+str(self._options.port)+"/api/admin?cmd=compact")
         response.raise_for_status()
 
+    def do_rollup(self):
+        response = requests.post("http://"+self._options.ip+":"+str(self._options.port)+"/api/admin?cmd=rollup")
+        response.raise_for_status()
+
     def metric_name(self, idx, prefix=None):
         if not prefix:
             prefix = self._prefix
-        return prefix + "_metric_" + str(idx)
+        return prefix + "_metric_" + str(idx+1)
 
     def tag(self, k, v):
         return {"tag"+str(k): "val"+str(v)}
@@ -350,11 +354,12 @@ class Test(object):
         self._tcp_socket.sendall(dps.to_plain())
         self._ticktock_time += time.time() - start
 
-    def send_data(self, dps):
+    def send_data(self, dps, wait=True):
         self.send_data_to_opentsdb(dps)
         self.send_data_to_ticktock(dps)
         # opentsdb needs time to get ready before query
-        time.sleep(2)
+        if wait:
+            time.sleep(2)
 
     def send_data_plain(self, dps):
         self.send_data_to_opentsdb(dps)
@@ -532,6 +537,8 @@ class Test(object):
                             print "actual does not have: %s" % str(k)
                         return False
                     if not self.verify_json(v, actual[str(k)]):
+                        if self._options.verbose:
+                            print "key %s has diff values: %s vs %s" % (str(k), str(v), str(actual[str(k)]))
                         return False
                 for k,v in actual.items():
                     if not expected.has_key(str(k)):
@@ -1231,6 +1238,64 @@ class Query_Tests(Test):
         # stop tt
         self.stop_tt()
 
+        # make sure tt stopped
+        self.wait_for_tt(self._options.timeout)
+
+
+class Query_With_Rollup(Test):
+
+    def __init__(self, options, prefix="rq", tcp_socket=None):
+        super(Query_With_Rollup, self).__init__(options, prefix, tcp_socket)
+
+    def __call__(self, metric_cardinality=4):
+
+        # generate config
+        config = TickTockConfig(self._options)
+        config()    # generate config
+
+        # start tt
+        self.start_tt()
+
+        # insert some dps
+        print "insert data..."
+        ts = self._options.start
+        for i in range(10*24*60):
+            dps = DataPoints(self._prefix, ts, interval_ms=60000, metric_count=1, metric_cardinality=metric_cardinality, tag_cardinality=2)
+            self.send_data(dps, wait=False)
+            ts += 60000
+        time.sleep(5)
+
+        # do rollup
+        print "perform rollup..."
+        for i in range(20):
+            self.do_rollup()
+
+        print "Downsamples with hourly rollup..."
+        for m in range(metric_cardinality):
+            for down in ["avg", "count", "max", "min", "sum"]:
+                query = Query(metric=self.metric_name(m), start=self._options.start-99999, end=dps._end+99999, downsampler="2h-"+down)
+                self.query_and_verify(query)
+
+        for m in range(metric_cardinality):
+            for down in ["avg", "count", "max", "min", "sum"]:
+                for agg in ["none", "avg", "count", "dev", "max", "min", "p50", "p75", "p90", "p95", "p99", "p999", "sum"]:
+                    query = Query(metric=self.metric_name(m), start=self._options.start+99999, end=dps._end+99999, aggregator=agg, downsampler="2h-"+down+"-zero")
+                    self.query_and_verify(query)
+
+        print "Downsamples with daily rollup..."
+        for m in range(metric_cardinality):
+            for down in ["avg", "count", "max", "min", "sum"]:
+                query = Query(metric=self.metric_name(m), start=self._options.start-99999, end=dps._end+99999, downsampler="1d-"+down+"-zero")
+                self.query_and_verify(query)
+
+        for m in range(metric_cardinality):
+            for down in ["avg", "count", "max", "min", "sum"]:
+                for agg in ["none", "avg", "count", "dev", "max", "min", "p50", "p75", "p90", "p95", "p99", "p999", "sum"]:
+                    query = Query(metric=self.metric_name(m), start=self._options.start+99999, end=dps._end+99999, aggregator=agg, downsampler="1d-"+down)
+                    self.query_and_verify(query)
+
+        # stop tt
+        self.stop_tt()
         # make sure tt stopped
         self.wait_for_tt(self._options.timeout)
 
@@ -1944,6 +2009,7 @@ def main(argv):
         tests.append(Duplicate_Tests(options))
         tests.append(Check_Point_Tests(options))
         tests.append(Query_Tests(options, metric_count=16, metric_cardinality=4, tag_cardinality=4))
+        tests.append(Query_With_Rollup(options))
 
         #tests.append(Long_Running_Tests(options))
 

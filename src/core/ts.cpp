@@ -381,6 +381,9 @@ TimeSeries::add_ooo_data_point(MetricId mid, DataPoint& dp)
         ASSERT(ok);
     }
 
+    // rollup
+    m_rollup.add_data_point(mid, m_id, dp);
+
     return ok;
 }
 
