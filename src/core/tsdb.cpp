@@ -1275,6 +1275,9 @@ Tsdb::restore_config(const std::string& dir)
     if (cfg.exists("rolled_up") && cfg.get_bool("rolled_up", false))
         m_mode |= TSDB_MODE_ROLLED_UP;
 
+    if (cfg.exists("out_of_order") && cfg.get_bool("out_of_order", false))
+        m_mode |= TSDB_MODE_OUT_OF_ORDER;
+
     if (cfg.exists("crashed") && cfg.get_bool("crashed", false))
         m_mode |= TSDB_MODE_CRASHED;
 }
@@ -1299,6 +1302,9 @@ Tsdb::write_config(const std::string& dir)
 
     if (m_mode & TSDB_MODE_ROLLED_UP)
         cfg.set_value("rolled_up", "true");
+
+    if (m_mode & TSDB_MODE_OUT_OF_ORDER)
+        cfg.set_value("out_of_order", "true");
 
     if (m_mode & TSDB_MODE_CRASHED)
         cfg.set_value("crashed", "true");

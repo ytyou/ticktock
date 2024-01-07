@@ -1271,7 +1271,7 @@ class Query_With_Rollup(Test):
 
         # do rollup
         print "perform rollup..."
-        for i in range(2):
+        for i in range(5):
             self.do_rollup()
 
         print "Downsamples with hourly rollup..."
