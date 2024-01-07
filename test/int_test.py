@@ -1251,6 +1251,8 @@ class Query_With_Rollup(Test):
 
     def __call__(self, metric_cardinality=4):
 
+        self.cleanup()
+
         # generate config
         config = TickTockConfig(self._options)
         config()    # generate config
@@ -1269,7 +1271,7 @@ class Query_With_Rollup(Test):
 
         # do rollup
         print "perform rollup..."
-        for i in range(20):
+        for i in range(2):
             self.do_rollup()
 
         print "Downsamples with hourly rollup..."

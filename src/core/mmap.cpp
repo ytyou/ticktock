@@ -552,6 +552,55 @@ IndexFile::set_out_of_order(TimeSeriesId id, bool ooo)
         entries[id].flags &= ~0x01;
 }
 
+// apply to rollup data only
+bool
+IndexFile::get_out_of_order2(TimeSeriesId id)
+{
+    void *pages = get_pages();
+
+    size_t idx = (id+1) * TT_INDEX_SIZE;
+    size_t len = get_length();
+
+    if ((len <= idx) || (pages == nullptr))
+    {
+        return false;
+    }
+    else
+    {
+        struct index_entry *entries = (struct index_entry*)pages;
+        struct index_entry entry = entries[id];
+        return entry.flags & 0x02;
+    }
+}
+
+// apply to rollup data only
+void
+IndexFile::set_out_of_order2(TimeSeriesId id, bool ooo)
+{
+    void *pages = get_pages();
+    ASSERT(pages != nullptr);
+    ASSERT(! is_read_only());
+
+    size_t new_len = (id+1) * TT_INDEX_SIZE;
+    size_t old_len = get_length();
+    ASSERT(0 < old_len);
+
+    if (old_len < new_len)
+    {
+        // file too small, expand it
+        if (! expand(new_len + TT_SIZE_INCREMENT))
+            return;
+        pages = get_pages();
+    }
+
+    struct index_entry *entries = (struct index_entry*)pages;
+
+    if (ooo)
+        entries[id].flags |= 0x02;
+    else
+        entries[id].flags &= ~0x02;
+}
+
 
 HeaderFile::HeaderFile(const std::string& file_name, FileIndex id, PageCount page_count, PageSize page_size) :
     MmapFile(file_name),
@@ -1375,6 +1424,7 @@ RollupDataFile::add_data_point(TimeSeriesId tid, uint32_t cnt, double min, doubl
         std::fwrite(m_buff, m_index, 1, m_file);
         std::fflush(m_file);
         m_index = 0;
+        m_size = 0;
     }
 
     std::memcpy(m_buff+m_index, &entry, sizeof(entry));
@@ -1551,7 +1601,7 @@ RollupDataFile::query(TimeRange& range, std::unordered_map<TimeSeriesId,struct r
                 else
                     search->second.tstamp += g_rollup_interval; // in seconds
 
-                if (entry->cnt != 0)
+                if ((entry->cnt != 0) && (range.in_range(search->second.tstamp) == 0))
                 {
                     search->second.cnt += entry->cnt;
                     search->second.min = std::min(search->second.min,entry->min);

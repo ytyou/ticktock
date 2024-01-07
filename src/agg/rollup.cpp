@@ -164,8 +164,9 @@ RollupManager::shutdown()
 
 // Here we only handle in-order dps!
 void
-RollupManager::add_data_point(MetricId mid, TimeSeriesId tid, DataPoint& dp)
+RollupManager::add_data_point(Tsdb *tsdb, MetricId mid, TimeSeriesId tid, DataPoint& dp)
 {
+    ASSERT(tsdb != nullptr);
     Timestamp tstamp = to_sec(dp.get_timestamp());
     Timestamp interval = g_rollup_interval;
     double value = dp.get_value();
@@ -198,7 +199,7 @@ RollupManager::add_data_point(MetricId mid, TimeSeriesId tid, DataPoint& dp)
     else if (tstamp1 < m_tstamp)
     {
         // out-of-order!!!
-        Logger::warn("Out-of-order rollup dp ignored!");
+        tsdb->set_out_of_order2(tid, true);
     }
 
     m_cnt++;

@@ -1099,12 +1099,11 @@ QuerySuperTask::perform(bool lock)
     try
     {
         RollupType rollup = use_rollup();
+        Tsdb::insts(m_time_range, m_tsdbs);
 
         if (rollup == RollupType::RU_NONE)
         {
             // query raw data
-            Tsdb::insts(m_time_range, m_tsdbs);
-
             for (auto tsdb: m_tsdbs)
             {
                 if (lock)
@@ -1122,20 +1121,21 @@ QuerySuperTask::perform(bool lock)
         }
         else
         {
-            if (is_rollup_level2(rollup))
+            bool level2 = is_rollup_level2(rollup);
+
+            // If a TSDB's rollup data is not available, or is invalidated,
+            // we need to query its raw data.
+            for (auto it = m_tsdbs.begin(); it != m_tsdbs.end(); )
             {
-                Tsdb::insts(m_time_range, m_tsdbs);
+                Tsdb *tsdb = *it;
 
-                // remove those whose rollup data are ready
-                for (auto it = m_tsdbs.begin(); it != m_tsdbs.end(); )
+                if (tsdb->can_use_rollup(level2))
                 {
-                    Tsdb *tsdb = *it;
-
-                    if (tsdb->is_rolled_up())
-                        m_tsdbs.erase(it);
-                    else
-                        it++;
+                    tsdb->dec_ref_count();
+                    m_tsdbs.erase(it);
                 }
+                else
+                    it++;
             }
 
             // query rollup data
@@ -1145,14 +1145,26 @@ QuerySuperTask::perform(bool lock)
                 RollupManager::query_no_lock(m_metric_id, m_time_range, m_tasks, rollup, m_ms);
 
             // if necessary, query raw data for those tsdbs whose rollup data are not yet ready
+            // and merge into/override rollup results
             for (auto tsdb: m_tsdbs)
             {
-                if (lock)
-                    tsdb->query_for_data(m_metric_id, m_time_range, m_tasks, m_compact);
-                else
-                    tsdb->query_for_data_no_lock(m_metric_id, m_time_range, m_tasks, m_compact);
+                // filter out unnecessary tasks for this tsdb
+                std::vector<QueryTask*> tasks;
+                tasks.reserve(m_tasks.size());
 
                 for (QueryTask *task : m_tasks)
+                {
+                    if (! tsdb->can_use_rollup(task->get_ts_id()))
+                        tasks.push_back(task);
+                }
+
+                if (lock)
+                    tsdb->query_for_data(m_metric_id, m_time_range, tasks, m_compact);
+                else
+                    tsdb->query_for_data_no_lock(m_metric_id, m_time_range, tasks, m_compact);
+
+                // TODO: Need to do override!
+                for (QueryTask *task : tasks)
                 {
                     task->query_ts_data(tsdb);
                     task->merge_data();

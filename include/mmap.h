@@ -103,6 +103,10 @@ public:
     bool get_out_of_order(TimeSeriesId id);
     void set_out_of_order(TimeSeriesId id, bool ooo);
 
+    // for rollup data
+    bool get_out_of_order2(TimeSeriesId id);
+    void set_out_of_order2(TimeSeriesId id, bool ooo);
+
 private:
     bool expand(off_t new_len);
 };

@@ -1980,11 +1980,6 @@ Tsdb::inc_ref_count()
 Timestamp
 Tsdb::get_last_tstamp(MetricId mid, TimeSeriesId tid)
 {
-    // returning TT_INVALID_TIMESTAMP will treat future dps as out of order,
-    // which in turn will invalidate rollup data.
-    if (is_rolled_up())
-        return TT_INVALID_TIMESTAMP;
-
     Timestamp tstamp = 0;
     FileIndex fidx, file_idx;
     HeaderIndex hidx, header_idx;
@@ -1996,6 +1991,11 @@ Tsdb::get_last_tstamp(MetricId mid, TimeSeriesId tid)
 
     //ReadLock guard(m_lock);
     std::lock_guard<std::mutex> guard(m_lock);
+
+    // returning TT_INVALID_TIMESTAMP will treat future dps as out of order,
+    // which in turn will invalidate rollup data.
+    if (is_rolled_up())
+        return TT_INVALID_TIMESTAMP;
 
     m_index_file.ensure_open(false);
     m_index_file.get_indices2(tid, fidx, hidx);
@@ -2062,6 +2062,29 @@ Tsdb::get_last_tstamp(MetricId mid, TimeSeriesId tid)
     return tstamp;
 }
 
+// If this returns true, rollup data is definitely usable;
+// Otherwise you need to call can_use_rollup(TimeSeriesId tid, bool level2)
+// for the specific TimeSeries to determine if rollup data is usable or not.
+bool
+Tsdb::can_use_rollup(bool level2)
+{
+    std::lock_guard<std::mutex> guard(m_lock);
+
+    if (level2)
+        return ((m_mode & TSDB_MODE_ROLLED_UP) != 0);
+    else
+        return ((m_mode & TSDB_MODE_OUT_OF_ORDER) == 0);
+}
+
+bool
+Tsdb::can_use_rollup(TimeSeriesId tid)
+{
+    ASSERT((m_mode & TSDB_MODE_OUT_OF_ORDER) != 0);
+    std::lock_guard<std::mutex> guard(m_lock);
+    m_index_file.ensure_open(true);
+    return m_index_file.get_out_of_order2(tid);
+}
+
 bool
 Tsdb::get_out_of_order(TimeSeriesId tid)
 {
@@ -2074,6 +2097,28 @@ Tsdb::set_out_of_order(TimeSeriesId tid, bool ooo)
     std::lock_guard<std::mutex> guard(m_lock);
     m_index_file.ensure_open(false);
     m_index_file.set_out_of_order(tid, ooo);
+}
+
+// apply to rollup data only
+bool
+Tsdb::get_out_of_order2(TimeSeriesId tid)
+{
+    return m_index_file.get_out_of_order2(tid);
+}
+
+// apply to rollup data only
+void
+Tsdb::set_out_of_order2(TimeSeriesId tid, bool ooo)
+{
+    std::lock_guard<std::mutex> guard(m_lock);
+
+    m_index_file.ensure_open(false);
+    m_index_file.set_out_of_order2(tid, ooo);
+
+    if (ooo)
+        m_mode |= TSDB_MODE_OUT_OF_ORDER;
+    else
+        m_mode &= ~TSDB_MODE_OUT_OF_ORDER;
 }
 
 // this is only called when writing data points
@@ -3573,7 +3618,7 @@ Tsdb::rollup(TaskData& data)
 
         if (tsdb->m_ref_count <= 0)
         {
-            TimeRange range = tsdb->get_time_range();
+            TimeRange range(tsdb->get_time_range().get_from_sec(), tsdb->get_time_range().get_to_sec());
 
             Logger::info("[rollup] Found this tsdb to rollup: %T", tsdb);
 
@@ -3616,7 +3661,10 @@ Tsdb::rollup(TaskData& data)
                         //data_file->open(false); // open for write
 
                         for (const std::pair<TimeSeriesId,struct rollup_entry_ext>& e: map)
-                            data_file->add_data_point(e.second.tid, e.second.cnt, e.second.min, e.second.max, e.second.sum);
+                        {
+                            if (e.second.cnt > 0)
+                                data_file->add_data_point(e.second.tid, range.get_from(), e.second.cnt, e.second.min, e.second.max, e.second.sum);
+                        }
 
                         data_file->close_if_idle(g_rollup_interval, ts_now_sec());
                         data_file->dec_ref_count();

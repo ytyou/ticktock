@@ -61,14 +61,16 @@ namespace tt
 // from metric and tag names to time series;
 //
 // If TSDB_MODE_COMPACTED is set, it means the data file was compacted.
-// If TSDB_MODE_ROLLED_UP is set, it means the rollup data is ready.
+// If TSDB_MODE_ROLLED_UP is set, it means the level2 rollup data is ready.
 // If TSDB_MODE_CRASHED is set, it means the last shutdown was abnormal.
+// If TSDB_MODE_OUT_OF_ORDER is set, it means its rollup data (level1 & level2) is not ready.
 
 #define TSDB_MODE_NONE          0x00000000
 #define TSDB_MODE_READ          0x00000001
 #define TSDB_MODE_WRITE         0x00000002
 #define TSDB_MODE_COMPACTED     0x00000004
 #define TSDB_MODE_ROLLED_UP     0x00000008
+#define TSDB_MODE_OUT_OF_ORDER  0x00000010
 #define TSDB_MODE_CRASHED       0x80000000
 
 #define TSDB_MODE_READ_WRITE    (TSDB_MODE_READ | TSDB_MODE_WRITE)
@@ -274,9 +276,13 @@ public:
     PageCount get_page_count() const;
     int get_compressor_version();
 
+    bool can_use_rollup(bool level2);
+    bool can_use_rollup(TimeSeriesId tid);
     Timestamp get_last_tstamp(MetricId mid, TimeSeriesId tid);
     bool get_out_of_order(TimeSeriesId tid);
     void set_out_of_order(TimeSeriesId tid, bool ooo);
+    bool get_out_of_order2(TimeSeriesId tid);
+    void set_out_of_order2(TimeSeriesId tid, bool ooo);
     void get_last_header_indices(MetricId mid, TimeSeriesId tid, FileIndex& file_idx, HeaderIndex& header_idx);
     void set_indices(MetricId mid, TimeSeriesId tid, FileIndex prev_file_idx, HeaderIndex prev_header_idx,
                      FileIndex this_file_idx, HeaderIndex this_header_idx, bool crossed);
