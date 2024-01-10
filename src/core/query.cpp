@@ -1132,7 +1132,7 @@ QuerySuperTask::perform(bool lock)
                 if (tsdb->can_use_rollup(level2))
                 {
                     tsdb->dec_ref_count();
-                    m_tsdbs.erase(it);
+                    it = m_tsdbs.erase(it);
                 }
                 else
                     it++;
@@ -1140,9 +1140,9 @@ QuerySuperTask::perform(bool lock)
 
             // query rollup data
             if (lock)
-                RollupManager::query(m_metric_id, m_time_range, m_tasks, rollup, m_ms);
+                RollupManager::query(m_metric_id, m_time_range, m_tasks, rollup);
             else
-                RollupManager::query_no_lock(m_metric_id, m_time_range, m_tasks, rollup, m_ms);
+                RollupManager::query_no_lock(m_metric_id, m_time_range, m_tasks, rollup);
 
             // if necessary, query raw data for those tsdbs whose rollup data are not yet ready
             // and merge into/override rollup results

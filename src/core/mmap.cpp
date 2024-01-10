@@ -1373,6 +1373,7 @@ RollupDataFile::close()
     {
         if (m_index > 0)
         {
+            ASSERT(0 <= m_index && m_index <= sizeof(m_buff));
             std::fwrite(m_buff, m_index, 1, m_file);
             m_index = 0;
         }
@@ -1450,12 +1451,12 @@ RollupDataFile::add_data_point(TimeSeriesId tid, Timestamp tstamp, uint32_t cnt,
     if (! is_open()) open(false);
     std::fwrite(&entry, sizeof(entry), 1, m_file);
     std::fflush(m_file);
-    m_index += sizeof(entry);
-    m_size += sizeof(entry);
+    //m_index += sizeof(entry);
+    //m_size += sizeof(entry);
 }
 
 int
-RollupDataFile::query_entry(TimeRange& range, struct rollup_entry *entry, std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupType rollup, bool ms)
+RollupDataFile::query_entry(TimeRange& range, struct rollup_entry *entry, std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupType rollup)
 {
     ASSERT(entry != nullptr);
 
@@ -1478,7 +1479,7 @@ RollupDataFile::query_entry(TimeRange& range, struct rollup_entry *entry, std::u
             task->set_last_tstamp(ts);
         }
 
-        if (ms) ts *= 1000;
+        ts = validate_resolution(ts);
         found = range.in_range(ts);
 
         if (entry->cnt != 0 && found == 0)
@@ -1495,7 +1496,7 @@ RollupDataFile::query_entry(TimeRange& range, struct rollup_entry *entry, std::u
 }
 
 void
-RollupDataFile::query(TimeRange& range, std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupType rollup, bool ms)
+RollupDataFile::query(TimeRange& range, std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupType rollup)
 {
     std::lock_guard<std::mutex> guard(m_lock);
     uint8_t buff[4096];
@@ -1512,7 +1513,7 @@ RollupDataFile::query(TimeRange& range, std::unordered_map<TimeSeriesId,QueryTas
         for (std::size_t i = 0; i < n; i += sizeof(struct rollup_entry))
         {
             struct rollup_entry *entry = (struct rollup_entry*)&buff[i];
-            if (query_entry(range, entry, map, rollup, ms) > 0) break;
+            if (query_entry(range, entry, map, rollup) > 0) break;
         }
     }
 
@@ -1520,12 +1521,12 @@ RollupDataFile::query(TimeRange& range, std::unordered_map<TimeSeriesId,QueryTas
     for (off_t idx = 0; idx < m_index; idx += sizeof(struct rollup_entry))
     {
         struct rollup_entry *entry = (struct rollup_entry*)(m_buff+idx);
-        if (query_entry(range, entry, map, rollup, ms) > 0) break;
+        if (query_entry(range, entry, map, rollup) > 0) break;
     }
 }
 
 void
-RollupDataFile::query2(TimeRange& range, std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupType rollup, bool ms)
+RollupDataFile::query2(TimeRange& range, std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupType rollup)
 {
     set_rollup_level(rollup, false);    // unset level2
 
@@ -1560,7 +1561,7 @@ RollupDataFile::query2(TimeRange& range, std::unordered_map<TimeSeriesId,QueryTa
                 }
 
                 task->set_last_tstamp(ts);
-                if (ms) ts *= 1000;
+                ts = validate_resolution(ts);
 
                 if (entry->cnt != 0 && range.in_range(ts) == 0)
                 {

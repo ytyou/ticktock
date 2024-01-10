@@ -316,7 +316,7 @@ void
 DownsamplerAvg::add_data_point(struct rollup_entry_ext *entry, RollupType rollup, DataPointVector& dps)
 {
     ASSERT(entry != nullptr);
-    Timestamp curr_tstamp = step_down(resolution(entry->tstamp));
+    Timestamp curr_tstamp = step_down(validate_resolution(entry->tstamp));
     ASSERT((m_last_tstamp <= curr_tstamp) || (m_last_tstamp == TT_INVALID_TIMESTAMP));
 
     if (curr_tstamp < m_start) return;
@@ -379,7 +379,7 @@ void
 DownsamplerCount::add_data_point(struct rollup_entry_ext *entry, RollupType rollup, DataPointVector& dps)
 {
     ASSERT(entry != nullptr);
-    Timestamp curr_tstamp = step_down(resolution(entry->tstamp));
+    Timestamp curr_tstamp = step_down(validate_resolution(entry->tstamp));
     ASSERT((m_last_tstamp <= curr_tstamp) || (m_last_tstamp == TT_INVALID_TIMESTAMP));
 
     if (curr_tstamp < m_start) return;
@@ -502,7 +502,7 @@ void
 DownsamplerMax::add_data_point(struct rollup_entry_ext *entry, RollupType rollup, DataPointVector& dps)
 {
     ASSERT(entry != nullptr);
-    Timestamp curr_tstamp = step_down(resolution(entry->tstamp));
+    Timestamp curr_tstamp = step_down(validate_resolution(entry->tstamp));
     ASSERT((m_last_tstamp <= curr_tstamp) || (m_last_tstamp == TT_INVALID_TIMESTAMP));
 
     if (curr_tstamp < m_start) return;
@@ -546,7 +546,7 @@ void
 DownsamplerMin::add_data_point(struct rollup_entry_ext *entry, RollupType rollup, DataPointVector& dps)
 {
     ASSERT(entry != nullptr);
-    Timestamp curr_tstamp = step_down(resolution(entry->tstamp));
+    Timestamp curr_tstamp = step_down(validate_resolution(entry->tstamp));
     ASSERT((m_last_tstamp <= curr_tstamp) || (m_last_tstamp == TT_INVALID_TIMESTAMP));
 
     if (curr_tstamp < m_start) return;
@@ -648,7 +648,7 @@ void
 DownsamplerSum::add_data_point(struct rollup_entry_ext *entry, RollupType rollup, DataPointVector& dps)
 {
     ASSERT(entry != nullptr);
-    Timestamp curr_tstamp = step_down(resolution(entry->tstamp));
+    Timestamp curr_tstamp = step_down(validate_resolution(entry->tstamp));
     ASSERT((m_last_tstamp <= curr_tstamp) || (m_last_tstamp == TT_INVALID_TIMESTAMP));
 
     if (curr_tstamp < m_start) return;

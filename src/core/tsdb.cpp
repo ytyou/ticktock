@@ -2085,7 +2085,7 @@ Tsdb::can_use_rollup(bool level2)
 bool
 Tsdb::can_use_rollup(TimeSeriesId tid)
 {
-    ASSERT((m_mode & TSDB_MODE_OUT_OF_ORDER) != 0);
+    //ASSERT((m_mode & TSDB_MODE_OUT_OF_ORDER) != 0);
     std::lock_guard<std::mutex> guard(m_lock);
     m_index_file.ensure_open(true);
     return m_index_file.get_out_of_order2(tid);

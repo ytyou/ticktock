@@ -334,8 +334,8 @@ public:
 
     void add_data_point(TimeSeriesId tid, uint32_t cnt, double min, double max, double sum);
     void add_data_point(TimeSeriesId tid, Timestamp tstamp, uint32_t cnt, double min, double max, double sum);  // called during shutdown
-    void query(TimeRange& range, std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupType rollup, bool ms);    // query hourly rollup
-    void query2(TimeRange& range, std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupType rollup, bool ms);   // query daily rollup
+    void query(TimeRange& range, std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupType rollup);  // query hourly rollup
+    void query2(TimeRange& range, std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupType rollup); // query daily rollup
     // used by Tsdb::rollup() for offline processing
     void query(TimeRange& range, std::unordered_map<TimeSeriesId,struct rollup_entry_ext>& map);
 
@@ -344,7 +344,7 @@ public:
     void inc_ref_count();
 
 private:
-    int query_entry(TimeRange& range, struct rollup_entry *entry, std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupType rollup, bool ms);
+    int query_entry(TimeRange& range, struct rollup_entry *entry, std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupType rollup);
 
     std::string m_name;
     FILE *m_file;

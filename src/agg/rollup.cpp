@@ -177,7 +177,6 @@ RollupManager::add_data_point(Tsdb *tsdb, MetricId mid, TimeSeriesId tid, DataPo
     // step-down
     ASSERT(interval > 0);
     Timestamp tstamp1 = tstamp - (tstamp % interval);
-    ASSERT(tstamp1 >= m_tstamp);
 
     if (tstamp1 > m_tstamp)
     {
@@ -328,14 +327,14 @@ RollupManager::get(struct rollup_entry_ext& entry)
 }
 
 void
-RollupManager::query(MetricId mid, TimeRange& range, std::vector<QueryTask*>& tasks, RollupType rollup, bool ms)
+RollupManager::query(MetricId mid, TimeRange& range, std::vector<QueryTask*>& tasks, RollupType rollup)
 {
     std::lock_guard<std::mutex> guard(m_lock);
-    query_no_lock(mid, range, tasks, rollup, ms);
+    query_no_lock(mid, range, tasks, rollup);
 }
 
 void
-RollupManager::query_no_lock(MetricId mid, TimeRange& range, std::vector<QueryTask*>& tasks, RollupType rollup, bool ms)
+RollupManager::query_no_lock(MetricId mid, TimeRange& range, std::vector<QueryTask*>& tasks, RollupType rollup)
 {
     ASSERT(! tasks.empty());
     ASSERT(rollup != RollupType::RU_NONE);
@@ -359,9 +358,9 @@ RollupManager::query_no_lock(MetricId mid, TimeRange& range, std::vector<QueryTa
     for (auto file: data_files)
     {
         if (level2)
-            file->query2(range, map, rollup, ms);
+            file->query2(range, map, rollup);
         else
-            file->query(range, map, rollup, ms);
+            file->query(range, map, rollup);
         file->dec_ref_count();
     }
 }

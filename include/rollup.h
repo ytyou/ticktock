@@ -65,8 +65,8 @@ public:
     static RollupDataFile *get_data_file2(MetricId mid, Timestamp tstamp);  // get annually data files
     static void get_data_files(MetricId mid, TimeRange& range, std::vector<RollupDataFile*>& files);    // monthly
     static void get_data_files2(MetricId mid, TimeRange& range, std::vector<RollupDataFile*>& files);   // annually
-    static void query(MetricId mid, TimeRange& range, std::vector<QueryTask*>& tasks, RollupType rollup, bool ms);
-    static void query_no_lock(MetricId mid, TimeRange& range, std::vector<QueryTask*>& tasks, RollupType rollup, bool ms);
+    static void query(MetricId mid, TimeRange& range, std::vector<QueryTask*>& tasks, RollupType rollup);
+    static void query_no_lock(MetricId mid, TimeRange& range, std::vector<QueryTask*>& tasks, RollupType rollup);
     static void query(MetricId mid, TimeRange& range, std::unordered_map<TimeSeriesId,struct rollup_entry_ext>& output);
     static double query(struct rollup_entry *entry, RollupType type);
     static void rotate();
