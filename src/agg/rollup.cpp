@@ -80,6 +80,16 @@ RollupManager::copy_from(const RollupManager& other)
     m_tstamp = other.m_tstamp;
 }
 
+void
+RollupManager::copy_from(const struct rollup_entry_ext& entry)
+{
+    m_cnt = entry.cnt;
+    m_min = entry.min;
+    m_max = entry.max;
+    m_sum = entry.sum;
+    m_tstamp = to_sec(entry.tstamp);
+}
+
 RollupManager&
 RollupManager::operator=(const RollupManager& other)
 {
@@ -100,31 +110,14 @@ RollupManager::init()
     // restore if necessary
     if (! m_wal_data_file->empty())
     {
-        std::unordered_map<TimeSeriesId,RollupManager> map;
+        //std::unordered_map<TimeSeriesId,RollupManager> map;
+        std::unordered_map<TimeSeriesId,struct rollup_entry_ext> map;
 
-/******
-        m_backup_data_file->open();
-
-        for (auto h : *m_backup_header_tmp_file)
-        {
-            TimeSeriesId tid = h.tid;
-            RollupIndex idx = h.data_idx;
-
-            Timestamp tstamp;
-            uint32_t cnt;
-            double min, max, sum;
-
-            m_backup_data_file->query(idx, tstamp, cnt, min, max, sum);
-            map.emplace(tid, RollupManager(tstamp, cnt, min, max, sum));
-        }
+        m_wal_data_file->open(true);
+        m_wal_data_file->query_ext(TimeRange::MAX, map);
 
         Tsdb::restore_rollup_mgr(map);
-
-        m_backup_data_file->close();
-        m_backup_header_tmp_file->close();
-        m_backup_data_file->remove();
-        m_backup_header_tmp_file->remove();
-******/
+        m_wal_data_file->close();
     }
 }
 

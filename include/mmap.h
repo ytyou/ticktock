@@ -337,7 +337,8 @@ public:
     void query(TimeRange& range, std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupType rollup);  // query hourly rollup
     void query2(TimeRange& range, std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupType rollup); // query daily rollup
     // used by Tsdb::rollup() for offline processing
-    void query(TimeRange& range, std::unordered_map<TimeSeriesId,struct rollup_entry_ext>& map);
+    void query(const TimeRange& range, std::unordered_map<TimeSeriesId,struct rollup_entry_ext>& map);
+    void query_ext(const TimeRange& range, std::unordered_map<TimeSeriesId,struct rollup_entry_ext>& map);
 
     void dec_ref_count();
     void dec_ref_count_no_lock() { m_ref_count--; }

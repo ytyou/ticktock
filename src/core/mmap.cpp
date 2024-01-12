@@ -1575,7 +1575,7 @@ RollupDataFile::query2(TimeRange& range, std::unordered_map<TimeSeriesId,QueryTa
 }
 
 void
-RollupDataFile::query(TimeRange& range, std::unordered_map<TimeSeriesId,struct rollup_entry_ext>& outputs)
+RollupDataFile::query(const TimeRange& range, std::unordered_map<TimeSeriesId,struct rollup_entry_ext>& outputs)
 {
     std::lock_guard<std::mutex> guard(m_lock);
     uint8_t buff[4096];
@@ -1592,7 +1592,6 @@ RollupDataFile::query(TimeRange& range, std::unordered_map<TimeSeriesId,struct r
         for (std::size_t i = 0; i < n; i += sizeof(struct rollup_entry))
         {
             struct rollup_entry *entry = (struct rollup_entry*)&buff[i];
-
             auto search = outputs.find(entry->tid);
 
             if (search != outputs.end())
@@ -1609,6 +1608,51 @@ RollupDataFile::query(TimeRange& range, std::unordered_map<TimeSeriesId,struct r
                     search->second.max = std::max(search->second.max,entry->max);
                     search->second.sum += entry->sum;
                 }
+            }
+        }
+    }
+}
+
+// used to restore RollupManager from WAL
+void
+RollupDataFile::query_ext(const TimeRange& range, std::unordered_map<TimeSeriesId,struct rollup_entry_ext>& outputs)
+{
+    std::lock_guard<std::mutex> guard(m_lock);
+    uint8_t buff[4096];
+    std::size_t n;
+
+    m_last_access = ts_now_sec();
+    if (! is_open()) open(true);
+    std::fseek(m_file, 0, SEEK_SET);    // seek to beginning of file
+
+    while ((n = std::fread(&buff[0], 1, sizeof(buff), m_file)) > 0)
+    {
+        ASSERT((n % sizeof(struct rollup_entry_ext)) == 0);
+
+        for (std::size_t i = 0; i < n; i += sizeof(struct rollup_entry_ext))
+        {
+            struct rollup_entry_ext *entry = (struct rollup_entry_ext*)&buff[i];
+            auto search = outputs.find(entry->tid);
+
+            if (search != outputs.end())
+            {
+                if (search->second.tstamp == TT_INVALID_TIMESTAMP)
+                    search->second.tstamp = m_begin;    // in seconds
+                else
+                    search->second.tstamp += g_rollup_interval; // in seconds
+
+                if ((entry->cnt != 0) && (range.in_range(search->second.tstamp) == 0))
+                {
+                    search->second.cnt += entry->cnt;
+                    search->second.min = std::min(search->second.min,entry->min);
+                    search->second.max = std::max(search->second.max,entry->max);
+                    search->second.sum += entry->sum;
+                }
+            }
+            else
+            {
+                TimeSeriesId tid = entry->tid;
+                outputs.emplace(std::make_pair(tid, *entry));
             }
         }
     }

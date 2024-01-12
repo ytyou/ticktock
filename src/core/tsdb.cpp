@@ -822,7 +822,7 @@ Mapping::restore_measurement(std::string& measurement, std::string& tags, std::v
 }
 
 void
-Tsdb::restore_rollup_mgr(std::unordered_map<TimeSeriesId,RollupManager>& map)
+Tsdb::restore_rollup_mgr(std::unordered_map<TimeSeriesId,struct rollup_entry_ext>& map)
 {
     std::vector<TimeSeries*> tsv;
 
@@ -1939,6 +1939,8 @@ Tsdb::shutdown()
         //WriteLock guard(tsdb->m_lock);
         std::lock_guard<std::mutex> guard(tsdb->m_lock);
         tsdb->flush(true);
+        std::string dir = get_tsdb_dir_name(tsdb->m_time_range);
+        tsdb->write_config(dir);
         //for (DataFile *file: tsdb->m_data_files) file->close();
         //for (HeaderFile *file: tsdb->m_header_files) file->close();
         for (auto metric: tsdb->m_metrics)
@@ -3681,20 +3683,20 @@ Tsdb::rollup(TaskData& data)
 
                 // mark it as compacted
                 tsdb->m_mode |= TSDB_MODE_ROLLED_UP;
-                Logger::info("[rollup] 1 Tsdb rolled up");
+                Logger::info("[rollup] 1 Tsdb %T rolled up, mode=0x%0x", tsdb, tsdb->m_mode);
             }
             catch (const std::exception& ex)
             {
-                Logger::error("[rollup] rollup failed: %s", ex.what());
+                Logger::error("[rollup] rollup of %T failed: %s", tsdb, ex.what());
             }
             catch (...)
             {
-                Logger::error("[rollup] rollup failed for unknown reasons");
+                Logger::error("[rollup] rollup of %T failed for unknown reasons", tsdb);
             }
         }
         else
         {
-            Logger::debug("[rollup] Tsdb busy, not rolling up. ref = %d", tsdb->m_ref_count);
+            Logger::debug("[rollup] Tsdb %T busy, not rolling up. ref = %d", tsdb, tsdb->m_ref_count);
         }
     }
     else

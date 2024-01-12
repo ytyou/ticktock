@@ -486,5 +486,12 @@ TimeSeries::archive(MetricId mid, Timestamp now_sec, Timestamp threshold_sec)
         flush_no_lock(mid, true);
 }
 
+void
+TimeSeries::restore_rollup_mgr(const struct rollup_entry_ext& entry)
+{
+    ASSERT(entry.tid == m_id);
+    m_rollup.copy_from(entry);
+}
+
 
 }

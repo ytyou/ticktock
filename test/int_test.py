@@ -1299,6 +1299,39 @@ class Query_With_Rollup(Test):
                     self.query_and_verify(query)
 
         # stop tt
+        print "restarting TickTockDB..."
+        self.stop_tt()
+        # make sure tt stopped
+        self.wait_for_tt(self._options.timeout)
+
+        # restart tt
+        self.start_tt()
+
+        print "Downsamples with hourly rollup, after restart..."
+        for m in range(metric_cardinality):
+            for down in ["avg", "count", "max", "min", "sum"]:
+                query = Query(metric=self.metric_name(m), start=self._options.start-99999, end=dps._end+99999, downsampler="2h-"+down)
+                self.query_and_verify(query)
+
+        for m in range(metric_cardinality):
+            for down in ["avg", "count", "max", "min", "sum"]:
+                for agg in ["none", "avg", "count", "dev", "max", "min", "p50", "p75", "p90", "p95", "p99", "p999", "sum"]:
+                    query = Query(metric=self.metric_name(m), start=self._options.start+99999, end=dps._end+99999, aggregator=agg, downsampler="2h-"+down+"-zero")
+                    self.query_and_verify(query)
+
+        print "Downsamples with daily rollup, after restart..."
+        for m in range(metric_cardinality):
+            for down in ["avg", "count", "max", "min", "sum"]:
+                query = Query(metric=self.metric_name(m), start=self._options.start-99999, end=dps._end+99999, downsampler="1d-"+down+"-zero")
+                self.query_and_verify(query)
+
+        for m in range(metric_cardinality):
+            for down in ["avg", "count", "max", "min", "sum"]:
+                for agg in ["none", "avg", "count", "dev", "max", "min", "p50", "p75", "p90", "p95", "p99", "p999", "sum"]:
+                    query = Query(metric=self.metric_name(m), start=self._options.start+99999, end=dps._end+99999, aggregator=agg, downsampler="1d-"+down)
+                    self.query_and_verify(query)
+
+        # stop tt
         self.stop_tt()
         # make sure tt stopped
         self.wait_for_tt(self._options.timeout)

@@ -41,6 +41,7 @@ public:
     RollupManager(Timestamp tstmap, uint32_t cnt, double min, double max, double sum);
     ~RollupManager();
 
+    void copy_from(const struct rollup_entry_ext& entry);
     void copy_from(const RollupManager& other);
     RollupManager& operator=(const RollupManager& other);
 
