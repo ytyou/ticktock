@@ -77,7 +77,7 @@ intr_handler(int sig)
     if (sig != SIGINT)
         print_stack_trace();
 
-    printf("Interrupted (%d), shutting down...\n", sig);
+    if (! g_quiet) printf("Interrupted (%d), shutting down...\n", sig);
     Logger::info("Interrupted (%d), shutting down...", sig);
 
     if (http_server_ptr != nullptr)
@@ -102,16 +102,16 @@ terminate_handler()
         }
         catch (std::exception &ex)
         {
-            printf("Uncaught exception: %s\n", ex.what());
+            if (! g_quiet) printf("Uncaught exception: %s\n", ex.what());
         }
         catch (...)
         {
-            printf("Unknown exception\n");
+            if (! g_quiet) printf("Unknown exception\n");
         }
     }
     else
     {
-        printf("Unknown exception\n");
+        if (! g_quiet) printf("Unknown exception\n");
     }
 
     print_stack_trace();
@@ -127,7 +127,7 @@ process_cmdline_opts(int argc, char *argv[])
 {
     int c;
     int digit_optind = 0;
-    const char *optstring = "c:dl:p:r";
+    const char *optstring = "c:dl:p:qr";
     static struct option long_options[] =
     {
         // ALL options should require argument
@@ -194,6 +194,10 @@ process_cmdline_opts(int argc, char *argv[])
                 g_pid_file.assign(optarg);
                 break;
 
+            case 'q':
+                g_quiet = true;             // quiet mode
+                break;
+
             case 'r':
                 g_opt_reuse_port = true;    // reuse port
                 break;
@@ -201,15 +205,15 @@ process_cmdline_opts(int argc, char *argv[])
             case '?':
                 if (optopt == 'c')
                 {
-                    fprintf(stderr, "Option -c requires an config file.\n");
+                    if (! g_quiet) fprintf(stderr, "Option -c requires an config file.\n");
                 }
                 else if (optopt == 'l')
                 {
-                    fprintf(stderr, "Option -l requires a log level.\n");
+                    if (! g_quiet) fprintf(stderr, "Option -l requires a log level.\n");
                 }
                 else
                 {
-                    fprintf(stderr, "Unknown option: '\\x%x'.\n", optopt);
+                    if (! g_quiet) fprintf(stderr, "Unknown option: '\\x%x'.\n", optopt);
                 }
                 return 1;
             default:
@@ -217,7 +221,7 @@ process_cmdline_opts(int argc, char *argv[])
         }
     }
 
-    if (optind < argc)
+    if ((optind < argc) && ! g_quiet)
     {
         fprintf(stderr, "Unknown options that are ignored: ");
         while (optind < argc) fprintf(stderr, "%s ", argv[optind++]);
@@ -230,7 +234,7 @@ process_cmdline_opts(int argc, char *argv[])
 static void
 daemonize(const char *cwd)
 {
-    if (daemon(1, 0) != 0)
+    if ((daemon(1, 0) != 0) && ! g_quiet)
         fprintf(stderr, "daemon() failed: errno = %d\n", errno);
 
 #if 0
@@ -310,7 +314,7 @@ initialize()
         // get our working directory
         daemonize(buff);
     }
-    else
+    else if (! g_quiet)
     {
         printf(" TickTockDB v%d.%d.%d,  Maintained by\n"
                " Yongtao You (yongtao.you@gmail.com) and Yi Lin (ylin30@gmail.com).\n"
@@ -363,7 +367,7 @@ static void
 shutdown()
 {
     LD_STATS("Before shutdown");
-    printf("Start shutdown process...\n");
+    if (! g_quiet) printf("Start shutdown process...\n");
     Logger::info("Start shutdown process...");
 
     try
@@ -379,13 +383,13 @@ shutdown()
     catch (std::exception& ex)
     {
         Logger::warn("caught exception when shutting down: %s", ex.what());
-        fprintf(stderr, "caught exception when shutting down: %s\n", ex.what());
+        if (! g_quiet) fprintf(stderr, "caught exception when shutting down: %s\n", ex.what());
     }
 
     Logger::info("Shutdown process complete\n\n");
     LD_STATS("After shutdown");
     Logger::inst()->close();
-    printf("Shutdown process complete\n");
+    if (! g_quiet) printf("Shutdown process complete\n");
 }
 
 int
@@ -409,7 +413,7 @@ main(int argc, char *argv[])
     }
     catch (...)
     {
-        fprintf(stderr, "Initialization failed. Abort!\n");
+        if (! g_quiet) fprintf(stderr, "Initialization failed. Abort!\n");
         return 9;
     }
 
@@ -452,7 +456,7 @@ main(int argc, char *argv[])
     std::signal(SIGBUS, intr_handler);
     std::set_terminate(terminate_handler);
 
-    if (! g_run_as_daemon)
+    if (! g_run_as_daemon && ! g_quiet)
         printf("TickTockDB is ready...\n");
 
     // wait for HTTP server to stop

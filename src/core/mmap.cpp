@@ -1360,7 +1360,7 @@ RollupDataFile::open(bool for_read)
                 m_size = sb.st_size;
         }
 
-        m_file = fdopen(fd, "a+b");
+        m_file = fdopen(fd, for_read?"r+":"a+b");
         ASSERT(m_file != nullptr);
         Logger::info("opening %s for read/write", m_name.c_str());
     }
@@ -1449,6 +1449,7 @@ RollupDataFile::add_data_point(TimeSeriesId tid, Timestamp tstamp, uint32_t cnt,
     entry.tstamp = tstamp;
 
     if (! is_open()) open(false);
+    ASSERT(m_file != nullptr);
     std::fwrite(&entry, sizeof(entry), 1, m_file);
     std::fflush(m_file);
     //m_index += sizeof(entry);
@@ -1460,7 +1461,7 @@ RollupDataFile::query_entry(TimeRange& range, struct rollup_entry *entry, std::u
 {
     ASSERT(entry != nullptr);
 
-    int found = 1;
+    int found = 0;
     auto search = map.find(entry->tid);
 
     if (search != map.end())
@@ -1499,7 +1500,7 @@ void
 RollupDataFile::query(TimeRange& range, std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupType rollup)
 {
     std::lock_guard<std::mutex> guard(m_lock);
-    uint8_t buff[4096];
+    uint8_t buff[1024*sizeof(struct rollup_entry)];
     std::size_t n;
 
     m_last_access = ts_now_sec();
@@ -1531,7 +1532,7 @@ RollupDataFile::query2(TimeRange& range, std::unordered_map<TimeSeriesId,QueryTa
     set_rollup_level(rollup, false);    // unset level2
 
     std::lock_guard<std::mutex> guard(m_lock);
-    uint8_t buff[4096];
+    uint8_t buff[1024*sizeof(struct rollup_entry_ext)];
     std::size_t n;
 
     m_last_access = ts_now_sec();
@@ -1578,7 +1579,7 @@ void
 RollupDataFile::query(const TimeRange& range, std::unordered_map<TimeSeriesId,struct rollup_entry_ext>& outputs)
 {
     std::lock_guard<std::mutex> guard(m_lock);
-    uint8_t buff[4096];
+    uint8_t buff[1024*sizeof(struct rollup_entry)];
     std::size_t n;
 
     m_last_access = ts_now_sec();
@@ -1618,7 +1619,7 @@ void
 RollupDataFile::query_ext(const TimeRange& range, std::unordered_map<TimeSeriesId,struct rollup_entry_ext>& outputs)
 {
     std::lock_guard<std::mutex> guard(m_lock);
-    uint8_t buff[4096];
+    uint8_t buff[1024*sizeof(struct rollup_entry_ext)];
     std::size_t n;
 
     m_last_access = ts_now_sec();

@@ -347,7 +347,7 @@ void
 DownsamplerAvg::add_last_point(DataPointVector& dps)
 {
     if (m_count != 0L)
-        dps.emplace_back(resolution(m_last_tstamp), m_sum/(double)m_count);
+        dps.emplace_back(validate_resolution(m_last_tstamp), m_sum/(double)m_count);
 
     m_sum = 0;
     m_count = 0L;

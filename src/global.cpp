@@ -36,6 +36,7 @@ std::string g_host_name;
 HttpServer *http_server_ptr = nullptr;
 TcpServer *tcp_server_ptr = nullptr;
 UdpServer *udp_server_ptr = nullptr;
+bool g_quiet = false;               // minimal console output
 bool g_opt_reuse_port = false;      // reuse port when bind()? controlled by cmd line option -r
 bool g_tstamp_resolution_ms = true;
 bool g_cluster_enabled = false;
