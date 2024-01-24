@@ -1583,7 +1583,9 @@ RollupDataFile::query(const TimeRange& range, std::unordered_map<TimeSeriesId,st
     std::size_t n;
 
     m_last_access = ts_now_sec();
-    if (! is_open()) open(true);
+    close();
+    open(true);
+    //if (! is_open()) open(true);
     std::fseek(m_file, 0, SEEK_SET);    // seek to beginning of file
 
     while ((n = std::fread(&buff[0], 1, sizeof(buff), m_file)) > 0)

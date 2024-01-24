@@ -254,7 +254,7 @@ class Test(object):
 
     def start_tt(self, conf_file="tt.conf"):
         while True:
-            self._tt = subprocess.Popen([self._options.tt, "-c", os.path.join(self._options.root,conf_file), "-r"])
+            self._tt = subprocess.Popen([self._options.tt, "-c", os.path.join(self._options.root,conf_file), "-q", "-r"])
             time.sleep(4)
             if not self.tt_stopped():
                 break
@@ -1255,6 +1255,7 @@ class Query_With_Rollup(Test):
 
         # generate config
         config = TickTockConfig(self._options)
+        config.add_entry("tcp.buffer.size", "1mb")
         config()    # generate config
 
         # start tt
@@ -1263,7 +1264,7 @@ class Query_With_Rollup(Test):
         # insert some dps
         print "insert data..."
         ts = self._options.start
-        for i in range(10*24*60):
+        for i in range(20*24*60):
             dps = DataPoints(self._prefix, ts, interval_ms=60000, metric_count=1, metric_cardinality=metric_cardinality, tag_cardinality=2)
             self.send_data(dps, wait=False)
             ts += 60000
@@ -1271,7 +1272,7 @@ class Query_With_Rollup(Test):
 
         # do rollup
         print "perform rollup..."
-        for i in range(5):
+        for i in range(10):
             self.do_rollup()
 
         print "Downsamples with hourly rollup..."
