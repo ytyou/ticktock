@@ -333,7 +333,7 @@ DownsamplerAvg::add_data_point(struct rollup_entry_ext *entry, RollupType rollup
         if (m_last_tstamp != TT_INVALID_TIMESTAMP)
         {
             ASSERT(m_count != 0L);
-            dps.emplace_back(m_last_tstamp, m_sum/(double)m_count);
+            dps.emplace_back(resolution(m_last_tstamp), m_sum/(double)m_count);
         }
 
         fill_to(curr_tstamp, dps);
@@ -347,7 +347,7 @@ void
 DownsamplerAvg::add_last_point(DataPointVector& dps)
 {
     if (m_count != 0L)
-        dps.emplace_back(validate_resolution(m_last_tstamp), m_sum/(double)m_count);
+        dps.emplace_back(resolution(m_last_tstamp), m_sum/(double)m_count);
 
     m_sum = 0;
     m_count = 0L;
@@ -392,7 +392,7 @@ DownsamplerCount::add_data_point(struct rollup_entry_ext *entry, RollupType roll
     else
     {
         fill_to(curr_tstamp, dps);
-        dps.emplace_back(curr_tstamp, (double)entry->cnt);
+        dps.emplace_back(resolution(curr_tstamp), (double)entry->cnt);
         m_last_tstamp = curr_tstamp;
     }
 }
@@ -515,7 +515,7 @@ DownsamplerMax::add_data_point(struct rollup_entry_ext *entry, RollupType rollup
     else
     {
         fill_to(curr_tstamp, dps);
-        dps.emplace_back(curr_tstamp, (double)entry->max);
+        dps.emplace_back(resolution(curr_tstamp), (double)entry->max);
         m_last_tstamp = curr_tstamp;
     }
 }
@@ -559,7 +559,7 @@ DownsamplerMin::add_data_point(struct rollup_entry_ext *entry, RollupType rollup
     else
     {
         fill_to(curr_tstamp, dps);
-        dps.emplace_back(curr_tstamp, (double)entry->min);
+        dps.emplace_back(resolution(curr_tstamp), (double)entry->min);
         m_last_tstamp = curr_tstamp;
     }
 }
@@ -661,7 +661,7 @@ DownsamplerSum::add_data_point(struct rollup_entry_ext *entry, RollupType rollup
     else
     {
         fill_to(curr_tstamp, dps);
-        dps.emplace_back(curr_tstamp, (double)entry->sum);
+        dps.emplace_back(resolution(curr_tstamp), (double)entry->sum);
         m_last_tstamp = curr_tstamp;
     }
 }
