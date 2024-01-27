@@ -239,11 +239,13 @@ class QueryTask : public Recyclable
 public:
     QueryTask();
     void query_ts_data(Tsdb *tsdb);
-    void query_ts_data(RollupType rollup_type, bool ms);
+    void query_ts_data(const TimeRange& range, RollupType rollup_type, bool ms);
     void merge_data();
     void fill();
     void convert_to_ms();
     void add_data_point(struct rollup_entry_ext *entry, RollupType rollup);
+    void remove_dps(const TimeRange& range);
+    void sort_if_needed();
 
     // return max/min value of the last n dps in m_dps[]
     double get_max(int n) const;
@@ -310,6 +312,11 @@ public:
         return m_time_range;
     }
 
+    inline void set_sort_needed()
+    {
+        m_sort_needed = true;
+    }
+
     struct compare_less
     {
         bool operator()(const QueryTask *t1, const QueryTask *t2)
@@ -350,6 +357,7 @@ private:
     HeaderIndex m_header_index;
     uint32_t m_tstamp_from;
     bool m_has_ooo;
+    bool m_sort_needed;
 };
 
 
@@ -376,6 +384,10 @@ public:
     void set_metric_id(MetricId mid) { m_metric_id = mid; }
 
 private:
+    void query_raw(Tsdb* tsdb, std::vector<QueryTask*>& tasks);
+    void query_rollup_hourly(const TimeRange& range, const std::vector<Tsdb*>& tsdbs, RollupType rollup);
+    void query_rollup_daily(RollupType rollup);
+
     bool m_ms;
     bool m_compact;
     RollupUsage m_rollup;

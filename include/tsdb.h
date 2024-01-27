@@ -276,6 +276,7 @@ public:
     PageCount get_page_count() const;
     int get_compressor_version();
 
+    bool has_daily_rollup();
     bool can_use_rollup(bool level2);
     bool can_use_rollup(TimeSeriesId tid);
     Timestamp get_last_tstamp(MetricId mid, TimeSeriesId tid);

@@ -320,14 +320,14 @@ RollupManager::get(struct rollup_entry_ext& entry)
 }
 
 void
-RollupManager::query(MetricId mid, TimeRange& range, std::vector<QueryTask*>& tasks, RollupType rollup)
+RollupManager::query(MetricId mid, const TimeRange& range, std::vector<QueryTask*>& tasks, RollupType rollup)
 {
     std::lock_guard<std::mutex> guard(m_lock);
     query_no_lock(mid, range, tasks, rollup);
 }
 
 void
-RollupManager::query_no_lock(MetricId mid, TimeRange& range, std::vector<QueryTask*>& tasks, RollupType rollup)
+RollupManager::query_no_lock(MetricId mid, const TimeRange& range, std::vector<QueryTask*>& tasks, RollupType rollup)
 {
     ASSERT(! tasks.empty());
     ASSERT(rollup != RollupType::RU_NONE);
@@ -359,7 +359,7 @@ RollupManager::query_no_lock(MetricId mid, TimeRange& range, std::vector<QueryTa
 }
 
 void
-RollupManager::query(MetricId mid, TimeRange& range, std::unordered_map<TimeSeriesId,struct rollup_entry_ext>& outputs)
+RollupManager::query(MetricId mid, const TimeRange& range, std::unordered_map<TimeSeriesId,struct rollup_entry_ext>& outputs)
 {
     std::vector<RollupDataFile*> data_files;
     get_data_files(mid, range, data_files);
@@ -418,7 +418,7 @@ RollupManager::get_data_file(MetricId mid, Timestamp tstamp)
 }
 
 void
-RollupManager::get_data_files(MetricId mid, TimeRange& range, std::vector<RollupDataFile*>& files)
+RollupManager::get_data_files(MetricId mid, const TimeRange& range, std::vector<RollupDataFile*>& files)
 {
     int year, month;
     Timestamp end = range.get_to_sec();
@@ -449,7 +449,7 @@ RollupManager::get_data_files(MetricId mid, TimeRange& range, std::vector<Rollup
 }
 
 void
-RollupManager::get_data_files2(MetricId mid, TimeRange& range, std::vector<RollupDataFile*>& files)
+RollupManager::get_data_files2(MetricId mid, const TimeRange& range, std::vector<RollupDataFile*>& files)
 {
     int year, month;
     Timestamp end = range.get_to_sec();

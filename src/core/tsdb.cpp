@@ -2070,6 +2070,13 @@ Tsdb::get_last_tstamp(MetricId mid, TimeSeriesId tid)
     return tstamp;
 }
 
+bool
+Tsdb::has_daily_rollup()
+{
+    std::lock_guard<std::mutex> guard(m_lock);
+    return ((m_mode & TSDB_MODE_ROLLED_UP) != 0);
+}
+
 // If this returns true, rollup data is definitely usable;
 // Otherwise you need to call can_use_rollup(TimeSeriesId tid, bool level2)
 // for the specific TimeSeries to determine if rollup data is usable or not.
@@ -2079,7 +2086,8 @@ Tsdb::can_use_rollup(bool level2)
     std::lock_guard<std::mutex> guard(m_lock);
 
     if (level2)
-        return ((m_mode & TSDB_MODE_ROLLED_UP) != 0);
+        return ((m_mode & TSDB_MODE_ROLLED_UP) != 0) &&
+               ((m_mode & TSDB_MODE_OUT_OF_ORDER) == 0);
     else
         return ((m_mode & TSDB_MODE_OUT_OF_ORDER) == 0);
 }

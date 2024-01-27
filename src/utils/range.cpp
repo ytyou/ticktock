@@ -23,5 +23,22 @@ namespace tt
 {
 
 const TimeRange TimeRange::MAX(0L, std::numeric_limits<uint64_t>::max());
+const TimeRange TimeRange::MIN(std::numeric_limits<uint64_t>::max(), 0L);
+
+
+void
+TimeRange::merge(const TimeRange& other)
+{
+    m_from = std::min(m_from, other.m_from);
+    m_to = std::max(m_to, other.m_to);
+}
+
+void
+TimeRange::intersect(const TimeRange& other)
+{
+    m_from = std::max(m_from, other.m_from);
+    m_to = std::min(m_to, other.m_to);
+}
+
 
 }

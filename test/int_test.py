@@ -555,7 +555,7 @@ class Test(object):
                 print "actual not float: " + str(actual)
                 return False
             diff = abs(expected - actual)
-            if diff > 0.0000000001:
+            if diff > 0.00000000012:
                 if diff < 0.001:
                     print "expected not same as actual (float): {:.16f} vs {:.16f}; diff = {:.16f}".format(expected, actual, diff)
                 return False

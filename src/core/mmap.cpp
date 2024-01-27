@@ -1457,7 +1457,7 @@ RollupDataFile::add_data_point(TimeSeriesId tid, Timestamp tstamp, uint32_t cnt,
 }
 
 int
-RollupDataFile::query_entry(TimeRange& range, struct rollup_entry *entry, std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupType rollup)
+RollupDataFile::query_entry(const TimeRange& range, struct rollup_entry *entry, std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupType rollup)
 {
     ASSERT(entry != nullptr);
 
@@ -1497,7 +1497,7 @@ RollupDataFile::query_entry(TimeRange& range, struct rollup_entry *entry, std::u
 }
 
 void
-RollupDataFile::query(TimeRange& range, std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupType rollup)
+RollupDataFile::query(const TimeRange& range, std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupType rollup)
 {
     std::lock_guard<std::mutex> guard(m_lock);
     uint8_t buff[1024*sizeof(struct rollup_entry)];
@@ -1527,7 +1527,7 @@ RollupDataFile::query(TimeRange& range, std::unordered_map<TimeSeriesId,QueryTas
 }
 
 void
-RollupDataFile::query2(TimeRange& range, std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupType rollup)
+RollupDataFile::query2(const TimeRange& range, std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupType rollup)
 {
     set_rollup_level(rollup, false);    // unset level2
 

@@ -445,7 +445,7 @@ TimeSeries::query_for_data(Tsdb *tsdb, TimeRange& range, std::vector<DataPointCo
 }
 
 void
-TimeSeries::query_for_rollup(TimeRange& range, QueryTask *qt, RollupType rollup, bool ms)
+TimeSeries::query_for_rollup(const TimeRange& range, QueryTask *qt, RollupType rollup, bool ms)
 {
     ASSERT(rollup != RollupType::RU_NONE);
 
