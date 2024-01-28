@@ -434,9 +434,7 @@ RollupManager::get_data_files(MetricId mid, const TimeRange& range, std::vector<
 
         RollupDataFile *data_file = get_data_file(mid, ts);
 
-        if (data_file->empty())
-            delete data_file;
-        else
+        if (! data_file->empty())
             files.push_back(data_file);
 
         month++;
