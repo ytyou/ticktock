@@ -45,6 +45,10 @@ public:
     void copy_from(const RollupManager& other);
     RollupManager& operator=(const RollupManager& other);
 
+    // save (restore) to (from) append log (WAL)
+    void append(FILE *file);
+    void restore(struct rollup_append_entry *entry);
+
     static void init();
     static void shutdown();
 

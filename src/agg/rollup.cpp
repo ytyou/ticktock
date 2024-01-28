@@ -537,5 +537,34 @@ RollupManager::get_rollup_data_file_size(bool monthly)
     return (monthly_size / (2 * sizeof(struct rollup_entry))) * sizeof(struct rollup_entry_ext);
 }
 
+void
+RollupManager::append(FILE *file)
+{
+    struct rollup_append_entry entry;
+
+    entry.cnt = m_cnt;
+    entry.min = m_min;
+    entry.max = m_max;
+    entry.sum = m_sum;
+    entry.tstamp = m_tstamp;
+
+    int ret;
+    ret = fwrite(&entry, 1, sizeof(entry), file);
+    if (ret != sizeof(entry))
+        Logger::error("RollupManager::append() failed, expected=%d, actual=%d", sizeof(entry), ret);
+}
+
+void
+RollupManager::restore(struct rollup_append_entry *entry)
+{
+    ASSERT(entry != nullptr);
+
+    m_cnt = entry->cnt;
+    m_min = entry->min;
+    m_max = entry->max;
+    m_sum = entry->sum;
+    m_tstamp = entry->tstamp;
+}
+
 
 }

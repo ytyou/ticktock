@@ -153,12 +153,17 @@ AppendLog::restore(std::vector<TimeSeries*>& tsv)
         FileIndex file_idx = ((struct append_log_entry*)buff)->file_idx;
         HeaderIndex header_idx = ((struct append_log_entry*)buff)->header_idx;
 
+        bool is_ooo = ((flags&0x80)==0x80);
         int bytes = offset;
 
         if ((flags & 0x03) == 0)    // version 0 compressor
             bytes *= sizeof(DataPointPair);
         else if (start != 0)
             bytes++;
+
+        // RollupManager's data always follows those of non-ooo PageInMemory
+        if (! is_ooo)
+            bytes += sizeof(struct rollup_append_entry);
 
         if (tsv.size() <= tid)
         {
@@ -188,7 +193,7 @@ AppendLog::restore(std::vector<TimeSeries*>& tsv)
             continue;
         }
 
-        ts->restore(tsdb, mid, tstamp, offset, start, (uint8_t*)buff, ((flags&0x80)==0x80), file_idx, header_idx);
+        ts->restore(tsdb, mid, tstamp, offset, start, (uint8_t*)buff, bytes, is_ooo, file_idx, header_idx);
     }
 
     if (file != nullptr)

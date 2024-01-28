@@ -316,6 +316,16 @@ struct __attribute__ ((__packed__)) rollup_entry_ext
 };
 
 
+struct __attribute__ ((__packed__)) rollup_append_entry
+{
+    uint32_t cnt;
+    double min;
+    double max;
+    double sum;
+    Timestamp tstamp;
+};
+
+
 class RollupDataFile
 {
 public:
