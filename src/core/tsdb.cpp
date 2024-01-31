@@ -2907,11 +2907,20 @@ Tsdb::init()
     PartitionManager::init();
     TimeSeries::init();
 
+    if (Config::inst()->exists(CFG_TSDB_ROTATION_FREQUENCY))
+        Logger::warn("%s config ignored, using 1d", CFG_TSDB_ROTATION_FREQUENCY);
+
+    tsdb_rotation_freq = 24 * 3600L;    // 1d
+    if (g_tstamp_resolution_ms)
+        tsdb_rotation_freq *= 1000L;
+
+/** for now we only support tsdb.rotation.frequency = 1d
     tsdb_rotation_freq =
         Config::inst()->get_time(CFG_TSDB_ROTATION_FREQUENCY, TimeUnit::SEC, CFG_TSDB_ROTATION_FREQUENCY_DEF);
     if (g_tstamp_resolution_ms)
         tsdb_rotation_freq *= 1000L;
     if (tsdb_rotation_freq < 1) tsdb_rotation_freq = 1;
+**/
 
     // check if we have enough disk space
     unsigned long page_count =
@@ -3192,10 +3201,10 @@ Tsdb::rotate(TaskData& data)
     {
         Timestamp archive_threshold =
             Config::inst()->get_time(CFG_TSDB_ARCHIVE_THRESHOLD, TimeUnit::DAY, CFG_TSDB_ARCHIVE_THRESHOLD_DEF);
-        Timestamp rotation_freq =
-            Config::inst()->get_time(CFG_TSDB_ROTATION_FREQUENCY, TimeUnit::DAY, CFG_TSDB_ROTATION_FREQUENCY_DEF);
+        Timestamp rotation_freq = 1;    // force to use 1d
+            //Config::inst()->get_time(CFG_TSDB_ROTATION_FREQUENCY, TimeUnit::DAY, CFG_TSDB_ROTATION_FREQUENCY_DEF);
 
-        if (rotation_freq < 1) rotation_freq = 1;
+        //if (rotation_freq < 1) rotation_freq = 1;
         uint64_t days = archive_threshold / rotation_freq;
 
         if (days > 1)
