@@ -143,6 +143,12 @@ ts_now(char *buff, const size_t size)
     sprintf(buff+std::strlen(buff), ".%03d", msec);    // add the fraction of sec part
 }
 
+Timestamp
+step_down(Timestamp ts, Timestamp interval)
+{
+    return ts - (ts % interval);
+}
+
 /* return beginning of month time in UTC
  *
  * @param year Year minus 1900

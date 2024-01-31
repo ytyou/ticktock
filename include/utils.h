@@ -111,6 +111,7 @@ extern int max_subset_4k(int16_t set[], size_t size, std::vector<int>& subset); 
 extern bool is_aligned(uintptr_t ptr, unsigned long align);
 extern void set_rollup_level(RollupType& rollup, bool level2);
 extern bool is_rollup_level2(RollupType rollup);
+extern Timestamp step_down(Timestamp ts, Timestamp interval);
 
 extern bool file_exists(const std::string& full_path);
 extern void get_all_files(const std::string& pattern, std::vector<std::string>& file_names);

@@ -105,7 +105,7 @@ RollupManager::init()
 {
     std::string wal_dir = Config::get_wal_dir();
     create_dir(wal_dir);
-    m_wal_data_file = new RollupDataFile(wal_dir + "/rollup.data");
+    m_wal_data_file = new RollupDataFile(wal_dir + "/rollup.data", 0);
 
     // restore if necessary
     if (! m_wal_data_file->empty())
@@ -209,7 +209,7 @@ RollupManager::flush(MetricId mid, TimeSeriesId tid)
         return;
 
     // write to rollup files
-    RollupDataFile *file = get_data_file(mid, m_tstamp);
+    RollupDataFile *file = get_or_create_data_file(mid, m_tstamp);
     file->add_data_point(tid, m_cnt, m_min, m_max, m_sum);
 
     // reset
@@ -387,8 +387,16 @@ RollupManager::get_rollup_bucket(MetricId mid)
     return mid % Config::inst()->get_int(CFG_TSDB_ROLLUP_BUCKETS,CFG_TSDB_ROLLUP_BUCKETS_DEF);
 }
 
+// get monthly data file
 RollupDataFile *
-RollupManager::get_data_file(MetricId mid, std::time_t tstamp, std::unordered_map<uint64_t, RollupDataFile*>& map, bool monthly)
+RollupManager::get_or_create_data_file(MetricId mid, Timestamp tstamp)
+{
+    std::time_t begin = begin_month(tstamp);
+    return get_or_create_data_file(mid, begin, m_data_files, true);
+}
+
+RollupDataFile *
+RollupManager::get_or_create_data_file(MetricId mid, std::time_t tstamp, std::unordered_map<uint64_t, RollupDataFile*>& map, bool monthly)
 {
     // calc a unique 'bucket' for each year/month
     uint64_t bucket = tstamp * MAX_ROLLUP_BUCKET_COUNT + get_rollup_bucket(mid);
@@ -405,6 +413,36 @@ RollupManager::get_data_file(MetricId mid, std::time_t tstamp, std::unordered_ma
 
     ASSERT(data_file != nullptr);
     data_file->inc_ref_count();
+
+    return data_file;
+}
+
+RollupDataFile *
+RollupManager::get_data_file(MetricId mid, std::time_t tstamp, std::unordered_map<uint64_t, RollupDataFile*>& map, bool monthly)
+{
+    // calc a unique 'bucket' for each year/month
+    uint64_t bucket = tstamp * MAX_ROLLUP_BUCKET_COUNT + get_rollup_bucket(mid);
+    auto search = map.find(bucket);
+    RollupDataFile *data_file = nullptr;
+
+    if (search == map.end())
+    {
+        std::string name =
+            monthly ?
+                RollupDataFile::get_name_by_mid_1h(mid, tstamp, false) :
+                RollupDataFile::get_name_by_mid_1d(mid, tstamp, false);
+
+        if (file_exists(name))
+        {
+            data_file = new RollupDataFile(mid, tstamp, monthly);
+            map.insert(std::make_pair(bucket, data_file));
+        }
+    }
+    else
+        data_file = search->second;
+
+    if (data_file != nullptr)
+        data_file->inc_ref_count();
 
     return data_file;
 }
@@ -434,7 +472,7 @@ RollupManager::get_data_files(MetricId mid, const TimeRange& range, std::vector<
 
         RollupDataFile *data_file = get_data_file(mid, ts);
 
-        if (! data_file->empty())
+        if ((data_file != nullptr) && (! data_file->empty()))
             files.push_back(data_file);
 
         month++;
@@ -463,13 +501,72 @@ RollupManager::get_data_files2(MetricId mid, const TimeRange& range, std::vector
 
         RollupDataFile *data_file = get_data_file2(mid, ts);
 
-        if (data_file->empty())
-            data_file->dec_ref_count();
-        else
-            files.push_back(data_file);
+        if (data_file != nullptr)
+        {
+            if (data_file->empty())
+                data_file->dec_ref_count();
+            else
+                files.push_back(data_file);
+        }
 
         year++;
     }
+}
+
+/* @param tstamp beginning of month, in seconds
+ */
+RollupDataFile *
+RollupManager::get_data_file_by_bucket_1h(int bucket, Timestamp tstamp)
+{
+    ASSERT(bucket >= 0);
+    ASSERT(is_sec(tstamp));
+
+    uint64_t key = tstamp * MAX_ROLLUP_BUCKET_COUNT + bucket;
+    auto search = m_data_files.find(key);
+    RollupDataFile *data_file = nullptr;
+
+    if (search == m_data_files.end())
+    {
+        std::string name = RollupDataFile::get_name_by_bucket_1h(bucket, tstamp, false);
+
+        if (file_exists(name))
+        {
+            data_file = new RollupDataFile(name, tstamp);
+            m_data_files.insert(std::make_pair(key, data_file));
+        }
+    }
+    else
+    {
+        data_file = search->second;
+        ASSERT(data_file != nullptr);
+        data_file->inc_ref_count();
+    }
+
+    return data_file;
+}
+
+RollupDataFile *
+RollupManager::get_or_create_data_file_by_bucket_1d(int bucket, Timestamp tstamp)
+{
+    ASSERT(bucket >= 0);
+    ASSERT(is_sec(tstamp));
+
+    uint64_t key = tstamp * MAX_ROLLUP_BUCKET_COUNT + bucket;
+    auto search = m_data_files2.find(key);
+    RollupDataFile *data_file = nullptr;
+
+    if (search == m_data_files2.end())
+    {
+        data_file = new RollupDataFile(bucket, tstamp);
+        m_data_files2.insert(std::make_pair(key, data_file));
+    }
+    else
+        data_file = search->second;
+
+    ASSERT(data_file != nullptr);
+    data_file->inc_ref_count();
+
+    return data_file;
 }
 
 // get annual data file

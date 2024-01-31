@@ -1264,16 +1264,16 @@ class Query_With_Rollup(Test):
         # insert some dps
         print "insert data..."
         ts = self._options.start
-        for i in range(20*24*60):
+        for i in range(10*24*60):
             dps = DataPoints(self._prefix, ts, interval_ms=60000, metric_count=1, metric_cardinality=metric_cardinality, tag_cardinality=2)
             self.send_data(dps, wait=False)
-            ts += 60000
+            ts += 300000
         time.sleep(5)
 
         # do rollup
         print "perform rollup..."
-        for i in range(10):
-            self.do_rollup()
+        self.do_rollup()
+        self.do_rollup()
 
         print "Downsamples with hourly rollup..."
         for m in range(metric_cardinality):
@@ -2145,7 +2145,7 @@ def get_defaults():
         'opentsdbip': '127.0.0.1',
         'opentsdbport': 4242,
         'root': '/tmp/tt_i',
-        'start': 1569859200000,
+        'start': 1569888000000,
         'timeout': 10,
         'tt': 'bin/tt',
         'verbose': False

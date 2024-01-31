@@ -1244,9 +1244,7 @@ QuerySuperTask::query_rollup_daily(RollupType rollup)
         }
 
         if (! tasks.empty())
-        {
             query_raw(tsdb, tasks);
-        }
 
         tsdb->dec_ref_count();
     }

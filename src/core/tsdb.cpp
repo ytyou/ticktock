@@ -3608,17 +3608,17 @@ Tsdb::rollup(TaskData& data)
 
             if ((*it)->is_rolled_up())
             {
-                Logger::debug("[rollup] %T is already rolled up, ref-count = %d", (*it), (*it)->m_ref_count);
+                Logger::info("[rollup] %T is already rolled up, ref-count = %d", (*it), (*it)->m_ref_count);
                 continue;
             }
             else if (((*it)->m_mode & TSDB_MODE_READ_WRITE) && (data.integer == 0))
             {
-                Logger::debug("[rollup] %T is still being accessed, ref-count = %d", (*it), (*it)->m_ref_count);
+                Logger::info("[rollup] %T is still being accessed, ref-count = %d", (*it), (*it)->m_ref_count);
                 break;
             }
             else if ((*it)->m_ref_count > 0)
             {
-                Logger::debug("[rollup] ref-count of %T is not zero: %d", (*it), (*it)->m_ref_count);
+                Logger::info("[rollup] ref-count of %T is not zero: %d", (*it), (*it)->m_ref_count);
                 break;
             }
 
@@ -3627,84 +3627,84 @@ Tsdb::rollup(TaskData& data)
         }
     }
 
+    TimeRange month_range;
+    std::vector<Tsdb*> tsdbs;
+
     if (tsdb != nullptr)
     {
-        std::lock_guard<std::mutex> guard(tsdb->m_lock);
-        //WriteLock guard(tsdb->m_lock);
+        Logger::info("[rollup] looking into %T", tsdb);
 
-        if (tsdb->m_ref_count <= 0)
+        Timestamp now_sec = ts_now_sec();
+        Timestamp tstamp = tsdb->get_time_range().get_from_sec();
+        std::time_t begin = begin_month(tstamp);
+        std::time_t end = end_month(tstamp);
+        Timestamp threshold =
+            Config::inst()->get_time(CFG_TSDB_ROLLUP_THRESHOLD, TimeUnit::SEC, CFG_TSDB_ROLLUP_THRESHOLD_DEF);
+
+        // is it the current month?
+        if ((end <= begin_month(now_sec)) && (threshold < (now_sec - end)))
         {
-            TimeRange range(tsdb->get_time_range().get_from_sec(), tsdb->get_time_range().get_to_sec());
+            // get all the Tsdbs in this month
+            TimeRange range(validate_resolution(begin), validate_resolution(end));
+            Tsdb::insts(range, tsdbs);
 
-            Logger::info("[rollup] Found this tsdb to rollup: %T", tsdb);
+            // make sure none of the Tsdbs are in use
+            bool in_use = false;
 
-            // perform rollup
-            try
+            for (auto tsdb: tsdbs)
             {
-                std::vector<Mapping*> mappings;
-                struct rollup_entry_ext entry;
-
-                Tsdb::get_all_mappings(mappings);
-                tsdb->m_index_file.ensure_open(true);
-
-                entry.tstamp = TT_INVALID_TIMESTAMP;
-                entry.cnt = 0;
-                entry.min = std::numeric_limits<double>::max();
-                entry.max = std::numeric_limits<double>::lowest();
-                entry.sum = 0.0;
-
-                for (Mapping *mapping : mappings)
+                if (tsdb->m_ref_count > 1)
                 {
-                    std::unordered_map<TimeSeriesId,struct rollup_entry_ext> map;
-
-                    for (TimeSeries *ts = mapping->get_ts_head(); ts != nullptr; ts = ts->m_next)
-                    {
-                        TimeSeriesId tid = ts->get_id();
-                        entry.tid = tid;
-                        ASSERT(map.find(tid) == map.end());
-                        map.emplace(std::make_pair(tid,entry));
-                    }
-
-                    if (! map.empty())
-                    {
-                        RollupManager::query(mapping->get_id(), range, map);
-
-                        // write to data files
-                        RollupDataFile *data_file =
-                            RollupManager::get_data_file2(mapping->get_id(), range.get_from_sec());
-
-                        ASSERT(data_file != nullptr);
-                        //data_file->open(false); // open for write
-
-                        for (const std::pair<TimeSeriesId,struct rollup_entry_ext>& e: map)
-                        {
-                            if (e.second.cnt > 0)
-                                data_file->add_data_point(e.second.tid, range.get_from(), e.second.cnt, e.second.min, e.second.max, e.second.sum);
-                        }
-
-                        data_file->close_if_idle(g_rollup_interval, ts_now_sec());
-                        data_file->dec_ref_count();
-                    }
+                    in_use = true;
+                    break;
                 }
-
-                tsdb->unload_no_lock();
-
-                // mark it as compacted
-                tsdb->m_mode |= TSDB_MODE_ROLLED_UP;
-                Logger::info("[rollup] 1 Tsdb %T rolled up, mode=0x%0x", tsdb, tsdb->m_mode);
             }
-            catch (const std::exception& ex)
+
+            if (in_use)
             {
-                Logger::error("[rollup] rollup of %T failed: %s", tsdb, ex.what());
+                for (auto tsdb: tsdbs)
+                    tsdb->dec_ref_count();
+                tsdbs.clear();
             }
-            catch (...)
+            else
             {
-                Logger::error("[rollup] rollup of %T failed for unknown reasons", tsdb);
+                month_range.init(begin, end);
+                Logger::info("[rollup] range=%T, tsdb-count=%lu", &month_range, tsdbs.size());
             }
         }
         else
+            Logger::info("[rollup] end=%lu, now=%lu, now_sec=%lu, threshold=%lu", end, begin_month(now_sec), now_sec, threshold);
+    }
+
+    if (! tsdbs.empty())
+    {
+        int bucket_count =
+            Config::inst()->get_int(CFG_TSDB_ROLLUP_BUCKETS,CFG_TSDB_ROLLUP_BUCKETS_DEF);
+
+        for (int bucket = 0; bucket < bucket_count; bucket++)
         {
-            Logger::debug("[rollup] Tsdb %T busy, not rolling up. ref = %d", tsdb, tsdb->m_ref_count);
+            RollupDataFile *data_file_1h =
+                RollupManager::get_data_file_by_bucket_1h(bucket, month_range.get_from());
+
+            if (data_file_1h == nullptr)
+                continue;
+
+            std::unordered_map<TimeSeriesId,std::vector<struct rollup_entry_ext>> data;
+            data_file_1h->query(data);
+            data_file_1h->dec_ref_count();
+
+            RollupDataFile *data_file_1d =
+                RollupManager::get_or_create_data_file_by_bucket_1d(bucket, month_range.get_from());
+            ASSERT(data_file_1d != nullptr);
+            data_file_1d->add_data_points(data);
+            data_file_1d->dec_ref_count();
+        }
+
+        for (auto tsdb: tsdbs)
+        {
+            std::lock_guard<std::mutex> guard(tsdb->m_lock);
+            tsdb->m_mode |= TSDB_MODE_ROLLED_UP;
+            tsdb->dec_ref_count_no_lock();
         }
     }
     else

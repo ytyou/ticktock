@@ -329,14 +329,15 @@ struct __attribute__ ((__packed__)) rollup_append_entry
 class RollupDataFile
 {
 public:
-    RollupDataFile(const std::string& name);
+    RollupDataFile(int bucket, Timestamp tstamp);   // create 1d data file
+    RollupDataFile(const std::string& name, Timestamp begin);
     RollupDataFile(MetricId mid, Timestamp begin, bool monthly);
     ~RollupDataFile();
 
     void open(bool for_read);
     void close();
     bool close_if_idle(Timestamp threshold, Timestamp now);
-    bool is_open() const;
+    bool is_open(bool for_read) const;
     inline off_t size() const { return m_size; }
 
     inline bool empty() const { return (m_index == 0) && !file_exists(m_name); }
@@ -344,17 +345,26 @@ public:
 
     void add_data_point(TimeSeriesId tid, uint32_t cnt, double min, double max, double sum);
     void add_data_point(TimeSeriesId tid, Timestamp tstamp, uint32_t cnt, double min, double max, double sum);  // called during shutdown
+    void add_data_points(std::unordered_map<TimeSeriesId,std::vector<struct rollup_entry_ext>>& data);
     void query(const TimeRange& range, std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupType rollup);  // query hourly rollup
     void query2(const TimeRange& range, std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupType rollup); // query daily rollup
     // used by Tsdb::rollup() for offline processing
     void query(const TimeRange& range, std::unordered_map<TimeSeriesId,struct rollup_entry_ext>& map);
     void query_ext(const TimeRange& range, std::unordered_map<TimeSeriesId,struct rollup_entry_ext>& map);
+    // used by Tsdb::rollup()
+    void query(std::unordered_map<TimeSeriesId,std::vector<struct rollup_entry_ext>>& data);
 
     void dec_ref_count();
     void dec_ref_count_no_lock() { m_ref_count--; }
     void inc_ref_count();
 
+    static std::string get_name_by_mid_1h(MetricId mid, Timestamp tstamp, bool create);
+    static std::string get_name_by_bucket_1h(int bucket, Timestamp tstamp, bool create);
+    static std::string get_name_by_mid_1d(MetricId mid, Timestamp tstamp, bool create);
+    static std::string get_name_by_bucket_1d(int bucket, Timestamp tstamp, bool create);
+
 private:
+    void flush();
     int query_entry(const TimeRange& range, struct rollup_entry *entry, std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupType rollup);
 
     std::string m_name;
@@ -367,6 +377,7 @@ private:
     std::mutex m_lock;
     int m_ref_count;        // prevent unload when in use
     bool m_monthly;         // true: monthly; false: annually
+    bool m_for_read;
 };
 
 

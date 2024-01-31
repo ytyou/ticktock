@@ -30,6 +30,7 @@
 #include "page.h"
 #include "query.h"
 #include "tsdb.h"
+#include "utils.h"
 
 
 namespace tt
@@ -1292,34 +1293,39 @@ RollupDataFile::RollupDataFile(MetricId mid, Timestamp begin, bool monthly) :
     m_last_access(0),
     m_index(0),
     m_size(0),
+    m_for_read(false),
     m_monthly(monthly)
 {
-    // name of the file
-    int year, month;
-    get_year_month(begin, year, month);
-    std::ostringstream oss;
-    //oss << Config::get_data_dir() << "/"
-        //<< std::to_string(year) << "/"
-        //<< std::setfill('0') << std::setw(2) << month << "/rollup";
-    oss << Config::get_data_dir() << "/"
-        << std::to_string(year) << "/";
-    if (monthly)
-        oss << std::setfill('0') << std::setw(2) << month << "/rollup";
-    else
-        oss << "rollup";
-    create_dir(oss.str());
-    oss << "/r" << std::setfill('0') << std::setw(6) << RollupManager::get_rollup_bucket(mid) << ".data";
-    m_name = oss.str();
+    m_name = monthly ? get_name_by_mid_1h(mid, begin, true) : get_name_by_mid_1d(mid, begin, true);
 }
 
-RollupDataFile::RollupDataFile(const std::string& name) :
+RollupDataFile::RollupDataFile(const std::string& name, Timestamp begin) :
+    m_file(nullptr),
+    m_begin(begin),
+    m_last_access(0),
+    m_index(0),
+    m_size(0),
+    m_name(name),
+    m_for_read(false),
+    m_monthly(false)
+{
+}
+
+// create 1d rollup file
+RollupDataFile::RollupDataFile(int bucket, Timestamp tstamp) :
     m_file(nullptr),
     m_begin(TT_INVALID_TIMESTAMP),
     m_last_access(0),
     m_index(0),
     m_size(0),
-    m_name(name)
+    m_for_read(false),
+    m_monthly(false)
 {
+    ASSERT(bucket >= 0);
+    ASSERT(is_sec(tstamp));
+
+    // name of the file
+    m_name = get_name_by_bucket_1d(bucket, tstamp, true);
 }
 
 RollupDataFile::~RollupDataFile()
@@ -1360,9 +1366,23 @@ RollupDataFile::open(bool for_read)
                 m_size = sb.st_size;
         }
 
+        m_for_read = for_read;
         m_file = fdopen(fd, for_read?"r+":"a+b");
         ASSERT(m_file != nullptr);
         Logger::info("opening %s for read/write", m_name.c_str());
+    }
+}
+
+void
+RollupDataFile::flush()
+{
+    if ((m_file != nullptr) && (m_index > 0))
+    {
+        ASSERT(! m_for_read);
+        ASSERT(0 <= m_index && m_index <= sizeof(m_buff));
+        std::fwrite(m_buff, m_index, 1, m_file);
+        std::fflush(m_file);
+        m_index = 0;
     }
 }
 
@@ -1399,9 +1419,9 @@ RollupDataFile::close_if_idle(Timestamp threshold, Timestamp now)
 }
 
 bool
-RollupDataFile::is_open() const
+RollupDataFile::is_open(bool for_read) const
 {
-    return (m_file != nullptr);
+    return (m_file != nullptr) && (for_read == m_for_read);
 }
 
 void
@@ -1420,7 +1440,11 @@ RollupDataFile::add_data_point(TimeSeriesId tid, uint32_t cnt, double min, doubl
     if (sizeof(m_buff) < (m_index + sizeof(entry)))
     {
         // write the m_buff[] out
-        if (! is_open()) open(false);
+        if (! is_open(false))
+        {
+            if (is_open(true)) close();
+            open(false);
+        }
         ASSERT(m_file != nullptr);
         std::fwrite(m_buff, m_index, 1, m_file);
         std::fflush(m_file);
@@ -1435,7 +1459,7 @@ RollupDataFile::add_data_point(TimeSeriesId tid, uint32_t cnt, double min, doubl
     dec_ref_count_no_lock();
 }
 
-// This is for backup file.
+// This is for daily rollup as well as backup file.
 void
 RollupDataFile::add_data_point(TimeSeriesId tid, Timestamp tstamp, uint32_t cnt, double min, double max, double sum)
 {
@@ -1448,12 +1472,48 @@ RollupDataFile::add_data_point(TimeSeriesId tid, Timestamp tstamp, uint32_t cnt,
     entry.sum = sum;
     entry.tstamp = tstamp;
 
-    if (! is_open()) open(false);
+    if (! is_open(false))
+    {
+        if (is_open(true)) close();
+        open(false);
+    }
     ASSERT(m_file != nullptr);
     std::fwrite(&entry, sizeof(entry), 1, m_file);
     std::fflush(m_file);
     //m_index += sizeof(entry);
     //m_size += sizeof(entry);
+}
+
+void
+RollupDataFile::add_data_points(std::unordered_map<TimeSeriesId,std::vector<struct rollup_entry_ext>>& data)
+{
+    std::lock_guard<std::mutex> guard(m_lock);
+
+    ASSERT(! is_open(false) && ! is_open(true));
+    open(false);
+
+    for (auto& it: data)
+    {
+        std::vector<struct rollup_entry_ext>& entries = it.second;
+
+        for (auto& entry: entries)
+        {
+            ASSERT(it.first == entry.tid);
+
+            if (entry.cnt == 0)
+                continue;
+
+            add_data_point(
+                entry.tid,
+                entry.tstamp,
+                entry.cnt,
+                entry.min,
+                entry.max,
+                entry.sum);
+        }
+    }
+
+    close();
 }
 
 int
@@ -1504,7 +1564,8 @@ RollupDataFile::query(const TimeRange& range, std::unordered_map<TimeSeriesId,Qu
     std::size_t n;
 
     m_last_access = ts_now_sec();
-    if (! is_open()) open(true);
+    if (! is_open(true) && ! is_open(false))
+        open(true);
     std::fseek(m_file, 0, SEEK_SET);    // seek to beginning of file
 
     while ((n = std::fread(&buff[0], 1, sizeof(buff), m_file)) > 0)
@@ -1536,7 +1597,8 @@ RollupDataFile::query2(const TimeRange& range, std::unordered_map<TimeSeriesId,Q
     std::size_t n;
 
     m_last_access = ts_now_sec();
-    if (! is_open()) open(true);
+    if (! is_open(true) && ! is_open(false))
+        open(true);
     std::fseek(m_file, 0, SEEK_SET);    // seek to beginning of file
 
     while ((n = std::fread(&buff[0], 1, sizeof(buff), m_file)) > 0)
@@ -1585,7 +1647,6 @@ RollupDataFile::query(const TimeRange& range, std::unordered_map<TimeSeriesId,st
     m_last_access = ts_now_sec();
     close();
     open(true);
-    //if (! is_open()) open(true);
     std::fseek(m_file, 0, SEEK_SET);    // seek to beginning of file
 
     while ((n = std::fread(&buff[0], 1, sizeof(buff), m_file)) > 0)
@@ -1625,7 +1686,8 @@ RollupDataFile::query_ext(const TimeRange& range, std::unordered_map<TimeSeriesI
     std::size_t n;
 
     m_last_access = ts_now_sec();
-    if (! is_open()) open(true);
+    if (! is_open(true) && ! is_open(false))
+        open(true);
     std::fseek(m_file, 0, SEEK_SET);    // seek to beginning of file
 
     while ((n = std::fread(&buff[0], 1, sizeof(buff), m_file)) > 0)
@@ -1659,6 +1721,133 @@ RollupDataFile::query_ext(const TimeRange& range, std::unordered_map<TimeSeriesI
             }
         }
     }
+}
+
+void
+RollupDataFile::query(std::unordered_map<TimeSeriesId,std::vector<struct rollup_entry_ext>>& data)
+{
+    std::lock_guard<std::mutex> guard(m_lock);
+    uint8_t buff[1024*sizeof(struct rollup_entry)];
+    std::size_t n;
+
+    m_last_access = ts_now_sec();
+    if (! is_open(true) && ! is_open(false))
+        open(true);
+    else if (is_open(false))
+        flush();
+    std::fseek(m_file, 0, SEEK_SET);    // seek to beginning of file
+
+    while ((n = std::fread(&buff[0], 1, sizeof(buff), m_file)) > 0)
+    {
+        for (std::size_t i = 0; i < n; i += sizeof(struct rollup_entry))
+        {
+            struct rollup_entry *entry = (struct rollup_entry*)&buff[i];
+            auto search = data.find(entry->tid);
+
+            if (search == data.end())
+            {
+                // first data point
+                std::vector<struct rollup_entry_ext> entries;
+                data.emplace(std::make_pair((TimeSeriesId)entry->tid, entries));
+                search = data.find(entry->tid);
+                ASSERT(search != data.end());
+                struct rollup_entry_ext ext;
+
+                ext.tid = entry->tid;
+                ext.cnt = entry->cnt;
+                ext.min = entry->min;
+                ext.max = entry->max;
+                ext.sum = entry->sum;
+                ext.tstamp = m_begin;
+
+                search->second.emplace_back(ext);
+            }
+            else
+            {
+                auto& ext = search->second.back();
+                Timestamp last_ts = ext.tstamp;
+                Timestamp curr_ts = last_ts + g_rollup_interval;
+                Timestamp last_step_down = step_down(last_ts, g_rollup_interval2);
+                Timestamp curr_step_down = step_down(curr_ts, g_rollup_interval2);
+
+                if (last_step_down == curr_step_down)
+                {
+                    ext.cnt += entry->cnt;
+                    ext.min = std::min(ext.min, entry->min);
+                    ext.max = std::max(ext.max, entry->max);
+                    ext.sum += entry->sum;
+                    ext.tstamp += g_rollup_interval;
+                }
+                else
+                {
+                    ext.tstamp = last_step_down;
+
+                    struct rollup_entry_ext new_ext;
+
+                    new_ext.tid = entry->tid;
+                    new_ext.cnt = entry->cnt;
+                    new_ext.min = entry->min;
+                    new_ext.max = entry->max;
+                    new_ext.sum = entry->sum;
+                    new_ext.tstamp = curr_ts;
+
+                    search->second.emplace_back(new_ext);
+                }
+            }
+        }
+    }
+
+    close();
+
+    // step down the last data point
+    for (auto& it: data)
+    {
+        auto& ext = it.second.back();
+        ext.tstamp = step_down(ext.tstamp, g_rollup_interval2);
+    }
+}
+
+std::string
+RollupDataFile::get_name_by_mid_1h(MetricId mid, Timestamp tstamp, bool create)
+{
+    return get_name_by_bucket_1h(RollupManager::get_rollup_bucket(mid), tstamp, create);
+}
+
+std::string
+RollupDataFile::get_name_by_bucket_1h(int bucket, Timestamp tstamp, bool create)
+{
+    ASSERT(is_sec(tstamp));
+    int year, month;
+    get_year_month(tstamp, year, month);
+    std::ostringstream oss;
+    oss << Config::get_data_dir() << "/"
+        << std::to_string(year) << "/"
+        << std::setfill('0') << std::setw(2) << month << "/rollup";
+    if (create)
+        create_dir(oss.str());
+    oss << "/r" << std::setfill('0') << std::setw(6) << bucket << ".data";
+    return oss.str();
+}
+
+std::string
+RollupDataFile::get_name_by_mid_1d(MetricId mid, Timestamp tstamp, bool create)
+{
+    return get_name_by_bucket_1d(RollupManager::get_rollup_bucket(mid), tstamp, create);
+}
+
+std::string
+RollupDataFile::get_name_by_bucket_1d(int bucket, Timestamp tstamp, bool create)
+{
+    ASSERT(is_sec(tstamp));
+    int year, month;
+    get_year_month(tstamp, year, month);
+    std::ostringstream oss;
+    oss << Config::get_data_dir() << "/"
+        << std::to_string(year) << "/rollup";
+    if (create)
+        create_dir(oss.str());
+    oss << "/r" << std::setfill('0') << std::setw(6) << bucket << ".data";
+    return oss.str();
 }
 
 void

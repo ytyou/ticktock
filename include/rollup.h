@@ -67,9 +67,12 @@ public:
     static off_t get_rollup_data_file_size(bool monthly);
     static int get_rollup_bucket(MetricId mid);
     static RollupDataFile *get_data_file(MetricId mid, Timestamp tstamp);   // get monthly data files
-    static RollupDataFile *get_data_file2(MetricId mid, Timestamp tstamp);  // get annually data files
+    static RollupDataFile *get_data_file2(MetricId mid, Timestamp tstamp);  // get annual data files
+    static RollupDataFile *get_data_file_by_bucket_1h(int bucket, Timestamp begin); // get monthly data files
+    static RollupDataFile *get_or_create_data_file(MetricId mid, Timestamp tstamp);   // get monthly data files
+    static RollupDataFile *get_or_create_data_file_by_bucket_1d(int bucket, Timestamp begin); // get annual data files
     static void get_data_files(MetricId mid, const TimeRange& range, std::vector<RollupDataFile*>& files);    // monthly
-    static void get_data_files2(MetricId mid, const TimeRange& range, std::vector<RollupDataFile*>& files);   // annually
+    static void get_data_files2(MetricId mid, const TimeRange& range, std::vector<RollupDataFile*>& files);   // annual
     static void query(MetricId mid, const TimeRange& range, std::vector<QueryTask*>& tasks, RollupType rollup);
     static void query_no_lock(MetricId mid, const TimeRange& range, std::vector<QueryTask*>& tasks, RollupType rollup);
     static void query(MetricId mid, const TimeRange& range, std::unordered_map<TimeSeriesId,struct rollup_entry_ext>& output);
@@ -77,8 +80,9 @@ public:
     static void rotate();
 
 private:
-    Timestamp step_down(Timestamp tstamp);
+    static Timestamp step_down(Timestamp tstamp);
     static RollupDataFile *get_data_file(MetricId mid, std::time_t tstamp, std::unordered_map<uint64_t, RollupDataFile*>& map, bool monthly);
+    static RollupDataFile *get_or_create_data_file(MetricId mid, std::time_t tstamp, std::unordered_map<uint64_t, RollupDataFile*>& map, bool monthly);
 
     uint32_t m_cnt;
     double m_min;

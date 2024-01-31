@@ -296,14 +296,18 @@ TimeSeries::add_data_point(MetricId mid, DataPoint& dp)
     else if ((in_range = m_buff->in_range(tstamp)) != 0)
     {
         is_ooo = (in_range <= 0);
-        m_buff->flush(mid, m_id);
 
-        if (m_ooo_buff != nullptr)
-            m_ooo_buff->update_indices(m_buff);
+        if (! is_ooo)
+        {
+            m_buff->flush(mid, m_id);
 
-        // reset the m_buff
-        Tsdb *tsdb = Tsdb::inst(tstamp, true);
-        m_buff->init(mid, m_id, tsdb, false);
+            if (m_ooo_buff != nullptr)
+                m_ooo_buff->update_indices(m_buff);
+
+            // reset the m_buff
+            Tsdb *tsdb = Tsdb::inst(tstamp, true);
+            m_buff->init(mid, m_id, tsdb, false);
+        }
     }
     else
     {
@@ -335,6 +339,8 @@ TimeSeries::add_data_point(MetricId mid, DataPoint& dp)
         ok = m_buff->add_data_point(tstamp, dp.get_value());
         ASSERT(ok);
     }
+
+    ASSERT(! m_buff->is_empty());
 
     // rollup
     m_rollup.add_data_point(m_buff->get_tsdb(), mid, m_id, dp);
