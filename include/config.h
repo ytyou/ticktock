@@ -139,6 +139,8 @@
 #define CFG_TSDB_ROLLUP_FREQUENCY_DEF           "1d"
 #define CFG_TSDB_ROLLUP_INTERVAL                "tsdb.rollup.interval"
 #define CFG_TSDB_ROLLUP_INTERVAL_DEF            "1h"
+#define CFG_TSDB_ROLLUP_PAUSE                   "tsdb.rollup.pause"
+#define CFG_TSDB_ROLLUP_PAUSE_DEF               "5sec"
 #define CFG_TSDB_ROLLUP_THRESHOLD               "tsdb.rollup.threshold"
 #define CFG_TSDB_ROLLUP_THRESHOLD_DEF           "2d"
 #define CFG_TSDB_ROTATION_FREQUENCY             "tsdb.rotation.frequency"

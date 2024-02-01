@@ -3689,6 +3689,8 @@ Tsdb::rollup(TaskData& data)
     {
         int bucket_count =
             Config::inst()->get_int(CFG_TSDB_ROLLUP_BUCKETS,CFG_TSDB_ROLLUP_BUCKETS_DEF);
+        int pause =
+            Config::inst()->get_time(CFG_TSDB_ROLLUP_PAUSE,TimeUnit::SEC,CFG_TSDB_ROLLUP_PAUSE_DEF);
 
         for (int bucket = 0; bucket < bucket_count; bucket++)
         {
@@ -3707,6 +3709,9 @@ Tsdb::rollup(TaskData& data)
             ASSERT(data_file_1d != nullptr);
             data_file_1d->add_data_points(data);
             data_file_1d->dec_ref_count();
+
+            if (pause > 0)
+                std::this_thread::sleep_for(std::chrono::seconds(pause));
         }
 
         for (auto tsdb: tsdbs)
