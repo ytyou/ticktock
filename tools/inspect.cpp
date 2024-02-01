@@ -631,10 +631,15 @@ bool
 inspect_tsdb_task(TaskData& data)
 {
     std::string tsdb_dir((char*)data.pointer);
+
+    if (ends_with(tsdb_dir, "/rollup"))
+        return false;
+
     if (g_quick_mode)
         inspect_tsdb_quick(tsdb_dir);
     else
         inspect_tsdb_internal(tsdb_dir);
+
     return false;
 }
 
