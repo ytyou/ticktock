@@ -461,8 +461,10 @@ TimeSeries::query_for_rollup(const TimeRange& range, QueryTask *qt, RollupType r
 {
     ASSERT(rollup != RollupType::RU_NONE);
 
-    Timestamp ts = m_rollup.get_tstamp();
-    if (ms) ts *= 1000;
+    Timestamp ts = m_rollup.get_tstamp();   // in seconds
+
+    if (is_ms(range.get_from()))
+        ts *= 1000;
 
     if (range.in_range(ts) == 0)
     {
