@@ -81,8 +81,8 @@ public:
 
 private:
     static Timestamp step_down(Timestamp tstamp);
-    static RollupDataFile *get_data_file(MetricId mid, std::time_t tstamp, std::unordered_map<uint64_t, RollupDataFile*>& map, bool monthly);
-    static RollupDataFile *get_or_create_data_file(MetricId mid, std::time_t tstamp, std::unordered_map<uint64_t, RollupDataFile*>& map, bool monthly);
+    static RollupDataFile *get_data_file(MetricId mid, Timestamp tstamp, std::unordered_map<uint64_t, RollupDataFile*>& map, bool monthly);
+    static RollupDataFile *get_or_create_data_file(MetricId mid, Timestamp tstamp, std::unordered_map<uint64_t, RollupDataFile*>& map, bool monthly);
 
     uint32_t m_cnt;
     double m_min;

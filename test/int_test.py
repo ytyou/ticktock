@@ -1256,6 +1256,7 @@ class Query_With_Rollup(Test):
         # generate config
         config = TickTockConfig(self._options)
         config.add_entry("tcp.buffer.size", "1mb")
+        config.add_entry("tsdb.rollup.pause", "0sec")
         config()    # generate config
 
         # start tt
