@@ -261,8 +261,8 @@ public:
     // will override existing value, if any
     void set_value(const std::string& name, const std::string& value);
 
-    void load();        // read
-    void persist();     // write
+    void load(bool override);   // read
+    void persist();             // write
     void append(const std::string& name, const std::string& value);
 
     static std::string get_data_dir();

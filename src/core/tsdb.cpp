@@ -1257,7 +1257,7 @@ void
 Tsdb::restore_config(const std::string& dir)
 {
     Config cfg(dir + "/config");
-    cfg.load();
+    cfg.load(false);
 
     m_page_size = cfg.get_bytes(CFG_TSDB_PAGE_SIZE, CFG_TSDB_PAGE_SIZE_DEF);
     m_page_count = cfg.get_int(CFG_TSDB_PAGE_COUNT, CFG_TSDB_PAGE_COUNT_DEF);
