@@ -55,7 +55,8 @@ Config::init()
     // These are the settings that can't be changed once TT starts running.
     Config cfg(get_data_dir() + "/config");
 
-    cfg.load(false);
+    if (file_exists(cfg.m_file_name))
+        cfg.load(false);
 
     if (cfg.exists(CFG_TSDB_ROLLUP_BUCKETS))
     {
