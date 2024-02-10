@@ -1166,7 +1166,7 @@ Tsdb::Tsdb(TimeRange& range, bool existing, const char *suffix) :
     m_metrics.reserve(m_mbucket_count);
     m_compressor_version =
         Config::inst()->get_int(CFG_TSDB_COMPRESSOR_VERSION,CFG_TSDB_COMPRESSOR_VERSION_DEF);
-    if (range.get_duration_sec() < g_rollup_interval)
+    if (range.get_duration_sec() < g_rollup_interval_1h)
     {
         Logger::error("Tsdb range %" PRIu64 " can't be shorter than rollup-interval (1 hour)",
             range.get_duration_sec());

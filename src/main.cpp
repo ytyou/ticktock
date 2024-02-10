@@ -232,67 +232,10 @@ process_cmdline_opts(int argc, char *argv[])
 }
 
 static void
-daemonize(const char *cwd)
+daemonize()
 {
     if ((daemon(1, 0) != 0) && ! g_quiet)
         fprintf(stderr, "daemon() failed: errno = %d\n", errno);
-
-#if 0
-    pid_t pid;
-
-    // fork off the parent process
-    pid = fork();
-    if (pid < 0) exit(EXIT_FAILURE);
-
-    // let the parent terminate
-    if (pid > 0) exit(EXIT_SUCCESS);
-
-    // child process becomes session leader
-    if (setsid() < 0) exit(EXIT_FAILURE);
-
-    // ignore signals sent from child to parent process
-    std::signal(SIGCHLD, SIG_IGN);
-
-    // ignore broken pipe signals due to connection closed
-    std::signal(SIGPIPE, SIG_IGN);
-
-    // fork again
-    pid = fork();
-    if (pid < 0) exit(EXIT_FAILURE);
-
-    // let the parent terminate
-    if (pid > 0) exit(EXIT_SUCCESS);
-
-    // set file permissions
-    umask(S_IWGRP | S_IWOTH);
-
-    int retval = chdir(cwd);
-
-    if (retval < 0)
-    {
-        fprintf(stderr, "chdir failed: errno = %d\n", errno);
-    }
-
-    // close all open file descriptors
-    int fd;
-    for (fd = sysconf(_SC_OPEN_MAX); fd >= 0; fd--)
-    {
-        close(fd);
-    }
-
-    // write pid file
-    fd = open(g_pid_file.c_str(), O_RDWR|O_CREAT, 0640);
-    if (fd < 0)
-    {
-        fprintf(stderr, "Failed to write pid file %s: errno = %d\n", g_pid_file.c_str(), errno);
-        exit(EXIT_FAILURE);
-    }
-    if (lockf(fd, F_TLOCK, 0) < 0) exit(EXIT_FAILURE);
-    char buff[16];
-    sprintf(buff, "%d\n", getpid());
-    write(fd, buff, strlen(buff));
-    close(fd);
-#endif
 }
 
 // one time initialization, at the beginning of the execution
@@ -312,7 +255,7 @@ initialize()
     if (g_run_as_daemon)
     {
         // get our working directory
-        daemonize(buff);
+        daemonize();
     }
     else if (! g_quiet)
     {

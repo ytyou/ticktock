@@ -161,7 +161,7 @@ RollupManager::add_data_point(Tsdb *tsdb, MetricId mid, TimeSeriesId tid, DataPo
 {
     ASSERT(tsdb != nullptr);
     Timestamp tstamp = to_sec(dp.get_timestamp());
-    Timestamp interval = g_rollup_interval;
+    Timestamp interval = g_rollup_interval_1h;
     double value = dp.get_value();
 
     if (m_tstamp == TT_INVALID_TIMESTAMP)
@@ -304,7 +304,10 @@ RollupManager::query(RollupType type, DataPointPair& dp)
     return true;
 }
 
-// return false if no data will be returned;
+/* Retrieve rollup data currently in cache.
+ *
+ * @return false if no data will be returned;
+ */
 bool
 RollupManager::get(struct rollup_entry_ext& entry)
 {
@@ -326,6 +329,9 @@ RollupManager::query(MetricId mid, const TimeRange& range, std::vector<QueryTask
     query_no_lock(mid, range, tasks, rollup);
 }
 
+/* Query rollup data stored in rollup files. Data currently in cache will not be returned.
+ * It will query either 1h rollup data or 1d rollup data, depending on the 'rollup' argument.
+ */
 void
 RollupManager::query_no_lock(MetricId mid, const TimeRange& range, std::vector<QueryTask*>& tasks, RollupType rollup)
 {
@@ -344,9 +350,9 @@ RollupManager::query_no_lock(MetricId mid, const TimeRange& range, std::vector<Q
     bool level2 = is_rollup_level2(rollup);
 
     if (level2)
-        get_data_files2(mid, range, data_files);
+        get_data_files_1d(mid, range, data_files);
     else
-        get_data_files(mid, range, data_files);
+        get_data_files_1h(mid, range, data_files);
 
     for (auto file: data_files)
     {
@@ -362,7 +368,7 @@ void
 RollupManager::query(MetricId mid, const TimeRange& range, std::unordered_map<TimeSeriesId,struct rollup_entry_ext>& outputs)
 {
     std::vector<RollupDataFile*> data_files;
-    get_data_files(mid, range, data_files);
+    get_data_files_1h(mid, range, data_files);
 
     for (auto file: data_files)
     {
@@ -377,7 +383,7 @@ Timestamp
 RollupManager::step_down(Timestamp tstamp)
 {
     tstamp = to_sec(tstamp);
-    return tstamp - (tstamp % g_rollup_interval);
+    return tstamp - (tstamp % g_rollup_interval_1h);
 }
 
 int
@@ -456,7 +462,7 @@ RollupManager::get_data_file(MetricId mid, Timestamp tstamp)
 }
 
 void
-RollupManager::get_data_files(MetricId mid, const TimeRange& range, std::vector<RollupDataFile*>& files)
+RollupManager::get_data_files_1h(MetricId mid, const TimeRange& range, std::vector<RollupDataFile*>& files)
 {
     int year, month;
     Timestamp end = range.get_to_sec();
@@ -485,7 +491,7 @@ RollupManager::get_data_files(MetricId mid, const TimeRange& range, std::vector<
 }
 
 void
-RollupManager::get_data_files2(MetricId mid, const TimeRange& range, std::vector<RollupDataFile*>& files)
+RollupManager::get_data_files_1d(MetricId mid, const TimeRange& range, std::vector<RollupDataFile*>& files)
 {
     int year, month;
     Timestamp end = range.get_to_sec();
@@ -581,7 +587,7 @@ RollupManager::get_data_file2(MetricId mid, Timestamp tstamp)
 void
 RollupManager::rotate()
 {
-    uint64_t thrashing_threshold = g_rollup_interval;   // 1 hour
+    uint64_t thrashing_threshold = g_rollup_interval_1h;    // 1 hour
     Timestamp now = ts_now_sec();
     std::lock_guard<std::mutex> guard(m_lock);
 

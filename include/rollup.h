@@ -71,8 +71,8 @@ public:
     static RollupDataFile *get_data_file_by_bucket_1h(int bucket, Timestamp begin); // get monthly data files
     static RollupDataFile *get_or_create_data_file(MetricId mid, Timestamp tstamp);   // get monthly data files
     static RollupDataFile *get_or_create_data_file_by_bucket_1d(int bucket, Timestamp begin); // get annual data files
-    static void get_data_files(MetricId mid, const TimeRange& range, std::vector<RollupDataFile*>& files);    // monthly
-    static void get_data_files2(MetricId mid, const TimeRange& range, std::vector<RollupDataFile*>& files);   // annual
+    static void get_data_files_1h(MetricId mid, const TimeRange& range, std::vector<RollupDataFile*>& files);   // monthly
+    static void get_data_files_1d(MetricId mid, const TimeRange& range, std::vector<RollupDataFile*>& files);   // annual
     static void query(MetricId mid, const TimeRange& range, std::vector<QueryTask*>& tasks, RollupType rollup);
     static void query_no_lock(MetricId mid, const TimeRange& range, std::vector<QueryTask*>& tasks, RollupType rollup);
     static void query(MetricId mid, const TimeRange& range, std::unordered_map<TimeSeriesId,struct rollup_entry_ext>& output);

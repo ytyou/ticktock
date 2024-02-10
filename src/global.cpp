@@ -27,23 +27,33 @@ namespace tt
 
 
 const char* const EMPTY_STRING = "";
-std::string EMPTY_STD_STRING("");
+const std::string EMPTY_STD_STRING("");
+const std::string WHITE_SPACES = " \n\r\t\f\v";
+
+// These are used to generate TT's own metrics
 const char* const METRIC_TAG_NAME = "metric";
 const char* const HOST_TAG_NAME = "host";
 const char* const TYPE_TAG_NAME = "type";
-const std::string WHITE_SPACES = " \n\r\t\f\v";
+
+// Name of the host on which TT is running
 std::string g_host_name;
+
+// TT's servers
 HttpServer *http_server_ptr = nullptr;
 TcpServer *tcp_server_ptr = nullptr;
 UdpServer *udp_server_ptr = nullptr;
+
 bool g_quiet = false;               // minimal console output
 bool g_opt_reuse_port = false;      // reuse port when bind()? controlled by cmd line option -r
 bool g_tstamp_resolution_ms = true;
 bool g_cluster_enabled = false;
 bool g_self_meter_enabled = CFG_TSDB_SELF_METER_ENABLED_DEF;
+
+// set this to true to indicate TT is shutting down
 std::atomic<bool> g_shutdown_requested{false};
-uint32_t g_rollup_interval = 3600;          // 1 hour, in sec
-uint32_t g_rollup_interval2 = 3600 * 24;    // 1 day, in sec
+
+uint32_t g_rollup_interval_1h = 3600;       // 1 hour, in sec
+uint32_t g_rollup_interval_1d = 3600 * 24;  // 1 day, in sec
 
 std::string g_config_file("tt.conf");
 thread_local std::string g_thread_id("unknown");

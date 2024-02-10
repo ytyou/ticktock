@@ -1536,7 +1536,7 @@ RollupDataFile::query_entry(const TimeRange& range, struct rollup_entry *entry, 
         }
         else
         {
-            ts = task->get_last_tstamp() + g_rollup_interval;   // in seconds
+            ts = task->get_last_tstamp() + g_rollup_interval_1h;    // in seconds
             task->set_last_tstamp(ts);
         }
 
@@ -1545,8 +1545,6 @@ RollupDataFile::query_entry(const TimeRange& range, struct rollup_entry *entry, 
 
         if (entry->cnt != 0 && found == 0)
         {
-            //double val = RollupManager::query(entry, rollup);
-            //task->add_data_point(ts, val);
             struct rollup_entry_ext ext(entry);
             ext.tstamp = ts;
             task->add_data_point(&ext, rollup);
@@ -1663,7 +1661,7 @@ RollupDataFile::query(const TimeRange& range, std::unordered_map<TimeSeriesId,st
                 if (search->second.tstamp == TT_INVALID_TIMESTAMP)
                     search->second.tstamp = m_begin;    // in seconds
                 else
-                    search->second.tstamp += g_rollup_interval; // in seconds
+                    search->second.tstamp += g_rollup_interval_1h;  // in seconds
 
                 if ((entry->cnt != 0) && (range.in_range(search->second.tstamp) == 0))
                 {
@@ -1704,7 +1702,7 @@ RollupDataFile::query_ext(const TimeRange& range, std::unordered_map<TimeSeriesI
                 if (search->second.tstamp == TT_INVALID_TIMESTAMP)
                     search->second.tstamp = m_begin;    // in seconds
                 else
-                    search->second.tstamp += g_rollup_interval; // in seconds
+                    search->second.tstamp += g_rollup_interval_1h;  // in seconds
 
                 if ((entry->cnt != 0) && (range.in_range(search->second.tstamp) == 0))
                 {
@@ -1766,9 +1764,9 @@ RollupDataFile::query(std::unordered_map<TimeSeriesId,std::vector<struct rollup_
             {
                 auto& ext = search->second.back();
                 Timestamp last_ts = ext.tstamp;
-                Timestamp curr_ts = last_ts + g_rollup_interval;
-                Timestamp last_step_down = step_down(last_ts, g_rollup_interval2);
-                Timestamp curr_step_down = step_down(curr_ts, g_rollup_interval2);
+                Timestamp curr_ts = last_ts + g_rollup_interval_1h;
+                Timestamp last_step_down = step_down(last_ts, g_rollup_interval_1d);
+                Timestamp curr_step_down = step_down(curr_ts, g_rollup_interval_1d);
 
                 if (last_step_down == curr_step_down)
                 {
@@ -1776,7 +1774,7 @@ RollupDataFile::query(std::unordered_map<TimeSeriesId,std::vector<struct rollup_
                     ext.min = std::min(ext.min, entry->min);
                     ext.max = std::max(ext.max, entry->max);
                     ext.sum += entry->sum;
-                    ext.tstamp += g_rollup_interval;
+                    ext.tstamp += g_rollup_interval_1h;
                 }
                 else
                 {
@@ -1803,7 +1801,7 @@ RollupDataFile::query(std::unordered_map<TimeSeriesId,std::vector<struct rollup_
     for (auto& it: data)
     {
         auto& ext = it.second.back();
-        ext.tstamp = step_down(ext.tstamp, g_rollup_interval2);
+        ext.tstamp = step_down(ext.tstamp, g_rollup_interval_1d);
     }
 }
 

@@ -300,7 +300,7 @@ public:
 
     inline int get_rollup_entries() const
     {
-        return std::ceil((double)m_time_range.get_duration_sec() / (double)g_rollup_interval);
+        return std::ceil((double)m_time_range.get_duration_sec() / (double)g_rollup_interval_1h);
     }
 
     inline const TimeRange& get_time_range() const
