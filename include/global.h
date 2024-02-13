@@ -60,6 +60,7 @@ extern std::atomic<std::thread::id> g_handler_thread_id;
 extern std::string g_working_dir;
 extern uint32_t g_rollup_interval_1h;   // 1-hour
 extern uint32_t g_rollup_interval_1d;   // 1-day
+extern short g_rollup_compressor_version;   // 0 means no compression
 extern bool g_quiet;    // minimal console output
 
 

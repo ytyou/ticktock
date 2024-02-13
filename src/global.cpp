@@ -54,6 +54,7 @@ std::atomic<bool> g_shutdown_requested{false};
 
 uint32_t g_rollup_interval_1h = 3600;       // 1 hour, in sec
 uint32_t g_rollup_interval_1d = 3600 * 24;  // 1 day, in sec
+short g_rollup_compressor_version = 0;      // 0 means no compression at all
 
 std::string g_config_file("tt.conf");
 thread_local std::string g_thread_id("unknown");

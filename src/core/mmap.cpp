@@ -873,6 +873,7 @@ DataFile::open(bool for_read)
             off_t length = sb.st_size;
 
             // allocate enough disk space for this file
+/**
             if (length == 0)
             {
                 if (fallocate(fd, FALLOC_FL_KEEP_SIZE, 0, g_page_size*g_page_count) != 0)
@@ -880,6 +881,7 @@ DataFile::open(bool for_read)
                 else
                     Logger::debug("fallocate(%s, %u) called", m_name.c_str(), g_page_size*g_page_count);
             }
+**/
 
             m_page_index = length / m_page_size;
             Logger::info("opening %s for write", m_name.c_str());
@@ -1821,8 +1823,17 @@ RollupDataFile::get_name_by_bucket_1h(int bucket, Timestamp tstamp, bool create)
     oss << Config::get_data_dir() << "/"
         << std::to_string(year) << "/"
         << std::setfill('0') << std::setw(2) << month << "/rollup";
-    if (create)
+    if (create && ! file_exists(oss.str()))
+    {
         create_dir(oss.str());
+
+        // remember configs
+        Config cfg(oss.str() + "/config");
+        int compressor = CFG_TSDB_ROLLUP_COMPRESSOR_VERSION_DEF;
+            //Config::inst()->get_int(CFG_TSDB_ROLLUP_COMPRESSOR_VERSION, CFG_TSDB_ROLLUP_COMPRESSOR_VERSION_DEF);
+        cfg.set_value(CFG_TSDB_ROLLUP_COMPRESSOR_VERSION, std::to_string(compressor));
+        cfg.persist();
+    }
     oss << "/r" << std::setfill('0') << std::setw(6) << bucket << ".data";
     return oss.str();
 }
@@ -1842,8 +1853,17 @@ RollupDataFile::get_name_by_bucket_1d(int bucket, Timestamp tstamp, bool create)
     std::ostringstream oss;
     oss << Config::get_data_dir() << "/"
         << std::to_string(year) << "/rollup";
-    if (create)
+    if (create && ! file_exists(oss.str()))
+    {
         create_dir(oss.str());
+
+        // remember configs
+        Config cfg(oss.str() + "/config");
+        int compressor = CFG_TSDB_ROLLUP_COMPRESSOR_VERSION_DEF;
+            //Config::inst()->get_str(CFG_TSDB_ROLLUP_COMPRESSOR_VERSION, CFG_TSDB_ROLLUP_COMPRESSOR_VERSION_DEF);
+        cfg.set_value(CFG_TSDB_ROLLUP_COMPRESSOR_VERSION, std::to_string(compressor));
+        cfg.persist();
+    }
     oss << "/r" << std::setfill('0') << std::setw(6) << bucket << ".data";
     return oss.str();
 }
