@@ -3601,6 +3601,7 @@ Tsdb::rollup(TaskData& data)
 {
     // called from scheduled task? if so, enforce off-hour rule;
     if ((data.integer == 0) && ! is_off_hour()) return false;
+    data.integer = 0;
 
     Tsdb *tsdb = nullptr;
     Logger::info("[rollup] Finding tsdbs to rollup...");
@@ -3714,12 +3715,16 @@ Tsdb::rollup(TaskData& data)
                 std::this_thread::sleep_for(std::chrono::seconds(pause));
         }
 
+        data.integer = tsdbs.size();
+
         for (auto tsdb: tsdbs)
         {
             std::lock_guard<std::mutex> guard(tsdb->m_lock);
             tsdb->m_mode |= TSDB_MODE_ROLLED_UP;
             tsdb->dec_ref_count_no_lock();
         }
+
+        Logger::info("[rollup] rolled up %d Tsdbs.", data.integer);
     }
     else
     {
