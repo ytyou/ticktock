@@ -70,7 +70,7 @@ Logger::Logger() :
     {
         try
         {
-            std::string level = Config::get_str(CFG_LOG_LEVEL,CFG_LOG_LEVEL_DEF);
+            std::string level = Config::inst()->get_str(CFG_LOG_LEVEL,CFG_LOG_LEVEL_DEF);
             set_level(level.c_str());
         }
         catch (std::exception& ex)
@@ -199,7 +199,7 @@ Logger::rotate(TaskData& data)
 
     if ((logger->m_fd != -1) && logger->m_dirty.load())
     {
-        int limit = Config::get_bytes(CFG_LOG_ROTATION_SIZE, CFG_LOG_ROTATION_SIZE_DEF);
+        int limit = Config::inst()->get_bytes(CFG_LOG_ROTATION_SIZE, CFG_LOG_ROTATION_SIZE_DEF);
 
         struct stat buf;
         fstat(logger->m_fd, &buf);
@@ -219,7 +219,7 @@ Logger::rotate(TaskData& data)
             logger->reopen();
 
             // cleanup main log file, if necessary
-            int retention_count = Config::get_int(CFG_LOG_RETENTION_COUNT, CFG_LOG_RETENTION_COUNT_DEF);
+            int retention_count = Config::inst()->get_int(CFG_LOG_RETENTION_COUNT, CFG_LOG_RETENTION_COUNT_DEF);
             std::string log_file = Config::get_log_file();
             std::string log_pattern = log_file + ".*";
             rotate_files(log_pattern, retention_count);

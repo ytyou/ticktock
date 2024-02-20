@@ -88,8 +88,8 @@ UdpListener::receiver()
 */
 
     // prepare to receive
-    int batch_size = Config::get_int(CFG_UDP_BATCH_SIZE, CFG_UDP_BATCH_SIZE_DEF);
-    int max_line = Config::get_int(CFG_TSDB_MAX_DP_LINE, CFG_TSDB_MAX_DP_LINE_DEF);
+    int batch_size = Config::inst()->get_int(CFG_UDP_BATCH_SIZE, CFG_UDP_BATCH_SIZE_DEF);
+    int max_line = Config::inst()->get_int(CFG_TSDB_MAX_DP_LINE, CFG_TSDB_MAX_DP_LINE_DEF);
 
     struct mmsghdr msgs[batch_size];
     struct iovec vecs[batch_size];
@@ -167,7 +167,7 @@ UdpListener::receiver2()
         Logger::error("Failed to bind(%d), errno: %d", m_port, errno);
 
     // ready to receive
-    int max_line = Config::get_int(CFG_TSDB_MAX_DP_LINE, CFG_TSDB_MAX_DP_LINE_DEF);
+    int max_line = Config::inst()->get_int(CFG_TSDB_MAX_DP_LINE, CFG_TSDB_MAX_DP_LINE_DEF);
     char buff[max_line+1];
     //Tsdb *tsdb = nullptr;
 
@@ -211,7 +211,7 @@ UdpListener::process_one_line(char *line)
 bool
 UdpServer::start(int port)
 {
-    int listener_cnt = Config::get_int(CFG_UDP_LISTENER_COUNT, CFG_UDP_LISTENER_COUNT_DEF);
+    int listener_cnt = Config::inst()->get_int(CFG_UDP_LISTENER_COUNT, CFG_UDP_LISTENER_COUNT_DEF);
 
     ASSERT(listener_cnt > 0);
 

@@ -255,7 +255,7 @@ public:
     static void cleanup_data_dir()
     {
         char cmd[1024];
-        snprintf(cmd, sizeof(cmd), "exec rm -f -r %s/*", tt::Config::get_str(CFG_TSDB_DATA_DIR).c_str());
+        snprintf(cmd, sizeof(cmd), "exec rm -f -r %s/*", tt::Config::inst()->get_str(CFG_TSDB_DATA_DIR).c_str());
         if (tt::starts_with(cmd, "exec rm -f -r /tmp/"))
             system(cmd);
     }

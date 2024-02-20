@@ -40,31 +40,83 @@ MetaFile * MetaFile::m_instance;    // Singleton instance
 
 
 void
-MetaFile::init(TimeSeries* (*restore_ts)(std::string& metric, std::string& key, TimeSeriesId id),
+MetaFile::init(void (*restore_metrics)(MetricId, std::string& name), TimeSeries* (*restore_ts)(std::string& metric, std::string& key, TimeSeriesId id),
                void (*restore_measurement)(std::string& measurement, std::string& tags, std::vector<std::pair<std::string,TimeSeriesId>>& fields, std::vector<TimeSeries*>& tsv))
 {
     m_instance = new MetaFile();            // create the Singleton
-    m_instance->restore(restore_ts, restore_measurement);
+    m_instance->restore_metrics(restore_metrics);
+    m_instance->restore_ts(restore_ts, restore_measurement);
+
+    m_instance->open(); // open for append
+
+    if (! m_instance->is_open())
+    {
+        Logger::fatal("Failed to open meta file for writing");
+        throw new std::runtime_error("Failed to open meta file for writing");
+    }
 }
 
 void
-MetaFile::restore(TimeSeries* (*restore_ts)(std::string& metric, std::string& key, TimeSeriesId id),
+MetaFile::restore_metrics(void (*restore_metrics)(MetricId, std::string& name))
+{
+    char buff[PATH_MAX];
+    snprintf(buff, sizeof(buff), "%s/metrics", Config::get_data_dir().c_str());
+    m_metrics_name.assign(buff);
+    m_metrics_file = nullptr;
+
+    //bool restore_needed = AppendLog::restore_needed();
+    std::vector<TimeSeries*> tsv;
+    std::ifstream is(m_metrics_name);
+
+    tsv.reserve(4096);
+
+    if (is)
+    {
+        std::string line;   // format: <id> <metric-name>
+
+        // skip 1st line: ticktockdb.version
+        std::getline(is, line);
+
+        while (std::getline(is, line))
+        {
+            std::vector<TimeSeries*> tsv2;
+            std::vector<std::string> tokens;
+            tokenize(line, tokens, ' ');
+
+            if (tokens.size() != 2)
+            {
+                Logger::error("Bad line in %s: %s", m_metrics_name.c_str(), line.c_str());
+                continue;
+            }
+
+            (*restore_metrics)(std::stoul(tokens[0]), tokens[1]);
+        }
+    }
+
+    is.close();
+}
+
+void
+MetaFile::restore_ts(TimeSeries* (*restore_ts)(std::string& metric, std::string& key, TimeSeriesId id),
                   void (*restore_measurement)(std::string& measurement, std::string& tags, std::vector<std::pair<std::string,TimeSeriesId>>& fields, std::vector<TimeSeries*>& tsv))
 {
     char buff[PATH_MAX];
-    snprintf(buff, sizeof(buff), "%s/ticktock.meta", Config::get_data_dir().c_str());
-    m_name.assign(buff);
-    m_file = nullptr;
+    snprintf(buff, sizeof(buff), "%s/ts", Config::get_data_dir().c_str());
+    m_ts_name.assign(buff);
+    m_ts_file = nullptr;
 
     bool restore_needed = AppendLog::restore_needed();
     std::vector<TimeSeries*> tsv;
-    std::ifstream is(m_name);
+    std::ifstream is(m_ts_name);
 
     tsv.reserve(4096);
 
     if (is)
     {
         std::string line;
+
+        // skip 1st line: ticktockdb.version
+        std::getline(is, line);
 
         while (std::getline(is, line))
         {
@@ -74,7 +126,7 @@ MetaFile::restore(TimeSeries* (*restore_ts)(std::string& metric, std::string& ke
 
             if (tokens.size() < 3)
             {
-                Logger::error("Bad line in %s: %s", m_name.c_str(), line.c_str());
+                Logger::error("Bad line in %s: %s", m_ts_name.c_str(), line.c_str());
                 continue;
             }
 
@@ -123,33 +175,48 @@ MetaFile::restore(TimeSeries* (*restore_ts)(std::string& metric, std::string& ke
 
     if (! tsv.empty())
         AppendLog::restore(tsv);
-
-    open(); // open for append
-
-    if (! is_open())
-    {
-        Logger::fatal("Failed to open meta file %s for writing", m_name.c_str());
-        throw new std::runtime_error("Failed to open meta file for writing");
-    }
 }
 
 void
 MetaFile::open()
 {
-    ASSERT(m_file == nullptr);
+    ASSERT(m_ts_file == nullptr);
+    ASSERT(m_metrics_file == nullptr);
 
-    int fd = ::open(m_name.c_str(), O_WRONLY|O_CREAT|O_APPEND|O_NONBLOCK, S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH);
+    // open ts file
+    bool is_new = ! file_exists(m_ts_name);
+    int fd = ::open(m_ts_name.c_str(), O_WRONLY|O_CREAT|O_APPEND|O_NONBLOCK, S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH);
     fd = FileDescriptorManager::dup_fd(fd, FileDescriptorType::FD_FILE);
 
     if (fd == -1)
     {
-        Logger::error("Failed to open file %s for append: %d", m_name.c_str(), errno);
+        Logger::error("Failed to open file %s for append: %d", m_ts_name.c_str(), errno);
     }
     else
     {
-        m_file = fdopen(fd, "a");
-        if (m_file == nullptr)
+        m_ts_file = fdopen(fd, "a");
+        if (m_ts_file == nullptr)
             Logger::error("Failed to convert fd %d to FILE: %d", fd, errno);
+        else if (is_new)    // 1st line: ticktock version
+            fprintf(m_ts_file, "# ticktockdb.%d.%d.%d\n", TT_MAJOR_VERSION, TT_MINOR_VERSION, TT_PATCH_VERSION);
+    }
+
+    // open metrics file
+    is_new = ! file_exists(m_metrics_name);
+    fd = ::open(m_metrics_name.c_str(), O_WRONLY|O_CREAT|O_APPEND|O_NONBLOCK, S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH);
+    fd = FileDescriptorManager::dup_fd(fd, FileDescriptorType::FD_FILE);
+
+    if (fd == -1)
+    {
+        Logger::error("Failed to open file %s for append: %d", m_metrics_name.c_str(), errno);
+    }
+    else
+    {
+        m_metrics_file = fdopen(fd, "a");
+        if (m_metrics_file == nullptr)
+            Logger::error("Failed to convert fd %d to FILE: %d", fd, errno);
+        else if (is_new)    // 1st line: ticktock version
+            fprintf(m_metrics_file, "# ticktockdb.%d.%d.%d\n", TT_MAJOR_VERSION, TT_MINOR_VERSION, TT_PATCH_VERSION);
     }
 }
 
@@ -158,11 +225,18 @@ MetaFile::close()
 {
     std::lock_guard<std::mutex> guard(m_lock);
 
-    if (m_file != nullptr)
+    if (m_ts_file != nullptr)
     {
-        std::fflush(m_file);
-        std::fclose(m_file);
-        m_file = nullptr;
+        std::fflush(m_ts_file);
+        std::fclose(m_ts_file);
+        m_ts_file = nullptr;
+    }
+
+    if (m_metrics_file != nullptr)
+    {
+        std::fflush(m_metrics_file);
+        std::fclose(m_metrics_file);
+        m_metrics_file = nullptr;
     }
 }
 
@@ -170,8 +244,12 @@ void
 MetaFile::flush()
 {
     std::lock_guard<std::mutex> guard(m_lock);
-    if (m_file != nullptr)
-        std::fflush(m_file);
+
+    if (m_ts_file != nullptr)
+        std::fflush(m_ts_file);
+
+    if (m_metrics_file != nullptr)
+        std::fflush(m_metrics_file);
 }
 
 void
@@ -180,10 +258,19 @@ MetaFile::add_ts(const char *metric, const char *key, TimeSeriesId id)
     ASSERT(metric != nullptr);
     ASSERT(key != nullptr);
     ASSERT(id != TT_INVALID_TIME_SERIES_ID);
-    ASSERT(m_file != nullptr);
+    ASSERT(m_ts_file != nullptr);
 
     std::lock_guard<std::mutex> guard(m_lock);
-    fprintf(m_file, "%s %s %u\n", metric, key, id);
+    fprintf(m_ts_file, "%s %s %u\n", metric, key, id);
+}
+
+void
+MetaFile::add_metric(MetricId id, const char *name)
+{
+    ASSERT(name != nullptr);
+    ASSERT(m_metrics_file != nullptr);
+    std::lock_guard<std::mutex> guard(m_lock);
+    fprintf(m_metrics_file, "%d %s\n", id, name);
 }
 
 void
@@ -207,9 +294,9 @@ MetaFile::add_ts(const char *metric, Tag_v2& tags_v2, TimeSeriesId id)
         std::lock_guard<std::mutex> guard(m_lock);
 
         if (field == nullptr)
-            fprintf(m_file, "%s %s %u\n", metric, (n>0) ? &buff[1] : ";", id);
+            fprintf(m_ts_file, "%s %s %u\n", metric, (n>0) ? &buff[1] : ";", id);
         else
-            fprintf(m_file, "%s %s %s=%u\n", metric, (n>0) ? &buff[1] : ";", field->m_value, id);
+            fprintf(m_ts_file, "%s %s %s=%u\n", metric, (n>0) ? &buff[1] : ";", field->m_value, id);
     }
 
     if (field != nullptr)
@@ -222,7 +309,7 @@ MetaFile::add_measurement(const char *measurement, char *tags, std::vector<std::
 {
     ASSERT(measurement != nullptr);
     ASSERT(tags != nullptr);
-    ASSERT(m_file != nullptr);
+    ASSERT(m_ts_file != nullptr);
 
     //char buff[MAX_TOTAL_TAG_LENGTH];
     char *buff = MemoryManager::alloc_network_buffer();
@@ -252,7 +339,7 @@ MetaFile::add_measurement(const char *measurement, char *tags, std::vector<std::
 
     {
         std::lock_guard<std::mutex> guard(m_lock);
-        fprintf(m_file, "%s\n", buff);
+        fprintf(m_ts_file, "%s\n", buff);
     }
 
     MemoryManager::free_network_buffer(buff);

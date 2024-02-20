@@ -31,6 +31,7 @@ namespace tt
 
 
 class Tsdb;
+class RollupDataFile;
 
 
 class MmapFile
@@ -54,6 +55,7 @@ public:
     virtual bool is_open(bool for_read) const;
     inline bool is_read_only() const { return m_read_only; }
     inline bool exists() const { return file_exists(m_name); }
+    void remove() { rm_file(m_name); }
 
 protected:
     void open(off_t length, bool read_only, bool append_only, bool resize);
@@ -70,10 +72,19 @@ private:
 };
 
 
+/* The first set of indices points to the 1st header of the time series;
+ * the second set of indices points to the header of the first page, for
+ * the time series, whose data falls into the second half of the Tsdb
+ * time range.
+ */
 struct __attribute__ ((__packed__)) index_entry
 {
-    FileIndex file_index;
-    HeaderIndex header_index;
+    uint8_t flags;
+    FileIndex file_index;       // points to the first header
+    HeaderIndex header_index;   // points to the first header
+    FileIndex file_index2;      // points to the second header
+    HeaderIndex header_index2;  // points to the second header
+    RollupIndex rollup_index;   // index of rollup-index
 };
 
 
@@ -84,7 +95,14 @@ public:
     void open(bool for_read) override;
 
     bool set_indices(TimeSeriesId id, FileIndex file_index, HeaderIndex page_index);
+    bool set_indices2(TimeSeriesId id, FileIndex file_index, HeaderIndex page_index);
     void get_indices(TimeSeriesId id, FileIndex& file_index, HeaderIndex& page_index);
+    void get_indices2(TimeSeriesId id, FileIndex& file_index, HeaderIndex& page_index);
+    void set_rollup_index(TimeSeriesId tid, RollupIndex idx);
+    RollupIndex get_rollup_index(TimeSeriesId tid);
+
+    bool get_out_of_order(TimeSeriesId id);
+    void set_out_of_order(TimeSeriesId id, bool ooo);
 
 private:
     bool expand(off_t new_len);
@@ -94,10 +112,10 @@ private:
 class HeaderFile : public MmapFile
 {
 public:
-    HeaderFile(const std::string& file_name, FileIndex id, PageCount page_count, Tsdb *tsdb);
+    HeaderFile(const std::string& file_name, FileIndex id, PageCount page_count, PageSize page_size);
     ~HeaderFile();
 
-    void init_tsdb_header(Tsdb *tsdb);
+    void init_tsdb_header(PageSize page_size);
     void open(bool for_read) override;
 
     PageSize get_page_size();
@@ -141,7 +159,7 @@ public:
     inline PageSize get_offset() const { return m_offset; }
     inline PageSize get_next_page_size() const
     { return m_offset?(m_page_size-m_offset):m_page_size; }
-    void *get_page(PageIndex page_idx, PageSize offset, PageSize cursor);
+    void *get_page(PageIndex page_idx);
     inline FILE *get_file() const { return m_file; }
     bool is_open(bool for_read) const override;
 
@@ -160,6 +178,141 @@ private:
     Timestamp m_last_read;
     Timestamp m_last_write;
 
+    pthread_rwlock_t m_lock;
+};
+
+
+/* The format of this file is just series of entries of
+ * <TimeSeriesId,RollupIndex>. They will not be used for
+ * query until a background job transform it into
+ * RollupHeaderFile, which is suited for query.
+ */
+class RollupHeaderTmpFile : public MmapFile
+{
+public:
+    RollupHeaderTmpFile(const std::string& file_name);
+    ~RollupHeaderTmpFile();
+
+    void open(bool read_only) override;
+    void close() override;
+    bool is_open(bool read_only) const override;
+    void add_index(TimeSeriesId tid, RollupIndex data_idx);
+
+    struct __attribute__ ((__packed__)) rollup_header_tmp_entry
+    {
+        TimeSeriesId tid;
+        RollupIndex data_idx;
+    };
+
+    // forward-iterator
+    struct Iterator
+    {
+        using iterator_category = std::input_iterator_tag;
+        using difference_type   = std::ptrdiff_t;
+        using value_type        = struct rollup_header_tmp_entry;
+        using pointer           = struct rollup_header_tmp_entry*;
+        using reference         = struct rollup_header_tmp_entry&;
+
+        Iterator(pointer ptr) : m_ptr(ptr) { ASSERT(m_ptr != nullptr); }
+
+        reference operator*() const { return *m_ptr; }
+        pointer operator->() { return m_ptr; }
+
+        // Prefix increment
+        Iterator& operator++() { m_ptr++; return *this; }
+        // Postfix increment
+        Iterator operator++(int) { Iterator tmp = *this; ++(*this); return tmp; }
+
+        friend bool operator== (const Iterator& l, const Iterator& r) { return l.m_ptr == r.m_ptr; }
+        friend bool operator!= (const Iterator& l, const Iterator& r) { return l.m_ptr != r.m_ptr; }
+
+    private:
+        pointer m_ptr;
+    };
+
+    Iterator begin() { return Iterator((struct rollup_header_tmp_entry*)get_pages()); }
+    Iterator end() { return Iterator((struct rollup_header_tmp_entry*)get_pages()+m_entry_count); }
+
+private:
+    FILE *m_file;
+    RollupIndex m_entry_count;
+};
+
+
+/* The format of this file is suited for query. All the data file
+ * indices of a TimeSeries are stored together in an array. The
+ * location of this array is stored in the 'index' file of each Tsdb.
+ */
+class RollupHeaderFile : public MmapFile
+{
+public:
+    RollupHeaderFile(const std::string& file_name);
+    ~RollupHeaderFile();
+
+    void open(bool for_read) override;
+    void close() override;
+    bool is_open(bool for_read) const override;
+
+    // return false if nothing to do;
+    // true if header file was built;
+    bool build(IndexFile *idx_file, RollupHeaderTmpFile *tmp_file, int no_entries);
+    void add_index(TimeSeriesId tid, RollupIndex data_idx);
+
+    void get_entries(RollupIndex header_idx, int entries, std::vector<RollupIndex> *results);
+
+private:
+    void remove(bool temp);
+    uint32_t *get_header(RollupIndex header_idx, int entries);
+
+    FILE *m_file;
+    RollupIndex m_header_count;
+};
+
+
+struct __attribute__ ((__packed__)) rollup_entry
+{
+    uint32_t cnt;
+    double min;
+    double max;
+    double sum;
+};
+
+
+// Used for shutdown/restart only
+struct __attribute__ ((__packed__)) rollup_entry_ext
+{
+    Timestamp tstamp;
+    uint32_t cnt;
+    double min;
+    double max;
+    double sum;
+};
+
+
+class RollupDataFile : public MmapFile
+{
+public:
+    RollupDataFile(const std::string& file_name);
+    ~RollupDataFile();
+
+    void open(bool read_only) override;
+    void close() override;
+    bool is_open(bool for_read) const override;
+    inline pthread_rwlock_t *get_lock() { return &m_lock; }
+
+    uint32_t add_data_point(uint32_t cnt, double min, double max, double sum);
+    uint32_t add_data_point(Timestamp tstamp, uint32_t cnt, double min, double max, double sum);    // called during shutdown
+    bool query(RollupIndex idx, uint32_t& cnt, double& min, double& max, double& sum);
+    bool query(RollupIndex idx, Timestamp& tstamp, uint32_t& cnt, double& min, double& max, double& sum);   // called during restart
+
+    inline Timestamp get_last_read() const { return m_last_read; }
+    inline Timestamp get_last_write() const { return m_last_write; }
+
+private:
+    FILE *m_file;
+    Timestamp m_last_read;
+    Timestamp m_last_write;
+    uint32_t m_entry_index;
     pthread_rwlock_t m_lock;
 };
 

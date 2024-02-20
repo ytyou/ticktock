@@ -17,6 +17,7 @@
  */
 
 #include "admin.h"
+#include "append.h"
 #include "global.h"
 #include "cp.h"
 #include "kv.h"
@@ -35,7 +36,7 @@ static const char *HTTP_MSG_PONG = "pong";
 void
 Admin::init()
 {
-    if (Config::get_int(CFG_TSDB_MIN_DISK_SPACE, CFG_TSDB_MIN_DISK_SPACE_DEF) > 0)
+    if (Config::inst()->get_int(CFG_TSDB_MIN_DISK_SPACE, CFG_TSDB_MIN_DISK_SPACE_DEF) > 0)
     {
         Task task;
         task.doit = &Admin::shutdown_if_disk_full;
@@ -74,7 +75,11 @@ Admin::http_post_api_admin_handler(HttpRequest& request, HttpResponse& response)
 
     try
     {
-        if (strcmp(cmd, "compact") == 0)
+        if (strcmp(cmd, "append") == 0)
+        {
+            status = cmd_append(params, response);
+        }
+        else if (strcmp(cmd, "compact") == 0)
         {
             status = cmd_compact(params, response);
         }
@@ -93,6 +98,10 @@ Admin::http_post_api_admin_handler(HttpRequest& request, HttpResponse& response)
         else if (strcmp(cmd, "ping") == 0)
         {
             status = cmd_ping(params, response);
+        }
+        else if (strcmp(cmd, "rollup") == 0)
+        {
+            status = cmd_rollup(params, response);
         }
         else if (strcmp(cmd, "stat") == 0)
         {
@@ -135,6 +144,19 @@ Admin::http_post_api_admin_handler(HttpRequest& request, HttpResponse& response)
     }
 
     return status;
+}
+
+bool
+Admin::cmd_append(KeyValuePair *params, HttpResponse& response)
+{
+    TaskData data;
+
+    data.integer = 1;   // indicate this is from interactive cmd (vs. scheduled task)
+    AppendLog::flush_all(data);
+    char buff[32];
+    int len = snprintf(buff, sizeof(buff), "append log generated");
+    response.init(200, HttpContentType::PLAIN, len, buff);
+    return true;
 }
 
 bool
@@ -209,6 +231,19 @@ Admin::cmd_ping(KeyValuePair *params, HttpResponse& response)
 }
 
 bool
+Admin::cmd_rollup(KeyValuePair *params, HttpResponse& response)
+{
+    TaskData data;
+
+    data.integer = 1;   // indicate this is from interactive cmd (vs. scheduled task)
+    Tsdb::rollup(data);
+    char buff[32];
+    int len = snprintf(buff, sizeof(buff), "%d tsdbs rolled-up", data.integer);
+    response.init(200, HttpContentType::PLAIN, len, buff);
+    return true;
+}
+
+bool
 Admin::cmd_stat(KeyValuePair *params, HttpResponse& response)
 {
     char buff[64];
@@ -247,8 +282,8 @@ Admin::shutdown(TaskData& data)
 bool
 Admin::shutdown_if_disk_full(TaskData& data)
 {
-    long page_cnt = Config::get_int(CFG_TSDB_PAGE_COUNT, CFG_TSDB_PAGE_COUNT_DEF);
-    long min_disk = Config::get_int(CFG_TSDB_MIN_DISK_SPACE, CFG_TSDB_MIN_DISK_SPACE_DEF);
+    long page_cnt = Config::inst()->get_int(CFG_TSDB_PAGE_COUNT, CFG_TSDB_PAGE_COUNT_DEF);
+    long min_disk = Config::inst()->get_int(CFG_TSDB_MIN_DISK_SPACE, CFG_TSDB_MIN_DISK_SPACE_DEF);
 
     if (Stats::get_disk_avail() < (min_disk*g_page_size*page_cnt))
     {

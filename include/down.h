@@ -21,6 +21,7 @@
 #include <cmath>
 #include "range.h"
 #include "recycle.h"
+#include "rollup.h"
 #include "type.h"
 
 
@@ -47,6 +48,7 @@ public:
     Downsampler();
     static Downsampler *create(const char *downsample, TimeRange& range, bool ms);
 
+    virtual RollupType get_rollup_type() const = 0;
     virtual void add_data_point(DataPointPair& dp, DataPointVector& dps) = 0;
     virtual void add_last_point(DataPointVector& dps) {};
     void fill_if_needed(DataPointVector& dps);
@@ -55,6 +57,16 @@ public:
     {
         m_last_tstamp = TT_INVALID_TIMESTAMP;
         return true;
+    }
+
+    inline Timestamp get_interval() const
+    {
+        return m_interval;
+    }
+
+    inline void set_interval(Timestamp interval)
+    {
+        m_interval = interval;
     }
 
     inline Timestamp step_down(Timestamp tstamp) const
@@ -93,6 +105,8 @@ public:
     void add_data_point(DataPointPair& dp, DataPointVector& dps);
     void add_last_point(DataPointVector& dps);
 
+    RollupType get_rollup_type() const override { return RollupType::RU_AVG; }
+
     inline virtual void init()
     {
         m_sum = 0;
@@ -108,6 +122,7 @@ private:
 class DownsamplerCount : public Downsampler
 {
 public:
+    RollupType get_rollup_type() const override { return RollupType::RU_CNT; }
     void add_data_point(DataPointPair& dp, DataPointVector& dps);
 };
 
@@ -115,6 +130,7 @@ public:
 class DownsamplerDev : public Downsampler
 {
 public:
+    RollupType get_rollup_type() const override { return RollupType::RU_NONE; }
     void add_data_point(DataPointPair& dp, DataPointVector& dps);
     void add_last_point(DataPointVector& dps);
 
@@ -139,6 +155,7 @@ private:
 class DownsamplerFirst : public Downsampler
 {
 public:
+    RollupType get_rollup_type() const override { return RollupType::RU_NONE; }
     void add_data_point(DataPointPair& dp, DataPointVector& dps);
 };
 
@@ -146,6 +163,7 @@ public:
 class DownsamplerLast : public Downsampler
 {
 public:
+    RollupType get_rollup_type() const override { return RollupType::RU_NONE; }
     void add_data_point(DataPointPair& dp, DataPointVector& dps);
 };
 
@@ -153,6 +171,7 @@ public:
 class DownsamplerMax : public Downsampler
 {
 public:
+    RollupType get_rollup_type() const override { return RollupType::RU_MAX; }
     void add_data_point(DataPointPair& dp, DataPointVector& dps);
 };
 
@@ -160,6 +179,7 @@ public:
 class DownsamplerMin : public Downsampler
 {
 public:
+    RollupType get_rollup_type() const override { return RollupType::RU_MIN; }
     void add_data_point(DataPointPair& dp, DataPointVector& dps);
 };
 
@@ -167,6 +187,7 @@ public:
 class DownsamplerPercentile : public Downsampler
 {
 public:
+    RollupType get_rollup_type() const override { return RollupType::RU_NONE; }
     void add_data_point(DataPointPair& dp, DataPointVector& dps);
     void add_last_point(DataPointVector& dps);
 
@@ -192,6 +213,7 @@ private:
 class DownsamplerSum : public Downsampler
 {
 public:
+    RollupType get_rollup_type() const override { return RollupType::RU_SUM; }
     void add_data_point(DataPointPair& dp, DataPointVector& dps);
 };
 

@@ -15,8 +15,8 @@ PROD_FLAGS = -O3 -march=native -ffast-math
 #LEAK_FLAGS = -D_LEAK_DETECTION
 #PROF_FLAGS = -pg -D_GLIBCXX_DEBUG
 
-CFLAGS = -I include -std=c++11 -Wno-unused-result -Wno-format-truncation -Wno-psabi -flto $(DEBUG_FLAGS) $(PROF_FLAGS) $(LEAK_FLAGS) $(PROD_FLAGS)
-LFLAGS = -pthread -flto $(DEBUG_FLAGS) $(PROF_FLAGS)
+CFLAGS = -I include -std=c++11 -Wno-unused-result -Wno-format-truncation -Wno-psabi -flto=auto $(DEBUG_FLAGS) $(PROF_FLAGS) $(LEAK_FLAGS) $(PROD_FLAGS)
+LFLAGS = -pthread -flto=auto $(DEBUG_FLAGS) $(PROF_FLAGS)
 LIBS = $(DEBUG_LIBS) -lz
 
 INCS = $(wildcard include/*.h)
@@ -35,7 +35,7 @@ OBJT = $(patsubst %.cpp,%.o,$(TMPT))
 
 TARGET = bin/tt
 TESTS = bin/all_tests
-TOOLS = bin/inspect
+TOOLS = bin/inspect bin/iobench bin/append
 
 build: $(TARGET)
 
@@ -79,6 +79,14 @@ UOBJS = $(wildcard objs/tools/*.o)
 #	$(LINK) $(LFLAGS) -o $@ $< $(LIBS)
 
 bin/inspect: objs/tools/inspect.o $(OBJI)
+	@mkdir -p $(@D)
+	$(LINK) $(LFLAGS) -o $@ $< $(OBJI) $(LIBS)
+
+bin/iobench: objs/tools/iobench.o $(OBJI)
+	@mkdir -p $(@D)
+	$(LINK) $(LFLAGS) -o $@ $< $(OBJI) $(LIBS)
+
+bin/append: objs/tools/append.o $(OBJI)
 	@mkdir -p $(@D)
 	$(LINK) $(LFLAGS) -o $@ $< $(OBJI) $(LIBS)
 

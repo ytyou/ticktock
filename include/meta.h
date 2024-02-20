@@ -33,7 +33,7 @@ class TimeSeries;
 class MetaFile
 {
 public:
-    static void init(TimeSeries* (*restore_func)(std::string& metric, std::string& key, TimeSeriesId id),
+    static void init(void (*restore_metrics)(MetricId, std::string& name), TimeSeries* (*restore_func)(std::string& metric, std::string& key, TimeSeriesId id),
                      void (*restore_measurement)(std::string& measurement, std::string& tags, std::vector<std::pair<std::string,TimeSeriesId>>& fields, std::vector<TimeSeries*>& tsv));
     static MetaFile *instance() { return m_instance; }
 
@@ -41,18 +41,22 @@ public:
     void close();
     void flush();
 
-    inline bool is_open() const { return (m_file != nullptr); }
+    inline bool is_open() const { return (m_ts_file != nullptr); }
+    void add_metric(MetricId id, const char *name);
     void add_ts(const char *metric, const char *key, TimeSeriesId id);
     void add_ts(const char *metric, Tag_v2& tags, TimeSeriesId id);
     void add_measurement(const char *measurement, char *tags, std::vector<std::pair<const char*,TimeSeriesId>>& fields);
 
 private:
-    void restore(TimeSeries* (*restore_func)(std::string& metric, std::string& key, TimeSeriesId id),
+    void restore_ts(TimeSeries* (*restore_func)(std::string& metric, std::string& key, TimeSeriesId id),
                  void (*restore_measurement)(std::string& measurement, std::string& tags, std::vector<std::pair<std::string,TimeSeriesId>>& fields, std::vector<TimeSeries*>& tsv));
+    void restore_metrics(void (*restore_metrics)(MetricId, std::string& name));
 
     std::mutex m_lock;
-    std::string m_name;
-    std::FILE *m_file;
+    std::string m_ts_name;
+    std::string m_metrics_name;
+    std::FILE *m_ts_file;
+    std::FILE *m_metrics_file;
 
     static MetaFile *m_instance;
 };

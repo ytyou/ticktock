@@ -148,7 +148,7 @@ process_cmdline_opts(int argc, char *argv[])
         { CFG_TCP_SERVER_PORT,                      required_argument,  0,  0 },
         { CFG_TICKTOCK_HOME,                        required_argument,  0,  0 },
         { CFG_TSDB_ARCHIVE_THRESHOLD,               required_argument,  0,  0 },
-        { CFG_TSDB_COMPACT_FREQUENCY,               required_argument,  0,  0 },
+        //{ CFG_TSDB_COMPACT_FREQUENCY,               required_argument,  0,  0 },
         { CFG_TSDB_COMPRESSOR_VERSION,              required_argument,  0,  0 },
         { CFG_TSDB_DATA_DIR,                        required_argument,  0,  0 },
         { CFG_TSDB_FLUSH_FREQUENCY,                 required_argument,  0,  0 },
@@ -157,6 +157,9 @@ process_cmdline_opts(int argc, char *argv[])
         { CFG_TSDB_PAGE_SIZE,                       required_argument,  0,  0 },
         { CFG_TSDB_READ_ONLY_THRESHOLD,             required_argument,  0,  0 },
         { CFG_TSDB_RETENTION_THRESHOLD,             required_argument,  0,  0 },
+        { CFG_TSDB_ROLLUP_FREQUENCY,                required_argument,  0,  0 },
+        { CFG_TSDB_ROLLUP_INTERVAL,                 required_argument,  0,  0 },
+        { CFG_TSDB_ROLLUP_THRESHOLD,                required_argument,  0,  0 },
         { CFG_TSDB_ROTATION_FREQUENCY,              required_argument,  0,  0 },
         { CFG_TSDB_SELF_METER_ENABLED,              required_argument,  0,  0 },
         { CFG_TSDB_THRASHING_THRESHOLD,             required_argument,  0,  0 },
@@ -341,6 +344,7 @@ initialize()
     MemoryManager::init();
     Compressor_v3::initialize();
     Tsdb::init();
+    RollupManager::init();
     AppendLog::init();
     Stats::init();
     //QueryExecutor::init();
@@ -371,6 +375,7 @@ shutdown()
         Timer::inst()->stop();
         //QueryExecutor::inst()->shutdown();
         Tsdb::shutdown();
+        RollupManager::shutdown();
         // MM are thread-local singletons, and can't be cleaned up from another thread
         //MemoryManager::cleanup();
         AppendLog::shutdown();  // normal shutdown
@@ -413,11 +418,11 @@ main(int argc, char *argv[])
     }
 
     // verify configs
-    if (Config::get_bool(CFG_UDP_SERVER_ENABLED, CFG_UDP_SERVER_ENABLED_DEF) &&
-        (Config::get_int(CFG_UDP_SERVER_PORT, CFG_UDP_SERVER_PORT_DEF) <= 0))
+    if (Config::inst()->get_bool(CFG_UDP_SERVER_ENABLED, CFG_UDP_SERVER_ENABLED_DEF) &&
+        (Config::inst()->get_int(CFG_UDP_SERVER_PORT, CFG_UDP_SERVER_PORT_DEF) <= 0))
     {
         Logger::fatal("UDP Server port must be greater than 0 (instead of %d)",
-            Config::get_int(CFG_UDP_SERVER_PORT, CFG_UDP_SERVER_PORT_DEF));
+            Config::inst()->get_int(CFG_UDP_SERVER_PORT, CFG_UDP_SERVER_PORT_DEF));
         shutdown();
         return 1;
     }
@@ -425,23 +430,23 @@ main(int argc, char *argv[])
     // start an HttpServer
     HttpServer http_server;
     http_server.init();
-    http_server.start(Config::get_str(CFG_HTTP_SERVER_PORT, CFG_HTTP_SERVER_PORT_DEF));
+    http_server.start(Config::inst()->get_str(CFG_HTTP_SERVER_PORT, CFG_HTTP_SERVER_PORT_DEF));
     http_server_ptr = &http_server;
 
     // start a TcpServer
     TcpServer tcp_server;
     tcp_server.init();
-    if (Config::get_bool(CFG_TCP_SERVER_ENABLED, CFG_TCP_SERVER_ENABLED_DEF))
+    if (Config::inst()->get_bool(CFG_TCP_SERVER_ENABLED, CFG_TCP_SERVER_ENABLED_DEF))
     {
-        tcp_server.start(Config::get_str(CFG_TCP_SERVER_PORT, CFG_TCP_SERVER_PORT_DEF));
+        tcp_server.start(Config::inst()->get_str(CFG_TCP_SERVER_PORT, CFG_TCP_SERVER_PORT_DEF));
         tcp_server_ptr = &tcp_server;
     }
 
     // start an UdpServer
     UdpServer udp_server;
-    if (Config::get_bool(CFG_UDP_SERVER_ENABLED, CFG_UDP_SERVER_ENABLED_DEF))
+    if (Config::inst()->get_bool(CFG_UDP_SERVER_ENABLED, CFG_UDP_SERVER_ENABLED_DEF))
     {
-        udp_server.start(Config::get_int(CFG_UDP_SERVER_PORT, CFG_UDP_SERVER_PORT_DEF));
+        udp_server.start(Config::inst()->get_int(CFG_UDP_SERVER_PORT, CFG_UDP_SERVER_PORT_DEF));
         udp_server_ptr = &udp_server;
     }
 
@@ -461,6 +466,7 @@ main(int argc, char *argv[])
     udp_server.shutdown();
 
     shutdown();
+    delete Config::inst();
 
     return 0;
 }

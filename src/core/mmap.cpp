@@ -20,6 +20,7 @@
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <unordered_map>
 #include "config.h"
 #include "fd.h"
 #include "global.h"
@@ -315,7 +316,11 @@ IndexFile::open(bool for_read)
 
         // TODO: memcpy()?
         for (uint64_t i = 0; i < max_idx; i++)
+        {
             entries[i].file_index = TT_INVALID_FILE_INDEX;
+            entries[i].file_index2 = TT_INVALID_FILE_INDEX;
+            entries[i].rollup_index = TT_INVALID_ROLLUP_INDEX;
+        }
     }
     else
     {
@@ -344,7 +349,14 @@ IndexFile::expand(off_t new_len)
 
     // TODO: memcpy()?
     for ( ; old_idx < new_idx; old_idx++)
+    {
+        entries[old_idx].flags = 0;
         entries[old_idx].file_index = TT_INVALID_FILE_INDEX;
+        entries[old_idx].header_index = TT_INVALID_HEADER_INDEX;
+        entries[old_idx].file_index2 = TT_INVALID_FILE_INDEX;
+        entries[old_idx].header_index2 = TT_INVALID_HEADER_INDEX;
+        entries[old_idx].rollup_index = TT_INVALID_ROLLUP_INDEX;
+    }
 
     Logger::debug("index file %s length: %" PRIu64, m_name.c_str(), get_length());
 
@@ -370,11 +382,35 @@ IndexFile::set_indices(TimeSeriesId id, FileIndex file_index, HeaderIndex header
         pages = get_pages();
     }
 
-    struct index_entry entry;
-    entry.file_index = file_index;
-    entry.header_index = header_index;
     struct index_entry *entries = (struct index_entry*)pages;
-    entries[id] = entry;
+    entries[id].file_index = file_index;
+    entries[id].header_index = header_index;
+
+    return true;
+}
+
+bool
+IndexFile::set_indices2(TimeSeriesId id, FileIndex file_index, HeaderIndex header_index)
+{
+    void *pages = get_pages();
+    ASSERT(pages != nullptr);
+    ASSERT(! is_read_only());
+
+    size_t new_len = (id+1) * TT_INDEX_SIZE;
+    size_t old_len = get_length();
+    ASSERT(0 < old_len);
+
+    if (old_len < new_len)
+    {
+        // file too small, expand it
+        if (! expand(new_len + TT_SIZE_INCREMENT))
+            return false;
+        pages = get_pages();
+    }
+
+    struct index_entry *entries = (struct index_entry*)pages;
+    entries[id].file_index2 = file_index;
+    entries[id].header_index2 = header_index;
 
     return true;
 }
@@ -401,16 +437,129 @@ IndexFile::get_indices(TimeSeriesId id, FileIndex& file_index, HeaderIndex& head
     }
 }
 
+void
+IndexFile::get_indices2(TimeSeriesId id, FileIndex& file_index, HeaderIndex& header_index)
+{
+    void *pages = get_pages();
 
-HeaderFile::HeaderFile(const std::string& file_name, FileIndex id, PageCount page_count, Tsdb *tsdb) :
+    size_t idx = (id+1) * TT_INDEX_SIZE;
+    size_t len = get_length();
+
+    if ((len <= idx) || (pages == nullptr))
+    {
+        file_index = TT_INVALID_FILE_INDEX;
+        header_index = TT_INVALID_HEADER_INDEX;
+    }
+    else
+    {
+        struct index_entry *entries = (struct index_entry*)pages;
+        struct index_entry entry = entries[id];
+        file_index = entry.file_index2;
+        header_index = entry.header_index2;
+    }
+}
+
+void
+IndexFile::set_rollup_index(TimeSeriesId tid, RollupIndex idx)
+{
+    void *pages = get_pages();
+    ASSERT(pages != nullptr);
+    ASSERT(! is_read_only());
+
+    size_t new_len = (tid+1) * TT_INDEX_SIZE;
+    size_t old_len = get_length();
+    ASSERT(0 < old_len);
+
+    if (old_len < new_len)
+    {
+        // file too small, expand it
+        if (! expand(new_len + TT_SIZE_INCREMENT))
+        {
+            Logger::error("IndexFile::set_rollup_index(tid=%u, idx=%u) failed to expand!", tid, idx);
+            return;
+        }
+        pages = get_pages();
+    }
+
+    struct index_entry *entries = (struct index_entry*)pages;
+    entries[tid].rollup_index = idx;
+}
+
+RollupIndex
+IndexFile::get_rollup_index(TimeSeriesId id)
+{
+    RollupIndex rollup_idx = TT_INVALID_ROLLUP_INDEX;
+    void *pages = get_pages();
+
+    size_t idx = (id+1) * TT_INDEX_SIZE;
+    size_t len = get_length();
+
+    if ((len > idx) && (pages != nullptr))
+    {
+        struct index_entry *entries = (struct index_entry*)pages;
+        rollup_idx = entries[id].rollup_index;
+    }
+
+    return rollup_idx;
+}
+
+bool
+IndexFile::get_out_of_order(TimeSeriesId id)
+{
+    void *pages = get_pages();
+
+    size_t idx = (id+1) * TT_INDEX_SIZE;
+    size_t len = get_length();
+
+    if ((len <= idx) || (pages == nullptr))
+    {
+        return false;
+    }
+    else
+    {
+        struct index_entry *entries = (struct index_entry*)pages;
+        struct index_entry entry = entries[id];
+        return entry.flags & 0x01;
+    }
+}
+
+void
+IndexFile::set_out_of_order(TimeSeriesId id, bool ooo)
+{
+    void *pages = get_pages();
+    ASSERT(pages != nullptr);
+    ASSERT(! is_read_only());
+
+    size_t new_len = (id+1) * TT_INDEX_SIZE;
+    size_t old_len = get_length();
+    ASSERT(0 < old_len);
+
+    if (old_len < new_len)
+    {
+        // file too small, expand it
+        if (! expand(new_len + TT_SIZE_INCREMENT))
+            return;
+        pages = get_pages();
+    }
+
+    struct index_entry *entries = (struct index_entry*)pages;
+
+    if (ooo)
+        entries[id].flags |= 0x01;
+    else
+        entries[id].flags &= ~0x01;
+}
+
+
+HeaderFile::HeaderFile(const std::string& file_name, FileIndex id, PageCount page_count, PageSize page_size) :
     MmapFile(file_name),
     m_id(id),
     m_page_count(page_count)
 {
     ASSERT(page_count > 0);
-    ASSERT(tsdb != nullptr);
+    ASSERT(page_size > 0);
     open(false);    // open for write
-    init_tsdb_header(tsdb);
+    init_tsdb_header(page_size);
 }
 
 HeaderFile::HeaderFile(FileIndex id, const std::string& file_name) :
@@ -418,6 +567,7 @@ HeaderFile::HeaderFile(FileIndex id, const std::string& file_name) :
     m_id(id),
     m_page_count(g_page_count)
 {
+    ASSERT(file_exists(file_name));
 }
 
 HeaderFile::~HeaderFile()
@@ -426,14 +576,13 @@ HeaderFile::~HeaderFile()
 }
 
 void
-HeaderFile::init_tsdb_header(Tsdb *tsdb)
+HeaderFile::init_tsdb_header(PageSize page_size)
 {
-    ASSERT(tsdb != nullptr);
     struct tsdb_header *header = (struct tsdb_header*)get_pages();
     ASSERT(header != nullptr);
 
     int compressor_version =
-        Config::get_int(CFG_TSDB_COMPRESSOR_VERSION, CFG_TSDB_COMPRESSOR_VERSION_DEF);
+        Config::inst()->get_int(CFG_TSDB_COMPRESSOR_VERSION, CFG_TSDB_COMPRESSOR_VERSION_DEF);
 
     header->m_major_version = TT_MAJOR_VERSION;
     header->m_minor_version = TT_MINOR_VERSION;
@@ -447,7 +596,7 @@ HeaderFile::init_tsdb_header(Tsdb *tsdb)
     header->m_start_tstamp = TimeRange::MAX.get_to();   //tsdb->get_time_range().get_from();
     header->m_end_tstamp = TimeRange::MAX.get_from();   //tsdb->get_time_range().get_to();
     header->m_actual_pg_cnt = m_page_count;
-    header->m_page_size = tsdb->get_page_size();
+    header->m_page_size = page_size;
 
     ASSERT(header->m_page_count > 0);
     ASSERT(header->m_actual_pg_cnt > 0);
@@ -529,7 +678,7 @@ HeaderFile::get_compressor_version()
     if (header != nullptr)
         version = header->get_compressor_version();
     else
-        version = Config::get_int(CFG_TSDB_COMPRESSOR_VERSION, CFG_TSDB_COMPRESSOR_VERSION_DEF);
+        version = Config::inst()->get_int(CFG_TSDB_COMPRESSOR_VERSION, CFG_TSDB_COMPRESSOR_VERSION_DEF);
 
     return version;
 }
@@ -654,17 +803,28 @@ DataFile::open(bool for_read)
     else
     {
         ASSERT(m_file == nullptr);
-        m_file = std::fopen(m_name.c_str(), "ab");
+        //m_file = std::fopen(m_name.c_str(), "ab");
+        int fd = ::open(m_name.c_str(), O_WRONLY|O_CREAT|O_APPEND|O_NONBLOCK, S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH);
+        fd = FileDescriptorManager::dup_fd(fd, FileDescriptorType::FD_FILE);
 
-        // get file size
-        int fd = ::fileno(m_file);
-        struct stat sb;
-        if (fstat(fd, &sb) == -1)
-            Logger::error("Failed to fstat file %s, errno = %d", m_name.c_str(), errno);
-        off_t length = sb.st_size;
+        if (fd == -1)
+        {
+            Logger::error("Failed to open file %s for append: %d", m_name.c_str(), errno);
+        }
+        else
+        {
+            // get file size
+            struct stat sb;
+            if (fstat(fd, &sb) == -1)
+                Logger::error("Failed to fstat file %s, errno = %d", m_name.c_str(), errno);
+            off_t length = sb.st_size;
 
-        m_page_index = length / m_page_size;
-        Logger::info("opening %s for write", m_name.c_str());
+            m_page_index = length / m_page_size;
+            Logger::info("opening %s for write", m_name.c_str());
+
+            m_file = fdopen(fd, "ab");
+            ASSERT(m_file != nullptr);
+        }
     }
 }
 
@@ -675,9 +835,9 @@ DataFile::close()
     {
         std::fclose(m_file);
         m_file = nullptr;
+        Logger::info("closing data file %s (for both read & write), length = %lu", m_name.c_str(), get_length());
     }
 
-    Logger::info("closing data file %s (for both read & write), length = %lu", m_name.c_str(), get_length());
     MmapFile::close();
 }
 
@@ -754,18 +914,464 @@ DataFile::flush(bool sync)
 // it will return nullptr. In this case, you need to
 // remap the file.
 void *
-DataFile::get_page(PageIndex idx, PageSize offset, PageSize cursor)
+DataFile::get_page(PageIndex idx)
 {
     ASSERT(idx != TT_INVALID_PAGE_INDEX);
 
+    // make sure the 'compress_info_on_disk' at the beginning of
+    // the page is already mapped into memory
+    PageSize cursor = sizeof(struct compress_info_on_disk);
     long page_idx = idx * m_page_size;
     if ((page_idx + cursor) > get_length())
         return nullptr;     // needs remap
 
     uint8_t *pages = (uint8_t*)get_pages();
     ASSERT(pages != nullptr);
+    uint8_t *page = pages + page_idx;
+
+    // make sure the whole page is already mapped into memory
+    struct compress_info_on_disk *ciod =
+        reinterpret_cast<struct compress_info_on_disk*>(page);
+    cursor += ciod->m_cursor;
+    if (ciod->m_start != 0) cursor++;
+    if ((page_idx + cursor) > get_length())
+        return nullptr;     // needs remap
+
     m_last_read = ts_now_sec();
-    return (void*)(pages + page_idx + offset);
+    return (void*)(page);
+}
+
+
+RollupHeaderTmpFile::RollupHeaderTmpFile(const std::string& file_name) :
+    m_file(nullptr),
+    m_entry_count(0),
+    MmapFile(file_name)
+{
+    ASSERT(ends_with(file_name, "/rollup.header.tmp"));
+}
+
+RollupHeaderTmpFile::~RollupHeaderTmpFile()
+{
+    this->close();
+}
+
+void
+RollupHeaderTmpFile::open(bool read_only)
+{
+    if (read_only)
+    {
+        MmapFile::open_existing(true, true);
+        Logger::info("opening %s for read", m_name.c_str());
+        m_entry_count = get_length() / sizeof(struct rollup_header_tmp_entry);
+    }
+    else
+    {
+        ASSERT(m_file == nullptr);
+        int fd = ::open(m_name.c_str(), O_WRONLY|O_CREAT|O_APPEND|O_NONBLOCK, S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH);
+        fd = FileDescriptorManager::dup_fd(fd, FileDescriptorType::FD_FILE);
+
+        if (fd == -1)
+        {
+            Logger::error("Failed to open file %s for append: %d", m_name.c_str(), errno);
+        }
+        else
+        {
+            m_file = fdopen(fd, "ab");
+            Logger::info("opening %s for write", m_name.c_str());
+            ASSERT(m_file != nullptr);
+        }
+    }
+}
+
+void
+RollupHeaderTmpFile::close()
+{
+    if (m_file != nullptr)
+    {
+        std::fclose(m_file);
+        m_file = nullptr;
+    }
+
+    MmapFile::close();
+}
+
+bool
+RollupHeaderTmpFile::is_open(bool for_read) const
+{
+    if (for_read)
+        return MmapFile::is_open(true);
+    else
+        return (m_file != nullptr);
+}
+
+// used for on-the-fly rollup.
+void
+RollupHeaderTmpFile::add_index(TimeSeriesId tid, RollupIndex data_idx)
+{
+    ASSERT(m_file != nullptr);
+    struct rollup_header_tmp_entry entry;
+
+    entry.tid = tid;
+    entry.data_idx = data_idx;
+
+    std::fwrite(&entry, sizeof(struct rollup_header_tmp_entry), 1, m_file);
+    std::fflush(m_file);
+}
+
+
+RollupHeaderFile::RollupHeaderFile(const std::string& file_name) :
+    m_file(nullptr),
+    m_header_count(0),
+    MmapFile(file_name)
+{
+}
+
+RollupHeaderFile::~RollupHeaderFile()
+{
+    this->close();
+}
+
+void
+RollupHeaderFile::open(bool for_read)
+{
+    if (for_read)
+    {
+        if (m_file != nullptr)  // open for write?
+            MmapFile::open(4096*sizeof(uint32_t), true, false, false);   // TODO:
+        else
+            MmapFile::open_existing(true, false);
+        Logger::info("opening %s for read", m_name.c_str());
+    }
+    else    // for write
+    {
+        ASSERT(m_file == nullptr);
+        int fd = ::open(m_name.c_str(), O_WRONLY|O_CREAT|O_APPEND|O_NONBLOCK, S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH);
+        fd = FileDescriptorManager::dup_fd(fd, FileDescriptorType::FD_FILE);
+
+        if (fd == -1)
+        {
+            Logger::error("Failed to open file %s for append: %d", m_name.c_str(), errno);
+        }
+        else
+        {
+            // get file size
+            struct stat sb;
+            if (fstat(fd, &sb) == -1)
+                Logger::error("Failed to fstat file %s, errno = %d", m_name.c_str(), errno);
+            Logger::info("opening %s for write", m_name.c_str());
+
+            m_file = fdopen(fd, "ab");
+            ASSERT(m_file != nullptr);
+        }
+    }
+}
+
+void
+RollupHeaderFile::close()
+{
+    if (m_file != nullptr)
+    {
+        std::fclose(m_file);
+        m_file = nullptr;
+    }
+
+    //Logger::info("closing rollup header file %s (for both read & write), length = %lu", m_name.c_str(), get_length());
+    MmapFile::close();
+}
+
+bool
+RollupHeaderFile::is_open(bool for_read) const
+{
+    if (for_read)
+        return MmapFile::is_open(true);
+    else
+        return (m_file != nullptr);
+}
+
+void
+RollupHeaderFile::remove(bool temp)
+{
+    rm_file(temp ? m_name + ".tmp" : m_name);
+}
+
+bool
+RollupHeaderFile::build(IndexFile *idx_file, RollupHeaderTmpFile *tmp_file, int no_entries)
+{
+    ASSERT(idx_file != nullptr);
+    ASSERT(tmp_file != nullptr);
+    ASSERT(no_entries > 0);
+
+    if (! tmp_file->exists())
+    {
+        ASSERT(this->exists());
+        return false;   // nothing to do
+    }
+
+    this->remove(false);
+    tmp_file->open(true);   // read temp file
+
+    struct ts_entry
+    {
+        int next;
+        uint32_t entries[1];
+    };
+
+    struct __attribute__ ((__packed__)) rollup_header_tmp
+    {
+        TimeSeriesId tid;
+        RollupIndex data_idx;
+    } entry;
+
+    TimeSeriesId tid;
+    uint32_t cnt;
+    double min, max, sum;
+    std::unordered_map<TimeSeriesId, struct ts_entry*> map;
+    struct rollup_header_tmp *tmp_entry = (struct rollup_header_tmp*)tmp_file->get_pages();
+    size_t length = tmp_file->get_length();
+
+    // read from rollup-header-tmp file
+    for (size_t i = 0; i < length; i += sizeof(struct rollup_header_tmp), tmp_entry++)
+    {
+        TimeSeriesId tid = tmp_entry->tid;
+        RollupIndex data_idx = tmp_entry->data_idx;
+
+        if (idx_file->get_out_of_order(tid))
+            continue;   // skip ooo cases
+
+        auto it = map.find(tid);
+        struct ts_entry *entries;
+
+        if (it == map.end())
+        {
+            entries = (struct ts_entry*)std::malloc(sizeof(struct ts_entry)+sizeof(uint32_t)*(no_entries-1));
+            entries->next = 0;
+            map[tid] = entries;
+        }
+        else
+        {
+            entries = it->second;
+        }
+
+        ASSERT(entries->next < no_entries);
+        entries->entries[entries->next++] = data_idx;
+    }
+
+    tmp_file->close();
+
+    // write to rollup-header file
+    RollupIndex header_idx = 0;
+    ASSERT(m_file == nullptr);
+    this->open(false);
+    ASSERT(m_file != nullptr);
+
+    for (auto it : map)
+    {
+        TimeSeriesId tid = it.first;
+        struct ts_entry *entries = it.second;
+        std::fwrite(&entries->entries[0], sizeof(uint32_t)*no_entries, 1, m_file);
+        idx_file->set_rollup_index(tid, header_idx);
+        std::free(entries);
+    }
+    std::fflush(m_file);
+    std::fclose(m_file);
+    m_file = nullptr;
+
+    tmp_file->remove();
+    return true;
+}
+
+uint32_t *
+RollupHeaderFile::get_header(RollupIndex idx, int entries)
+{
+    ASSERT(entries > 0);
+    //size_t old_len = get_length();
+    size_t new_len = (idx+1) * entries * sizeof(uint32_t);
+    ASSERT(new_len <= get_length());
+    return (uint32_t*)get_pages() + (idx * entries);
+}
+
+void
+RollupHeaderFile::get_entries(RollupIndex header_idx, int entries, std::vector<RollupIndex> *results)
+{
+    ASSERT(entries > 0);
+    uint32_t *header = get_header(header_idx, entries);
+    ASSERT(header != nullptr);
+    ASSERT(header >= get_pages());
+
+    for (int i = 0; i < entries; i++)
+        results->push_back(header[i]);
+}
+
+// used for on-the-fly rollup.
+void
+RollupHeaderFile::add_index(TimeSeriesId tid, RollupIndex data_idx)
+{
+    struct __attribute__ ((__packed__)) rollup_header_tmp
+    {
+        TimeSeriesId tid;
+        RollupIndex data_idx;
+    } entry;
+
+    entry.tid = tid;
+    entry.data_idx = data_idx;
+
+    std::fwrite(&entry, sizeof(struct rollup_header_tmp), 1, m_file);
+    std::fflush(m_file);
+}
+
+
+RollupDataFile::RollupDataFile(const std::string& file_name) :
+    MmapFile(file_name),
+    m_file(nullptr),
+    m_last_read(0),
+    m_last_write(0),
+    m_entry_index(0)
+{
+    pthread_rwlockattr_t attr;
+    pthread_rwlockattr_setkind_np(&attr, PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP);
+    pthread_rwlock_init(&m_lock, &attr);
+}
+
+RollupDataFile::~RollupDataFile()
+{
+    this->close();
+    pthread_rwlock_destroy(&m_lock);
+}
+
+void
+RollupDataFile::open(bool for_read)
+{
+    if (for_read)
+    {
+        if (m_file != nullptr)  // open for write?
+            MmapFile::open(4096, true, false, false);   // TODO:
+        else
+            MmapFile::open_existing(true, false);
+        Logger::info("opening %s for read", m_name.c_str());
+    }
+    else
+    {
+        ASSERT(m_file == nullptr);
+        int fd = ::open(m_name.c_str(), O_WRONLY|O_CREAT|O_APPEND|O_NONBLOCK, S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH);
+        fd = FileDescriptorManager::dup_fd(fd, FileDescriptorType::FD_FILE);
+
+        if (fd == -1)
+        {
+            Logger::error("Failed to open file %s for append: %d", m_name.c_str(), errno);
+        }
+        else
+        {
+            // get file size
+            struct stat sb;
+            if (fstat(fd, &sb) == -1)
+                Logger::error("Failed to fstat file %s, errno = %d", m_name.c_str(), errno);
+            m_entry_index = sb.st_size / sizeof(struct rollup_entry);
+            Logger::info("opening %s for write", m_name.c_str());
+
+            m_file = fdopen(fd, "ab");
+            ASSERT(m_file != nullptr);
+        }
+    }
+}
+
+void
+RollupDataFile::close()
+{
+    if (m_file != nullptr)
+    {
+        std::fclose(m_file);
+        m_file = nullptr;
+        Logger::info("closing rollup data file %s (for both read & write), length = %lu", m_name.c_str(), get_length());
+    }
+
+    MmapFile::close();
+}
+
+bool
+RollupDataFile::is_open(bool for_read) const
+{
+    if (for_read)
+        return MmapFile::is_open(true);
+    else
+        return (m_file != nullptr);
+}
+
+uint32_t
+RollupDataFile::add_data_point(uint32_t cnt, double min, double max, double sum)
+{
+    struct rollup_entry entry;
+
+    entry.cnt = cnt;
+    entry.min = min;
+    entry.max = max;
+    entry.sum = sum;
+
+    ASSERT(m_file != nullptr);
+    std::fwrite(&entry, sizeof(entry), 1, m_file);
+    std::fflush(m_file);
+    m_last_write = ts_now_sec();
+
+    return m_entry_index++;
+}
+
+uint32_t
+RollupDataFile::add_data_point(Timestamp tstamp, uint32_t cnt, double min, double max, double sum)
+{
+    struct rollup_entry_ext entry;
+
+    entry.cnt = cnt;
+    entry.min = min;
+    entry.max = max;
+    entry.sum = sum;
+    entry.tstamp = tstamp;
+
+    ASSERT(m_file != nullptr);
+    std::fwrite(&entry, sizeof(entry), 1, m_file);
+    std::fflush(m_file);
+    m_last_write = ts_now_sec();
+
+    return m_entry_index++;
+}
+
+/* @param idx The idx-th entry (struct rollup_entry) in the rollup.data file.
+ */
+bool
+RollupDataFile::query(RollupIndex idx, uint32_t& cnt, double& min, double& max, double& sum)
+{
+    ASSERT(idx != TT_INVALID_ROLLUP_INDEX);
+
+    if (((idx+1)*sizeof(struct rollup_entry)) > get_length())
+        return false;
+
+    struct rollup_entry *entry = &(((struct rollup_entry*)get_pages())[idx]);
+
+    cnt = entry->cnt;
+    min = entry->min;
+    max = entry->max;
+    sum = entry->sum;
+
+    return true;
+}
+
+/* @param idx The idx-th entry (struct rollup_entry) in the rollup.data file.
+ */
+bool
+RollupDataFile::query(RollupIndex idx, Timestamp& tstamp, uint32_t& cnt, double& min, double& max, double& sum)
+{
+    ASSERT(idx != TT_INVALID_ROLLUP_INDEX);
+
+    if (((idx+1)*sizeof(struct rollup_entry_ext)) > get_length())
+        return false;
+
+    struct rollup_entry_ext *entry = &(((struct rollup_entry_ext*)get_pages())[idx]);
+
+    cnt = entry->cnt;
+    min = entry->min;
+    max = entry->max;
+    sum = entry->sum;
+    tstamp = entry->tstamp;
+
+    return true;
 }
 
 

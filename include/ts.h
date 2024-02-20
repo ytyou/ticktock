@@ -24,6 +24,7 @@
 #include "dp.h"
 #include "page.h"
 #include "recycle.h"
+#include "rollup.h"
 #include "serial.h"
 #include "tag.h"
 #include "meta.h"
@@ -51,21 +52,23 @@ public:
     static void init();     // called by Tsdb::init()
     static void cleanup();  // called by Tsdb::shutdown()
     void init(TimeSeriesId id, const char *metric, const char *key, Tag *tags);
-    void restore(Tsdb *tsdb, Timestamp tstamp, PageSize offset, uint8_t start, uint8_t *buff, bool is_ooo);
+    void restore(Tsdb *tsdb, MetricId mid, Timestamp tstamp, PageSize offset, uint8_t start, uint8_t *buff, bool is_ooo, FileIndex file_idx, HeaderIndex header_idx);
+    void restore_rollup_mgr(const RollupManager& mgr) { m_rollup = mgr; }
 
     inline TimeSeriesId get_id() const { return m_id; }
     static inline TimeSeriesId get_next_id() { return m_next_id.load(std::memory_order_relaxed); }
 
-    void flush(bool close = false);
-    void flush_no_lock(bool close = false);
+    void close(MetricId mid);   // called during TT shutdown
+    void flush(MetricId mid);
+    void flush_no_lock(MetricId mid, bool close = false);
     //bool compact(MetaFile& meta_file);
     void set_check_point();
-    void archive(Timestamp now_sec, Timestamp threshold_sec);
+    void archive(MetricId mid, Timestamp now_sec, Timestamp threshold_sec);
 
-    bool add_data_point(DataPoint& dp);
-    bool add_ooo_data_point(DataPoint& dp);
+    bool add_data_point(MetricId mid, DataPoint& dp);
+    bool add_ooo_data_point(MetricId mid, DataPoint& dp);
 
-    void append(FILE *file);
+    void append(MetricId mid, FILE *file);
 
     inline Tag *get_tags() const { return m_tags.get_v1_tags(); }
     inline Tag *get_cloned_tags(StringBuffer& strbuf) const
@@ -78,6 +81,7 @@ public:
     void get_values(std::set<std::string>& values) const { m_tags.get_values(values); }
 
     bool query_for_data(Tsdb *tsdb, TimeRange& range, std::vector<DataPointContainer*>& data);
+    void query_for_rollup(Tsdb *tsdb, TimeRange& range, std::vector<DataPointContainer*>& data, RollupType rollup);
 
     inline bool is_type(int type) const override
     { return TT_TYPE_TIME_SERIES == type; }
@@ -87,6 +91,7 @@ public:
 private:
     //char *m_key;            // this uniquely defines the time-series
     //std::mutex m_lock;
+    RollupManager m_rollup;
 
     PageInMemory *m_buff;   // in-memory buffer; if m_id is 0, it's contents are
                             // not on disk; otherwise it's contents are at least

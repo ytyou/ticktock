@@ -1936,7 +1936,7 @@ def main(argv):
     if options.leak:
         tests.append(Memory_Leak_Tests(options))
     else:
-        tests.append(Compaction_Tests(options))
+        #tests.append(Compaction_Tests(options))
         tests.append(Multi_Thread_Tests(options))
         tests.append(Stop_Restart_Tests(options))
         tests.append(Out_Of_Order_Write_Tests(options))

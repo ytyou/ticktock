@@ -75,9 +75,9 @@ public:
     {
     }
 
-    CompressorPosition(struct page_info_on_disk *piod) :
-        m_offset(piod->m_cursor),
-        m_start(piod->m_start)
+    CompressorPosition(struct compress_info_on_disk *ciod) :
+        m_offset(ciod->m_cursor),
+        m_start(ciod->m_start)
     {
     }
 
@@ -102,6 +102,7 @@ public:
     virtual void save(uint8_t *base) = 0;                   // save data
     virtual bool recycle() { return true; }
     virtual void rebase(uint8_t *base) = 0;
+    virtual int append(FILE *file) = 0; // write to append.log, return #bytes written
 
     // return true if sucessfully added the dp;
     // return false if the buffer is full;
@@ -148,6 +149,8 @@ public:
         ASSERT(base != nullptr);
         m_bitset.copy_to(base);
     }
+
+    int append(FILE *file) override;    // write to append.log, return #bytes written
 
     bool compress(Timestamp timestamp, double value);
 
@@ -229,6 +232,8 @@ public:
         m_bitset.copy_to(base);
     }
 
+    int append(FILE *file) override;    // write to append.log, return #bytes written
+
     bool compress(Timestamp timestamp, double value);
 
     inline void uncompress(DataPointVector& dps)
@@ -308,6 +313,8 @@ public:
         ASSERT(m_base != nullptr);
         if (base != m_base) memcpy(base, m_base, (m_cursor-m_base));
     }
+
+    int append(FILE *file) override;    // write to append.log, return #bytes written
 
     // return true if sucessfully added the dp;
     // return false if the buffer is full;
@@ -394,6 +401,8 @@ public:
         position.m_offset = m_dps.size();
         position.m_start = 0;   // not used, but should be set to 0
     }
+
+    int append(FILE *file) override;    // write to append.log, return #bytes written
 
     // return true if sucessfully added the dp;
     // return false if the buffer is full;

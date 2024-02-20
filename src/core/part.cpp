@@ -52,7 +52,7 @@ PartitionBuffer::PartitionBuffer() :
     m_buff = MemoryManager::alloc_network_buffer();
 
     if (m_max_line == 0)
-        m_max_line = Config::get_int(CFG_TSDB_MAX_DP_LINE, CFG_TSDB_MAX_DP_LINE_DEF);
+        m_max_line = Config::inst()->get_int(CFG_TSDB_MAX_DP_LINE, CFG_TSDB_MAX_DP_LINE_DEF);
     if (m_buff_size == 0)
         m_buff_size = MemoryManager::get_network_buffer_size();
 
@@ -103,7 +103,7 @@ void
 BackLog::init()
 {
     m_rotation_size =
-        Config::get_bytes(CFG_CLUSTER_BACKLOG_ROTATION_SIZE, CFG_CLUSTER_BACKLOG_ROTATION_SIZE_DEF);
+        Config::inst()->get_bytes(CFG_CLUSTER_BACKLOG_ROTATION_SIZE, CFG_CLUSTER_BACKLOG_ROTATION_SIZE_DEF);
 }
 
 bool
@@ -117,7 +117,7 @@ BackLog::exists(int server_id)
 void
 BackLog::get_buff_files(int server_id, std::vector<std::string>& files)
 {
-    std::string append_dir = Config::get_str(CFG_APPEND_LOG_DIR);
+    std::string append_dir = Config::inst()->get_str(CFG_APPEND_LOG_DIR);
     std::string log_pattern = append_dir + "/backlog." + std::to_string(server_id)+ ".*.log";
     glob_t glob_result;
     glob(log_pattern.c_str(), GLOB_TILDE, nullptr, &glob_result);
@@ -156,7 +156,7 @@ BackLog::open_for_append()
 {
     // Do we need partition id in the file name?
     Timestamp now = ts_now_sec();
-    std::string append_dir = Config::get_str(CFG_APPEND_LOG_DIR);
+    std::string append_dir = Config::inst()->get_str(CFG_APPEND_LOG_DIR);
     std::string name = append_dir + "/backlog." + std::to_string(m_server_id)+ "." + std::to_string(now) + ".log";
     m_open_for_append = open(name, "a");
     m_size = 0;
@@ -618,7 +618,7 @@ PartitionManager::PartitionManager(Tsdb *tsdb, bool existing) :
     //if (existing)
         //partition_defs = tsdb->get_partition_defs();
     //else
-        partition_defs = Config::get_str(CFG_CLUSTER_PARTITIONS);
+        partition_defs = Config::inst()->get_str(CFG_CLUSTER_PARTITIONS);
 
     if (! partition_defs.empty())
     {
@@ -676,9 +676,9 @@ PartitionManager::init()
 {
     BackLog::init();
 
-    if (Config::exists(CFG_CLUSTER_SERVERS))
+    if (Config::inst()->exists(CFG_CLUSTER_SERVERS))
     {
-        std::string servers = Config::get_str(CFG_CLUSTER_SERVERS);
+        std::string servers = Config::inst()->get_str(CFG_CLUSTER_SERVERS);
         char buff[servers.size()+2];
         JsonArray arr;
 

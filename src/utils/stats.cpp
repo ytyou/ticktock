@@ -50,11 +50,11 @@ Stats::init()
 {
     memset(&g_proc_stats, 0, sizeof(g_proc_stats));
 
-    if (Config::get_bool(CFG_TSDB_SELF_METER_ENABLED, CFG_TSDB_SELF_METER_ENABLED_DEF))
+    if (Config::inst()->get_bool(CFG_TSDB_SELF_METER_ENABLED, CFG_TSDB_SELF_METER_ENABLED_DEF))
     {
         Task task;
         task.doit = &Stats::inject_metrics;
-        int freq_sec = Config::get_time(CFG_STATS_FREQUENCY, TimeUnit::SEC, CFG_STATS_FREQUENCY_DEF);
+        int freq_sec = Config::inst()->get_time(CFG_STATS_FREQUENCY, TimeUnit::SEC, CFG_STATS_FREQUENCY_DEF);
         Timer::inst()->add_task(task, freq_sec, "stats_inject");
         Logger::info("using stats.frequency.sec of %d", freq_sec);
     }
@@ -90,7 +90,7 @@ Stats::inject_metrics(TaskData& data)
     // We need g_xmx_mb for memory collection. So it must run periodically.
     collect_proc_stat(now);
 
-    if (Config::get_bool(CFG_TSDB_SELF_METER_ENABLED, CFG_TSDB_SELF_METER_ENABLED_DEF))
+    if (Config::inst()->get_bool(CFG_TSDB_SELF_METER_ENABLED, CFG_TSDB_SELF_METER_ENABLED_DEF))
     {
         Tsdb *tsdb = Tsdb::inst(now);
 

@@ -115,6 +115,15 @@ struct __attribute__ ((__packed__)) tsdb_header
 };
 
 
+struct __attribute__ ((__packed__)) compress_info_on_disk
+{
+    PageSize m_cursor;          // 16-bit
+    uint8_t m_start;            //  8-bit
+
+    inline bool is_empty() const { return ((m_cursor == 0) && (m_start == 0)); }
+};
+
+
 /* There will be an array of page_info_on_disk immediately following the
  * tsdb_header (defined above) at the beginning of each tsdb data file;
  * The number of page_info_on_disk in this array is determined by the
@@ -143,23 +152,25 @@ struct __attribute__ ((__packed__)) tsdb_header
  */
 struct __attribute__ ((__packed__)) page_info_on_disk
 {
-    PageSize m_offset;          // 16-bit
-    PageSize m_size;            // 16-bit
-    PageSize m_cursor;          // 16-bit
-    uint8_t m_start;            //  8-bit
+    //PageSize m_offset;          // 16-bit
+    //PageSize m_size;            // 16-bit
+    //PageSize m_cursor;          // 16-bit
+    //uint8_t m_start;            //  8-bit
     uint8_t m_flags;            //  8-bit
     PageIndex m_page_index;     // 32-bit
-    uint32_t m_tstamp_from;     // 32-bit
+    //uint32_t m_tstamp_from;     // 32-bit
     uint32_t m_tstamp_to;       // 32-bit
     FileIndex m_next_file;      // 16-bit
     HeaderIndex m_next_header;  // 32-bit
 
     void init()
     {
-        m_offset = m_size = m_cursor = 0;
-        m_start = m_flags = 0;
+        //m_offset = m_size = m_cursor = 0;
+        //m_start = m_flags = 0;
+        //m_offset = m_size = 0;
+        m_flags = 0;
         m_page_index = TT_INVALID_PAGE_INDEX;
-        m_tstamp_from = UINT32_MAX;
+        //m_tstamp_from = UINT32_MAX;
         m_tstamp_to = 0;
         m_next_file = TT_INVALID_FILE_INDEX;
         m_next_header = TT_INVALID_HEADER_INDEX;
@@ -169,13 +180,13 @@ struct __attribute__ ((__packed__)) page_info_on_disk
     {
         ASSERT(header != nullptr);
 
-        m_offset = header->m_offset;
-        m_size = header->m_size;
-        m_cursor = header->m_cursor;
-        m_start = header->m_start;
+        //m_offset = header->m_offset;
+        //m_size = header->m_size;
+        //m_cursor = header->m_cursor;
+        //m_start = header->m_start;
         m_flags = header->m_flags;
         m_page_index = header->m_page_index;
-        m_tstamp_from = header->m_tstamp_from;
+        //m_tstamp_from = header->m_tstamp_from;
         m_tstamp_to = header->m_tstamp_to;
         m_next_file = header->m_next_file;
         m_next_header = header->m_next_header;
@@ -183,27 +194,29 @@ struct __attribute__ ((__packed__)) page_info_on_disk
 
     void init(const TimeRange& range)
     {
-        m_offset = m_size = m_cursor = 0;
-        m_start = m_flags = 0;
+        //m_offset = m_size = m_cursor = 0;
+        //m_start = m_flags = 0;
+        //m_offset = m_size = 0;
+        m_flags = 0;
         m_page_index = 0;
-        m_tstamp_from = 0;
+        //m_tstamp_from = 0;
         m_tstamp_to = range.get_duration();
     }
 
-    void init(PageSize cursor, uint8_t start, bool is_full, uint32_t from, uint32_t to)
+    void init(PageSize cursor, uint8_t start, bool is_full, uint32_t to)
     {
-        m_cursor = cursor;
-        m_start = start;
-        m_tstamp_from = from;
+        //m_cursor = cursor;
+        //m_start = start;
+        //m_tstamp_from = from;
         m_tstamp_to = to;
         set_full(is_full);
     }
 
     inline bool is_full() const { return ((m_flags & 0x01) != 0); }
     inline bool is_out_of_order() const { return ((m_flags & 0x02) != 0); }
-    inline bool is_empty() const { return ((m_cursor == 0) && (m_start == 0)); }
+    inline bool is_empty(struct compress_info_on_disk *ciod) const { return ((ciod->m_cursor == 0) && (ciod->m_start == 0)); }
     inline bool is_valid() const { return (m_page_index != TT_INVALID_PAGE_INDEX); }
-    inline PageSize get_size() const { return m_size; }
+    //inline PageSize get_size() const { return m_size; }
     inline long int get_global_page_index(FileIndex file_idx, PageCount page_count) const
     {
         return ((long int)file_idx * (long int)page_count) + (long int)m_page_index;
@@ -217,26 +230,31 @@ struct __attribute__ ((__packed__)) page_info_on_disk
 
     char *c_str(char *buff, size_t size)
     {
-        snprintf(buff, size, "off=%d size=%d curr=%d start=%d flags=%x idx=%d from=%d to=%d",
-            m_offset, m_size, m_cursor, m_start, m_flags, m_page_index, m_tstamp_from, m_tstamp_to);
+        snprintf(buff, size, "flags=%x idx=%d to=%d",
+            m_flags, m_page_index, m_tstamp_to);
         return buff;
     }
 };
 
+
 struct __attribute__ ((__packed__)) append_log_entry
 {
-    TimeSeriesId id;
+    MetricId mid;
+    TimeSeriesId tid;
     Timestamp tstamp;
     PageSize offset;
     uint8_t start;
-    uint8_t is_ooo;
+    uint8_t flags;  // ooo, compressor-version
+    FileIndex file_idx;
+    HeaderIndex header_idx;
 };
 
 
 class __attribute__ ((__packed__)) PageInMemory
 {
 public:
-    PageInMemory(TimeSeriesId id, Tsdb *tsdb, bool is_ooo, PageSize actual_size = 0);
+    PageInMemory(MetricId mid, TimeSeriesId tid, Tsdb *tsdb, bool is_ooo, PageSize actual_size = 0);
+    PageInMemory(MetricId mid, TimeSeriesId tid, Tsdb *tsdb, bool is_ooo, FileIndex file_idx, HeaderIndex header_idx);
     ~PageInMemory();
 
     // prepare to be used to represent a different page
@@ -244,7 +262,7 @@ public:
     bool is_empty();
     inline bool is_out_of_order() { return get_page_header()->is_out_of_order(); }
 
-    Timestamp get_last_tstamp(TimeSeriesId id) const;
+    Timestamp get_last_tstamp(MetricId mid, TimeSeriesId tid) const;
     TimeRange get_time_range();
     int in_range(Timestamp tstamp) const;
     inline Tsdb *get_tsdb() const { return m_tsdb; }
@@ -262,9 +280,10 @@ public:
 
     void update_indices(PageInMemory *info);
 
-    void init(TimeSeriesId id, Tsdb *tsdb, bool is_ooo, PageSize actual_size = 0);
-    PageSize flush(TimeSeriesId id, bool compact = false);  // return next page size
-    void append(TimeSeriesId id, FILE *file);
+    void init(MetricId mid, TimeSeriesId tid, Tsdb *tsdb, bool is_ooo, PageSize actual_size = 0);
+    void init(MetricId mid, TimeSeriesId tid, Tsdb *tsdb, bool is_ooo, FileIndex file_idx, HeaderIndex header_idx);
+    PageSize flush(MetricId mid, TimeSeriesId tid, bool compact = false);  // return next page size
+    void append(MetricId mid, TimeSeriesId tid, FILE *file);
     void restore(Timestamp tstamp, uint8_t *buff, PageSize offset, uint8_t start);
 
     // return true if dp is added; false if page is full;
@@ -274,6 +293,11 @@ public:
     inline struct page_info_on_disk *get_page_header()
     {
         return &m_page_header;
+    }
+
+    inline struct compress_info_on_disk *get_compress_header()
+    {
+        return reinterpret_cast<struct compress_info_on_disk*>(m_page);
     }
 
 private:
@@ -286,6 +310,7 @@ protected:
     Tsdb *m_tsdb;
     void *m_page;
     Timestamp m_start;
+    uint32_t m_tstamp_from;
     Compressor *m_compressor;
 
 };  // class PageInMemory

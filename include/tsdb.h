@@ -61,11 +61,15 @@ namespace tt
 // from metric and tag names to time series;
 //
 // If TSDB_MODE_COMPACTED is set, it means the data file was compacted.
+// If TSDB_MODE_ROLLED_UP is set, it means the rollup data is ready.
+// If TSDB_MODE_CRASHED is set, it means the last shutdown was abnormal.
 
 #define TSDB_MODE_NONE          0x00000000
 #define TSDB_MODE_READ          0x00000001
 #define TSDB_MODE_WRITE         0x00000002
 #define TSDB_MODE_COMPACTED     0x00000004
+#define TSDB_MODE_ROLLED_UP     0x00000008
+#define TSDB_MODE_CRASHED       0x80000000
 
 #define TSDB_MODE_READ_WRITE    (TSDB_MODE_READ | TSDB_MODE_WRITE)
 
@@ -119,14 +123,19 @@ public:
     char *get_metric() { return m_metric; }
     void get_all_ts(std::vector<TimeSeries*>& tsv);
     void add_ts(TimeSeries *ts);    // add 'ts' to the list headed by 'm_ts_head'
+    MetricId get_id() const { return m_id; }
+
+    static MetricId get_metric_count() { return m_next_id.load(std::memory_order_relaxed); }
 
     friend class Tsdb;
 
 private:
-    Mapping(const char *name);
+    Mapping(const char *name);              // new
+    Mapping(MetricId id, const char *name); // restore
     ~Mapping();
 
-    void flush(bool close);
+    void flush();
+    void close();   // called during TT shutdown
 
     char *m_metric;
     bool add(DataPoint& dp);
@@ -162,7 +171,59 @@ private:
     std::atomic<TimeSeries*> m_ts_head;
     int16_t m_tag_count;    // -1: uninitialized; -2: inconsistent;
 
+    MetricId m_id;
+    static std::atomic<MetricId> m_next_id;
     //Partition *m_partition;
+};
+
+
+class Metric
+{
+public:
+    Metric(const std::string& dir, PageSize page_size, PageCount page_cnt);
+    ~Metric();
+
+    void close();
+    void flush(bool sync);
+    bool rotate(Timestamp now_sec, Timestamp thrashing_threshold);
+    bool rollup(IndexFile *idx_file, int no_entries);
+
+    MetricId get_id() const { return m_id; }
+    std::string get_metric_dir(std::string& tsdb_dir);
+    static std::string get_metric_dir(std::string& tsdb_dir, MetricId id);
+    std::string get_data_file_name(std::string& tsdb_dir, FileIndex idx);
+    std::string get_header_file_name(std::string& tsdb_dir, FileIndex idx);
+
+    DataFile *get_last_data() { return m_data_files.back(); };  // call get_last_header() first
+    HeaderFile *get_last_header(std::string& tsdb_dir, PageCount page_cnt, PageSize page_size);
+
+    DataFile *get_data_file(FileIndex file_idx);
+    HeaderFile *get_header_file(FileIndex file_idx);
+
+    RollupDataFile *get_rollup_data_file() { return &m_rollup_data_file; }
+    RollupHeaderFile *get_rollup_header_file() { return &m_rollup_header_file; }
+
+    void add_rollup_point(TimeSeriesId tid, uint32_t cnt, double min, double max, double sum);
+    void get_rollup_point(RollupIndex header_idx, int entry_idx, int entries, uint32_t& cnt, double& min, double& max, double& sum);
+
+    // for testing only
+    int get_page_count(bool ooo);
+    int get_data_page_count();
+    int get_open_data_file_count(bool for_read);
+    int get_open_header_file_count(bool for_read);
+
+    std::mutex m_rollup_lock;
+
+private:
+    void restore_header(const std::string& file);
+    void restore_data(const std::string& file, PageSize page_size, PageCount page_cnt);
+
+    MetricId m_id;
+    RollupHeaderFile m_rollup_header_file;
+    RollupHeaderTmpFile m_rollup_header_tmp_file;
+    RollupDataFile m_rollup_data_file;
+    std::vector<HeaderFile*> m_header_files;
+    std::vector<DataFile*> m_data_files;
 };
 
 
@@ -182,22 +243,29 @@ public:
     static void purge_oldest(int threshold);
     static bool compact(TaskData& data);
     static void compact2(); // last compaction step
-    static void write_to_compacted(QuerySuperTask& super_task, Tsdb *compacted, PageSize& next_size);
+    static bool rollup(TaskData& data);
+    static void write_to_compacted(MetricId mid, QuerySuperTask& super_task, Tsdb *compacted, PageSize& next_size);
     static bool add_data_point(DataPoint& dp, bool forward);
+    static void restore_metrics(MetricId id, std::string& metric);
     static TimeSeries *restore_ts(std::string& metric, std::string& key, TimeSeriesId id);
     static void restore_measurement(std::string& measurement, std::string& tags, std::vector<std::pair<std::string,TimeSeriesId>>& fields, std::vector<TimeSeries*>& tsv);
+    static void restore_rollup_mgr(std::unordered_map<TimeSeriesId,RollupManager>& map);
     static void get_all_ts(std::vector<TimeSeries*>& tsv);
     static void get_all_mappings(std::vector<Mapping*>& mappings);
 
     bool add(DataPoint& dp);
+    void add_rollup_point(MetricId mid, TimeSeriesId tid, uint32_t cnt, double min, double max, double sum);
 
-    static void query_for_ts(const char *metric, Tag *tags, std::unordered_set<TimeSeries*>& ts, const char *key, bool explicit_tags);
-    bool query_for_data(TimeSeriesId id, TimeRange& range, std::vector<DataPointContainer*>& data);
-    bool query_for_data_no_lock(TimeSeriesId id, TimeRange& range, std::vector<DataPointContainer*>& data);
+    static MetricId query_for_ts(const char *metric, Tag *tags, std::unordered_set<TimeSeries*>& ts, const char *key, bool explicit_tags);
+    //bool query_for_data(TimeSeriesId id, TimeRange& range, std::vector<DataPointContainer*>& data);
+    //bool query_for_data_no_lock(TimeSeriesId id, TimeRange& range, std::vector<DataPointContainer*>& data);
 
-    void query_for_data_no_lock(QueryTask *task);
-    void query_for_data(TimeRange& range, std::vector<QueryTask*>& tasks, bool compact = false);
-    void query_for_data_no_lock(TimeRange& range, std::vector<QueryTask*>& tasks, bool compact = false);
+    bool read_rollup_headers(Metric *metric, std::vector<QueryTask*>& tasks);
+    bool query_rollup_no_lock(RollupDataFile *data_file, QueryTask *task, RollupType rollup);
+
+    void query_for_data_no_lock(MetricId mid, QueryTask *task);
+    void query_for_data(MetricId mid, TimeRange& range, std::vector<QueryTask*>& tasks, bool compact = false, RollupType rollup = RollupType::RU_NONE);
+    void query_for_data_no_lock(MetricId mid, TimeRange& range, std::vector<QueryTask*>& tasks, bool compact = false, RollupType rollup = RollupType::RU_NONE);
 
     void flush(bool sync);
     void flush_for_test();  // for testing only
@@ -209,17 +277,32 @@ public:
     PageCount get_page_count() const;
     int get_compressor_version();
 
-    Timestamp get_last_tstamp(TimeSeriesId id);
-    void get_last_header_indices(TimeSeriesId id, FileIndex& file_idx, HeaderIndex& header_idx);
-    void set_indices(TimeSeriesId id, FileIndex prev_file_idx, HeaderIndex prev_header_idx,
-                     FileIndex this_file_idx, HeaderIndex this_header_idx);
-    PageSize append_page(TimeSeriesId id,       // return next page size
+    Timestamp get_last_tstamp(MetricId mid, TimeSeriesId tid);
+    bool get_out_of_order(TimeSeriesId tid);
+    void set_out_of_order(TimeSeriesId tid, bool ooo);
+    void get_last_header_indices(MetricId mid, TimeSeriesId tid, FileIndex& file_idx, HeaderIndex& header_idx);
+    void set_indices(MetricId mid, TimeSeriesId tid, FileIndex prev_file_idx, HeaderIndex prev_header_idx,
+                     FileIndex this_file_idx, HeaderIndex this_header_idx, bool crossed);
+    PageSize append_page(MetricId mid,          // return next page size
+                         TimeSeriesId tid,
                          FileIndex prev_file_idx,
                          HeaderIndex prev_header_idx,
                          struct page_info_on_disk *header,
+                         uint32_t tstamp_from,
                          void *page,
                          bool compact);
-    HeaderFile *get_header_file(FileIndex file_idx);
+    DataFile *get_data_file(MetricId mid, FileIndex file_idx);
+    HeaderFile *get_header_file(MetricId mid, FileIndex file_idx);
+
+    inline int get_rollup_entries() const
+    {
+        return std::ceil((double)m_time_range.get_duration_sec() / (double)m_rollup_interval);
+    }
+
+    inline uint32_t get_rollup_interval() const
+    {
+        return m_rollup_interval;   // seconds
+    }
 
     inline const TimeRange& get_time_range() const
     {
@@ -250,6 +333,23 @@ public:
     {
         return ((m_mode & TSDB_MODE_COMPACTED));
     }
+
+    inline bool is_rolled_up() const
+    {
+        return ((m_mode & TSDB_MODE_ROLLED_UP));
+    }
+
+    inline bool is_crashed() const
+    {
+        return ((m_mode & TSDB_MODE_CRASHED));
+    }
+
+    inline void set_crashed()
+    {
+        m_mode |= TSDB_MODE_CRASHED;
+    }
+
+    static void set_crashes(Tsdb *oldest_tsdb);
 
     // http add data-point request handler
     static bool http_api_put_handler(HttpRequest& request, HttpResponse& response); // json or plain
@@ -287,6 +387,8 @@ private:
     void unload_no_lock();
     uint32_t mode_of() const;
 
+    Metric *get_metric(MetricId mid);
+    Metric *get_or_create_metric(MetricId mid);
     struct page_info_on_disk *get_page_header(FileIndex file_idx, PageIndex page_idx);
 
     static Mapping *get_or_add_mapping(const char *metric);
@@ -296,8 +398,9 @@ private:
     static Tsdb *create(TimeRange& range, bool existing, const char *suffix = nullptr); // caller needs to acquire m_tsdb_lock!
     static void restore_tsdb(const std::string& dir);
 
-    void restore_data(const std::string& file);
-    void restore_header(const std::string& file);
+    void add_config(const std::string& name, const std::string& value);
+    void write_config(const std::string& dir);
+    void restore_config(const std::string& dir);
     void reload_header_data_files(const std::string& dir);
 
     static std::string get_tsdb_dir_name(const TimeRange& range, const char *suffix = nullptr);
@@ -316,8 +419,11 @@ private:
     int m_ref_count;        // prevent compaction when in use
 
     IndexFile m_index_file;
-    std::vector<HeaderFile*> m_header_files;
-    std::vector<DataFile*> m_data_files;
+    //std::vector<HeaderFile*> m_header_files;
+    //std::vector<DataFile*> m_data_files;
+    std::mutex m_metrics_lock;
+    uint32_t m_mbucket_count;   // max size of m_metrics[]
+    std::vector<Metric*> m_metrics; // indexed by MetricId
 
     // this is true if, 1. m_map is populated; 2. m_page_mgr is open; 3. m_meta_file is open;
     // this is false if all the above are not true;
@@ -330,6 +436,7 @@ private:
     PageSize m_page_size;
     PageCount m_page_count;
     int m_compressor_version;
+    uint32_t m_rollup_interval;     // in seconds
 };
 
 

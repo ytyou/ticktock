@@ -73,9 +73,9 @@
 #define CFG_TCP_BUFFER_SIZE                     "tcp.buffer.size"
 #define CFG_TCP_BUFFER_SIZE_DEF                 "512kb"
 #define CFG_TCP_MIN_FILE_DESCRIPTOR             "tcp.min.file.descriptor"
-#define CFG_TCP_MIN_FILE_DESCRIPTOR_DEF         30
+#define CFG_TCP_MIN_FILE_DESCRIPTOR_DEF         128
 #define CFG_TCP_MIN_HTTP_STEP                   "tcp.min.http.step"
-#define CFG_TCP_MIN_HTTP_STEP_DEF               64
+#define CFG_TCP_MIN_HTTP_STEP_DEF               100
 #define CFG_TCP_RESPONDERS_PER_LISTENER         "tcp.responders.per.listener"
 #define CFG_TCP_RESPONDERS_PER_LISTENER_DEF     1
 #define CFG_TCP_RESPONDERS_QUEUE_SIZE           "tcp.responders.queue.size"
@@ -103,7 +103,7 @@
 #define CFG_TSDB_COMPACT_BATCH_SIZE             "tsdb.compact.batch.size"
 #define CFG_TSDB_COMPACT_BATCH_SIZE_DEF         500
 #define CFG_TSDB_COMPACT_FREQUENCY              "tsdb.compact.frequency"
-#define CFG_TSDB_COMPACT_FREQUENCY_DEF          "2h"
+#define CFG_TSDB_COMPACT_FREQUENCY_DEF          "0s"
 #define CFG_TSDB_COMPACT_THRESHOLD              "tsdb.compact.threshold"
 #define CFG_TSDB_COMPACT_THRESHOLD_DEF          "1d"
 #define CFG_TSDB_COMPRESSOR_PRECISION           "tsdb.compressor.precision"
@@ -118,18 +118,28 @@
 #define CFG_TSDB_PAGE_COUNT                     "tsdb.page.count"
 #define CFG_TSDB_PAGE_COUNT_DEF                 32768
 #define CFG_TSDB_PAGE_SIZE                      "tsdb.page.size"
-#define CFG_TSDB_PAGE_SIZE_DEF                  "128b"
+#define CFG_TSDB_PAGE_SIZE_DEF                  "256b"
 #define CFG_TSDB_FLUSH_FREQUENCY                "tsdb.flush.frequency"
 #define CFG_TSDB_FLUSH_FREQUENCY_DEF            "5min"
 #define CFG_TSDB_GC_FREQUENCY                   "tsdb.gc.frequency"
 #define CFG_TSDB_GC_FREQUENCY_DEF               "1d"
 #define CFG_TSDB_MAX_DP_LINE                    "tsdb.max.dp.line"
 #define CFG_TSDB_MAX_DP_LINE_DEF                256
+#define CFG_TSDB_METRIC_BUCKETS                 "tsdb.metric.buckets"
+#define CFG_TSDB_METRIC_BUCKETS_DEF             100
 #define CFG_TSDB_MIN_DISK_SPACE                 "tsdb.min.disk.space"
 #define CFG_TSDB_MIN_DISK_SPACE_DEF             4
 #define CFG_TSDB_READ_ONLY_THRESHOLD            "tsdb.read_only.threshold"
 #define CFG_TSDB_READ_ONLY_THRESHOLD_DEF        "1h"
 #define CFG_TSDB_RETENTION_THRESHOLD            "tsdb.retention.threshold"
+#define CFG_TSDB_ROLLUP_DELAY                   "tsdb.rollup.delay"
+#define CFG_TSDB_ROLLUP_DELAY_DEF               "2min"
+#define CFG_TSDB_ROLLUP_FREQUENCY               "tsdb.rollup.frequency"
+#define CFG_TSDB_ROLLUP_FREQUENCY_DEF           "2h"
+#define CFG_TSDB_ROLLUP_INTERVAL                "tsdb.rollup.interval"
+#define CFG_TSDB_ROLLUP_INTERVAL_DEF            "1h"
+#define CFG_TSDB_ROLLUP_THRESHOLD               "tsdb.rollup.threshold"
+#define CFG_TSDB_ROLLUP_THRESHOLD_DEF           "2d"
 #define CFG_TSDB_ROTATION_FREQUENCY             "tsdb.rotation.frequency"
 #define CFG_TSDB_ROTATION_FREQUENCY_DEF         "1d"
 #define CFG_TSDB_SELF_METER_ENABLED             "tsdb.self_meter.enabled"
@@ -225,51 +235,61 @@ private:
 class Config
 {
 public:
-    Config() = delete;
+    Config(const std::string& file_name);
+    ~Config();
 
     static void init();     // call this first and once only
-    static bool exists(const std::string& name);
-    static bool get_bool(const std::string& name, bool def_value);
-    static int get_int(const std::string& name);
-    static int get_int(const std::string& name, int def_value);
-    static float get_float(const std::string& name);
-    static float get_float(const std::string& name, float def_value);
-    static const std::string& get_str(const std::string& name);
-    static const std::string& get_str(const std::string& name, const std::string& def_value);
+    inline static Config* inst() { return m_instance; }
 
-    static uint64_t get_bytes(const std::string& name);
-    static uint64_t get_bytes(const std::string& name, const std::string& def_value);
-    static Timestamp get_time(const std::string& name, const TimeUnit unit);
-    static Timestamp get_time(const std::string& name, const TimeUnit unit, const std::string& def_value);
+    bool exists(const std::string& name);
+    bool get_bool(const std::string& name, bool def_value);
+    int get_int(const std::string& name);
+    int get_int(const std::string& name, int def_value);
+    float get_float(const std::string& name);
+    float get_float(const std::string& name, float def_value);
+    const std::string& get_str(const std::string& name);
+    const std::string& get_str(const std::string& name, const std::string& def_value);
+
+    uint64_t get_bytes(const std::string& name);
+    uint64_t get_bytes(const std::string& name, const std::string& def_value);
+    Timestamp get_time(const std::string& name, const TimeUnit unit);
+    Timestamp get_time(const std::string& name, const TimeUnit unit, const std::string& def_value);
 
     // will override existing value, if any
-    static void set_value(const std::string& name, const std::string& value);
-    static void set_value_no_lock(const std::string& name, const std::string& value);
+    void set_value(const std::string& name, const std::string& value);
+
+    void load();        // read
+    void persist();     // write
+    void append(const std::string& name, const std::string& value);
 
     static std::string get_data_dir();
     static std::string get_log_dir();
     static std::string get_log_file();
 
-    static int get_http_listener_count(int which);
-    static int get_http_responders_per_listener(int which);
-    static int get_tcp_listener_count(int which);
-    static int get_tcp_responders_per_listener(int which);
+    int get_http_listener_count(int which);
+    int get_http_responders_per_listener(int which);
+    int get_tcp_listener_count(int which);
+    int get_tcp_responders_per_listener(int which);
 
     static void add_override(const char *name, const char *value);
-    static const char *c_str(char *buff, size_t size);
+    const char *c_str(char *buff, size_t size);
 
 private:
-    static std::shared_ptr<Property> get_property(const std::string& name);
-    static std::shared_ptr<Property> get_override(const std::string& name);
-    static bool reload(TaskData& data);
-    static int get_count_internal(const char *name, int def_value, int which);
+    void set_value_no_lock(const std::string& name, const std::string& value);
 
-    static std::mutex m_lock;
-    static std::map<std::string, std::shared_ptr<Property>> m_properties;
+    std::shared_ptr<Property> get_property(const std::string& name);
+    static std::shared_ptr<Property> get_override(const std::string& name);
+    int get_count_internal(const char *name, int def_value, int which);
+
+    std::mutex m_lock;
+    std::map<std::string, std::shared_ptr<Property>> m_properties;
+    std::string m_file_name;
 
     // these came from command-line options; they take precedence over
     // m_properties which came from config file;
     static std::map<std::string, std::shared_ptr<Property>> m_overrides;
+
+    static Config *m_instance;
 };
 
 

@@ -178,16 +178,20 @@ MemoryManager::free_network_buffer_small(char* buff)
 void
 MemoryManager::init()
 {
-    g_page_size = Config::get_bytes(CFG_TSDB_PAGE_SIZE, CFG_TSDB_PAGE_SIZE_DEF);
+    g_page_size = Config::inst()->get_bytes(CFG_TSDB_PAGE_SIZE, CFG_TSDB_PAGE_SIZE_DEF);
     if (g_page_size < 64)
         g_page_size = 64;   // min page size
     else if (g_page_size > UINT16_MAX)
         g_page_size = ((long)UINT16_MAX / 128) * 128;
     Logger::info("mm::page-size = %u", g_page_size);
-    g_page_count = Config::get_int(CFG_TSDB_PAGE_COUNT, CFG_TSDB_PAGE_COUNT_DEF);
+    unsigned long page_cnt =
+        Config::inst()->get_int(CFG_TSDB_PAGE_COUNT, CFG_TSDB_PAGE_COUNT_DEF);
+    if (page_cnt > UINT16_MAX)
+        page_cnt = UINT16_MAX;
+    g_page_count = page_cnt;
 
     m_network_buffer_small_len = MAX_HEADER_SIZE + MAX_SMALL_PAYLOAD;
-    m_network_buffer_len = Config::get_bytes(CFG_TCP_BUFFER_SIZE, CFG_TCP_BUFFER_SIZE_DEF);
+    m_network_buffer_len = Config::inst()->get_bytes(CFG_TCP_BUFFER_SIZE, CFG_TCP_BUFFER_SIZE_DEF);
     if (m_network_buffer_len < g_sys_page_size) m_network_buffer_len = g_sys_page_size;
     // make sure it's multiple of g_sys_page_size
     m_network_buffer_len = ((long)m_network_buffer_len / g_sys_page_size) * g_sys_page_size;
@@ -209,7 +213,7 @@ MemoryManager::init()
             m_max_usage[i][j] = 0;
     }
 
-    int freq = (int)Config::get_time(CFG_TSDB_GC_FREQUENCY, TimeUnit::SEC, CFG_TSDB_GC_FREQUENCY_DEF);
+    int freq = (int)Config::inst()->get_time(CFG_TSDB_GC_FREQUENCY, TimeUnit::SEC, CFG_TSDB_GC_FREQUENCY_DEF);
     if (freq > 0)
     {
         Task task;

@@ -31,8 +31,8 @@ Timer *Timer::m_instance = nullptr;
 
 
 Timer::Timer() :
-    m_granularity_sec(Config::get_time(CFG_TIMER_GRANULARITY, TimeUnit::SEC, CFG_TIMER_GRANULARITY_DEF)),
-    m_scheduler("timer", Config::get_int(CFG_TIMER_THREAD_COUNT,CFG_TIMER_THREAD_COUNT_DEF), Config::get_int(CFG_TIMER_QUEUE_SIZE,CFG_TIMER_QUEUE_SIZE_DEF))
+    m_granularity_sec(Config::inst()->get_time(CFG_TIMER_GRANULARITY, TimeUnit::SEC, CFG_TIMER_GRANULARITY_DEF)),
+    m_scheduler("timer", Config::inst()->get_int(CFG_TIMER_THREAD_COUNT,CFG_TIMER_THREAD_COUNT_DEF), Config::inst()->get_int(CFG_TIMER_QUEUE_SIZE,CFG_TIMER_QUEUE_SIZE_DEF))
 {
 }
 

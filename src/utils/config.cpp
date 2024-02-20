@@ -32,34 +32,43 @@ namespace tt
 {
 
 
+/*
 std::mutex Config::m_lock;
 std::map<std::string, std::shared_ptr<Property>> Config::m_properties;
+std::map<std::string, std::shared_ptr<Property>> Config::m_overrides;
+*/
+Config *Config::m_instance = nullptr;
 std::map<std::string, std::shared_ptr<Property>> Config::m_overrides;
 
 
 void
 Config::init()
 {
-    TaskData data;  // not used by reload()
-    reload(data);
+    m_instance = new Config(g_config_file);
+    m_instance->load();
 
     g_tstamp_resolution_ms = ts_resolution_ms();
-    g_cluster_enabled = Config::exists(CFG_CLUSTER_SERVERS);
-    g_self_meter_enabled = Config::get_bool(CFG_TSDB_SELF_METER_ENABLED, CFG_TSDB_SELF_METER_ENABLED_DEF);
+    g_cluster_enabled = m_instance->exists(CFG_CLUSTER_SERVERS);
+    g_self_meter_enabled = m_instance->get_bool(CFG_TSDB_SELF_METER_ENABLED, CFG_TSDB_SELF_METER_ENABLED_DEF);
 
     // schedule task to reload() periodically
-    if (Config::get_bool(CFG_CONFIG_RELOAD_ENABLED, CFG_CONFIG_RELOAD_ENABLED_DEF))
-    {
-        Task task;
-        task.doit = &Config::reload;
-        int freq_sec =
-            Config::get_time(CFG_CONFIG_RELOAD_FREQUENCY, TimeUnit::SEC, CFG_CONFIG_RELOAD_FREQUENCY_DEF);
-        Timer::inst()->add_task(task, freq_sec, "config_reload");
-    }
+    //if (Config::get_bool(CFG_CONFIG_RELOAD_ENABLED, CFG_CONFIG_RELOAD_ENABLED_DEF))
+    //{
+        //Task task;
+        //task.doit = &Config::reload;
+        //int freq_sec =
+            //Config::get_time(CFG_CONFIG_RELOAD_FREQUENCY, TimeUnit::SEC, CFG_CONFIG_RELOAD_FREQUENCY_DEF);
+        //Timer::inst()->add_task(task, freq_sec, "config_reload");
+    //}
 }
 
-bool
-Config::reload(TaskData& data)
+Config::Config(const std::string& file_name) :
+    m_file_name(file_name)
+{
+}
+
+void
+Config::load()
 {
     std::lock_guard<std::mutex> guard(m_lock);
 
@@ -67,7 +76,7 @@ Config::reload(TaskData& data)
     {
         m_properties.clear();
 
-        std::fstream file(g_config_file, std::ios::in);
+        std::fstream file(m_file_name, std::ios::in);
         std::string line;
 
         if (! file.is_open())
@@ -92,11 +101,35 @@ Config::reload(TaskData& data)
     }
     catch (std::exception& ex)
     {
-        fprintf(stderr, "Failed to read config file %s: %s\n", g_config_file.c_str(), ex.what());
-        throw;
+        fprintf(stderr, "Failed to load config file %s: %s\n", m_file_name.c_str(), ex.what());
+        //throw;
     }
+}
 
-    return false;
+Config::~Config()
+{
+    for (auto& prop: m_properties)
+        prop.second.reset();
+}
+
+void
+Config::persist()
+{
+    std::lock_guard<std::mutex> guard(m_lock);
+    std::fstream file(m_file_name, std::ios::out);
+
+    file << "# ticktockdb.version = " << TT_MAJOR_VERSION << "." << TT_MINOR_VERSION << "." << TT_PATCH_VERSION << std::endl;
+
+    for (const auto& prop: m_properties)
+        file << prop.second->get_name() << " = " << prop.second->as_str() << std::endl;
+}
+
+void
+Config::append(const std::string& name, const std::string& value)
+{
+    std::lock_guard<std::mutex> guard(m_lock);
+    std::fstream file(m_file_name, std::ios::out | std::ios::app);
+    file << name << " = " << value << std::endl;
 }
 
 void
@@ -269,12 +302,12 @@ std::string
 Config::get_data_dir()
 {
     // if 'tsdb.data.dir' is specified, use it
-    if (exists(CFG_TSDB_DATA_DIR))
-        return get_str(CFG_TSDB_DATA_DIR);
+    if (m_instance->exists(CFG_TSDB_DATA_DIR))
+        return m_instance->get_str(CFG_TSDB_DATA_DIR);
 
     // if 'ticktock.home' is specified, use <ticktock.home>/data
-    if (exists(CFG_TICKTOCK_HOME))
-        return get_str(CFG_TICKTOCK_HOME) + "/data";
+    if (m_instance->exists(CFG_TICKTOCK_HOME))
+        return m_instance->get_str(CFG_TICKTOCK_HOME) + "/data";
 
     // use 'cwd'/data
     return g_working_dir + "/data";
@@ -284,9 +317,9 @@ std::string
 Config::get_log_dir()
 {
     // if 'log.file' is specified, use it to find the log dir
-    if (exists(CFG_LOG_FILE))
+    if (m_instance->exists(CFG_LOG_FILE))
     {
-        std::string log_file = Config::get_str(CFG_LOG_FILE);
+        std::string log_file = m_instance->get_str(CFG_LOG_FILE);
         auto const pos = log_file.find_last_of('/');
         if (pos == std::string::npos)
             return g_working_dir;
@@ -294,8 +327,8 @@ Config::get_log_dir()
     }
 
     // if 'ticktock.home' is specified, use <ticktock.home>/log
-    if (exists(CFG_TICKTOCK_HOME))
-        return get_str(CFG_TICKTOCK_HOME) + "/log";
+    if (m_instance->exists(CFG_TICKTOCK_HOME))
+        return m_instance->get_str(CFG_TICKTOCK_HOME) + "/log";
 
     // use 'cwd'/log
     return g_working_dir + "/log";
@@ -305,8 +338,8 @@ std::string
 Config::get_log_file()
 {
     // if 'log.file' is specified, use it
-    if (exists(CFG_LOG_FILE))
-        return Config::get_str(CFG_LOG_FILE);
+    if (m_instance->exists(CFG_LOG_FILE))
+        return m_instance->get_str(CFG_LOG_FILE);
 
     return get_log_dir() + "/ticktock.log";
 }
