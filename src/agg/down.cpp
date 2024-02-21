@@ -313,6 +313,37 @@ DownsamplerAvg::add_data_point(DataPointPair& dp, DataPointVector& dps)
 }
 
 void
+DownsamplerAvg::add_data_point(struct rollup_entry_ext *entry, RollupType rollup, DataPointVector& dps)
+{
+    ASSERT(entry != nullptr);
+    Timestamp curr_tstamp = step_down(validate_resolution(entry->tstamp));
+    ASSERT((m_last_tstamp <= curr_tstamp) || (m_last_tstamp == TT_INVALID_TIMESTAMP));
+
+    if (curr_tstamp < m_start) return;
+
+    if (curr_tstamp == m_last_tstamp)
+    {
+        // accumulate in current interval
+        m_count += entry->cnt;
+        m_sum += entry->sum;
+    }
+    else
+    {
+        // start a new interval
+        if (m_last_tstamp != TT_INVALID_TIMESTAMP)
+        {
+            ASSERT(m_count != 0L);
+            dps.emplace_back(resolution(m_last_tstamp), m_sum/(double)m_count);
+        }
+
+        fill_to(curr_tstamp, dps);
+        m_count = entry->cnt;
+        m_sum = entry->sum;
+        m_last_tstamp = curr_tstamp;
+    }
+}
+
+void
 DownsamplerAvg::add_last_point(DataPointVector& dps)
 {
     if (m_count != 0L)
@@ -340,6 +371,28 @@ DownsamplerCount::add_data_point(DataPointPair& dp, DataPointVector& dps)
     {
         fill_to(curr_tstamp, dps);
         dps.emplace_back(resolution(curr_tstamp), 1);
+        m_last_tstamp = curr_tstamp;
+    }
+}
+
+void
+DownsamplerCount::add_data_point(struct rollup_entry_ext *entry, RollupType rollup, DataPointVector& dps)
+{
+    ASSERT(entry != nullptr);
+    Timestamp curr_tstamp = step_down(validate_resolution(entry->tstamp));
+    ASSERT((m_last_tstamp <= curr_tstamp) || (m_last_tstamp == TT_INVALID_TIMESTAMP));
+
+    if (curr_tstamp < m_start) return;
+
+    if (curr_tstamp == m_last_tstamp)
+    {
+        ASSERT(! dps.empty());
+        dps.back().second += entry->cnt;
+    }
+    else
+    {
+        fill_to(curr_tstamp, dps);
+        dps.emplace_back(resolution(curr_tstamp), (double)entry->cnt);
         m_last_tstamp = curr_tstamp;
     }
 }
@@ -445,6 +498,28 @@ DownsamplerMax::add_data_point(DataPointPair& dp, DataPointVector& dps)
     }
 }
 
+void
+DownsamplerMax::add_data_point(struct rollup_entry_ext *entry, RollupType rollup, DataPointVector& dps)
+{
+    ASSERT(entry != nullptr);
+    Timestamp curr_tstamp = step_down(validate_resolution(entry->tstamp));
+    ASSERT((m_last_tstamp <= curr_tstamp) || (m_last_tstamp == TT_INVALID_TIMESTAMP));
+
+    if (curr_tstamp < m_start) return;
+
+    if (curr_tstamp == m_last_tstamp)
+    {
+        ASSERT(!dps.empty());
+        dps.back().second = std::max(dps.back().second, entry->max);
+    }
+    else
+    {
+        fill_to(curr_tstamp, dps);
+        dps.emplace_back(resolution(curr_tstamp), (double)entry->max);
+        m_last_tstamp = curr_tstamp;
+    }
+}
+
 
 void
 DownsamplerMin::add_data_point(DataPointPair& dp, DataPointVector& dps)
@@ -463,6 +538,28 @@ DownsamplerMin::add_data_point(DataPointPair& dp, DataPointVector& dps)
     {
         fill_to(curr_tstamp, dps);
         dps.emplace_back(resolution(curr_tstamp), dp.second);
+        m_last_tstamp = curr_tstamp;
+    }
+}
+
+void
+DownsamplerMin::add_data_point(struct rollup_entry_ext *entry, RollupType rollup, DataPointVector& dps)
+{
+    ASSERT(entry != nullptr);
+    Timestamp curr_tstamp = step_down(validate_resolution(entry->tstamp));
+    ASSERT((m_last_tstamp <= curr_tstamp) || (m_last_tstamp == TT_INVALID_TIMESTAMP));
+
+    if (curr_tstamp < m_start) return;
+
+    if (curr_tstamp == m_last_tstamp)
+    {
+        ASSERT(!dps.empty());
+        dps.back().second = std::min(dps.back().second, entry->min);
+    }
+    else
+    {
+        fill_to(curr_tstamp, dps);
+        dps.emplace_back(resolution(curr_tstamp), (double)entry->min);
         m_last_tstamp = curr_tstamp;
     }
 }
@@ -543,6 +640,28 @@ DownsamplerSum::add_data_point(DataPointPair& dp, DataPointVector& dps)
     {
         fill_to(curr_tstamp, dps);
         dps.emplace_back(resolution(curr_tstamp), dp.second);
+        m_last_tstamp = curr_tstamp;
+    }
+}
+
+void
+DownsamplerSum::add_data_point(struct rollup_entry_ext *entry, RollupType rollup, DataPointVector& dps)
+{
+    ASSERT(entry != nullptr);
+    Timestamp curr_tstamp = step_down(validate_resolution(entry->tstamp));
+    ASSERT((m_last_tstamp <= curr_tstamp) || (m_last_tstamp == TT_INVALID_TIMESTAMP));
+
+    if (curr_tstamp < m_start) return;
+
+    if (curr_tstamp == m_last_tstamp)
+    {
+        ASSERT(!dps.empty());
+        dps.back().second += entry->sum;
+    }
+    else
+    {
+        fill_to(curr_tstamp, dps);
+        dps.emplace_back(resolution(curr_tstamp), (double)entry->sum);
         m_last_tstamp = curr_tstamp;
     }
 }

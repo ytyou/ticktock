@@ -238,9 +238,14 @@ class QueryTask : public Recyclable
 {
 public:
     QueryTask();
-    void query_ts_data(Tsdb *tsdb, RollupType rollup_type);
+    void query_ts_data(Tsdb *tsdb);
+    void query_ts_data(const TimeRange& range, RollupType rollup_type, bool ms);
     void merge_data();
     void fill();
+    void convert_to_ms();
+    void add_data_point(struct rollup_entry_ext *entry, RollupType rollup);
+    void remove_dps(const TimeRange& range);
+    void sort_if_needed();
 
     // return max/min value of the last n dps in m_dps[]
     double get_max(int n) const;
@@ -282,11 +287,6 @@ public:
         header_idx = m_header_index;
     }
 
-    inline std::vector<RollupIndex> *get_rollup_entries()
-    {
-        return &m_rollup_entries;
-    }
-
     uint32_t get_tstamp_from() const
     {
         return m_tstamp_from;
@@ -297,9 +297,24 @@ public:
         m_tstamp_from = tstamp;
     }
 
+    inline Timestamp get_last_tstamp() const
+    {
+        return m_last_tstamp;
+    }
+
+    inline void set_last_tstamp(Timestamp ts)
+    {
+        m_last_tstamp = ts;
+    }
+
     inline TimeRange& get_query_range()
     {
         return m_time_range;
+    }
+
+    inline void set_sort_needed()
+    {
+        m_sort_needed = true;
     }
 
     struct compare_less
@@ -330,6 +345,7 @@ private:
     void query_with_ooo();
     void query_without_ooo();
 
+    Timestamp m_last_tstamp;
     TimeRange m_time_range;
     Downsampler *m_downsampler;
     TimeSeries *m_ts;   // should NEVER be nullptr
@@ -339,9 +355,9 @@ private:
     //FileIndex m_file_index;
     uint32_t m_file_index;  // used for both rollup-idx and file-idx
     HeaderIndex m_header_index;
-    std::vector<RollupIndex> m_rollup_entries;
     uint32_t m_tstamp_from;
     bool m_has_ooo;
+    bool m_sort_needed;
 };
 
 
@@ -359,7 +375,7 @@ public:
     void perform(bool lock = true); // perform tasks
     void add_task(TimeSeries *ts);
 
-    RollupType use_rollup(Tsdb *tsdb) const;
+    RollupType use_rollup() const;
     int get_task_count() const { return m_tasks.size(); }
     int get_errno() const { return m_errno; }
     std::vector<QueryTask*>& get_tasks() { return m_tasks; }
@@ -368,6 +384,10 @@ public:
     void set_metric_id(MetricId mid) { m_metric_id = mid; }
 
 private:
+    void query_raw(Tsdb* tsdb, std::vector<QueryTask*>& tasks);
+    void query_rollup_hourly(const TimeRange& range, const std::vector<Tsdb*>& tsdbs, RollupType rollup);
+    void query_rollup_daily(RollupType rollup);
+
     bool m_ms;
     bool m_compact;
     RollupUsage m_rollup;

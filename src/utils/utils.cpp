@@ -143,6 +143,118 @@ ts_now(char *buff, const size_t size)
     sprintf(buff+std::strlen(buff), ".%03d", msec);    // add the fraction of sec part
 }
 
+Timestamp
+step_down(Timestamp ts, Timestamp interval)
+{
+    return ts - (ts % interval);
+}
+
+/* return beginning of month time in UTC
+ *
+ * @param year Year minus 1900
+ * @param month Month [0, 11] (January = 0)
+ * @return Unix time of the beginning of the specified month
+ */
+std::time_t
+begin_month(int year, int month)
+{
+    struct tm timeinfo;
+
+    std::memset(&timeinfo, 0, sizeof(timeinfo));
+    timeinfo.tm_mday = 1;
+    timeinfo.tm_mon = month;
+    timeinfo.tm_year = year;
+
+    return timegm(&timeinfo);
+}
+
+/* return beginning of month time in UTC
+ *
+ * @param ts Current time
+ * @return Beginning of the month of given ts, in seconds
+ */
+std::time_t
+begin_month(std::time_t ts)
+{
+    ASSERT(is_sec(ts));
+    struct tm timeinfo;
+    gmtime_r(&ts, &timeinfo);
+    return begin_month(timeinfo.tm_year, timeinfo.tm_mon);
+}
+
+/* return beginning of month time in UTC
+ *
+ * @param ts Current time
+ * @return Beginning of next month of given ts, in seconds
+ */
+std::time_t
+end_month(std::time_t ts)
+{
+    ASSERT(is_sec(ts));
+    struct tm timeinfo;
+    gmtime_r(&ts, &timeinfo);
+    int month = timeinfo.tm_mon + 1;    // next month
+    int year = timeinfo.tm_year;
+    if (month > 11)
+    {
+        month = 0;
+        year++;
+    }
+    return begin_month(year, month);
+}
+
+/* return beginning of year time in UTC
+ *
+ * @param ts Current time
+ * @return Beginning of the year of given ts, in seconds
+ */
+std::time_t
+begin_year(time_t ts)
+{
+    ASSERT(is_sec(ts));
+    struct tm timeinfo;
+    gmtime_r(&ts, &timeinfo);
+    return begin_month(timeinfo.tm_year, 0);
+}
+
+/* @param ts Number of seconds since the Epoch
+ */
+void
+get_year_month(std::time_t ts, int& year, int& month)
+{
+    struct tm timeinfo;
+    gmtime_r(&ts, &timeinfo);
+    month = timeinfo.tm_mon + 1;
+    year = timeinfo.tm_year + 1900;
+}
+
+/* @param ts Number of seconds since the Epoch
+ * @param begin Returns beginning of the day, in secs
+ * @param end Returns beginning of the next day, in secs
+ */
+void
+get_day_range(std::time_t ts, std::time_t& begin, std::time_t& end)
+{
+    ASSERT(is_sec(ts));
+
+    struct tm timeinfo;
+    gmtime_r(&ts, &timeinfo);
+
+    timeinfo.tm_sec = 0;
+    timeinfo.tm_min = 0;
+    timeinfo.tm_hour = 0;
+
+    begin = timegm(&timeinfo);
+    ts = begin + 86460;         // this should fall into next day
+
+    gmtime_r(&ts, &timeinfo);
+
+    timeinfo.tm_sec = 0;
+    timeinfo.tm_min = 0;
+    timeinfo.tm_hour = 0;
+    end = timegm(&timeinfo);    // beginning of next day
+}
+
 bool
 is_off_hour()
 {
@@ -1065,6 +1177,22 @@ max_subset_4k(int16_t set[], size_t size, std::vector<int>& subset)
 
     sum = matrix.elem(0,0).first;
     return sum;
+}
+
+void set_rollup_level(RollupType& rollup, bool level2)
+{
+    ASSERT(rollup != RollupType::RU_NONE);
+    ASSERT(rollup != RollupType::RU_LEVEL2);
+
+    if (level2)
+        rollup = (RollupType) (rollup | RU_LEVEL2);
+    else
+        rollup = (RollupType) (rollup & ~RU_LEVEL2);
+}
+
+bool is_rollup_level2(RollupType rollup)
+{
+    return (rollup & RU_LEVEL2) == RU_LEVEL2;
 }
 
 

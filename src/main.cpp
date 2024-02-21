@@ -77,7 +77,7 @@ intr_handler(int sig)
     if (sig != SIGINT)
         print_stack_trace();
 
-    printf("Interrupted (%d), shutting down...\n", sig);
+    if (! g_quiet) printf("Interrupted (%d), shutting down...\n", sig);
     Logger::info("Interrupted (%d), shutting down...", sig);
 
     if (http_server_ptr != nullptr)
@@ -102,16 +102,16 @@ terminate_handler()
         }
         catch (std::exception &ex)
         {
-            printf("Uncaught exception: %s\n", ex.what());
+            if (! g_quiet) printf("Uncaught exception: %s\n", ex.what());
         }
         catch (...)
         {
-            printf("Unknown exception\n");
+            if (! g_quiet) printf("Unknown exception\n");
         }
     }
     else
     {
-        printf("Unknown exception\n");
+        if (! g_quiet) printf("Unknown exception\n");
     }
 
     print_stack_trace();
@@ -127,7 +127,7 @@ process_cmdline_opts(int argc, char *argv[])
 {
     int c;
     int digit_optind = 0;
-    const char *optstring = "c:dl:p:r";
+    const char *optstring = "c:dl:p:qr";
     static struct option long_options[] =
     {
         // ALL options should require argument
@@ -157,10 +157,6 @@ process_cmdline_opts(int argc, char *argv[])
         { CFG_TSDB_PAGE_SIZE,                       required_argument,  0,  0 },
         { CFG_TSDB_READ_ONLY_THRESHOLD,             required_argument,  0,  0 },
         { CFG_TSDB_RETENTION_THRESHOLD,             required_argument,  0,  0 },
-        { CFG_TSDB_ROLLUP_FREQUENCY,                required_argument,  0,  0 },
-        { CFG_TSDB_ROLLUP_INTERVAL,                 required_argument,  0,  0 },
-        { CFG_TSDB_ROLLUP_THRESHOLD,                required_argument,  0,  0 },
-        { CFG_TSDB_ROTATION_FREQUENCY,              required_argument,  0,  0 },
         { CFG_TSDB_SELF_METER_ENABLED,              required_argument,  0,  0 },
         { CFG_TSDB_THRASHING_THRESHOLD,             required_argument,  0,  0 },
         { CFG_TSDB_TIMESTAMP_RESOLUTION,            required_argument,  0,  0 },
@@ -198,6 +194,10 @@ process_cmdline_opts(int argc, char *argv[])
                 g_pid_file.assign(optarg);
                 break;
 
+            case 'q':
+                g_quiet = true;             // quiet mode
+                break;
+
             case 'r':
                 g_opt_reuse_port = true;    // reuse port
                 break;
@@ -205,15 +205,15 @@ process_cmdline_opts(int argc, char *argv[])
             case '?':
                 if (optopt == 'c')
                 {
-                    fprintf(stderr, "Option -c requires an config file.\n");
+                    if (! g_quiet) fprintf(stderr, "Option -c requires an config file.\n");
                 }
                 else if (optopt == 'l')
                 {
-                    fprintf(stderr, "Option -l requires a log level.\n");
+                    if (! g_quiet) fprintf(stderr, "Option -l requires a log level.\n");
                 }
                 else
                 {
-                    fprintf(stderr, "Unknown option: '\\x%x'.\n", optopt);
+                    if (! g_quiet) fprintf(stderr, "Unknown option: '\\x%x'.\n", optopt);
                 }
                 return 1;
             default:
@@ -221,7 +221,7 @@ process_cmdline_opts(int argc, char *argv[])
         }
     }
 
-    if (optind < argc)
+    if ((optind < argc) && ! g_quiet)
     {
         fprintf(stderr, "Unknown options that are ignored: ");
         while (optind < argc) fprintf(stderr, "%s ", argv[optind++]);
@@ -232,67 +232,10 @@ process_cmdline_opts(int argc, char *argv[])
 }
 
 static void
-daemonize(const char *cwd)
+daemonize()
 {
-    if (daemon(1, 0) != 0)
+    if ((daemon(1, 0) != 0) && ! g_quiet)
         fprintf(stderr, "daemon() failed: errno = %d\n", errno);
-
-#if 0
-    pid_t pid;
-
-    // fork off the parent process
-    pid = fork();
-    if (pid < 0) exit(EXIT_FAILURE);
-
-    // let the parent terminate
-    if (pid > 0) exit(EXIT_SUCCESS);
-
-    // child process becomes session leader
-    if (setsid() < 0) exit(EXIT_FAILURE);
-
-    // ignore signals sent from child to parent process
-    std::signal(SIGCHLD, SIG_IGN);
-
-    // ignore broken pipe signals due to connection closed
-    std::signal(SIGPIPE, SIG_IGN);
-
-    // fork again
-    pid = fork();
-    if (pid < 0) exit(EXIT_FAILURE);
-
-    // let the parent terminate
-    if (pid > 0) exit(EXIT_SUCCESS);
-
-    // set file permissions
-    umask(S_IWGRP | S_IWOTH);
-
-    int retval = chdir(cwd);
-
-    if (retval < 0)
-    {
-        fprintf(stderr, "chdir failed: errno = %d\n", errno);
-    }
-
-    // close all open file descriptors
-    int fd;
-    for (fd = sysconf(_SC_OPEN_MAX); fd >= 0; fd--)
-    {
-        close(fd);
-    }
-
-    // write pid file
-    fd = open(g_pid_file.c_str(), O_RDWR|O_CREAT, 0640);
-    if (fd < 0)
-    {
-        fprintf(stderr, "Failed to write pid file %s: errno = %d\n", g_pid_file.c_str(), errno);
-        exit(EXIT_FAILURE);
-    }
-    if (lockf(fd, F_TLOCK, 0) < 0) exit(EXIT_FAILURE);
-    char buff[16];
-    sprintf(buff, "%d\n", getpid());
-    write(fd, buff, strlen(buff));
-    close(fd);
-#endif
 }
 
 // one time initialization, at the beginning of the execution
@@ -312,9 +255,9 @@ initialize()
     if (g_run_as_daemon)
     {
         // get our working directory
-        daemonize(buff);
+        daemonize();
     }
-    else
+    else if (! g_quiet)
     {
         printf(" TickTockDB v%d.%d.%d,  Maintained by\n"
                " Yongtao You (yongtao.you@gmail.com) and Yi Lin (ylin30@gmail.com).\n"
@@ -367,7 +310,7 @@ static void
 shutdown()
 {
     LD_STATS("Before shutdown");
-    printf("Start shutdown process...\n");
+    if (! g_quiet) printf("Start shutdown process...\n");
     Logger::info("Start shutdown process...");
 
     try
@@ -383,13 +326,13 @@ shutdown()
     catch (std::exception& ex)
     {
         Logger::warn("caught exception when shutting down: %s", ex.what());
-        fprintf(stderr, "caught exception when shutting down: %s\n", ex.what());
+        if (! g_quiet) fprintf(stderr, "caught exception when shutting down: %s\n", ex.what());
     }
 
     Logger::info("Shutdown process complete\n\n");
     LD_STATS("After shutdown");
     Logger::inst()->close();
-    printf("Shutdown process complete\n");
+    if (! g_quiet) printf("Shutdown process complete\n");
 }
 
 int
@@ -413,7 +356,7 @@ main(int argc, char *argv[])
     }
     catch (...)
     {
-        fprintf(stderr, "Initialization failed. Abort!\n");
+        if (! g_quiet) fprintf(stderr, "Initialization failed. Abort!\n");
         return 9;
     }
 
@@ -455,6 +398,9 @@ main(int argc, char *argv[])
     std::signal(SIGABRT, intr_handler);
     std::signal(SIGBUS, intr_handler);
     std::set_terminate(terminate_handler);
+
+    if (! g_run_as_daemon && ! g_quiet)
+        printf("TickTockDB is ready...\n");
 
     // wait for HTTP server to stop
     http_server.wait(0);

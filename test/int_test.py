@@ -254,7 +254,7 @@ class Test(object):
 
     def start_tt(self, conf_file="tt.conf"):
         while True:
-            self._tt = subprocess.Popen([self._options.tt, "-c", os.path.join(self._options.root,conf_file), "-r"])
+            self._tt = subprocess.Popen([self._options.tt, "-c", os.path.join(self._options.root,conf_file), "-q", "-r"])
             time.sleep(4)
             if not self.tt_stopped():
                 break
@@ -300,10 +300,14 @@ class Test(object):
         response = requests.post("http://"+self._options.ip+":"+str(self._options.port)+"/api/admin?cmd=compact")
         response.raise_for_status()
 
+    def do_rollup(self):
+        response = requests.post("http://"+self._options.ip+":"+str(self._options.port)+"/api/admin?cmd=rollup")
+        response.raise_for_status()
+
     def metric_name(self, idx, prefix=None):
         if not prefix:
             prefix = self._prefix
-        return prefix + "_metric_" + str(idx)
+        return prefix + "_metric_" + str(idx+1)
 
     def tag(self, k, v):
         return {"tag"+str(k): "val"+str(v)}
@@ -350,11 +354,12 @@ class Test(object):
         self._tcp_socket.sendall(dps.to_plain())
         self._ticktock_time += time.time() - start
 
-    def send_data(self, dps):
+    def send_data(self, dps, wait=True):
         self.send_data_to_opentsdb(dps)
         self.send_data_to_ticktock(dps)
         # opentsdb needs time to get ready before query
-        time.sleep(2)
+        if wait:
+            time.sleep(2)
 
     def send_data_plain(self, dps):
         self.send_data_to_opentsdb(dps)
@@ -443,21 +448,23 @@ class Test(object):
     # return anything in this situation, we need to remove them
     # from OpenTsdb's results in order to match results from TickTock.
     def remove_empty_dps(self, arr):
+        result = []
         if isinstance(arr, list):
             for d in arr:
                 if isinstance(d, dict):
                     if d.has_key("dps"):
                         dps = d["dps"]
-                        if len(dps) == 0:
-                            arr.remove(d)
+                        if len(dps) != 0:
+                            result.append(d)
+        return result
 
     def query_and_verify(self, query):
         if self._options.verbose:
             print "query: " + str(query.to_json())
         expected = self.query_opentsdb(query)
         actual = self.query_ticktock(query)
-        self.remove_empty_dps(expected)
-        if self.verify_json(expected, actual):
+        expected2 = self.remove_empty_dps(expected)
+        if self.verify_json(expected2, actual):
             self._passed = self._passed + 1
         else:
             self._failed = self._failed + 1
@@ -532,6 +539,8 @@ class Test(object):
                             print "actual does not have: %s" % str(k)
                         return False
                     if not self.verify_json(v, actual[str(k)]):
+                        if self._options.verbose:
+                            print "key %s has diff values: %s vs %s" % (str(k), str(v), str(actual[str(k)]))
                         return False
                 for k,v in actual.items():
                     if not expected.has_key(str(k)):
@@ -546,7 +555,7 @@ class Test(object):
                 print "actual not float: " + str(actual)
                 return False
             diff = abs(expected - actual)
-            if diff > 0.0000000001:
+            if diff > 0.00000000012:
                 if diff < 0.001:
                     print "expected not same as actual (float): {:.16f} vs {:.16f}; diff = {:.16f}".format(expected, actual, diff)
                 return False
@@ -1235,6 +1244,101 @@ class Query_Tests(Test):
         self.wait_for_tt(self._options.timeout)
 
 
+class Query_With_Rollup(Test):
+
+    def __init__(self, options, prefix="rq", tcp_socket=None):
+        super(Query_With_Rollup, self).__init__(options, prefix, tcp_socket)
+
+    def __call__(self, metric_cardinality=4):
+
+        self.cleanup()
+
+        # generate config
+        config = TickTockConfig(self._options)
+        config.add_entry("tcp.buffer.size", "1mb")
+        config.add_entry("tsdb.rollup.pause", "0sec")
+        config()    # generate config
+
+        # start tt
+        self.start_tt()
+
+        # insert some dps
+        print "insert data..."
+        ts = self._options.start
+        for i in range(10*24*60):
+            dps = DataPoints(self._prefix, ts, interval_ms=60000, metric_count=1, metric_cardinality=metric_cardinality, tag_cardinality=2)
+            self.send_data(dps, wait=False)
+            ts += 300000
+        time.sleep(5)
+
+        # do rollup
+        print "perform rollup..."
+        self.do_rollup()
+        self.do_rollup()
+
+        print "Downsamples with hourly rollup..."
+        for m in range(metric_cardinality):
+            for down in ["avg", "count", "max", "min", "sum"]:
+                query = Query(metric=self.metric_name(m), start=self._options.start-99999, end=dps._end+99999, downsampler="2h-"+down)
+                self.query_and_verify(query)
+
+        for m in range(metric_cardinality):
+            for down in ["avg", "count", "max", "min", "sum"]:
+                for agg in ["none", "avg", "count", "dev", "max", "min", "p50", "p75", "p90", "p95", "p99", "p999", "sum"]:
+                    query = Query(metric=self.metric_name(m), start=self._options.start+99999, end=dps._end+99999, aggregator=agg, downsampler="2h-"+down+"-zero")
+                    self.query_and_verify(query)
+
+        print "Downsamples with daily rollup..."
+        for m in range(metric_cardinality):
+            for down in ["avg", "count", "max", "min", "sum"]:
+                query = Query(metric=self.metric_name(m), start=self._options.start-99999, end=dps._end+99999, downsampler="1d-"+down+"-zero")
+                self.query_and_verify(query)
+
+        for m in range(metric_cardinality):
+            for down in ["avg", "count", "max", "min", "sum"]:
+                for agg in ["none", "avg", "count", "dev", "max", "min", "p50", "p75", "p90", "p95", "p99", "p999", "sum"]:
+                    query = Query(metric=self.metric_name(m), start=self._options.start+99999, end=dps._end+99999, aggregator=agg, downsampler="1d-"+down)
+                    self.query_and_verify(query)
+
+        # stop tt
+        print "restarting TickTockDB..."
+        self.stop_tt()
+        # make sure tt stopped
+        self.wait_for_tt(self._options.timeout)
+
+        # restart tt
+        self.start_tt()
+
+        print "Downsamples with hourly rollup, after restart..."
+        for m in range(metric_cardinality):
+            for down in ["avg", "count", "max", "min", "sum"]:
+                query = Query(metric=self.metric_name(m), start=self._options.start-99999, end=dps._end+99999, downsampler="2h-"+down)
+                self.query_and_verify(query)
+
+        for m in range(metric_cardinality):
+            for down in ["avg", "count", "max", "min", "sum"]:
+                for agg in ["none", "avg", "count", "dev", "max", "min", "p50", "p75", "p90", "p95", "p99", "p999", "sum"]:
+                    query = Query(metric=self.metric_name(m), start=self._options.start+99999, end=dps._end+99999, aggregator=agg, downsampler="2h-"+down+"-zero")
+                    self.query_and_verify(query)
+
+        print "Downsamples with daily rollup, after restart..."
+        for m in range(metric_cardinality):
+            for down in ["avg", "count", "max", "min", "sum"]:
+                query = Query(metric=self.metric_name(m), start=self._options.start-99999, end=dps._end+99999, downsampler="1d-"+down+"-zero")
+                self.query_and_verify(query)
+
+        for m in range(metric_cardinality):
+            for down in ["avg", "count", "max", "min", "sum"]:
+                for agg in ["none", "avg", "count", "dev", "max", "min", "p50", "p75", "p90", "p95", "p99", "p999", "sum"]:
+                    query = Query(metric=self.metric_name(m), start=self._options.start+99999, end=dps._end+99999, aggregator=agg, downsampler="1d-"+down)
+                    self.query_and_verify(query)
+
+        # stop tt
+        self.stop_tt()
+        # make sure tt stopped
+        self.wait_for_tt(self._options.timeout)
+
+
 class Rate_Tests(Test):
 
     def __init__(self, options, prefix="r"):
@@ -1244,6 +1348,7 @@ class Rate_Tests(Test):
 
         # generate config
         config = TickTockConfig(self._options)
+        config.add_entry("tcp.buffer.size", "2mb")
         config()
 
         self.start_tt()
@@ -1944,6 +2049,7 @@ def main(argv):
         tests.append(Duplicate_Tests(options))
         tests.append(Check_Point_Tests(options))
         tests.append(Query_Tests(options, metric_count=16, metric_cardinality=4, tag_cardinality=4))
+        tests.append(Query_With_Rollup(options))
 
         #tests.append(Long_Running_Tests(options))
 
@@ -2040,7 +2146,7 @@ def get_defaults():
         'opentsdbip': '127.0.0.1',
         'opentsdbport': 4242,
         'root': '/tmp/tt_i',
-        'start': 1569859200000,
+        'start': 1569888000000,
         'timeout': 10,
         'tt': 'bin/tt',
         'verbose': False

@@ -16,7 +16,6 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-#include <cmath>
 #include <cstdlib>
 #include <cstring>
 #include <limits>
@@ -158,6 +157,60 @@ Aggregator::aggregate(QueryResults *results)
     merge(vv, results->m_dps);
 }
 
+void
+Aggregator::merge(std::vector<std::reference_wrapper<DataPointVector>>& src, DataPointVector& dst)
+{
+    int size = src.size();
+    int idx[size];
+    Timestamp ts = TT_INVALID_TIMESTAMP;
+
+    for (int i = 0; i < size; i++)
+        idx[i] = 0;
+
+    for (DataPointVector& v: src)
+    {
+        if (! v.empty())
+        {
+            DataPointPair dp = v.front();
+            if (ts > dp.first) ts = dp.first;
+        }
+    }
+
+    while (ts != TT_INVALID_TIMESTAMP)
+    {
+        init();
+        Timestamp next_ts = TT_INVALID_TIMESTAMP;
+
+        for (int i = 0; i < size; i++)
+        {
+            DataPointVector& v = src[i];
+            if (v.size() <= idx[i]) continue;
+
+            DataPointPair& dp = v[idx[i]];
+
+            if (dp.first == ts)
+            {
+                add_data_point(dp);
+                idx[i]++;
+
+                if (idx[i] < v.size())
+                {
+                    dp = v[idx[i]];
+                    if (next_ts > dp.first)
+                        next_ts = dp.first;
+                }
+            }
+            else if (next_ts > dp.first)
+                next_ts = dp.first;
+        }
+
+        if (! has_data()) break;
+
+        add_aggregated(ts, dst);
+        ts = next_ts;
+    }
+}
+
 
 void
 AggregatorNone::aggregate(const char *metric, std::vector<QueryTask*>& qtv, std::vector<QueryResults*>& results, StringBuffer& strbuf)
@@ -173,48 +226,6 @@ AggregatorNone::aggregate(const char *metric, std::vector<QueryTask*>& qtv, std:
         DataPointVector& dps = qt->get_dps();
         result->m_dps.insert(result->m_dps.end(), dps.begin(), dps.end());  // TODO: how to avoid copy?
         dps.clear();
-    }
-}
-
-
-void
-AggregatorAvg::merge(std::vector<std::reference_wrapper<DataPointVector>>& src, DataPointVector& dst)
-{
-    PQ pq(src);
-    double sum;
-    int count = 0;
-    Timestamp prev_tstamp = 0L;
-
-    while (! pq.empty())
-    {
-        DataPointPair& dp = pq.next();
-        Timestamp curr_tstamp = dp.first;
-
-        if (prev_tstamp == curr_tstamp)
-        {
-            count++;
-            sum += dp.second;
-        }
-        else
-        {
-            ASSERT(prev_tstamp < curr_tstamp);
-
-            if (prev_tstamp != 0L)
-            {
-                ASSERT(count > 0);
-                dst.emplace_back(prev_tstamp, sum/(double)count);
-            }
-
-            count = 1;
-            sum = dp.second;
-            prev_tstamp = curr_tstamp;
-        }
-    }
-
-    if (prev_tstamp != 0L)
-    {
-        ASSERT(count > 0);
-        dst.emplace_back(prev_tstamp, sum/(double)count);
     }
 }
 
@@ -244,82 +255,6 @@ AggregatorBottom::aggregate(const char *metric, std::vector<QueryTask*>& qtv, st
     }
 }
 
-
-void
-AggregatorCount::merge(std::vector<std::reference_wrapper<DataPointVector>>& src, DataPointVector& dst)
-{
-    PQ pq(src);
-    int count = 0;
-    Timestamp prev_tstamp = 0L;
-
-    while (! pq.empty())
-    {
-        DataPointPair& dp = pq.next();
-        Timestamp curr_tstamp = dp.first;
-
-        if (prev_tstamp == curr_tstamp)
-        {
-            count++;
-        }
-        else
-        {
-            ASSERT(prev_tstamp < curr_tstamp);
-
-            if (prev_tstamp != 0L)
-            {
-                ASSERT(count > 0);
-                dst.emplace_back(prev_tstamp, (double)count);
-            }
-
-            count = 1;
-            prev_tstamp = curr_tstamp;
-        }
-    }
-
-    if (prev_tstamp != 0L)
-    {
-        ASSERT(count > 0);
-        dst.emplace_back(prev_tstamp, (double)count);
-    }
-}
-
-
-void
-AggregatorDev::merge(std::vector<std::reference_wrapper<DataPointVector>>& src, DataPointVector& dst)
-{
-    PQ pq(src);
-    std::vector<double> values;
-    Timestamp prev_tstamp = 0L;
-
-    while (! pq.empty())
-    {
-        DataPointPair& dp = pq.next();
-        Timestamp curr_tstamp = dp.first;
-
-        if (prev_tstamp != curr_tstamp)
-        {
-            ASSERT(prev_tstamp < curr_tstamp);
-
-            if (prev_tstamp != 0L)
-            {
-                dst.emplace_back(prev_tstamp, stddev(values));
-            }
-
-            prev_tstamp = curr_tstamp;
-            values.clear();
-        }
-
-        if (! std::isnan(dp.second))
-        {
-            values.push_back(dp.second);
-        }
-    }
-
-    if (prev_tstamp != 0L)
-    {
-        dst.emplace_back(prev_tstamp, stddev(values));
-    }
-}
 
 double
 AggregatorDev::stddev(const std::vector<double>& values)
@@ -352,80 +287,6 @@ AggregatorDev::stddev(const std::vector<double>& values)
 
 
 void
-AggregatorMax::merge(std::vector<std::reference_wrapper<DataPointVector>>& src, DataPointVector& dst)
-{
-    PQ pq(src);
-    double max = std::numeric_limits<double>::min();
-    Timestamp prev_tstamp = 0L;
-
-    while (! pq.empty())
-    {
-        DataPointPair& dp = pq.next();
-        Timestamp curr_tstamp = dp.first;
-
-        if (prev_tstamp == curr_tstamp)
-        {
-            max = std::max(max, dp.second);
-        }
-        else
-        {
-            ASSERT(prev_tstamp < curr_tstamp);
-
-            if (prev_tstamp != 0L)
-            {
-                dst.emplace_back(prev_tstamp, max);
-            }
-
-            max = dp.second;
-            prev_tstamp = curr_tstamp;
-        }
-    }
-
-    if (prev_tstamp != 0L)
-    {
-        dst.emplace_back(prev_tstamp, max);
-    }
-}
-
-
-void
-AggregatorMin::merge(std::vector<std::reference_wrapper<DataPointVector>>& src, DataPointVector& dst)
-{
-    PQ pq(src);
-    double min = std::numeric_limits<double>::max();
-    Timestamp prev_tstamp = 0L;
-
-    while (! pq.empty())
-    {
-        DataPointPair& dp = pq.next();
-        Timestamp curr_tstamp = dp.first;
-
-        if (prev_tstamp == curr_tstamp)
-        {
-            min = std::min(min, dp.second);
-        }
-        else
-        {
-            ASSERT(prev_tstamp < curr_tstamp);
-
-            if (prev_tstamp != 0L)
-            {
-                dst.emplace_back(prev_tstamp, min);
-            }
-
-            min = dp.second;
-            prev_tstamp = curr_tstamp;
-        }
-    }
-
-    if (prev_tstamp != 0L)
-    {
-        dst.emplace_back(prev_tstamp, min);
-    }
-}
-
-
-void
 AggregatorPercentile::set_quantile(double quantile)
 {
     m_quantile = quantile;
@@ -437,45 +298,8 @@ AggregatorPercentile::set_quantile(double quantile)
     }
 }
 
-void
-AggregatorPercentile::merge(std::vector<std::reference_wrapper<DataPointVector>>& src, DataPointVector& dst)
-{
-    PQ pq(src);
-    std::vector<double> values;
-    Timestamp prev_tstamp = 0L;
-
-    while (! pq.empty())
-    {
-        DataPointPair& dp = pq.next();
-        Timestamp curr_tstamp = dp.first;
-
-        if (prev_tstamp != curr_tstamp)
-        {
-            ASSERT(prev_tstamp < curr_tstamp);
-
-            if (prev_tstamp != 0L)
-            {
-                dst.emplace_back(prev_tstamp, percentile(values));
-            }
-
-            prev_tstamp = curr_tstamp;
-            values.clear();
-        }
-
-        if (! std::isnan(dp.second))
-        {
-            values.push_back(dp.second);
-        }
-    }
-
-    if (prev_tstamp != 0L)
-    {
-        dst.emplace_back(prev_tstamp, percentile(values));
-    }
-}
-
 double
-AggregatorPercentile::percentile(const std::vector<double>& values) const
+AggregatorPercentile::percentile(std::vector<double>& values) const
 {
     int length = values.size();
 
@@ -491,6 +315,8 @@ AggregatorPercentile::percentile(const std::vector<double>& values) const
     {
         double idx = index(length);
         double p;
+
+        std::sort(values.begin(), values.end());
 
         if (idx < 1.0)
         {
@@ -522,43 +348,6 @@ AggregatorPercentile::index(int length) const
     double minLimit = 0.0;
     double maxLimit = 1.0;
     return (p == minLimit) ? 0.0 : (p == maxLimit) ? length : p * (length + 1);
-}
-
-
-void
-AggregatorSum::merge(std::vector<std::reference_wrapper<DataPointVector>>& src, DataPointVector& dst)
-{
-    PQ pq(src);
-    double sum = 0;
-    Timestamp prev_tstamp = 0L;
-
-    while (! pq.empty())
-    {
-        DataPointPair& dp = pq.next();
-        Timestamp curr_tstamp = dp.first;
-
-        if (prev_tstamp == curr_tstamp)
-        {
-            sum += dp.second;
-        }
-        else
-        {
-            ASSERT(prev_tstamp < curr_tstamp);
-
-            if (prev_tstamp != 0L)
-            {
-                dst.emplace_back(prev_tstamp, sum);
-            }
-
-            sum = dp.second;
-            prev_tstamp = curr_tstamp;
-        }
-    }
-
-    if (prev_tstamp != 0L)
-    {
-        dst.emplace_back(prev_tstamp, sum);
-    }
 }
 
 

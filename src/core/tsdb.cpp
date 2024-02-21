@@ -24,6 +24,7 @@
 #include <dirent.h>
 #include <functional>
 #include <glob.h>
+#include <limits>
 #include <stdio.h>
 #include <iomanip>
 #include <sstream>
@@ -821,7 +822,7 @@ Mapping::restore_measurement(std::string& measurement, std::string& tags, std::v
 }
 
 void
-Tsdb::restore_rollup_mgr(std::unordered_map<TimeSeriesId,RollupManager>& map)
+Tsdb::restore_rollup_mgr(std::unordered_map<TimeSeriesId,struct rollup_entry_ext>& map)
 {
     std::vector<TimeSeries*> tsv;
 
@@ -851,12 +852,9 @@ Mapping::get_ts_count()
 }
 
 
-/* 'dir' is a full path name. E.g. /tt/data/2023/06/1686441600.1686528000/m0000000001
+/* 'dir' is a full path name. E.g. /tt/data/2023/06/1686441600.1686528000/m000001
  */
-Metric::Metric(const std::string& dir, PageSize page_size, PageCount page_cnt) :
-    m_rollup_data_file(dir+"/rollup.data"),
-    m_rollup_header_file(dir+"/rollup.header"),
-    m_rollup_header_tmp_file(dir+"/rollup.header.tmp")
+Metric::Metric(const std::string& dir, PageSize page_size, PageCount page_cnt)
 {
     create_dir(dir);    // create folder, if necessary
 
@@ -909,9 +907,6 @@ Metric::close()
         data->close();
     for (auto header: m_header_files)
         header->close();
-    m_rollup_data_file.close();
-    m_rollup_header_file.close();
-    m_rollup_header_tmp_file.close();
 }
 
 void
@@ -931,7 +926,7 @@ std::string
 Metric::get_metric_dir(std::string& tsdb_dir, MetricId id)
 {
     std::ostringstream oss;
-    oss << tsdb_dir << "/m" << std::setfill('0') << std::setw(10) << id;
+    oss << tsdb_dir << "/m" << std::setfill('0') << std::setw(6) << id;
     return oss.str();
 }
 
@@ -939,7 +934,7 @@ std::string
 Metric::get_data_file_name(std::string& tsdb_dir, FileIndex fidx)
 {
     std::ostringstream oss;
-    oss << tsdb_dir << "/m" << std::setfill('0') << std::setw(10) << m_id << "/data." << std::setw(5) << fidx;
+    oss << tsdb_dir << "/m" << std::setfill('0') << std::setw(6) << m_id << "/data." << std::setw(5) << fidx;
     return oss.str();
 }
 
@@ -947,7 +942,7 @@ std::string
 Metric::get_header_file_name(std::string& tsdb_dir, FileIndex fidx)
 {
     std::ostringstream oss;
-    oss << tsdb_dir << "/m" << std::setfill('0') << std::setw(10) << m_id << "/header." << std::setw(5) << fidx;
+    oss << tsdb_dir << "/m" << std::setfill('0') << std::setw(6) << m_id << "/header." << std::setw(5) << fidx;
     return oss.str();
 }
 
@@ -1023,6 +1018,7 @@ Metric::get_last_header(std::string& tsdb_dir, PageCount page_cnt, PageSize page
     return header_file;
 }
 
+/**
 void
 Metric::add_rollup_point(TimeSeriesId tid, uint32_t cnt, double min, double max, double sum)
 {
@@ -1032,6 +1028,7 @@ Metric::add_rollup_point(TimeSeriesId tid, uint32_t cnt, double min, double max,
     m_rollup_header_tmp_file.ensure_open(false);
     m_rollup_header_tmp_file.add_index(tid, data_idx);
 }
+**/
 
 bool
 Metric::rotate(Timestamp now_sec, Timestamp thrashing_threshold)
@@ -1078,17 +1075,20 @@ Metric::rotate(Timestamp now_sec, Timestamp thrashing_threshold)
             header_file->close();
     }
 
+/*
     if (((int64_t)now_sec - (int64_t)m_rollup_data_file.get_last_read()) > (int64_t)thrashing_threshold)
     {
         std::lock_guard<std::mutex> guard(m_rollup_lock);
         m_rollup_data_file.close();
         m_rollup_header_file.close();
     }
+*/
 
     return all_closed;
 }
 
 // return true if operation was a success; false otherwise
+/**
 bool
 Metric::rollup(IndexFile *idx_file, int no_entries)
 {
@@ -1100,6 +1100,7 @@ Metric::rollup(IndexFile *idx_file, int no_entries)
 
     return true;
 }
+**/
 
 int
 Metric::get_page_count(bool ooo)
@@ -1157,13 +1158,19 @@ Tsdb::Tsdb(TimeRange& range, bool existing, const char *suffix) :
     ASSERT(g_tstamp_resolution_ms ? is_ms(range.get_from()) : is_sec(range.get_from()));
 
     m_mbucket_count = Config::inst()->get_int(CFG_TSDB_METRIC_BUCKETS,CFG_TSDB_METRIC_BUCKETS_DEF);
+    if (m_mbucket_count > MAX_METRIC_BUCKET_COUNT)
+    {
+        m_mbucket_count = MAX_METRIC_BUCKET_COUNT;
+        Logger::warn("config %s exceeded max %d", CFG_TSDB_METRIC_BUCKETS, MAX_METRIC_BUCKET_COUNT);
+    }
     m_metrics.reserve(m_mbucket_count);
     m_compressor_version =
         Config::inst()->get_int(CFG_TSDB_COMPRESSOR_VERSION,CFG_TSDB_COMPRESSOR_VERSION_DEF);
-    m_rollup_interval =
-        Config::inst()->get_time(CFG_TSDB_ROLLUP_INTERVAL,TimeUnit::SEC,CFG_TSDB_ROLLUP_INTERVAL_DEF);
-    if (range.get_duration_sec() < m_rollup_interval)
-        m_rollup_interval = range.get_duration_sec();
+    if (range.get_duration_sec() < g_rollup_interval_1h)
+    {
+        Logger::error("Tsdb range %" PRIu64 " can't be shorter than rollup-interval (1 hour)",
+            range.get_duration_sec());
+    }
     m_mode = mode_of();
     Logger::debug("tsdb %T created (mode=%d)", &range, m_mode);
 }
@@ -1250,21 +1257,26 @@ void
 Tsdb::restore_config(const std::string& dir)
 {
     Config cfg(dir + "/config");
-    cfg.load();
+    cfg.load(false);
 
     m_page_size = cfg.get_bytes(CFG_TSDB_PAGE_SIZE, CFG_TSDB_PAGE_SIZE_DEF);
     m_page_count = cfg.get_int(CFG_TSDB_PAGE_COUNT, CFG_TSDB_PAGE_COUNT_DEF);
     m_compressor_version = cfg.get_int(CFG_TSDB_COMPRESSOR_VERSION, CFG_TSDB_COMPRESSOR_VERSION_DEF);
-    m_rollup_interval = cfg.get_time(CFG_TSDB_ROLLUP_INTERVAL, TimeUnit::SEC, CFG_TSDB_ROLLUP_INTERVAL_DEF);
 
     if (cfg.exists(CFG_TSDB_METRIC_BUCKETS))
+    {
         m_mbucket_count = cfg.get_int(CFG_TSDB_METRIC_BUCKETS);
+        ASSERT(m_mbucket_count <= MAX_METRIC_BUCKET_COUNT);
+    }
 
     //if (cfg.exists("compacted") && cfg.get_bool("compacted", false))
         //m_mode |= TSDB_MODE_COMPACTED;
 
     if (cfg.exists("rolled_up") && cfg.get_bool("rolled_up", false))
         m_mode |= TSDB_MODE_ROLLED_UP;
+
+    if (cfg.exists("out_of_order") && cfg.get_bool("out_of_order", false))
+        m_mode |= TSDB_MODE_OUT_OF_ORDER;
 
     if (cfg.exists("crashed") && cfg.get_bool("crashed", false))
         m_mode |= TSDB_MODE_CRASHED;
@@ -1278,16 +1290,21 @@ Tsdb::write_config(const std::string& dir)
     cfg.set_value(CFG_TSDB_PAGE_SIZE, std::to_string(m_page_size)+"b");
     cfg.set_value(CFG_TSDB_PAGE_COUNT, std::to_string(m_page_count));
     cfg.set_value(CFG_TSDB_COMPRESSOR_VERSION, std::to_string(m_compressor_version));
-    cfg.set_value(CFG_TSDB_ROLLUP_INTERVAL, std::to_string(m_rollup_interval)+"sec");
 
     if (m_mbucket_count != UINT32_MAX)
+    {
+        ASSERT(m_mbucket_count <= MAX_METRIC_BUCKET_COUNT);
         cfg.set_value(CFG_TSDB_METRIC_BUCKETS, std::to_string(m_mbucket_count));
+    }
 
     //if (m_mode & TSDB_MODE_COMPACTED)
         //cfg.set_value("compacted", "true");
 
     if (m_mode & TSDB_MODE_ROLLED_UP)
         cfg.set_value("rolled_up", "true");
+
+    if (m_mode & TSDB_MODE_OUT_OF_ORDER)
+        cfg.set_value("out_of_order", "true");
 
     if (m_mode & TSDB_MODE_CRASHED)
         cfg.set_value("crashed", "true");
@@ -1412,8 +1429,11 @@ Tsdb::get_compressor_version()
 void
 Tsdb::get_range(Timestamp tstamp, TimeRange& range)
 {
-    Timestamp start = (tstamp / tsdb_rotation_freq) * tsdb_rotation_freq;
-    range.init(start, start + tsdb_rotation_freq);
+    //Timestamp start = (tstamp / tsdb_rotation_freq) * tsdb_rotation_freq;
+    //range.init(start, start + tsdb_rotation_freq);
+    std::time_t begin, end;
+    get_day_range(to_sec(tstamp), begin, end);
+    range.init(validate_resolution(begin), validate_resolution(end));
 }
 
 Mapping *
@@ -1508,6 +1528,7 @@ Tsdb::get_or_create_metric(MetricId mid)
     return m_metrics[bucket];
 }
 
+/**
 void
 Tsdb::add_rollup_point(MetricId mid, TimeSeriesId tid, uint32_t cnt, double min, double max, double sum)
 {
@@ -1515,6 +1536,7 @@ Tsdb::add_rollup_point(MetricId mid, TimeSeriesId tid, uint32_t cnt, double min,
     ASSERT(metric != nullptr);
     metric->add_rollup_point(tid, cnt, min, max, sum);
 }
+**/
 
 bool
 Tsdb::add_data_point(DataPoint& dp, bool forward)
@@ -1684,140 +1706,6 @@ Tsdb::query_for_data_no_lock(TimeSeriesId id, TimeRange& query_range, std::vecto
 }
 #endif
 
-// return false if out-of-order data was found, which means rollup data
-// can't be used; return true otherwise;
-bool
-Tsdb::read_rollup_headers(Metric *metric, std::vector<QueryTask*>& tasks)
-{
-    ASSERT(metric != nullptr);
-
-    auto query_task_cmp = [](QueryTask* &lhs, QueryTask* &rhs)
-    {
-        uint32_t lhs_file_idx, rhs_file_idx;
-        HeaderIndex header_idx; // value not used
-
-        lhs->get_indices(lhs_file_idx, header_idx);
-        rhs->get_indices(rhs_file_idx, header_idx);
-
-        return lhs_file_idx > rhs_file_idx;
-    };
-    std::priority_queue<QueryTask*, std::vector<QueryTask*>, decltype(query_task_cmp)> pq(query_task_cmp);
-    bool ooo = false;
-
-    m_index_file.ensure_open(true);
-
-    for (auto task : tasks)
-    {
-        TimeSeriesId tid = task->get_ts_id();
-
-        if (m_index_file.get_out_of_order(tid))
-        {
-            ooo = true;
-            break;
-        }
-
-        RollupIndex idx = m_index_file.get_rollup_index(tid);
-        if (idx != TT_INVALID_ROLLUP_INDEX)
-        {
-            task->set_indices(idx, 0);
-            pq.push(task);
-        }
-        else
-        {
-            std::vector<RollupIndex> *entries = task->get_rollup_entries();
-            ASSERT(entries != nullptr);
-        }
-    }
-
-    if (ooo) return false;
-
-    int entries = get_rollup_entries();
-    std::lock_guard<std::mutex> guard(metric->m_rollup_lock);
-    RollupHeaderFile *header_file = metric->get_rollup_header_file();
-    header_file->ensure_open(true);
-
-    while (! pq.empty())
-    {
-        QueryTask *task = pq.top();
-        pq.pop();
-
-        RollupIndex idx;
-        HeaderIndex header_idx; // not used
-        task->get_indices(idx, header_idx);
-        header_file->get_entries(idx, entries, task->get_rollup_entries());
-    }
-
-    return true;
-}
-
-bool
-Tsdb::query_rollup_no_lock(RollupDataFile *data_file, QueryTask *task, RollupType rollup)
-{
-    ASSERT(task != nullptr);
-    ASSERT(data_file != nullptr);
-
-    auto containers = task->get_containers();
-    ASSERT(! containers.empty());
-    auto container = containers.back();
-
-    uint32_t cnt;
-    double min, max, sum, value;
-    RollupIndex data_idx;
-    HeaderIndex header_idx;
-
-    task->get_indices(data_idx, header_idx);
-    if (data_idx == TT_INVALID_ROLLUP_ENTRY) return false;
-    bool ok = data_file->query(data_idx, cnt, min, max, sum);
-
-    if (! ok) return false;
-
-    if (cnt > 0)
-    {
-        Timestamp rollup_interval = get_rollup_interval();
-        if (g_tstamp_resolution_ms) rollup_interval *= 1000;
-        Timestamp tstamp = m_time_range.get_from() + header_idx * rollup_interval;
-        ASSERT(m_time_range.in_range(tstamp) == 0);
-
-        switch (rollup)
-        {
-            case RollupType::RU_AVG:
-                value = sum / (double)cnt;
-                break;
-
-            case RollupType::RU_CNT:
-                value = (double)cnt;
-                break;
-
-            case RollupType::RU_MAX:
-                value = max;
-                break;
-
-            case RollupType::RU_MIN:
-                value = min;
-                break;
-
-            case RollupType::RU_SUM:
-                value = sum;
-                break;
-
-            default:
-                return false;
-        }
-
-        container->add_data_point(tstamp, value);
-    }
-
-    // prepare for next entry
-    std::vector<RollupIndex> *entries = task->get_rollup_entries();
-    header_idx++;
-    if (header_idx >= entries->size())
-        task->set_indices(TT_INVALID_FILE_INDEX, TT_INVALID_HEADER_INDEX);
-    else
-        task->set_indices((*entries)[header_idx], header_idx);
-
-    return true;
-}
-
 // Query ONE page, for a single TimeSeries
 void
 Tsdb::query_for_data_no_lock(MetricId mid, QueryTask *task)
@@ -1899,15 +1787,15 @@ Tsdb::query_for_data_no_lock(MetricId mid, QueryTask *task)
 }
 
 void
-Tsdb::query_for_data(MetricId mid, TimeRange& range, std::vector<QueryTask*>& tasks, bool compact, RollupType rollup)
+Tsdb::query_for_data(MetricId mid, TimeRange& range, std::vector<QueryTask*>& tasks, bool compact)
 {
     std::lock_guard<std::mutex> guard(m_lock);
-    query_for_data_no_lock(mid, range, tasks, compact, rollup);
+    query_for_data_no_lock(mid, range, tasks, compact);
 }
 
 // Query for multiple TimeSeries
 void
-Tsdb::query_for_data_no_lock(MetricId mid, TimeRange& range, std::vector<QueryTask*>& tasks, bool compact, RollupType rollup)
+Tsdb::query_for_data_no_lock(MetricId mid, TimeRange& range, std::vector<QueryTask*>& tasks, bool compact)
 {
     uint32_t file_or_rollup_idx;
     FileIndex file_idx;
@@ -1934,59 +1822,20 @@ Tsdb::query_for_data_no_lock(MetricId mid, TimeRange& range, std::vector<QueryTa
     Timestamp middle = m_time_range.get_middle();
     Metric *metric = get_metric(mid);
 
-    if (rollup != RollupType::RU_NONE)
+    for (auto task : tasks)
     {
-        // query rollup data
-        if (read_rollup_headers(metric, tasks))
-        {
-            for (auto task : tasks)
-            {
-                std::vector<RollupIndex> *entries = task->get_rollup_entries();
-                if (! entries->empty())
-                {
-                    task->set_indices((*entries)[0], 0);
-                    pq.push(task);
-
-                    DataPointContainer *container = (DataPointContainer*)
-                        MemoryManager::alloc_recyclable(RecyclableType::RT_DATA_POINT_CONTAINER);
-                    //container->set_page_index(page_header->get_global_page_index(file_idx, m_page_count));
-                    task->add_container(container);
-                }
-            }
-        }
+        // figure out first page location before pushing to pq
+        if (middle < range.get_from())
+            m_index_file.get_indices2(task->get_ts_id(), file_idx, header_idx);
         else
-        {
-            // out-of-order data found, can't use rollup data
-            rollup = RollupType::RU_NONE;
-        }
-    }
-
-    if (rollup == RollupType::RU_NONE)
-    {
-        // query raw data
-        for (auto task : tasks)
-        {
-            // figure out first page location before pushing to pq
-            if (middle < range.get_from())
-                m_index_file.get_indices2(task->get_ts_id(), file_idx, header_idx);
-            else
-                m_index_file.get_indices(task->get_ts_id(), file_idx, header_idx);
-            if (file_idx == TT_INVALID_FILE_INDEX || header_idx == TT_INVALID_HEADER_INDEX)
-                continue;
-            task->set_indices(file_idx, header_idx);
-            pq.push(task);
-        }
+            m_index_file.get_indices(task->get_ts_id(), file_idx, header_idx);
+        if (file_idx == TT_INVALID_FILE_INDEX || header_idx == TT_INVALID_HEADER_INDEX)
+            continue;
+        task->set_indices(file_idx, header_idx);
+        pq.push(task);
     }
 
     uint32_t last_file_idx = TT_INVALID_ROLLUP_INDEX;
-    RollupDataFile *data_file = metric->get_rollup_data_file();
-    PThread_Lock lock(data_file->get_lock());
-
-    if (rollup != RollupType::RU_NONE)
-    {
-        lock.lock_for_read();
-        data_file->ensure_open(true);
-    }
 
     while (! pq.empty())
     {
@@ -2008,36 +1857,15 @@ Tsdb::query_for_data_no_lock(MetricId mid, TimeRange& range, std::vector<QueryTa
             last_file_idx = file_idx;
         }
 
-        if (rollup != RollupType::RU_NONE)
-        {
-            bool ok = query_rollup_no_lock(data_file, task, rollup);
-
-            if (! ok)
-            {
-                // remap
-                lock.unlock();
-                lock.lock_for_write();
-                data_file->remap();
-                lock.unlock();
-                lock.lock_for_read();
-
-                ok = query_rollup_no_lock(data_file, task, rollup);
-                if (! ok) continue;
-            }
-        }
-        else
-            query_for_data_no_lock(mid, task);
+        query_for_data_no_lock(mid, task);
         task->get_indices(file_or_rollup_idx, header_idx);
 
-        if (! get_out_of_order(task->get_ts_id()) && (rollup == RollupType::RU_NONE))
+        if (! get_out_of_order(task->get_ts_id()))
             task->merge_data();
 
         if (file_or_rollup_idx != TT_INVALID_ROLLUP_INDEX && header_idx != TT_INVALID_HEADER_INDEX)
             pq.push(task);
     }
-
-    if (rollup != RollupType::RU_NONE)
-        lock.unlock();
 
     if (compact)
         m_index_file.close();
@@ -2111,6 +1939,8 @@ Tsdb::shutdown()
         //WriteLock guard(tsdb->m_lock);
         std::lock_guard<std::mutex> guard(tsdb->m_lock);
         tsdb->flush(true);
+        std::string dir = get_tsdb_dir_name(tsdb->m_time_range);
+        tsdb->write_config(dir);
         //for (DataFile *file: tsdb->m_data_files) file->close();
         //for (HeaderFile *file: tsdb->m_header_files) file->close();
         for (auto metric: tsdb->m_metrics)
@@ -2158,11 +1988,6 @@ Tsdb::inc_ref_count()
 Timestamp
 Tsdb::get_last_tstamp(MetricId mid, TimeSeriesId tid)
 {
-    // returning TT_INVALID_TIMESTAMP will treat future dps as out of order,
-    // which in turn will invalidate rollup data.
-    if (is_rolled_up())
-        return TT_INVALID_TIMESTAMP;
-
     Timestamp tstamp = 0;
     FileIndex fidx, file_idx;
     HeaderIndex hidx, header_idx;
@@ -2174,6 +1999,11 @@ Tsdb::get_last_tstamp(MetricId mid, TimeSeriesId tid)
 
     //ReadLock guard(m_lock);
     std::lock_guard<std::mutex> guard(m_lock);
+
+    // returning TT_INVALID_TIMESTAMP will treat future dps as out of order,
+    // which in turn will invalidate rollup data.
+    if (is_rolled_up())
+        return TT_INVALID_TIMESTAMP;
 
     m_index_file.ensure_open(false);
     m_index_file.get_indices2(tid, fidx, hidx);
@@ -2241,6 +2071,37 @@ Tsdb::get_last_tstamp(MetricId mid, TimeSeriesId tid)
 }
 
 bool
+Tsdb::has_daily_rollup()
+{
+    std::lock_guard<std::mutex> guard(m_lock);
+    return ((m_mode & TSDB_MODE_ROLLED_UP) != 0);
+}
+
+// If this returns true, rollup data is definitely usable;
+// Otherwise you need to call can_use_rollup(TimeSeriesId tid, bool level2)
+// for the specific TimeSeries to determine if rollup data is usable or not.
+bool
+Tsdb::can_use_rollup(bool level2)
+{
+    std::lock_guard<std::mutex> guard(m_lock);
+
+    if (level2)
+        return ((m_mode & TSDB_MODE_ROLLED_UP) != 0) &&
+               ((m_mode & TSDB_MODE_OUT_OF_ORDER) == 0);
+    else
+        return ((m_mode & TSDB_MODE_OUT_OF_ORDER) == 0);
+}
+
+bool
+Tsdb::can_use_rollup(TimeSeriesId tid)
+{
+    //ASSERT((m_mode & TSDB_MODE_OUT_OF_ORDER) != 0);
+    std::lock_guard<std::mutex> guard(m_lock);
+    m_index_file.ensure_open(true);
+    return m_index_file.get_out_of_order2(tid);
+}
+
+bool
 Tsdb::get_out_of_order(TimeSeriesId tid)
 {
     return m_index_file.get_out_of_order(tid);
@@ -2252,6 +2113,28 @@ Tsdb::set_out_of_order(TimeSeriesId tid, bool ooo)
     std::lock_guard<std::mutex> guard(m_lock);
     m_index_file.ensure_open(false);
     m_index_file.set_out_of_order(tid, ooo);
+}
+
+// apply to rollup data only
+bool
+Tsdb::get_out_of_order2(TimeSeriesId tid)
+{
+    return m_index_file.get_out_of_order2(tid);
+}
+
+// apply to rollup data only
+void
+Tsdb::set_out_of_order2(TimeSeriesId tid, bool ooo)
+{
+    std::lock_guard<std::mutex> guard(m_lock);
+
+    m_index_file.ensure_open(false);
+    m_index_file.set_out_of_order2(tid, ooo);
+
+    if (ooo)
+        m_mode |= TSDB_MODE_OUT_OF_ORDER;
+    else
+        m_mode &= ~TSDB_MODE_OUT_OF_ORDER;
 }
 
 // this is only called when writing data points
@@ -3024,11 +2907,20 @@ Tsdb::init()
     PartitionManager::init();
     TimeSeries::init();
 
+    if (Config::inst()->exists(CFG_TSDB_ROTATION_FREQUENCY))
+        Logger::warn("%s config ignored, using 1d", CFG_TSDB_ROTATION_FREQUENCY);
+
+    tsdb_rotation_freq = 24 * 3600L;    // 1d
+    if (g_tstamp_resolution_ms)
+        tsdb_rotation_freq *= 1000L;
+
+/** for now we only support tsdb.rotation.frequency = 1d
     tsdb_rotation_freq =
         Config::inst()->get_time(CFG_TSDB_ROTATION_FREQUENCY, TimeUnit::SEC, CFG_TSDB_ROTATION_FREQUENCY_DEF);
     if (g_tstamp_resolution_ms)
         tsdb_rotation_freq *= 1000L;
     if (tsdb_rotation_freq < 1) tsdb_rotation_freq = 1;
+**/
 
     // check if we have enough disk space
     unsigned long page_count =
@@ -3107,7 +2999,7 @@ Tsdb::get_tsdb_dir_name(const TimeRange& range, const char *suffix)
 {
     time_t sec = range.get_from_sec();
     struct tm timeinfo;
-    localtime_r(&sec, &timeinfo);
+    gmtime_r(&sec, &timeinfo);
     char buff[PATH_MAX];
     snprintf(buff, sizeof(buff), "%s/%d/%02d/%" PRIu64 ".%" PRIu64 "%s",
         Config::get_data_dir().c_str(),
@@ -3309,10 +3201,10 @@ Tsdb::rotate(TaskData& data)
     {
         Timestamp archive_threshold =
             Config::inst()->get_time(CFG_TSDB_ARCHIVE_THRESHOLD, TimeUnit::DAY, CFG_TSDB_ARCHIVE_THRESHOLD_DEF);
-        Timestamp rotation_freq =
-            Config::inst()->get_time(CFG_TSDB_ROTATION_FREQUENCY, TimeUnit::DAY, CFG_TSDB_ROTATION_FREQUENCY_DEF);
+        Timestamp rotation_freq = 1;    // force to use 1d
+            //Config::inst()->get_time(CFG_TSDB_ROTATION_FREQUENCY, TimeUnit::DAY, CFG_TSDB_ROTATION_FREQUENCY_DEF);
 
-        if (rotation_freq < 1) rotation_freq = 1;
+        //if (rotation_freq < 1) rotation_freq = 1;
         uint64_t days = archive_threshold / rotation_freq;
 
         if (days > 1)
@@ -3374,6 +3266,8 @@ Tsdb::rotate(TaskData& data)
 
     if (Config::inst()->exists(CFG_TSDB_RETENTION_THRESHOLD))
         purge_oldest(Config::inst()->get_int(CFG_TSDB_RETENTION_THRESHOLD));
+
+    RollupManager::rotate();
 
     return false;
 }
@@ -3665,134 +3559,6 @@ Tsdb::compact2()
     }
 }
 
-bool
-Tsdb::rollup(TaskData& data)
-{
-    // called from scheduled task? if so, enforce off-hour rule;
-    if ((data.integer == 0) && ! is_off_hour()) return false;
-
-    Meter meter(METRIC_TICKTOCK_TSDB_ROLLUP_MS);
-    Tsdb *tsdb = nullptr;
-    Timestamp rollup_threshold =
-        Config::inst()->get_time(CFG_TSDB_ROLLUP_THRESHOLD, TimeUnit::SEC, CFG_TSDB_ROLLUP_THRESHOLD_DEF);
-
-    Logger::info("[rollup] Finding tsdbs to rollup...");
-    rollup_threshold = ts_now_sec() - rollup_threshold;
-
-    // Go through all the Tsdbs, from the oldest to the newest,
-    // to find the first not-rolled-up Tsdb to rollup.
-    {
-        PThread_ReadLock guard(&m_tsdb_lock);
-
-        for (auto it = m_tsdbs.begin(); it != m_tsdbs.end(); it++)
-        {
-            if (! (*it)->get_time_range().older_than_sec(rollup_threshold))
-                break;
-
-            std::lock_guard<std::mutex> guard((*it)->m_lock);
-            //WriteLock guard((*it)->m_lock);
-
-            // also make sure it's not readable nor writable while we are rolling up
-            //if ((*it)->m_mode & (TSDB_MODE_COMPACTED | TSDB_MODE_READ_WRITE))
-            if ((*it)->is_rolled_up())
-            {
-                Logger::debug("[rollup] %T is already rolled up, ref-count = %d", (*it), (*it)->m_ref_count);
-                continue;
-            }
-            else if (((*it)->m_mode & TSDB_MODE_READ_WRITE) && (data.integer == 0))
-            {
-                Logger::debug("[rollup] %T is still being accessed, ref-count = %d", (*it), (*it)->m_ref_count);
-                continue;
-            }
-            else if ((*it)->m_ref_count > 0)
-            {
-                Logger::debug("[rollup] ref-count of %T is not zero: %d", (*it), (*it)->m_ref_count);
-                continue;
-            }
-
-            tsdb = *it;
-            break;
-        }
-    }
-
-    data.integer = 0;
-
-    if (tsdb != nullptr)
-    {
-        //std::lock_guard<std::mutex> guard(tsdb->m_lock);
-        //WriteLock guard(tsdb->m_lock);
-
-        tsdb->inc_ref_count();
-
-        if (tsdb->m_ref_count <= 1)
-        {
-            TimeRange range = tsdb->get_time_range();
-
-            tsdb->m_index_file.ensure_open(false);
-            Logger::info("[rollup] Found this tsdb to rollup: %T", tsdb);
-
-            // perform rollup
-            try
-            {
-                bool success = true;
-                int i = 0;
-                size_t size = tsdb->m_metrics.size();
-                Timestamp delay_ms =
-                    Config::inst()->get_time(CFG_TSDB_ROLLUP_DELAY, TimeUnit::MS, CFG_TSDB_ROLLUP_DELAY_DEF);
-
-                //for (auto metric: tsdb->m_metrics)
-                while (size > 0)
-                {
-                    Metric *metric = tsdb->m_metrics[i];
-                    ASSERT(metric != nullptr);
-
-                    if (! metric->rollup(&tsdb->m_index_file, tsdb->get_rollup_entries()))
-                    {
-                        success = false;
-                        Logger::debug("[rollup] Metric::rollup(%u) failed", metric->get_id());
-                        break;
-                    }
-
-                    if (size <= ++i)
-                        break;
-                    std::this_thread::sleep_for(std::chrono::milliseconds(delay_ms/size));
-                }
-
-                if (success)
-                {
-                    // mark it as rolled-up
-                    std::lock_guard<std::mutex> guard(tsdb->m_lock);
-                    tsdb->m_mode |= TSDB_MODE_ROLLED_UP;
-                    tsdb->add_config("rolled_up", "true");
-                    data.integer = 1;
-                    Logger::info("[rollup] 1 Tsdb rolled-up");
-                }
-            }
-            catch (const std::exception& ex)
-            {
-                Logger::error("[rollup] rollup failed: %s", ex.what());
-            }
-            catch (...)
-            {
-                Logger::error("[rollup] rollup failed for unknown reasons");
-            }
-        }
-        else
-        {
-            Logger::debug("[rollup] Tsdb busy, not rolling up. ref = %d", tsdb->m_ref_count);
-        }
-
-        tsdb->m_mode |= TSDB_MODE_READ; // allowing rotate() to archive it
-        tsdb->dec_ref_count();
-    }
-    else
-    {
-        Logger::info("[rollup] Did not find any appropriate Tsdb to rollup.");
-    }
-
-    return false;
-}
-
 void
 Tsdb::write_to_compacted(MetricId mid, QuerySuperTask& super_task, Tsdb *compacted, PageSize& next_size)
 {
@@ -3828,6 +3594,144 @@ Tsdb::write_to_compacted(MetricId mid, QuerySuperTask& super_task, Tsdb *compact
 
         task->recycle();    // release memory
     }
+}
+
+bool
+Tsdb::rollup(TaskData& data)
+{
+    // called from scheduled task? if so, enforce off-hour rule;
+    if ((data.integer == 0) && ! is_off_hour()) return false;
+    data.integer = 0;
+
+    Tsdb *tsdb = nullptr;
+    Logger::info("[rollup] Finding tsdbs to rollup...");
+
+    // Go through all the Tsdbs, from the oldest to the newest,
+    // to find the first not-yet-rolled-up Tsdb to rollup.
+    {
+        PThread_ReadLock guard(&m_tsdb_lock);
+
+        for (auto it = m_tsdbs.begin(); it != m_tsdbs.end(); it++)
+        {
+            std::lock_guard<std::mutex> guard((*it)->m_lock);
+            //WriteLock guard((*it)->m_lock);
+
+            if ((*it)->is_rolled_up())
+            {
+                Logger::info("[rollup] %T is already rolled up, ref-count = %d", (*it), (*it)->m_ref_count);
+                continue;
+            }
+            else if (((*it)->m_mode & TSDB_MODE_READ_WRITE) && (data.integer == 0))
+            {
+                Logger::info("[rollup] %T is still being accessed, ref-count = %d", (*it), (*it)->m_ref_count);
+                break;
+            }
+            else if ((*it)->m_ref_count > 0)
+            {
+                Logger::info("[rollup] ref-count of %T is not zero: %d", (*it), (*it)->m_ref_count);
+                break;
+            }
+
+            tsdb = *it;
+            break;
+        }
+    }
+
+    TimeRange month_range;
+    std::vector<Tsdb*> tsdbs;
+
+    if (tsdb != nullptr)
+    {
+        Logger::info("[rollup] looking into %T", tsdb);
+
+        Timestamp now_sec = ts_now_sec();
+        Timestamp tstamp = tsdb->get_time_range().get_from_sec();
+        std::time_t begin = begin_month(tstamp);
+        std::time_t end = end_month(tstamp);
+        Timestamp threshold =
+            Config::inst()->get_time(CFG_TSDB_ROLLUP_THRESHOLD, TimeUnit::SEC, CFG_TSDB_ROLLUP_THRESHOLD_DEF);
+
+        // is it the current month?
+        if ((end <= begin_month(now_sec)) && (threshold < (now_sec - end)))
+        {
+            // get all the Tsdbs in this month
+            TimeRange range(validate_resolution(begin), validate_resolution(end));
+            Tsdb::insts(range, tsdbs);
+
+            // make sure none of the Tsdbs are in use
+            bool in_use = false;
+
+            for (auto tsdb: tsdbs)
+            {
+                if (tsdb->m_ref_count > 1)
+                {
+                    in_use = true;
+                    break;
+                }
+            }
+
+            if (in_use)
+            {
+                for (auto tsdb: tsdbs)
+                    tsdb->dec_ref_count();
+                tsdbs.clear();
+            }
+            else
+            {
+                month_range.init(begin, end);
+                Logger::info("[rollup] range=%T, tsdb-count=%lu", &month_range, tsdbs.size());
+            }
+        }
+        else
+            Logger::info("[rollup] end=%lu, now=%lu, now_sec=%lu, threshold=%lu", end, begin_month(now_sec), now_sec, threshold);
+    }
+
+    if (! tsdbs.empty())
+    {
+        int bucket_count =
+            Config::inst()->get_int(CFG_TSDB_ROLLUP_BUCKETS,CFG_TSDB_ROLLUP_BUCKETS_DEF);
+        int pause =
+            Config::inst()->get_time(CFG_TSDB_ROLLUP_PAUSE,TimeUnit::SEC,CFG_TSDB_ROLLUP_PAUSE_DEF);
+
+        for (int bucket = 0; bucket < bucket_count; bucket++)
+        {
+            RollupDataFile *data_file_1h =
+                RollupManager::get_data_file_by_bucket_1h(bucket, month_range.get_from());
+
+            if (data_file_1h == nullptr)
+                continue;
+
+            std::unordered_map<TimeSeriesId,std::vector<struct rollup_entry_ext>> data;
+            data_file_1h->query(data);
+            data_file_1h->dec_ref_count();
+
+            RollupDataFile *data_file_1d =
+                RollupManager::get_or_create_data_file_by_bucket_1d(bucket, month_range.get_from());
+            ASSERT(data_file_1d != nullptr);
+            data_file_1d->add_data_points(data);
+            data_file_1d->dec_ref_count();
+
+            if (pause > 0)
+                std::this_thread::sleep_for(std::chrono::seconds(pause));
+        }
+
+        data.integer = tsdbs.size();
+
+        for (auto tsdb: tsdbs)
+        {
+            std::lock_guard<std::mutex> guard(tsdb->m_lock);
+            tsdb->m_mode |= TSDB_MODE_ROLLED_UP;
+            tsdb->dec_ref_count_no_lock();
+        }
+
+        Logger::info("[rollup] rolled up %d Tsdbs.", data.integer);
+    }
+    else
+    {
+        Logger::info("[rollup] Did not find any appropriate Tsdb to rollup.");
+    }
+
+    return false;
 }
 
 void

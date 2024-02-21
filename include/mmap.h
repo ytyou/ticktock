@@ -20,6 +20,7 @@
 
 #include <cstdio>
 #include <mutex>
+#include <unordered_map>
 #include "lock.h"
 #include "range.h"
 #include "type.h"
@@ -31,6 +32,7 @@ namespace tt
 
 
 class Tsdb;
+class QueryTask;
 class RollupDataFile;
 
 
@@ -84,7 +86,6 @@ struct __attribute__ ((__packed__)) index_entry
     HeaderIndex header_index;   // points to the first header
     FileIndex file_index2;      // points to the second header
     HeaderIndex header_index2;  // points to the second header
-    RollupIndex rollup_index;   // index of rollup-index
 };
 
 
@@ -98,11 +99,13 @@ public:
     bool set_indices2(TimeSeriesId id, FileIndex file_index, HeaderIndex page_index);
     void get_indices(TimeSeriesId id, FileIndex& file_index, HeaderIndex& page_index);
     void get_indices2(TimeSeriesId id, FileIndex& file_index, HeaderIndex& page_index);
-    void set_rollup_index(TimeSeriesId tid, RollupIndex idx);
-    RollupIndex get_rollup_index(TimeSeriesId tid);
 
     bool get_out_of_order(TimeSeriesId id);
     void set_out_of_order(TimeSeriesId id, bool ooo);
+
+    // for rollup data
+    bool get_out_of_order2(TimeSeriesId id);
+    void set_out_of_order2(TimeSeriesId id, bool ooo);
 
 private:
     bool expand(off_t new_len);
@@ -182,6 +185,7 @@ private:
 };
 
 
+#if 0
 /* The format of this file is just series of entries of
  * <TimeSeriesId,RollupIndex>. They will not be used for
  * query until a background job transform it into
@@ -267,10 +271,12 @@ private:
     FILE *m_file;
     RollupIndex m_header_count;
 };
+#endif
 
 
 struct __attribute__ ((__packed__)) rollup_entry
 {
+    TimeSeriesId tid;
     uint32_t cnt;
     double min;
     double max;
@@ -281,39 +287,97 @@ struct __attribute__ ((__packed__)) rollup_entry
 // Used for shutdown/restart only
 struct __attribute__ ((__packed__)) rollup_entry_ext
 {
-    Timestamp tstamp;
+    TimeSeriesId tid;
     uint32_t cnt;
     double min;
     double max;
     double sum;
+    Timestamp tstamp;   // this must be the last entry
+
+    rollup_entry_ext() :
+        tid(TT_INVALID_TIME_SERIES_ID),
+        cnt(0),
+        min(0.0),
+        max(0.0),
+        sum(0.0),
+        tstamp(TT_INVALID_TIMESTAMP)
+    {
+    }
+
+    rollup_entry_ext(struct rollup_entry *entry) :
+        tid(entry->tid),
+        cnt(entry->cnt),
+        min(entry->min),
+        max(entry->max),
+        sum(entry->sum),
+        tstamp(TT_INVALID_TIMESTAMP)
+    {
+    }
 };
 
 
-class RollupDataFile : public MmapFile
+struct __attribute__ ((__packed__)) rollup_append_entry
+{
+    uint32_t cnt;
+    double min;
+    double max;
+    double sum;
+    Timestamp tstamp;
+};
+
+
+class RollupDataFile
 {
 public:
-    RollupDataFile(const std::string& file_name);
+    RollupDataFile(int bucket, Timestamp tstamp);   // create 1d data file
+    RollupDataFile(const std::string& name, Timestamp begin);
+    RollupDataFile(MetricId mid, Timestamp begin, bool monthly);
     ~RollupDataFile();
 
-    void open(bool read_only) override;
-    void close() override;
-    bool is_open(bool for_read) const override;
-    inline pthread_rwlock_t *get_lock() { return &m_lock; }
+    void open(bool for_read);
+    void close();
+    bool close_if_idle(Timestamp threshold, Timestamp now);
+    bool is_open(bool for_read) const;
+    inline off_t size() const { return m_size; }
 
-    uint32_t add_data_point(uint32_t cnt, double min, double max, double sum);
-    uint32_t add_data_point(Timestamp tstamp, uint32_t cnt, double min, double max, double sum);    // called during shutdown
-    bool query(RollupIndex idx, uint32_t& cnt, double& min, double& max, double& sum);
-    bool query(RollupIndex idx, Timestamp& tstamp, uint32_t& cnt, double& min, double& max, double& sum);   // called during restart
+    inline bool empty() const { return (m_index == 0) && !file_exists(m_name); }
+    inline void remove() { rm_file(m_name); }
 
-    inline Timestamp get_last_read() const { return m_last_read; }
-    inline Timestamp get_last_write() const { return m_last_write; }
+    void add_data_point(TimeSeriesId tid, uint32_t cnt, double min, double max, double sum);
+    void add_data_point(TimeSeriesId tid, Timestamp tstamp, uint32_t cnt, double min, double max, double sum);  // called during shutdown
+    void add_data_points(std::unordered_map<TimeSeriesId,std::vector<struct rollup_entry_ext>>& data);
+    void query(const TimeRange& range, std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupType rollup);  // query hourly rollup
+    void query2(const TimeRange& range, std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupType rollup); // query daily rollup
+    // used by Tsdb::rollup() for offline processing
+    void query(const TimeRange& range, std::unordered_map<TimeSeriesId,struct rollup_entry_ext>& map);
+    void query_ext(const TimeRange& range, std::unordered_map<TimeSeriesId,struct rollup_entry_ext>& map);
+    // used by Tsdb::rollup()
+    void query(std::unordered_map<TimeSeriesId,std::vector<struct rollup_entry_ext>>& data);
+
+    void dec_ref_count();
+    void dec_ref_count_no_lock() { m_ref_count--; }
+    void inc_ref_count();
+
+    static std::string get_name_by_mid_1h(MetricId mid, Timestamp tstamp, bool create);
+    static std::string get_name_by_bucket_1h(int bucket, Timestamp tstamp, bool create);
+    static std::string get_name_by_mid_1d(MetricId mid, Timestamp tstamp, bool create);
+    static std::string get_name_by_bucket_1d(int bucket, Timestamp tstamp, bool create);
 
 private:
+    void flush();
+    int query_entry(const TimeRange& range, struct rollup_entry *entry, std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupType rollup);
+
+    std::string m_name;
     FILE *m_file;
-    Timestamp m_last_read;
-    Timestamp m_last_write;
-    uint32_t m_entry_index;
-    pthread_rwlock_t m_lock;
+    Timestamp m_begin;
+    int m_index;    // index of m_buff[]
+    char m_buff[4096];
+    Timestamp m_last_access;
+    off_t m_size;
+    std::mutex m_lock;
+    int m_ref_count;        // prevent unload when in use
+    bool m_monthly;         // true: monthly; false: annually
+    bool m_for_read;
 };
 
 

@@ -18,6 +18,8 @@
 
 #pragma once
 
+#include <queue>
+#include <unordered_map>
 #include "dp.h"
 #include "mmap.h"
 #include "type.h"
@@ -27,18 +29,8 @@ namespace tt
 {
 
 
+class QueryTask;
 class Tsdb;
-
-
-enum RollupType : unsigned char
-{
-    RU_NONE = 0,
-    RU_AVG = 1,
-    RU_CNT = 2,
-    RU_MAX = 3,
-    RU_MIN = 4,
-    RU_SUM = 5
-};
 
 
 class __attribute__ ((__packed__)) RollupManager
@@ -49,8 +41,13 @@ public:
     RollupManager(Timestamp tstmap, uint32_t cnt, double min, double max, double sum);
     ~RollupManager();
 
+    void copy_from(const struct rollup_entry_ext& entry);
     void copy_from(const RollupManager& other);
     RollupManager& operator=(const RollupManager& other);
+
+    // save (restore) to (from) append log (WAL)
+    void append(FILE *file);
+    void restore(struct rollup_append_entry *entry);
 
     static void init();
     static void shutdown();
@@ -60,25 +57,48 @@ public:
     void flush(MetricId mid, TimeSeriesId tid);
     void close(TimeSeriesId tid);   // called during TT shutdown
 
-    inline Tsdb *get_tsdb() { return m_tsdb; }
     inline Timestamp get_tstamp() const { return m_tstamp; }
 
     // return true if data-point found; false if no data
+    bool get(struct rollup_entry_ext& entry);
     bool query(RollupType type, DataPointPair& dp);
 
+    static void add_data_file_size(off_t size);
+    static off_t get_rollup_data_file_size(bool monthly);
+    static int get_rollup_bucket(MetricId mid);
+    static RollupDataFile *get_data_file(MetricId mid, Timestamp tstamp);   // get monthly data files
+    static RollupDataFile *get_data_file2(MetricId mid, Timestamp tstamp);  // get annual data files
+    static RollupDataFile *get_data_file_by_bucket_1h(int bucket, Timestamp begin); // get monthly data files
+    static RollupDataFile *get_or_create_data_file(MetricId mid, Timestamp tstamp);   // get monthly data files
+    static RollupDataFile *get_or_create_data_file_by_bucket_1d(int bucket, Timestamp begin); // get annual data files
+    static void get_data_files_1h(MetricId mid, const TimeRange& range, std::vector<RollupDataFile*>& files);   // monthly
+    static void get_data_files_1d(MetricId mid, const TimeRange& range, std::vector<RollupDataFile*>& files);   // annual
+    static void query(MetricId mid, const TimeRange& range, std::vector<QueryTask*>& tasks, RollupType rollup);
+    static void query_no_lock(MetricId mid, const TimeRange& range, std::vector<QueryTask*>& tasks, RollupType rollup);
+    static void query(MetricId mid, const TimeRange& range, std::unordered_map<TimeSeriesId,struct rollup_entry_ext>& output);
+    static double query(struct rollup_entry *entry, RollupType type);
+    static void rotate();
+
 private:
-    Timestamp step_down(Timestamp tstamp);
+    static Timestamp step_down(Timestamp tstamp);
+    static RollupDataFile *get_data_file(MetricId mid, Timestamp tstamp, std::unordered_map<uint64_t, RollupDataFile*>& map, bool monthly);
+    static RollupDataFile *get_or_create_data_file(MetricId mid, Timestamp tstamp, std::unordered_map<uint64_t, RollupDataFile*>& map, bool monthly);
 
     uint32_t m_cnt;
     double m_min;
     double m_max;
     double m_sum;
     Timestamp m_tstamp;
-    Tsdb *m_tsdb;
 
-    // these 2 files are used during shutdown/restart of TT
-    static RollupHeaderTmpFile *m_backup_header_tmp_file;
-    static RollupDataFile *m_backup_data_file;
+    // used during shutdown/restart of TT
+    static RollupDataFile *m_wal_data_file;
+
+    static std::mutex m_lock;
+    static std::unordered_map<uint64_t, RollupDataFile*> m_data_files;  // monthly
+    static std::mutex m_lock2;
+    static std::unordered_map<uint64_t, RollupDataFile*> m_data_files2; // annually
+    static std::queue<off_t> m_sizes;   // sizes of 'recent' data files
+    static off_t m_size_hint;
 };
 
 

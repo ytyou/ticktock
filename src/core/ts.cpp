@@ -165,7 +165,7 @@ TimeSeries::cleanup()
 }
 
 void
-TimeSeries::restore(Tsdb *tsdb, MetricId mid, Timestamp tstamp, PageSize offset, uint8_t start, uint8_t *buff, bool is_ooo, FileIndex file_idx, HeaderIndex header_idx)
+TimeSeries::restore(Tsdb *tsdb, MetricId mid, Timestamp tstamp, PageSize offset, uint8_t start, uint8_t *buff, int size, bool is_ooo, FileIndex file_idx, HeaderIndex header_idx)
 {
     ASSERT(tsdb != nullptr);
 
@@ -180,6 +180,8 @@ TimeSeries::restore(Tsdb *tsdb, MetricId mid, Timestamp tstamp, PageSize offset,
         ASSERT(m_buff == nullptr);
         m_buff = new PageInMemory(mid, m_id, tsdb, false, file_idx, header_idx);
         m_buff->restore(tstamp, buff, offset, start);
+        ASSERT(sizeof(struct rollup_append_entry) <= size);
+        m_rollup.restore((struct rollup_append_entry*)&buff[size-sizeof(struct rollup_append_entry)]);
     }
 }
 
@@ -263,7 +265,11 @@ TimeSeries::append(MetricId mid, FILE *file)
     ASSERT(file != nullptr);
     //std::lock_guard<std::mutex> guard(m_lock);
     std::lock_guard<std::mutex> guard(m_locks[m_id % m_lock_count]);
-    if (m_buff != nullptr) m_buff->append(mid, m_id, file);
+    if (m_buff != nullptr)
+    {
+        m_buff->append(mid, m_id, file);
+        m_rollup.append(file);
+    }
     if (m_ooo_buff != nullptr) m_ooo_buff->append(mid, m_id, file);
 }
 
@@ -290,14 +296,18 @@ TimeSeries::add_data_point(MetricId mid, DataPoint& dp)
     else if ((in_range = m_buff->in_range(tstamp)) != 0)
     {
         is_ooo = (in_range <= 0);
-        m_buff->flush(mid, m_id);
 
-        if (m_ooo_buff != nullptr)
-            m_ooo_buff->update_indices(m_buff);
+        if (! is_ooo)
+        {
+            m_buff->flush(mid, m_id);
 
-        // reset the m_buff
-        Tsdb *tsdb = Tsdb::inst(tstamp, true);
-        m_buff->init(mid, m_id, tsdb, false);
+            if (m_ooo_buff != nullptr)
+                m_ooo_buff->update_indices(m_buff);
+
+            // reset the m_buff
+            Tsdb *tsdb = Tsdb::inst(tstamp, true);
+            m_buff->init(mid, m_id, tsdb, false);
+        }
     }
     else
     {
@@ -329,6 +339,8 @@ TimeSeries::add_data_point(MetricId mid, DataPoint& dp)
         ok = m_buff->add_data_point(tstamp, dp.get_value());
         ASSERT(ok);
     }
+
+    ASSERT(! m_buff->is_empty());
 
     // rollup
     m_rollup.add_data_point(m_buff->get_tsdb(), mid, m_id, dp);
@@ -380,6 +392,9 @@ TimeSeries::add_ooo_data_point(MetricId mid, DataPoint& dp)
         ok = m_ooo_buff->add_data_point(tstamp, dp.get_value());
         ASSERT(ok);
     }
+
+    // rollup
+    m_rollup.add_data_point(m_ooo_buff->get_tsdb(), mid, m_id, dp);
 
     return ok;
 }
@@ -442,29 +457,23 @@ TimeSeries::query_for_data(Tsdb *tsdb, TimeRange& range, std::vector<DataPointCo
 }
 
 void
-TimeSeries::query_for_rollup(Tsdb *tsdb, TimeRange& range, std::vector<DataPointContainer*>& data, RollupType rollup)
+TimeSeries::query_for_rollup(const TimeRange& range, QueryTask *qt, RollupType rollup, bool ms)
 {
-    ASSERT(tsdb != nullptr);
     ASSERT(rollup != RollupType::RU_NONE);
 
-    if ((m_rollup.get_tsdb() == tsdb) && (range.in_range(m_rollup.get_tstamp())))
+    Timestamp ts = m_rollup.get_tstamp();   // in seconds
+
+    if (is_ms(range.get_from()))
+        ts *= 1000;
+
+    if (range.in_range(ts) == 0)
     {
-        DataPointPair dp;
+        struct rollup_entry_ext entry;
 
-        if (m_rollup.query(rollup, dp))
+        if (m_rollup.get(entry))
         {
-            DataPointContainer *container;
-
-            if (data.empty())
-            {
-                container = (DataPointContainer*)
-                    MemoryManager::alloc_recyclable(RecyclableType::RT_DATA_POINT_CONTAINER);
-            }
-            else
-                container = data.back();
-
-            ASSERT(tsdb->get_time_range().in_range(dp.first) == 0);
-            container->add_data_point(dp.first, dp.second);
+            if (ms) entry.tstamp *= 1000;
+            qt->add_data_point(&entry, rollup);
         }
     }
 }
@@ -489,6 +498,13 @@ TimeSeries::archive(MetricId mid, Timestamp now_sec, Timestamp threshold_sec)
 
     if ((m_ooo_buff != nullptr) && (m_buff == nullptr))
         flush_no_lock(mid, true);
+}
+
+void
+TimeSeries::restore_rollup_mgr(const struct rollup_entry_ext& entry)
+{
+    ASSERT(entry.tid == m_id);
+    m_rollup.copy_from(entry);
 }
 
 

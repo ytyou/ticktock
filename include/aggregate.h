@@ -18,6 +18,7 @@
 
 #pragma once
 
+#include <cmath>
 #include <functional>
 #include <queue>
 #include "recycle.h"
@@ -32,6 +33,7 @@ namespace tt
 class QueryResults;
 
 
+#if 0
 typedef DataPointVector::iterator it_t;
 typedef std::pair<it_t,it_t> it_pair_t;
 
@@ -87,6 +89,7 @@ public:
 private:
     std::priority_queue<it_pair_t, std::vector<it_pair_t>, it_pair_greater> m_pq;
 };
+#endif
 
 
 // Base class of the Aggregators.
@@ -105,10 +108,14 @@ public:
 protected:
     Aggregator() {};
 
+    virtual void init() {}
+    virtual void add_data_point(DataPointPair& dp) {}
+    virtual bool has_data() { return false; }
+    virtual void add_aggregated(Timestamp ts, DataPointVector& dps) {}
+
 private:
     Aggregator(const Aggregator&) = delete;
-    virtual void merge(std::vector<std::reference_wrapper<DataPointVector>>& src, DataPointVector& dst)
-    { ASSERT(false); };     // should not call this
+    void merge(std::vector<std::reference_wrapper<DataPointVector>>& src, DataPointVector& dst);
 };
 
 
@@ -123,7 +130,15 @@ public:
 class AggregatorAvg : public Aggregator
 {
 protected:
-    void merge(std::vector<std::reference_wrapper<DataPointVector>>& src, DataPointVector& dst) override;
+    void init() override { m_count = 0; m_sum = 0.0; }
+    void add_data_point(DataPointPair& dp) override { m_count++; m_sum += dp.second; }
+    bool has_data() override { return m_count > 0; }
+    void add_aggregated(Timestamp ts, DataPointVector& dps) override
+    { dps.emplace_back(ts, m_sum/(double)m_count); }
+
+private:
+    int m_count;
+    double m_sum;
 };
 
 
@@ -146,7 +161,14 @@ private:
 class AggregatorCount : public Aggregator
 {
 protected:
-    void merge(std::vector<std::reference_wrapper<DataPointVector>>& src, DataPointVector& dst) override;
+    void init() override { m_count = 0; }
+    void add_data_point(DataPointPair& dp) override { m_count++; }
+    bool has_data() override { return m_count > 0; }
+    void add_aggregated(Timestamp ts, DataPointVector& dps) override
+    { dps.emplace_back(ts, (double)m_count); }
+
+private:
+    int m_count;
 };
 
 
@@ -156,21 +178,48 @@ public:
     static double stddev(const std::vector<double>& values);
 
 protected:
-    void merge(std::vector<std::reference_wrapper<DataPointVector>>& src, DataPointVector& dst) override;
+    void init() override { m_values.clear(); m_has_data = false; }
+    void add_data_point(DataPointPair& dp) override
+    { if (!std::isnan(dp.second)) m_values.push_back(dp.second); m_has_data = true; }
+    bool has_data() override { return m_has_data; }
+    void add_aggregated(Timestamp ts, DataPointVector& dps) override
+    { dps.emplace_back(ts, stddev(m_values)); }
+
+private:
+    std::vector<double> m_values;
+    bool m_has_data;
 };
 
 
 class AggregatorMax : public Aggregator
 {
 protected:
-    void merge(std::vector<std::reference_wrapper<DataPointVector>>& src, DataPointVector& dst) override;
+    void init() override { m_max = std::numeric_limits<double>::lowest(); m_has_data = false; }
+    void add_data_point(DataPointPair& dp) override
+    { m_max = std::max(m_max, dp.second); m_has_data = true; }
+    bool has_data() override { return m_has_data; }
+    void add_aggregated(Timestamp ts, DataPointVector& dps) override
+    { dps.emplace_back(ts, m_max); }
+
+private:
+    double m_max;
+    bool m_has_data;
 };
 
 
 class AggregatorMin : public Aggregator
 {
 protected:
-    void merge(std::vector<std::reference_wrapper<DataPointVector>>& src, DataPointVector& dst) override;
+    void init() override { m_min = std::numeric_limits<double>::max(); m_has_data = false; }
+    void add_data_point(DataPointPair& dp) override
+    { m_min = std::min(m_min, dp.second); m_has_data = true; }
+    bool has_data() override { return m_has_data; }
+    void add_aggregated(Timestamp ts, DataPointVector& dps) override
+    { dps.emplace_back(ts, m_min); }
+
+private:
+    double m_min;
+    bool m_has_data;
 };
 
 
@@ -178,22 +227,38 @@ class AggregatorPercentile : public Aggregator
 {
 public:
     void set_quantile(double quantile);
-    double percentile(const std::vector<double>& values) const;
+    double percentile(std::vector<double>& values) const;
 
 protected:
-    void merge(std::vector<std::reference_wrapper<DataPointVector>>& src, DataPointVector& dst) override;
+    void init() override { m_values.clear(); m_has_data = false; }
+    void add_data_point(DataPointPair& dp) override
+    { if (!std::isnan(dp.second)) m_values.push_back(dp.second); m_has_data = true; }
+    bool has_data() override { return m_has_data; }
+    void add_aggregated(Timestamp ts, DataPointVector& dps) override
+    { dps.emplace_back(ts, percentile(m_values)); }
 
 private:
     double index(int length) const;
 
     double m_quantile;
+    std::vector<double> m_values;
+    bool m_has_data;
 };
 
 
 class AggregatorSum : public Aggregator
 {
 protected:
-    void merge(std::vector<std::reference_wrapper<DataPointVector>>& src, DataPointVector& dst) override;
+    void init() override { m_sum = 0.0; m_has_data = false; }
+    void add_data_point(DataPointPair& dp) override
+    { m_sum += dp.second; m_has_data = true; }
+    bool has_data() override { return m_has_data; }
+    void add_aggregated(Timestamp ts, DataPointVector& dps) override
+    { dps.emplace_back(ts, m_sum); }
+
+private:
+    double m_sum;
+    bool m_has_data;
 };
 
 

@@ -65,6 +65,12 @@ extern double random(double from, double to);
 extern Timestamp ts_now();  // return ts in either ms or sec, depending on g_tstamp_resolution_ms
 extern Timestamp ts_now_ms();
 extern Timestamp ts_now_sec();
+extern std::time_t begin_month(int year, int month);    // return beginning of month time in UTC
+extern std::time_t begin_month(std::time_t ts);         // return beginning of month time in UTC
+extern std::time_t end_month(std::time_t ts);           // return beginning of next month in UTC
+extern std::time_t begin_year(std::time_t ts);          // return beginning of year time in UTC
+extern void get_year_month(std::time_t ts, int& year, int& month);
+extern void get_day_range(std::time_t ts, std::time_t& begin, std::time_t& end);    // all times are in secs
 extern void ts_now(char *buff, const size_t size);
 extern void ts_now(time_t& sec, unsigned int& msec);
 extern bool is_ms(Timestamp tstamp);
@@ -103,6 +109,9 @@ extern bool dp_pair_less(const DataPointPair& lhs, const DataPointPair& rhs);
 extern int max_subset_4k(int16_t set[], size_t size, std::vector<int>& subset); // 'subset' is the output
 
 extern bool is_aligned(uintptr_t ptr, unsigned long align);
+extern void set_rollup_level(RollupType& rollup, bool level2);
+extern bool is_rollup_level2(RollupType rollup);
+extern Timestamp step_down(Timestamp ts, Timestamp interval);
 
 extern bool file_exists(const std::string& full_path);
 extern void get_all_files(const std::string& pattern, std::vector<std::string>& file_names);

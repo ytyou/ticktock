@@ -50,6 +50,7 @@ public:
 
     virtual RollupType get_rollup_type() const = 0;
     virtual void add_data_point(DataPointPair& dp, DataPointVector& dps) = 0;
+    virtual void add_data_point(struct rollup_entry_ext *entry, RollupType rollup, DataPointVector& dps) {};
     virtual void add_last_point(DataPointVector& dps) {};
     void fill_if_needed(DataPointVector& dps);
 
@@ -102,8 +103,9 @@ protected:
 class DownsamplerAvg : public Downsampler
 {
 public:
-    void add_data_point(DataPointPair& dp, DataPointVector& dps);
-    void add_last_point(DataPointVector& dps);
+    void add_data_point(DataPointPair& dp, DataPointVector& dps) override;
+    void add_data_point(struct rollup_entry_ext *entry, RollupType rollup, DataPointVector& dps) override;
+    void add_last_point(DataPointVector& dps) override;
 
     RollupType get_rollup_type() const override { return RollupType::RU_AVG; }
 
@@ -123,7 +125,8 @@ class DownsamplerCount : public Downsampler
 {
 public:
     RollupType get_rollup_type() const override { return RollupType::RU_CNT; }
-    void add_data_point(DataPointPair& dp, DataPointVector& dps);
+    void add_data_point(DataPointPair& dp, DataPointVector& dps) override;
+    void add_data_point(struct rollup_entry_ext *entry, RollupType rollup, DataPointVector& dps) override;
 };
 
 
@@ -131,8 +134,8 @@ class DownsamplerDev : public Downsampler
 {
 public:
     RollupType get_rollup_type() const override { return RollupType::RU_NONE; }
-    void add_data_point(DataPointPair& dp, DataPointVector& dps);
-    void add_last_point(DataPointVector& dps);
+    void add_data_point(DataPointPair& dp, DataPointVector& dps) override;
+    void add_last_point(DataPointVector& dps) override;
 
     inline virtual void init()
     {
@@ -156,7 +159,7 @@ class DownsamplerFirst : public Downsampler
 {
 public:
     RollupType get_rollup_type() const override { return RollupType::RU_NONE; }
-    void add_data_point(DataPointPair& dp, DataPointVector& dps);
+    void add_data_point(DataPointPair& dp, DataPointVector& dps) override;
 };
 
 
@@ -164,7 +167,7 @@ class DownsamplerLast : public Downsampler
 {
 public:
     RollupType get_rollup_type() const override { return RollupType::RU_NONE; }
-    void add_data_point(DataPointPair& dp, DataPointVector& dps);
+    void add_data_point(DataPointPair& dp, DataPointVector& dps) override;
 };
 
 
@@ -172,7 +175,8 @@ class DownsamplerMax : public Downsampler
 {
 public:
     RollupType get_rollup_type() const override { return RollupType::RU_MAX; }
-    void add_data_point(DataPointPair& dp, DataPointVector& dps);
+    void add_data_point(DataPointPair& dp, DataPointVector& dps) override;
+    void add_data_point(struct rollup_entry_ext *entry, RollupType rollup, DataPointVector& dps) override;
 };
 
 
@@ -180,7 +184,8 @@ class DownsamplerMin : public Downsampler
 {
 public:
     RollupType get_rollup_type() const override { return RollupType::RU_MIN; }
-    void add_data_point(DataPointPair& dp, DataPointVector& dps);
+    void add_data_point(DataPointPair& dp, DataPointVector& dps) override;
+    void add_data_point(struct rollup_entry_ext *entry, RollupType rollup, DataPointVector& dps) override;
 };
 
 
@@ -188,8 +193,8 @@ class DownsamplerPercentile : public Downsampler
 {
 public:
     RollupType get_rollup_type() const override { return RollupType::RU_NONE; }
-    void add_data_point(DataPointPair& dp, DataPointVector& dps);
-    void add_last_point(DataPointVector& dps);
+    void add_data_point(DataPointPair& dp, DataPointVector& dps) override;
+    void add_last_point(DataPointVector& dps) override;
 
     bool recycle();
     double calc_percentile();
@@ -214,7 +219,8 @@ class DownsamplerSum : public Downsampler
 {
 public:
     RollupType get_rollup_type() const override { return RollupType::RU_SUM; }
-    void add_data_point(DataPointPair& dp, DataPointVector& dps);
+    void add_data_point(DataPointPair& dp, DataPointVector& dps) override;
+    void add_data_point(struct rollup_entry_ext *entry, RollupType rollup, DataPointVector& dps) override;
 };
 
 

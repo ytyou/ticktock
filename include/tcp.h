@@ -62,7 +62,9 @@ class TcpListener;
 #define LISTENER0_COUNT     2
 
 
-class alignas(64) TcpConnection : public Recyclable
+// Arch Linux does not like 'alignas(64)'
+//class alignas(64) TcpConnection : public Recyclable
+class TcpConnection : public Recyclable
 {
 public:
     int fd; // socket file-descriptor

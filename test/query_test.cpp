@@ -218,7 +218,7 @@ QueryTests::downsample_tests()
 
     // test "0all-avg"
     results.clear();
-    query_with_downsample(metric, "0all-avg", dps[0].first, results);
+    query_with_downsample(metric, "0all-avg", start, results);
     CONFIRM(results.size() == 1);
     CONFIRM(avg == results[0].second);
 

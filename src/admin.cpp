@@ -79,6 +79,10 @@ Admin::http_post_api_admin_handler(HttpRequest& request, HttpResponse& response)
         {
             status = cmd_append(params, response);
         }
+        else if (strcmp(cmd, "cfg") == 0)
+        {
+            status = cmd_cfg(params, response);
+        }
         else if (strcmp(cmd, "compact") == 0)
         {
             status = cmd_compact(params, response);
@@ -156,6 +160,16 @@ Admin::cmd_append(KeyValuePair *params, HttpResponse& response)
     char buff[32];
     int len = snprintf(buff, sizeof(buff), "append log generated");
     response.init(200, HttpContentType::PLAIN, len, buff);
+    return true;
+}
+
+bool
+Admin::cmd_cfg(KeyValuePair *params, HttpResponse& response)
+{
+    for (KeyValuePair *kv = params; kv != nullptr; kv = kv->next())
+        Config::inst()->set_value(kv->m_key, kv->m_value);
+
+    response.init(200);
     return true;
 }
 
@@ -238,7 +252,11 @@ Admin::cmd_rollup(KeyValuePair *params, HttpResponse& response)
     data.integer = 1;   // indicate this is from interactive cmd (vs. scheduled task)
     Tsdb::rollup(data);
     char buff[32];
-    int len = snprintf(buff, sizeof(buff), "%d tsdbs rolled-up", data.integer);
+    int len;
+    if (data.integer > 0)
+        len = snprintf(buff, sizeof(buff), "%d tsdbs rolled-up", data.integer);
+    else
+        len = snprintf(buff, sizeof(buff), "no tsdb was rolled-up");
     response.init(200, HttpContentType::PLAIN, len, buff);
     return true;
 }

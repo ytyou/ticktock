@@ -45,11 +45,29 @@ void
 Config::init()
 {
     m_instance = new Config(g_config_file);
-    m_instance->load();
+    m_instance->load(true);
 
     g_tstamp_resolution_ms = ts_resolution_ms();
     g_cluster_enabled = m_instance->exists(CFG_CLUSTER_SERVERS);
     g_self_meter_enabled = m_instance->get_bool(CFG_TSDB_SELF_METER_ENABLED, CFG_TSDB_SELF_METER_ENABLED_DEF);
+
+    // Load config in data directory to override anything in regular config or overrides.
+    // These are the settings that can't be changed once TT starts running.
+    Config cfg(get_data_dir() + "/config");
+
+    if (file_exists(cfg.m_file_name))
+        cfg.load(false);
+
+    if (cfg.exists(CFG_TSDB_ROLLUP_BUCKETS))
+    {
+        m_instance->set_value_no_lock(CFG_TSDB_ROLLUP_BUCKETS, cfg.get_str(CFG_TSDB_ROLLUP_BUCKETS));
+    }
+    else
+    {
+        cfg.set_value_no_lock(CFG_TSDB_ROLLUP_BUCKETS, std::to_string(CFG_TSDB_ROLLUP_BUCKETS_DEF));
+    }
+
+    cfg.persist();
 
     // schedule task to reload() periodically
     //if (Config::get_bool(CFG_CONFIG_RELOAD_ENABLED, CFG_CONFIG_RELOAD_ENABLED_DEF))
@@ -68,7 +86,7 @@ Config::Config(const std::string& file_name) :
 }
 
 void
-Config::load()
+Config::load(bool override)
 {
     std::lock_guard<std::mutex> guard(m_lock);
 
@@ -95,9 +113,12 @@ Config::load()
             set_value_no_lock(key, value);
         }
 
-        // let command-line options override config file
-        for (auto const& override: m_overrides)
-            set_value_no_lock(override.first, override.second->as_str());
+        if (override)
+        {
+            // let command-line options override config file
+            for (auto const& override: m_overrides)
+                set_value_no_lock(override.first, override.second->as_str());
+        }
     }
     catch (std::exception& ex)
     {
@@ -116,7 +137,7 @@ void
 Config::persist()
 {
     std::lock_guard<std::mutex> guard(m_lock);
-    std::fstream file(m_file_name, std::ios::out);
+    std::fstream file(m_file_name, std::ios::out | std::ios::trunc);
 
     file << "# ticktockdb.version = " << TT_MAJOR_VERSION << "." << TT_MINOR_VERSION << "." << TT_PATCH_VERSION << std::endl;
 
@@ -311,6 +332,12 @@ Config::get_data_dir()
 
     // use 'cwd'/data
     return g_working_dir + "/data";
+}
+
+std::string
+Config::get_wal_dir()
+{
+    return get_data_dir() + "/WAL";
 }
 
 std::string

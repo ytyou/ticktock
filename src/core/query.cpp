@@ -680,17 +680,22 @@ QueryTask::QueryTask()
 }
 
 void
-QueryTask::query_ts_data(Tsdb *tsdb, RollupType rollup)
+QueryTask::query_ts_data(Tsdb *tsdb)
 {
     ASSERT(m_ts != nullptr);
 
-    if (rollup != RollupType::RU_NONE)
-    {
-        m_has_ooo = false;
-        m_ts->query_for_rollup(tsdb, m_time_range, m_data, rollup);
-    }
-    else if (m_ts->query_for_data(tsdb, m_time_range, m_data))
+    if (m_ts->query_for_data(tsdb, m_time_range, m_data))
         m_has_ooo = true;
+}
+
+void
+QueryTask::query_ts_data(const TimeRange& range, RollupType rollup, bool ms)
+{
+    ASSERT(rollup != RollupType::RU_NONE);
+    ASSERT(m_ts != nullptr);
+
+    m_has_ooo = false;
+    m_ts->query_for_rollup(range, this, rollup, ms);
 }
 
 void
@@ -704,7 +709,6 @@ QueryTask::merge_data()
     for (DataPointContainer *container: m_data)
         MemoryManager::free_recyclable(container);
     m_data.clear();
-    m_rollup_entries.clear();
 }
 
 void
@@ -716,6 +720,53 @@ QueryTask::fill()
         MemoryManager::free_recyclable(m_downsampler);
         m_downsampler = nullptr;
     }
+}
+
+// add rolled-up data
+void
+QueryTask::add_data_point(struct rollup_entry_ext *entry, RollupType rollup)
+{
+    ASSERT(entry != nullptr);
+
+    if (m_downsampler == nullptr)
+    {
+        double val = RollupManager::query((struct rollup_entry*)entry, rollup);
+        m_dps.emplace_back((Timestamp)entry->tstamp, val);
+    }
+    else
+    {
+        m_downsampler->add_data_point(entry, rollup, m_dps);
+    }
+}
+
+void
+QueryTask::convert_to_ms()
+{
+    for (DataPointPair& dp: m_dps)
+        dp.first *= 1000;
+}
+
+void
+QueryTask::remove_dps(const TimeRange& range)
+{
+    for (auto it = m_dps.begin(); it != m_dps.end(); )
+    {
+        if (range.in_range(it->first) == 0)
+            it = m_dps.erase(it);
+        else
+            it++;
+    }
+
+    m_last_tstamp = TT_INVALID_TIMESTAMP;
+    m_downsampler->recycle();
+    m_sort_needed = true;
+}
+
+void
+QueryTask::sort_if_needed()
+{
+    if (m_sort_needed)
+        std::sort(m_dps.begin(), m_dps.end());
 }
 
 void
@@ -863,7 +914,7 @@ QueryTask::get_ts_id() const
 double
 QueryTask::get_max(int n) const
 {
-    double max = std::numeric_limits<double>::min();
+    double max = std::numeric_limits<double>::lowest();
 
     for (int i = m_dps.size()-1; i >= 0 && n > 0; i--, n--)
     {
@@ -917,10 +968,12 @@ QueryTask::init()
 {
     m_ts = nullptr;
     m_has_ooo = false;
+    m_sort_needed = false;
     m_file_index = TT_INVALID_FILE_INDEX;
     m_header_index = TT_INVALID_HEADER_INDEX;
     m_downsampler = nullptr;
     m_tstamp_from = 0;
+    m_last_tstamp = TT_INVALID_TIMESTAMP;
     ASSERT(m_data.empty());
 }
 
@@ -930,8 +983,6 @@ QueryTask::recycle()
     m_dps.clear();
     m_dps.shrink_to_fit();
     m_results.recycle();
-    m_rollup_entries.clear();
-    m_rollup_entries.shrink_to_fit();
     ASSERT(m_data.empty());
 
     m_ts = nullptr;
@@ -952,9 +1003,9 @@ QuerySuperTask::QuerySuperTask(TimeRange& range, const char* ds, bool ms, Rollup
     m_downsample(ds),
     m_compact(false),
     m_time_range(range),
-    m_rollup(rollup)
+    m_rollup(rollup),
+    m_metric_id(TT_INVALID_METRIC_ID)
 {
-    Tsdb::insts(m_time_range, m_tsdbs);
 }
 
 // this one is called by Tsdb::compact()
@@ -962,7 +1013,9 @@ QuerySuperTask::QuerySuperTask(Tsdb *tsdb) :
     m_ms(true),
     m_errno(0),
     m_downsample(nullptr),
-    m_time_range(tsdb->get_time_range())
+    m_metric_id(TT_INVALID_METRIC_ID),
+    m_time_range(tsdb->get_time_range()),
+    m_rollup(RollupUsage::RU_FALLBACK_RAW)
 {
     m_tsdbs.push_back(tsdb);
     m_compact = true;
@@ -1005,15 +1058,14 @@ QuerySuperTask::add_task(TimeSeries *ts)
 }
 
 RollupType
-QuerySuperTask::use_rollup(Tsdb *tsdb) const
+QuerySuperTask::use_rollup() const
 {
-    ASSERT(tsdb != nullptr);
     RollupType rollup = RollupType::RU_NONE;
 
     if ((m_rollup == RollupUsage::RU_UNKNOWN) || (m_rollup == RollupUsage::RU_RAW))
         return rollup;  // do not use rollup data
 
-    if (! m_tasks.empty() && tsdb->is_rolled_up() && !tsdb->is_crashed())
+    if (! m_tasks.empty())
     {
         auto task = m_tasks.front();
         Downsampler *downsampler = task->get_downsampler();
@@ -1021,26 +1073,43 @@ QuerySuperTask::use_rollup(Tsdb *tsdb) const
         if (downsampler != nullptr)
         {
             Timestamp downsample_interval = downsampler->get_interval();
-            Timestamp rollup_interval = tsdb->get_rollup_interval();    // always in sec
+            Timestamp rollup_interval = g_rollup_interval_1h;   // always in secs
+            Timestamp rollup_interval2 = g_rollup_interval_1d;  // always in secs
+            bool level2 = false;    // default to 'use rollup_interval' instead of rollup_interval2
 
-            if (g_tstamp_resolution_ms) rollup_interval *= 1000;
+            if (g_tstamp_resolution_ms)
+            {
+                rollup_interval *= 1000;
+                rollup_interval2 *= 1000;
+            }
 
             // TODO: config
+            if (rollup_interval2 <= downsample_interval)
+            {
+                level2 = true;
+                rollup_interval = rollup_interval2;     // use rollup_interval2
+            }
+
             if (rollup_interval <= downsample_interval)
             {
                 rollup = downsampler->get_rollup_type();
 
-                // round to nearest multiple of rollup_interval
-                Timestamp i = (downsample_interval / rollup_interval) * rollup_interval;
-
-                if ((i + rollup_interval - downsample_interval) < (downsample_interval - i))
-                    i += rollup_interval;
-
-                // update downsample interval to i
-                for (QueryTask *task : m_tasks)
+                if (rollup != RollupType::RU_NONE)
                 {
-                    downsampler = task->get_downsampler();
-                    downsampler->set_interval(i);
+                    set_rollup_level(rollup, level2);
+
+                    // round to nearest multiple of rollup_interval
+                    Timestamp i = (downsample_interval / rollup_interval) * rollup_interval;
+
+                    if ((i + rollup_interval - downsample_interval) < (downsample_interval - i))
+                        i += rollup_interval;
+
+                    // update downsample interval to i
+                    for (QueryTask *task : m_tasks)
+                    {
+                        downsampler = task->get_downsampler();
+                        downsampler->set_interval(i);
+                    }
                 }
             }
         }
@@ -1050,29 +1119,165 @@ QuerySuperTask::use_rollup(Tsdb *tsdb) const
 }
 
 void
+QuerySuperTask::query_raw(Tsdb *tsdb, std::vector<QueryTask*>& tasks)
+{
+    ASSERT(tsdb != nullptr);
+
+    tsdb->query_for_data(m_metric_id, m_time_range, tasks, m_compact);
+
+    for (QueryTask *task : tasks)
+    {
+        task->query_ts_data(tsdb);
+        task->merge_data();
+        task->set_tstamp_from(0);
+    }
+}
+
+void
+QuerySuperTask::query_rollup_hourly(const TimeRange& range, const std::vector<Tsdb*>& tsdbs, RollupType rollup)
+{
+    ASSERT(rollup != RollupType::RU_NONE);
+
+    set_rollup_level(rollup, false);    // convert to level1 rollup
+    RollupManager::query(m_metric_id, range, m_tasks, rollup);
+
+    // for those with invalid rollup, we'll query raw instead
+    for (auto tsdb: tsdbs)
+    {
+        if (tsdb->can_use_rollup(false))
+            continue;
+
+        std::vector<QueryTask*> tasks;
+
+        for (QueryTask *task : m_tasks)
+        {
+            if (! tsdb->can_use_rollup(task->get_ts_id()))
+            {
+                tasks.push_back(task);
+                task->remove_dps(tsdb->get_time_range());
+            }
+        }
+
+        if (! tasks.empty())
+            query_raw(tsdb, tasks);
+    }
+
+    for (QueryTask *task : m_tasks)
+        task->query_ts_data(range, rollup, m_ms);
+}
+
+void
+QuerySuperTask::query_rollup_daily(RollupType rollup)
+{
+    ASSERT(is_rollup_level2(rollup));
+    ASSERT(rollup != RollupType::RU_NONE);
+
+    RollupManager::query(m_metric_id, m_time_range, m_tasks, rollup);
+
+    // for those with invalid rollup, we'll query hourly/raw instead
+    while (! m_tsdbs.empty())
+    {
+        // if its rollup data is fine, skip it
+        for (auto it = m_tsdbs.begin(); it != m_tsdbs.end(); )
+        {
+            Tsdb *tsdb = *it;
+            if (! tsdb->can_use_rollup(true))
+                break;
+            tsdb->dec_ref_count();
+            it = m_tsdbs.erase(it);
+        }
+
+        std::vector<Tsdb*> tsdbs;
+
+        // look for ones whose daily rollup is not available
+        for (auto it = m_tsdbs.begin(); it != m_tsdbs.end(); )
+        {
+            Tsdb *tsdb = *it;
+            if (tsdb->has_daily_rollup())
+                break;
+            tsdbs.push_back(tsdb);
+            it = m_tsdbs.erase(it);
+        }
+
+        if (! tsdbs.empty())
+        {
+            TimeRange range(TimeRange::MIN);
+
+            for (auto tsdb: tsdbs)
+                range.merge(tsdb->get_time_range());
+            range.intersect(m_time_range);
+
+            for (auto task: m_tasks)
+                task->set_last_tstamp(TT_INVALID_TIMESTAMP);
+
+            ASSERT(rollup != RollupType::RU_NONE);
+            query_rollup_hourly(range, tsdbs, rollup);
+
+            // cleanup
+            for (auto tsdb: tsdbs)
+                tsdb->dec_ref_count();
+            tsdbs.clear();
+        }
+
+        if (m_tsdbs.empty())
+            break;
+
+        // look for ones with out-of-order data;
+        // they invalidated both hourly & daily rollup data
+        Tsdb *tsdb = m_tsdbs.front();
+        ASSERT(tsdb->has_daily_rollup());
+
+        if (tsdb->can_use_rollup(true))
+            continue;
+        m_tsdbs.erase(m_tsdbs.begin());
+
+        // query raw instead
+        std::vector<QueryTask*> tasks;
+
+        for (auto task: m_tasks)
+        {
+            if (! tsdb->can_use_rollup(task->get_ts_id()))
+            {
+                tasks.push_back(task);
+                task->remove_dps(tsdb->get_time_range());
+            }
+        }
+
+        if (! tasks.empty())
+            query_raw(tsdb, tasks);
+
+        tsdb->dec_ref_count();
+    }
+}
+
+void
 QuerySuperTask::perform(bool lock)
 {
     try
     {
-        for (auto tsdb: m_tsdbs)
+        RollupType rollup = use_rollup();
+        bool level2 = is_rollup_level2(rollup);
+        Tsdb::insts(m_time_range, m_tsdbs);
+
+        if (rollup == RollupType::RU_NONE)
         {
-            RollupType rollup = use_rollup(tsdb);
-
-            if (lock)
-                tsdb->query_for_data(m_metric_id, m_time_range, m_tasks, m_compact, rollup);
-            else
-                tsdb->query_for_data_no_lock(m_metric_id, m_time_range, m_tasks, m_compact, rollup);
-
-            for (QueryTask *task : m_tasks)
-            {
-                task->query_ts_data(tsdb, rollup);
-                task->merge_data();
-                task->set_tstamp_from(0);
-            }
+            for (auto tsdb: m_tsdbs)
+                query_raw(tsdb, m_tasks);
+        }
+        else if (! level2)  // query hourly rollup
+        {
+            query_rollup_hourly(m_time_range, m_tsdbs, rollup);
+        }
+        else    // query daily rollup
+        {
+            query_rollup_daily(rollup);
         }
 
-        for (QueryTask *task : m_tasks)
+        for (auto task: m_tasks)
+        {
+            task->sort_if_needed();
             task->fill();
+        }
     }
     catch (const std::exception& e)
     {

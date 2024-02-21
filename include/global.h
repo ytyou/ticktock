@@ -37,7 +37,7 @@ class TcpServer;
 class UdpServer;
 
 extern const char* const EMPTY_STRING;
-extern std::string EMPTY_STD_STRING;
+extern const std::string EMPTY_STD_STRING;
 extern const char* const METRIC_TAG_NAME;
 extern const char* const HOST_TAG_NAME;
 extern const char* const TYPE_TAG_NAME;
@@ -58,6 +58,10 @@ extern bool g_self_meter_enabled;
 extern std::atomic<bool> g_shutdown_requested;
 extern std::atomic<std::thread::id> g_handler_thread_id;
 extern std::string g_working_dir;
+extern uint32_t g_rollup_interval_1h;   // 1-hour
+extern uint32_t g_rollup_interval_1d;   // 1-day
+extern short g_rollup_compressor_version;   // 0 means no compression
+extern bool g_quiet;    // minimal console output
 
 
 }

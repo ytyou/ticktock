@@ -17,6 +17,7 @@
  */
 
 #include "global.h"
+#include "agg_test.h"
 #include "bitset_test.h"
 #include "compact_test.h"
 #include "compress_test.h"
@@ -34,6 +35,7 @@ using namespace tt_test;
 // array of test cases to run
 static TestCase *tests[] =
 {
+    new AggregateTests(),
     new BitSetTests(),
     new CheckPointTests(),
     //new CompactTests(),
@@ -105,6 +107,7 @@ main(int argc, char *argv[])
     std::free(config_file);
     delete MetaFile::instance();
     delete Config::inst();
+    RollupManager::shutdown();
 
     printf("PASSED: %d, FAILED: %d, TOTAL: %d, SEED-USED: %ld\n", stats.get_passed(), stats.get_failed(), stats.get_total(), seed);
     return 0;

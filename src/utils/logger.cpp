@@ -175,17 +175,16 @@ Logger::reopen(int fd)
         {
             m_stream = fdopen(m_fd, "w");
 
-            if (m_stream == nullptr)
+            if (! g_quiet)
             {
-                fprintf(stderr, "Failed to convert fd %d to FILE: %d\n", m_fd, errno);
-            }
-            else
-            {
-                fprintf(stderr, "Writing to log file: %s\n", log_file.c_str());
+                if (m_stream == nullptr)
+                    fprintf(stderr, "Failed to convert fd %d to FILE: %d\n", m_fd, errno);
+                else
+                    fprintf(stderr, "Writing to log file: %s\n", log_file.c_str());
             }
         }
     }
-    else
+    else if (! g_quiet)
     {
         fprintf(stderr, "Will log to console\n");
     }

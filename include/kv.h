@@ -18,6 +18,7 @@
 
 #pragma once
 
+#include <string>
 #include "recycle.h"
 #include "strbuf.h"
 

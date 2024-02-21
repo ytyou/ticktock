@@ -117,7 +117,7 @@ BackLog::exists(int server_id)
 void
 BackLog::get_buff_files(int server_id, std::vector<std::string>& files)
 {
-    std::string append_dir = Config::inst()->get_str(CFG_APPEND_LOG_DIR);
+    std::string append_dir = Config::get_wal_dir();
     std::string log_pattern = append_dir + "/backlog." + std::to_string(server_id)+ ".*.log";
     glob_t glob_result;
     glob(log_pattern.c_str(), GLOB_TILDE, nullptr, &glob_result);
@@ -156,7 +156,7 @@ BackLog::open_for_append()
 {
     // Do we need partition id in the file name?
     Timestamp now = ts_now_sec();
-    std::string append_dir = Config::inst()->get_str(CFG_APPEND_LOG_DIR);
+    std::string append_dir = Config::get_wal_dir();
     std::string name = append_dir + "/backlog." + std::to_string(m_server_id)+ "." + std::to_string(now) + ".log";
     m_open_for_append = open(name, "a");
     m_size = 0;
