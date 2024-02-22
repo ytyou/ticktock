@@ -194,6 +194,21 @@ get_tsdb_start_time(const std::string& dir)
     return start;
 }
 
+int get_max_mid()
+{
+    int max_mid = 0;
+    std::vector<Mapping*> mappings;
+    Tsdb::get_all_mappings(mappings);
+
+    for (Mapping* mapping : mappings)
+    {
+        MetricId mid = mapping->get_id();
+        if (max_mid < mid) max_mid = mid;
+    }
+
+    return max_mid;
+}
+
 uint64_t
 inspect_page(FileIndex file_idx, HeaderIndex header_idx, struct tsdb_header *tsdb_header, struct page_info_on_disk *page_header, char *data_base, Timestamp start_time)
 {
@@ -307,18 +322,8 @@ inspect_index_file(const std::string& file_name)
 }
 
 void
-inspect_tsdb_internal(const std::string& dir)
+inspect_tsdb_internal2(const std::string& dir, struct index_entry *index_entries, size_t index_file_size, std::vector<TimeSeries*>& tsv)
 {
-    {
-        std::lock_guard<std::mutex> guard(g_mutex);
-        if (g_new_line)
-        {
-            std::cerr << std::endl;
-            g_new_line = false;
-        }
-        std::cerr << "Inspecting tsdb " << dir << "..." << std::endl;
-    }
-
     // dump all headers first...
     uint64_t tsdb_dps = 0;
     std::string header_files_pattern = dir + "/header.*";
@@ -352,15 +357,15 @@ inspect_tsdb_internal(const std::string& dir)
         close_mmap(header_fd, base_hdr, header_size);
     }
 
-    std::string index_file_name = dir + "/index";
-    int index_file_fd;
-    size_t index_file_size;
-    char *index_base = open_mmap(index_file_name, index_file_fd, index_file_size);
-    struct index_entry *index_entries = (struct index_entry*)index_base;
+    //std::string index_file_name = dir + "/index";
+    //int index_file_fd;
+    //size_t index_file_size;
+    //char *index_base = open_mmap(index_file_name, index_file_fd, index_file_size);
+    //struct index_entry *index_entries = (struct index_entry*)index_base;
     long ooo_page_cnt = 0;
     Timestamp start_time = get_tsdb_start_time(dir);
 
-    for (TimeSeries *ts: g_time_series)
+    for (TimeSeries *ts: tsv)
     {
         TimeSeriesId id = ts->get_id();
 
@@ -387,8 +392,8 @@ inspect_tsdb_internal(const std::string& dir)
                 char header_file_name[PATH_MAX];
                 char data_file_name[PATH_MAX];
 
-                snprintf(header_file_name, sizeof(header_file_name), "%s/header.%u", dir.c_str(), file_idx);
-                snprintf(data_file_name, sizeof(data_file_name), "%s/data.%u", dir.c_str(), file_idx);
+                snprintf(header_file_name, sizeof(header_file_name), "%s/header.%05u", dir.c_str(), file_idx);
+                snprintf(data_file_name, sizeof(data_file_name), "%s/data.%05u", dir.c_str(), file_idx);
 
                 std::string header_file_name_str(header_file_name);
                 std::string data_file_name_str(data_file_name);
@@ -431,6 +436,45 @@ inspect_tsdb_internal(const std::string& dir)
         }
     }
 
+    //close_mmap(index_file_fd, index_base, index_file_size);
+}
+
+void
+inspect_tsdb_internal(const std::string& dir)
+{
+    {
+        std::lock_guard<std::mutex> guard(g_mutex);
+        if (g_new_line)
+        {
+            std::cerr << std::endl;
+            g_new_line = false;
+        }
+        std::cerr << "Inspecting tsdb " << dir << "..." << std::endl;
+    }
+
+    int max_mid = get_max_mid();
+    std::string index_file_name = dir + "/index";
+    int index_file_fd;
+    size_t index_file_size;
+    char *index_base = open_mmap(index_file_name, index_file_fd, index_file_size);
+    struct index_entry *index_entries = (struct index_entry*)index_base;
+
+    std::vector<Mapping*> mappings;
+    Tsdb::get_all_mappings(mappings);
+
+    for (Mapping* mapping : mappings)
+    {
+        MetricId mid = mapping->get_id();
+        char metrics_dir[PATH_MAX];
+        snprintf(metrics_dir, sizeof(metrics_dir), "%s/m%06d", dir.c_str(), mid);
+        if (! file_exists(metrics_dir)) continue;
+
+        std::vector<TimeSeries*> tsv;
+        mapping->get_all_ts(tsv);
+
+        inspect_tsdb_internal2(metrics_dir, index_entries, index_file_size, tsv);
+    }
+
     close_mmap(index_file_fd, index_base, index_file_size);
 }
 
@@ -447,15 +491,7 @@ inspect_tsdb_quick(const std::string& dir)
         std::cerr << "Inspecting tsdb " << dir << "..." << std::endl;
     }
 
-    int max_mid = 0;
-    std::vector<Mapping*> mappings;
-    Tsdb::get_all_mappings(mappings);
-
-    for (Mapping* mapping : mappings)
-    {
-        MetricId mid = mapping->get_id();
-        if (max_mid < mid) max_mid = mid;
-    }
+    int max_mid = get_max_mid();
 
     for (int m = 0; m <= max_mid; m++)
     {
