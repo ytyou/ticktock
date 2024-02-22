@@ -122,8 +122,8 @@ Config::load(bool override)
     }
     catch (std::exception& ex)
     {
-        fprintf(stderr, "Failed to load config file %s: %s\n", m_file_name.c_str(), ex.what());
-        //throw;
+        if (! g_quiet)
+            fprintf(stderr, "Failed to load config file %s: %s\n", m_file_name.c_str(), ex.what());
     }
 }
 

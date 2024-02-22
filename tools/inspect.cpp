@@ -713,6 +713,7 @@ main(int argc, char *argv[])
     std::locale loc("");
     std::cerr.imbue(loc);
 
+    g_quiet = true;
     Config::init();
     MemoryManager::init();
 
