@@ -74,7 +74,6 @@ public:
     static void get_data_files_1h(MetricId mid, const TimeRange& range, std::vector<RollupDataFile*>& files);   // monthly
     static void get_data_files_1d(MetricId mid, const TimeRange& range, std::vector<RollupDataFile*>& files);   // annual
     static void query(MetricId mid, const TimeRange& range, std::vector<QueryTask*>& tasks, RollupType rollup);
-    static void query_no_lock(MetricId mid, const TimeRange& range, std::vector<QueryTask*>& tasks, RollupType rollup);
     static void query(MetricId mid, const TimeRange& range, std::unordered_map<TimeSeriesId,struct rollup_entry_ext>& output);
     static double query(struct rollup_entry *entry, RollupType type);
     static void rotate();
@@ -90,6 +89,8 @@ private:
     double m_sum;
     Timestamp m_tstamp;
 
+    RollupDataFile * m_data_file;       // currently being written
+
     // used during shutdown/restart of TT
     static RollupDataFile *m_wal_data_file;
 
@@ -97,7 +98,7 @@ private:
     static std::unordered_map<uint64_t, RollupDataFile*> m_data_files;  // monthly
     static std::mutex m_lock2;
     static std::unordered_map<uint64_t, RollupDataFile*> m_data_files2; // annually
-    static std::queue<off_t> m_sizes;   // sizes of 'recent' data files
+    static std::queue<off_t> m_sizes;   // sizes of 'recent' monthly data files
     static off_t m_size_hint;
 };
 

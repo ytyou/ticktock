@@ -1458,7 +1458,7 @@ RollupDataFile::add_data_point(TimeSeriesId tid, uint32_t cnt, double min, doubl
     m_index += sizeof(entry);
     m_size += sizeof(entry);
     m_last_access = ts_now_sec();
-    dec_ref_count_no_lock();
+    //dec_ref_count_no_lock();
 }
 
 // This is for daily rollup as well as backup file.

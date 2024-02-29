@@ -339,6 +339,7 @@ public:
     bool close_if_idle(Timestamp threshold, Timestamp now);
     bool is_open(bool for_read) const;
     inline off_t size() const { return m_size; }
+    inline Timestamp get_begin_timestamp() const { return m_begin; }
 
     inline bool empty() const { return (m_index == 0) && !file_exists(m_name); }
     inline void remove() { rm_file(m_name); }
