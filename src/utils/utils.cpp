@@ -934,6 +934,31 @@ for_all_dirs(const std::string& root, void (*func)(const std::string& dir), int 
     closedir(dir);
 }
 
+bool
+is_dir_empty(const std::string& path)
+{
+    DIR *dir;
+    struct dirent *dir_ent;
+    bool empty = true;
+
+    dir = opendir(path.c_str());
+
+    if (dir != nullptr)
+    {
+        while (dir_ent = readdir(dir))
+        {
+            if (dir_ent->d_name[0] != '.')
+            {
+                empty = false;
+                break;
+            }
+        }
+    }
+
+    closedir(dir);
+    return empty;
+}
+
 // find for all files matching 'pattern'
 void
 get_all_files(const std::string& pattern, std::vector<std::string>& files)

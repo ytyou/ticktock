@@ -59,7 +59,7 @@ Config::init()
     if (file_exists(cfg.m_file_name))
         cfg.load(false);
 
-    if (file_exists(get_data_dir() + "/metrics"))
+    if (! is_dir_empty(get_data_dir()))
     {
         const std::string& ver = cfg.get_str("ticktockdb.version");
         if (ver.empty())
