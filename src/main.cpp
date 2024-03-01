@@ -354,6 +354,11 @@ main(int argc, char *argv[])
     {
         initialize();
     }
+    catch (std::exception &ex)
+    {
+        if (! g_quiet) fprintf(stderr, "Initialization failed: %s\n", ex.what());
+        return 9;
+    }
     catch (...)
     {
         if (! g_quiet) fprintf(stderr, "Initialization failed. Abort!\n");

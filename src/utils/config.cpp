@@ -55,8 +55,22 @@ Config::init()
     // These are the settings that can't be changed once TT starts running.
     Config cfg(get_data_dir() + "/config");
 
+    // verify version of data is at least 0.20.x
     if (file_exists(cfg.m_file_name))
         cfg.load(false);
+    else
+        throw std::runtime_error("config file under data direction missing; TickTockDB version mismatch!");
+
+    const std::string& ver = cfg.get_str("ticktockdb.version");
+    if (ver.empty())
+        throw std::runtime_error("ticktockdb.version config missing; TickTockDB version mismatch!");
+    std::vector<std::string> tokens;
+    if (! tokenize(ver, tokens, '.'))
+        throw std::runtime_error("bad ticktockdb.version format; TickTockDB version mismatch!");
+    if (tokens.size() != 3)
+        throw std::runtime_error("bad ticktockdb.version format; TickTockDB version mismatch!");
+    if (std::stoi(tokens[0]) <= 0 && std::stoi(tokens[1]) < 20)
+        throw std::runtime_error("ticktockdb.version too old; TickTockDB version mismatch!");
 
     if (cfg.exists(CFG_TSDB_ROLLUP_BUCKETS))
     {
@@ -139,7 +153,7 @@ Config::persist()
     std::lock_guard<std::mutex> guard(m_lock);
     std::fstream file(m_file_name, std::ios::out | std::ios::trunc);
 
-    file << "# ticktockdb.version = " << TT_MAJOR_VERSION << "." << TT_MINOR_VERSION << "." << TT_PATCH_VERSION << std::endl;
+    file << "ticktockdb.version = " << TT_MAJOR_VERSION << "." << TT_MINOR_VERSION << "." << TT_PATCH_VERSION << std::endl;
 
     for (const auto& prop: m_properties)
         file << prop.second->get_name() << " = " << prop.second->as_str() << std::endl;
