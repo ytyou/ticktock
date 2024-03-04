@@ -53,13 +53,15 @@ Config::init()
 
     // Load config in data directory to override anything in regular config or overrides.
     // These are the settings that can't be changed once TT starts running.
-    Config cfg(get_data_dir() + "/config");
+    std::string data_dir = get_data_dir();
+    create_dir(data_dir);   // make sure data directory exists
+    Config cfg(data_dir + "/config");
 
     // verify version of data is at least 0.20.x
     if (file_exists(cfg.m_file_name))
         cfg.load(false);
 
-    if (! is_dir_empty(get_data_dir()))
+    if (! is_dir_empty(data_dir))
     {
         const std::string& ver = cfg.get_str("ticktockdb.version");
         if (ver.empty())
