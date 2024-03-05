@@ -25,6 +25,7 @@
 #include "rollup.h"
 #include "tsdb.h"
 #include "utils.h"
+#include "cal.h"
 
 
 namespace tt
@@ -168,7 +169,7 @@ RollupManager::add_data_point(Tsdb *tsdb, MetricId mid, TimeSeriesId tid, DataPo
     double value = dp.get_value();
 
     if (m_tstamp == TT_INVALID_TIMESTAMP)
-        m_tstamp = begin_month(tstamp);
+        m_tstamp = Calendar::begin_month_of(tstamp);
 
     // step-down
     ASSERT(interval > 0);
@@ -178,14 +179,14 @@ RollupManager::add_data_point(Tsdb *tsdb, MetricId mid, TimeSeriesId tid, DataPo
     {
         flush(mid, tid);
 
-        Timestamp end = end_month(m_tstamp);
+        Timestamp end = Calendar::end_month_of(m_tstamp);
 
         for (m_tstamp += interval; (m_tstamp < end) && (m_tstamp < tstamp1); m_tstamp += interval)
             flush(mid, tid);
 
         if (m_tstamp >= end)
         {
-            for (m_tstamp = begin_month(tstamp); m_tstamp < tstamp1; m_tstamp += interval)
+            for (m_tstamp = Calendar::begin_month_of(tstamp); m_tstamp < tstamp1; m_tstamp += interval)
                 flush(mid, tid);
         }
     }
@@ -210,7 +211,7 @@ RollupManager::flush(MetricId mid, TimeSeriesId tid)
         return;
 
     // write to rollup files
-    if ((m_data_file == nullptr) || (m_data_file->get_begin_timestamp() != begin_month(m_tstamp)))
+    if ((m_data_file == nullptr) || (m_data_file->get_begin_timestamp() != Calendar::begin_month_of(m_tstamp)))
     {
         if (m_data_file != nullptr)
             m_data_file->dec_ref_count();
@@ -399,7 +400,7 @@ RollupManager::get_rollup_bucket(MetricId mid)
 RollupDataFile *
 RollupManager::get_or_create_data_file(MetricId mid, Timestamp tstamp)
 {
-    Timestamp begin = begin_month(tstamp);
+    Timestamp begin = Calendar::begin_month_of(tstamp);
     std::lock_guard<std::mutex> guard(m_lock);
     return get_or_create_data_file(mid, begin, m_data_files, true);
 }
@@ -460,7 +461,7 @@ RollupManager::get_data_file(MetricId mid, Timestamp tstamp, std::unordered_map<
 RollupDataFile *
 RollupManager::get_data_file(MetricId mid, Timestamp tstamp)
 {
-    Timestamp begin = begin_month(tstamp);
+    Timestamp begin = Calendar::begin_month_of(tstamp);
     return get_data_file(mid, begin, m_data_files, true);
 }
 
