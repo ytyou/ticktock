@@ -135,6 +135,8 @@
 #define CFG_TSDB_ROLLUP_BUCKETS_DEF             1000
 #define CFG_TSDB_ROLLUP_COMPRESSOR_VERSION      "tsdb.rollup.compressor.version"
 #define CFG_TSDB_ROLLUP_COMPRESSOR_VERSION_DEF  0
+#define CFG_TSDB_ROLLUP_ENABLED                 "tsdb.rollup.enabled"
+#define CFG_TSDB_ROLLUP_ENABLED_DEF             true
 #define CFG_TSDB_ROLLUP_FREQUENCY               "tsdb.rollup.frequency"
 #define CFG_TSDB_ROLLUP_FREQUENCY_DEF           "1d"
 #define CFG_TSDB_ROLLUP_PAUSE                   "tsdb.rollup.pause"

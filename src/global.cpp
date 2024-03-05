@@ -52,6 +52,7 @@ bool g_self_meter_enabled = CFG_TSDB_SELF_METER_ENABLED_DEF;
 // set this to true to indicate TT is shutting down
 std::atomic<bool> g_shutdown_requested{false};
 
+bool g_rollup_enabled = true;
 uint32_t g_rollup_interval_1h = 3600;       // 1 hour, in sec
 uint32_t g_rollup_interval_1d = 3600 * 24;  // 1 day, in sec
 short g_rollup_compressor_version = 0;      // 0 means no compression at all

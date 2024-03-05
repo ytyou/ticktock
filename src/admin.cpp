@@ -167,7 +167,16 @@ bool
 Admin::cmd_cfg(KeyValuePair *params, HttpResponse& response)
 {
     for (KeyValuePair *kv = params; kv != nullptr; kv = kv->next())
+    {
         Config::inst()->set_value(kv->m_key, kv->m_value);
+
+        // update globals...
+        if (strcmp(kv->m_key, CFG_TSDB_ROLLUP_ENABLED) == 0)
+        {
+            g_rollup_enabled =
+                Config::inst()->get_bool(CFG_TSDB_ROLLUP_ENABLED, CFG_TSDB_ROLLUP_ENABLED_DEF);
+        }
+    }
 
     response.init(200);
     return true;

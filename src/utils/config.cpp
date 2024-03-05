@@ -50,6 +50,7 @@ Config::init()
     g_tstamp_resolution_ms = ts_resolution_ms();
     g_cluster_enabled = m_instance->exists(CFG_CLUSTER_SERVERS);
     g_self_meter_enabled = m_instance->get_bool(CFG_TSDB_SELF_METER_ENABLED, CFG_TSDB_SELF_METER_ENABLED_DEF);
+    g_rollup_enabled = m_instance->get_bool(CFG_TSDB_ROLLUP_ENABLED, CFG_TSDB_ROLLUP_ENABLED_DEF);
 
     // Load config in data directory to override anything in regular config or overrides.
     // These are the settings that can't be changed once TT starts running.
