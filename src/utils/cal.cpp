@@ -31,11 +31,11 @@ Timestamp
 Calendar::begin_month_of(Timestamp ts)
 {
     std::lock_guard<std::mutex> guard(m_lock);
-    std::size_t n = m_months.size();
+    int n = m_months.size();
 
     if (n > 1)
     {
-        for (std::size_t i = n-1; i >= 0; i--)
+        for (int i = n-1; i >= 0; i--)
         {
             Timestamp b = m_months[i];
 
@@ -56,11 +56,11 @@ Timestamp
 Calendar::end_month_of(Timestamp ts)
 {
     std::lock_guard<std::mutex> guard(m_lock);
-    std::size_t n = m_months.size();
+    int n = m_months.size();
 
     if (n > 1)
     {
-        for (std::size_t i = n-1; i >= 0; i--)
+        for (int i = n-1; i >= 0; i--)
         {
             if (m_months[i] <= ts)
             {
@@ -77,8 +77,10 @@ Calendar::end_month_of(Timestamp ts)
 
 // return index of begin
 std::size_t
-Calendar::add_month(Timestamp ts, std::size_t n)
+Calendar::add_month(Timestamp ts, int n)
 {
+    ASSERT(n >= 0);
+
     Timestamp begin = begin_month(ts);
     Timestamp end = end_month(ts);
 
@@ -105,6 +107,7 @@ Calendar::add_month(Timestamp ts, std::size_t n)
 
         ASSERT(back == begin);
         m_months.push_back(end);
+        ASSERT(m_months.size() >= 2);
         n = m_months.size() - 2;
     }
     else if (m_months[0] == end)
