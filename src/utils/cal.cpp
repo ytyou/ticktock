@@ -49,6 +49,7 @@ Calendar::begin_month_of(Timestamp ts)
     }
 
     n = add_month(ts, n);
+    ASSERT(m_months[n] == begin_month(ts));
     return m_months[n];
 }
 
@@ -72,6 +73,7 @@ Calendar::end_month_of(Timestamp ts)
     }
 
     n = add_month(ts, n);
+    ASSERT(m_months[n+1] == end_month(ts));
     return m_months[n+1];
 }
 
@@ -92,6 +94,7 @@ Calendar::add_month(Timestamp ts, int n)
     else if (m_months[n-1] == begin)
     {
         m_months.push_back(end);
+        n--;
     }
     else if (m_months[n-1] < begin)
     {
