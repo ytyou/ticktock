@@ -63,6 +63,9 @@ QueryTests::update_config(Timestamp archive_ms)
     //configs.emplace_back(CFG_QUERY_EXECUTOR_PARALLEL, "false");
     configs.emplace_back(CFG_TCP_BUFFER_SIZE, "1mb");
 
+    // to prevent Config::init() from failing
+    create_data_config(data_dir);
+
     create_config(configs);
     delete Config::inst();
     Config::init();

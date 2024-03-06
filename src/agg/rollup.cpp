@@ -513,7 +513,7 @@ RollupManager::get_data_files_1d(MetricId mid, const TimeRange& range, std::vect
         Timestamp ts = begin_month(year, 0);
         if (end <= ts) break;
 
-        RollupDataFile *data_file = get_data_file2(mid, ts);
+        RollupDataFile *data_file = get_data_file2_no_lock(mid, ts);
 
         if (data_file != nullptr)
         {
@@ -591,6 +591,13 @@ RollupManager::get_data_file2(MetricId mid, Timestamp tstamp)
 {
     Timestamp begin = begin_year(tstamp);
     std::lock_guard<std::mutex> guard(m_lock2);
+    return get_data_file(mid, begin, m_data_files2, false);
+}
+
+RollupDataFile *
+RollupManager::get_data_file2_no_lock(MetricId mid, Timestamp tstamp)
+{
+    Timestamp begin = begin_year(tstamp);
     return get_data_file(mid, begin, m_data_files2, false);
 }
 

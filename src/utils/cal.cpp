@@ -95,9 +95,11 @@ Calendar::add_month(Timestamp ts, std::size_t n)
     {
         Timestamp back = m_months.back();
 
+        ASSERT(is_sec(back));
+
         while (back < begin)
         {
-            Timestamp back = end_month(back);
+            back = end_month(back);
             m_months.push_back(back);
         }
 

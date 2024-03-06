@@ -197,6 +197,15 @@ public:
         stream.close();
     }
 
+    static void create_data_config(const char *data_dir)
+    {
+        char buff[PATH_MAX];
+        sprintf(buff, "%s/config", data_dir);
+        std::ofstream stream(buff);
+        stream << "ticktockdb.version = " << TT_MAJOR_VERSION << "." << TT_MINOR_VERSION << "." << TT_PATCH_VERSION << std::endl;
+        stream.close();
+    }
+
     static int rand_plus_minus(int from, int to)
     {
         int r = tt::random(from, to);
