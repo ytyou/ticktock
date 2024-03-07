@@ -129,7 +129,7 @@ MmapFile::open_existing(bool read_only, bool append_only)
 
     if (m_fd == -1)
     {
-        Logger::error("Failed to open file %s, errno = %d", m_name.c_str(), errno);
+        Logger::error("Failed to open existing file %s, errno = %d", m_name.c_str(), errno);
         if (ENOMEM == errno)
             throw std::runtime_error(TT_MSG_OUT_OF_MEMORY);
         return;
@@ -861,7 +861,7 @@ DataFile::open(bool for_read)
 
         if (fd == -1)
         {
-            Logger::error("Failed to open file %s for append: %d", m_name.c_str(), errno);
+            Logger::error("Failed to open data file %s for append: %d", m_name.c_str(), errno);
         }
         else
         {
@@ -1344,7 +1344,10 @@ RollupDataFile::open(bool for_read)
 
     if (fd == -1)
     {
-        Logger::error("Failed to open file %s for append: %d", m_name.c_str(), errno);
+        Logger::error("Failed to open rollup data file %s for %s: %d",
+            m_name.c_str(),
+            for_read ? "read" : "write",
+            errno);
     }
     else
     {
