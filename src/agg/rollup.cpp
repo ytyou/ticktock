@@ -484,8 +484,13 @@ RollupManager::get_data_files_1h(MetricId mid, const TimeRange& range, std::vect
 
         RollupDataFile *data_file = get_data_file(mid, ts);
 
-        if ((data_file != nullptr) && (! data_file->empty()))
-            files.push_back(data_file);
+        if (data_file != nullptr)
+        {
+            if (data_file->empty())
+                data_file->dec_ref_count();
+            else
+                files.push_back(data_file);
+        }
 
         month++;
         if (month >= 12)
@@ -554,8 +559,10 @@ RollupManager::get_data_file_by_bucket_1h(int bucket, Timestamp tstamp)
     {
         data_file = search->second;
         ASSERT(data_file != nullptr);
-        data_file->inc_ref_count();
     }
+
+    if (data_file != nullptr)
+        data_file->inc_ref_count();
 
     return data_file;
 }
