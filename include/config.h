@@ -132,7 +132,7 @@
 #define CFG_TSDB_READ_ONLY_THRESHOLD_DEF        "1h"
 #define CFG_TSDB_RETENTION_THRESHOLD            "tsdb.retention.threshold"
 #define CFG_TSDB_ROLLUP_BUCKETS                 "tsdb.rollup.buckets"
-#define CFG_TSDB_ROLLUP_BUCKETS_DEF             1000
+#define CFG_TSDB_ROLLUP_BUCKETS_DEF             512
 #define CFG_TSDB_ROLLUP_COMPRESSOR_VERSION      "tsdb.rollup.compressor.version"
 #define CFG_TSDB_ROLLUP_COMPRESSOR_VERSION_DEF  0
 #define CFG_TSDB_ROLLUP_ENABLED                 "tsdb.rollup.enabled"

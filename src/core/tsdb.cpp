@@ -636,7 +636,7 @@ bool
 Mapping::add_data_points(const char *measurement, char *tags, Timestamp ts, std::vector<DataPoint>& dps)
 {
     ASSERT(measurement != nullptr);
-    ASSERT(tags != nullptr);
+    //ASSERT(tags != nullptr);
     ASSERT(! dps.empty());
 
     char buff[8];
