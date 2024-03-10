@@ -1838,6 +1838,7 @@ RollupDataFile::get_name_by_bucket_1h(int bucket, Timestamp tstamp, bool create)
         int compressor = CFG_TSDB_ROLLUP_COMPRESSOR_VERSION_DEF;
             //Config::inst()->get_int(CFG_TSDB_ROLLUP_COMPRESSOR_VERSION, CFG_TSDB_ROLLUP_COMPRESSOR_VERSION_DEF);
         cfg.set_value(CFG_TSDB_ROLLUP_COMPRESSOR_VERSION, std::to_string(compressor));
+        cfg.set_value(CFG_TSDB_ROLLUP_BUCKETS, std::to_string(Config::inst()->get_int(CFG_TSDB_ROLLUP_BUCKETS, CFG_TSDB_ROLLUP_BUCKETS_DEF)));
         cfg.persist();
     }
     oss << "/r" << std::setfill('0') << std::setw(6) << bucket << ".data";
@@ -1868,6 +1869,7 @@ RollupDataFile::get_name_by_bucket_1d(int bucket, Timestamp tstamp, bool create)
         int compressor = CFG_TSDB_ROLLUP_COMPRESSOR_VERSION_DEF;
             //Config::inst()->get_str(CFG_TSDB_ROLLUP_COMPRESSOR_VERSION, CFG_TSDB_ROLLUP_COMPRESSOR_VERSION_DEF);
         cfg.set_value(CFG_TSDB_ROLLUP_COMPRESSOR_VERSION, std::to_string(compressor));
+        cfg.set_value(CFG_TSDB_ROLLUP_BUCKETS, std::to_string(Config::inst()->get_int(CFG_TSDB_ROLLUP_BUCKETS, CFG_TSDB_ROLLUP_BUCKETS_DEF)));
         cfg.persist();
     }
     oss << "/r" << std::setfill('0') << std::setw(6) << bucket << ".data";

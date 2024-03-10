@@ -125,14 +125,22 @@
 #define CFG_TSDB_MAX_DP_LINE                    "tsdb.max.dp.line"
 #define CFG_TSDB_MAX_DP_LINE_DEF                256
 #define CFG_TSDB_METRIC_BUCKETS                 "tsdb.metric.buckets"
+#ifdef __x86_64__
 #define CFG_TSDB_METRIC_BUCKETS_DEF             100
+#else
+#define CFG_TSDB_METRIC_BUCKETS_DEF             50
+#endif
 #define CFG_TSDB_MIN_DISK_SPACE                 "tsdb.min.disk.space"
 #define CFG_TSDB_MIN_DISK_SPACE_DEF             4
 #define CFG_TSDB_READ_ONLY_THRESHOLD            "tsdb.read_only.threshold"
 #define CFG_TSDB_READ_ONLY_THRESHOLD_DEF        "1h"
 #define CFG_TSDB_RETENTION_THRESHOLD            "tsdb.retention.threshold"
 #define CFG_TSDB_ROLLUP_BUCKETS                 "tsdb.rollup.buckets"
+#ifdef __x86_64__
 #define CFG_TSDB_ROLLUP_BUCKETS_DEF             512
+#else
+#define CFG_TSDB_ROLLUP_BUCKETS_DEF             256
+#endif
 #define CFG_TSDB_ROLLUP_COMPRESSOR_VERSION      "tsdb.rollup.compressor.version"
 #define CFG_TSDB_ROLLUP_COMPRESSOR_VERSION_DEF  0
 #define CFG_TSDB_ROLLUP_ENABLED                 "tsdb.rollup.enabled"
