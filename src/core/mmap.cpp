@@ -1295,6 +1295,7 @@ RollupDataFile::RollupDataFile(MetricId mid, Timestamp begin, bool monthly) :
     m_last_access(0),
     m_index(0),
     m_size(0),
+    m_ref_count(0),
     m_for_read(false),
     m_monthly(monthly)
 {
@@ -1307,6 +1308,7 @@ RollupDataFile::RollupDataFile(const std::string& name, Timestamp begin) :
     m_last_access(0),
     m_index(0),
     m_size(0),
+    m_ref_count(0),
     m_name(name),
     m_for_read(false),
     m_monthly(false)
@@ -1320,6 +1322,7 @@ RollupDataFile::RollupDataFile(int bucket, Timestamp tstamp) :
     m_last_access(0),
     m_index(0),
     m_size(0),
+    m_ref_count(0),
     m_for_read(false),
     m_monthly(false)
 {
