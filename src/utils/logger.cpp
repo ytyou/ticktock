@@ -202,7 +202,7 @@ Logger::rotate(TaskData& data)
 
         struct stat buf;
         fstat(logger->m_fd, &buf);
-        off_t size = buf.st_size;   // byte count
+        int64_t size = buf.st_size;   // byte count
         logger->m_dirty = false;
 
         if (size >= limit)

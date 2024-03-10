@@ -43,7 +43,7 @@ public:
     virtual ~MmapFile();
 
     bool remap();
-    bool resize(off_t length);
+    bool resize(int64_t length);
     virtual void open(bool for_read) = 0;
     virtual void close();
     virtual void flush(bool sync);
@@ -60,13 +60,13 @@ public:
     void remove() { rm_file(m_name); }
 
 protected:
-    void open(off_t length, bool read_only, bool append_only, bool resize);
+    void open(int64_t length, bool read_only, bool append_only, bool resize);
     void open_existing(bool read_only, bool append_only);
 
     std::string m_name;
 
 private:
-    off_t m_length;
+    int64_t m_length;
     void *m_pages;
     std::mutex m_lock;
     int m_fd;
@@ -108,7 +108,7 @@ public:
     void set_out_of_order2(TimeSeriesId id, bool ooo);
 
 private:
-    bool expand(off_t new_len);
+    bool expand(int64_t new_len);
 };
 
 
@@ -338,7 +338,7 @@ public:
     void close();
     bool close_if_idle(Timestamp threshold, Timestamp now);
     bool is_open(bool for_read) const;
-    inline off_t size() const { return m_size; }
+    inline int64_t size() const { return m_size; }
     inline Timestamp get_begin_timestamp() const { return m_begin; }
 
     inline bool empty() const { return (m_index == 0) && !file_exists(m_name); }
@@ -374,7 +374,7 @@ private:
     int m_index;    // index of m_buff[]
     char m_buff[4096];
     Timestamp m_last_access;
-    off_t m_size;
+    int64_t m_size;
     std::mutex m_lock;
     int m_ref_count;        // prevent unload when in use
     bool m_monthly;         // true: monthly; false: annually

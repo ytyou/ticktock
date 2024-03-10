@@ -55,7 +55,7 @@ MmapFile::~MmapFile()
 }
 
 void
-MmapFile::open(off_t length, bool read_only, bool append_only, bool resize)
+MmapFile::open(int64_t length, bool read_only, bool append_only, bool resize)
 {
     ASSERT(length > 0);
 
@@ -193,7 +193,7 @@ MmapFile::remap()
         return false;
     }
 
-    off_t length = sb.st_size;
+    int64_t length = sb.st_size;
 
     if (length == m_length)
         return true;
@@ -213,7 +213,7 @@ MmapFile::remap()
 }
 
 bool
-MmapFile::resize(off_t length)
+MmapFile::resize(int64_t length)
 {
     ASSERT(m_fd > 0);
 
@@ -335,7 +335,7 @@ IndexFile::open(bool for_read)
 }
 
 bool
-IndexFile::expand(off_t new_len)
+IndexFile::expand(int64_t new_len)
 {
     size_t old_len = get_length();
     ASSERT(old_len < new_len);
@@ -676,7 +676,7 @@ HeaderFile::open(bool for_read)
     if (is_new)
     {
         ASSERT(m_page_count > 0);
-        off_t length =
+        int64_t length =
             sizeof(struct tsdb_header) + m_page_count * sizeof(struct page_info_on_disk);
         MmapFile::open(length, for_read, false, true);
         ASSERT(get_pages() != nullptr);
@@ -843,7 +843,7 @@ DataFile::open(bool for_read)
         {
             // To avoid frequent remapping in this case, we open
             // and map the full potential length of the file.
-            off_t length = (off_t)m_page_size * (off_t)m_page_count;
+            int64_t length = (int64_t)m_page_size * (int64_t)m_page_count;
             MmapFile::open(length, true, false, false);
         }
         else
@@ -870,7 +870,7 @@ DataFile::open(bool for_read)
             std::memset(&sb, 0, sizeof(sb));
             if (fstat(fd, &sb) == -1)
                 Logger::error("Failed to fstat file %s, errno = %d", m_name.c_str(), errno);
-            off_t length = sb.st_size;
+            int64_t length = sb.st_size;
 
             // allocate enough disk space for this file
 /**
@@ -1361,7 +1361,7 @@ RollupDataFile::open(bool for_read)
 
             if (sb.st_size == 0)
             {
-                off_t length = RollupManager::get_rollup_data_file_size(m_monthly);
+                int64_t length = RollupManager::get_rollup_data_file_size(m_monthly);
                 if (fallocate(fd, FALLOC_FL_KEEP_SIZE, 0, length) != 0)
                     Logger::warn("fallocate(%d) failed, errno = %d", fd, errno);
                 else
@@ -1583,7 +1583,7 @@ RollupDataFile::query(const TimeRange& range, std::unordered_map<TimeSeriesId,Qu
     }
 
     // look into m_buff...
-    for (off_t idx = 0; idx < m_index; idx += sizeof(struct rollup_entry))
+    for (int64_t idx = 0; idx < m_index; idx += sizeof(struct rollup_entry))
     {
         struct rollup_entry *entry = (struct rollup_entry*)(m_buff+idx);
         if (query_entry(range, entry, map, rollup) > 0) break;

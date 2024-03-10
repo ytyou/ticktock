@@ -63,8 +63,8 @@ public:
     bool get(struct rollup_entry_ext& entry);
     bool query(RollupType type, DataPointPair& dp);
 
-    static void add_data_file_size(off_t size);
-    static off_t get_rollup_data_file_size(bool monthly);
+    static void add_data_file_size(int64_t size);
+    static int64_t get_rollup_data_file_size(bool monthly);
     static int get_rollup_bucket(MetricId mid);
     static RollupDataFile *get_data_file(MetricId mid, Timestamp tstamp);   // get monthly data files
     static RollupDataFile *get_data_file2(MetricId mid, Timestamp tstamp);  // get annual data files
@@ -99,8 +99,8 @@ private:
     static std::unordered_map<uint64_t, RollupDataFile*> m_data_files;  // monthly
     static std::mutex m_lock2;
     static std::unordered_map<uint64_t, RollupDataFile*> m_data_files2; // annually
-    static std::queue<off_t> m_sizes;   // sizes of 'recent' monthly data files
-    static off_t m_size_hint;
+    static std::queue<int64_t> m_sizes;   // sizes of 'recent' monthly data files
+    static int64_t m_size_hint;
 };
 
 

@@ -37,8 +37,8 @@ std::unordered_map<uint64_t, RollupDataFile*> RollupManager::m_data_files;  // m
 std::mutex RollupManager::m_lock2;
 std::unordered_map<uint64_t, RollupDataFile*> RollupManager::m_data_files2; // annually
 RollupDataFile *RollupManager::m_wal_data_file = nullptr;
-std::queue<off_t> RollupManager::m_sizes;
-off_t RollupManager::m_size_hint;
+std::queue<int64_t> RollupManager::m_sizes;
+int64_t RollupManager::m_size_hint;
 
 
 RollupManager::RollupManager() :
@@ -652,7 +652,7 @@ RollupManager::rotate()
 
 // Remember sizes of recent rollup data files
 void
-RollupManager::add_data_file_size(off_t size)
+RollupManager::add_data_file_size(int64_t size)
 {
     if (m_sizes.size() >= 10)   // keep 10 most recent sizes
     {
@@ -664,11 +664,11 @@ RollupManager::add_data_file_size(off_t size)
     m_size_hint += size;
 }
 
-off_t
+int64_t
 RollupManager::get_rollup_data_file_size(bool monthly)
 {
     //std::lock_guard<std::mutex> guard(m_lock);
-    off_t monthly_size;
+    int64_t monthly_size;
 
     if (m_sizes.empty())
     {
