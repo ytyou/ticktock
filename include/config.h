@@ -125,7 +125,7 @@
 #define CFG_TSDB_MAX_DP_LINE                    "tsdb.max.dp.line"
 #define CFG_TSDB_MAX_DP_LINE_DEF                256
 #define CFG_TSDB_METRIC_BUCKETS                 "tsdb.metric.buckets"
-#ifdef __x86_64__
+#if (__x86_64__ == 1) || (__ARM_64BIT_STATE == 1)
 #define CFG_TSDB_METRIC_BUCKETS_DEF             100
 #else
 #define CFG_TSDB_METRIC_BUCKETS_DEF             50
@@ -136,7 +136,7 @@
 #define CFG_TSDB_READ_ONLY_THRESHOLD_DEF        "1h"
 #define CFG_TSDB_RETENTION_THRESHOLD            "tsdb.retention.threshold"
 #define CFG_TSDB_ROLLUP_BUCKETS                 "tsdb.rollup.buckets"
-#ifdef __x86_64__
+#if (__x86_64__ == 1) || (__ARM_64BIT_STATE == 1)
 #define CFG_TSDB_ROLLUP_BUCKETS_DEF             512
 #else
 #define CFG_TSDB_ROLLUP_BUCKETS_DEF             256
