@@ -641,7 +641,7 @@ RollupManager::rotate()
 
             if (file->close_if_idle(thrashing_threshold, now))
             {
-                it = m_data_files.erase(it);
+                it = m_data_files2.erase(it);
                 delete file;
             }
             else
