@@ -822,21 +822,6 @@ Mapping::restore_measurement(std::string& measurement, std::string& tags, std::v
 }
 
 void
-Tsdb::restore_rollup_mgr(std::unordered_map<TimeSeriesId,struct rollup_entry_ext>& map)
-{
-    std::vector<TimeSeries*> tsv;
-
-    get_all_ts(tsv);
-
-    for (auto ts: tsv)
-    {
-        auto search = map.find(ts->get_id());
-        if (search == map.end()) continue;
-        ts->restore_rollup_mgr(search->second);
-    }
-}
-
-void
 Mapping::set_tag_count(int tag_count)
 {
     if (tag_count != m_tag_count)
@@ -903,6 +888,8 @@ Metric::restore_header(const std::string& file)
 void
 Metric::close()
 {
+    std::lock_guard<std::mutex> guard(m_lock);
+
     for (auto data: m_data_files)
         data->close();
     for (auto header: m_header_files)
@@ -912,6 +899,8 @@ Metric::close()
 void
 Metric::flush(bool sync)
 {
+    std::lock_guard<std::mutex> guard(m_lock);
+
     for (auto header: m_header_files)
         header->flush(sync);
 }
@@ -949,6 +938,8 @@ Metric::get_header_file_name(std::string& tsdb_dir, FileIndex fidx)
 DataFile *
 Metric::get_data_file(FileIndex file_idx)
 {
+    std::lock_guard<std::mutex> guard(m_lock);
+
     if (file_idx < m_data_files.size())
     {
         DataFile *file = m_data_files[file_idx];
@@ -968,6 +959,8 @@ Metric::get_data_file(FileIndex file_idx)
 HeaderFile *
 Metric::get_header_file(FileIndex file_idx)
 {
+    std::lock_guard<std::mutex> guard(m_lock);
+
     if (file_idx < m_header_files.size())
     {
         HeaderFile *file = m_header_files[file_idx];
@@ -988,6 +981,7 @@ HeaderFile *
 Metric::get_last_header(std::string& tsdb_dir, PageCount page_cnt, PageSize page_size)
 {
     HeaderFile *header_file;
+    std::lock_guard<std::mutex> guard(m_lock);
 
     if (m_header_files.empty())
     {
@@ -1034,6 +1028,7 @@ bool
 Metric::rotate(Timestamp now_sec, Timestamp thrashing_threshold)
 {
     bool all_closed = true;
+    std::lock_guard<std::mutex> guard(m_lock);
 
     for (DataFile *data_file: m_data_files)
     {
@@ -1106,6 +1101,8 @@ int
 Metric::get_page_count(bool ooo)
 {
     int total = 0;
+    std::lock_guard<std::mutex> guard(m_lock);
+
     for (auto header_file: m_header_files)
         total += header_file->count_pages(ooo);
     return total;
@@ -1115,6 +1112,8 @@ int
 Metric::get_data_page_count()
 {
     int total = 0;
+    std::lock_guard<std::mutex> guard(m_lock);
+
     for (auto header_file: m_header_files)
     {
         header_file->ensure_open(true);
@@ -1127,6 +1126,8 @@ int
 Metric::get_open_data_file_count(bool for_read)
 {
     int total = 0;
+    std::lock_guard<std::mutex> guard(m_lock);
+
     for (auto df: m_data_files)
     {
         if (df->is_open(for_read))
@@ -1139,6 +1140,8 @@ int
 Metric::get_open_header_file_count(bool for_read)
 {
     int total = 0;
+    std::lock_guard<std::mutex> guard(m_lock);
+
     for (auto hf: m_header_files)
     {
         if (hf->is_open(for_read))
@@ -3732,6 +3735,21 @@ Tsdb::rollup(TaskData& data)
     }
 
     return false;
+}
+
+void
+Tsdb::restore_rollup_mgr(std::unordered_map<TimeSeriesId,struct rollup_entry_ext>& map)
+{
+    std::vector<TimeSeries*> tsv;
+
+    get_all_ts(tsv);
+
+    for (auto ts: tsv)
+    {
+        auto search = map.find(ts->get_id());
+        if (search == map.end()) continue;
+        ts->restore_rollup_mgr(search->second);
+    }
 }
 
 void

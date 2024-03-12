@@ -214,7 +214,7 @@ public:
     int get_open_data_file_count(bool for_read);
     int get_open_header_file_count(bool for_read);
 
-    std::mutex m_rollup_lock;
+    //std::mutex m_rollup_lock;
 
 private:
     void restore_header(const std::string& file);
@@ -224,6 +224,7 @@ private:
     //RollupHeaderFile m_rollup_header_file;
     //RollupHeaderTmpFile m_rollup_header_tmp_file;
     //RollupDataFile m_rollup_data_file;
+    std::mutex m_lock;
     std::vector<HeaderFile*> m_header_files;
     std::vector<DataFile*> m_data_files;
 };
