@@ -98,6 +98,7 @@ CompressTests::run_with(bool ms)
     }
 
     log("Finished %s", m_name);
+    m_stats.add_passed(1);
 }
 
 void

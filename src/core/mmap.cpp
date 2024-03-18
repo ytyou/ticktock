@@ -22,6 +22,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <unordered_map>
+#include "compress.h"
 #include "config.h"
 #include "fd.h"
 #include "global.h"
@@ -1435,17 +1436,14 @@ RollupDataFile::is_open(bool for_read) const
 void
 RollupDataFile::add_data_point(TimeSeriesId tid, uint32_t cnt, double min, double max, double sum)
 {
-    struct rollup_entry entry;
+    int size;
+    uint8_t buff[128];
 
-    entry.tid = tid;
-    entry.cnt = cnt;
-    entry.min = min;
-    entry.max = max;
-    entry.sum = sum;
+    size = RollupCompressor_v1::compress(buff, tid, cnt, min, max, sum);
 
     std::lock_guard<std::mutex> guard(m_lock);
 
-    if (sizeof(m_buff) < (m_index + sizeof(entry)))
+    if (sizeof(m_buff) < (m_index + size))
     {
         // write the m_buff[] out
         if (! is_open(false))
@@ -1460,11 +1458,10 @@ RollupDataFile::add_data_point(TimeSeriesId tid, uint32_t cnt, double min, doubl
         m_size = 0;
     }
 
-    std::memcpy(m_buff+m_index, &entry, sizeof(entry));
-    m_index += sizeof(entry);
-    m_size += sizeof(entry);
+    std::memcpy(m_buff+m_index, buff, size);
+    m_index += size;
+    m_size += size;
     m_last_access = ts_now_sec();
-    //dec_ref_count_no_lock();
 }
 
 // This is for daily rollup as well as backup file.

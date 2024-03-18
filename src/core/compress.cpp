@@ -1320,4 +1320,166 @@ Compressor_v0::get_last_tstamp() const
 }
 
 
+/* flag bits:
+ *   1st bit: tid (0 => 3 bytes, 1 => 4 bytes)
+ *   2nd bit: cnt (0 => 2 bytes, 1 => 4 bytes)
+ *   3-4 bit: min (00 => 2 bytes, 01 => 3 bytes, 10 => 4 bytes, 11 => 8 bytes)
+ *   5-6 bit: max (00 => 3 bytes, 01 => 4 bytes, 10 => 5 bytes, 11 => 8 bytes)
+ *   7-8 bit: sum (00 => 3 bytes, 01 => 4 bytes, 10 => 5 bytes, 11 => 8 bytes)
+ */
+int
+RollupCompressor_v1::compress(uint8_t *buff, TimeSeriesId tid, uint32_t cnt, double min, double max, double sum)
+{
+    ASSERT(buff != nullptr);
+    ASSERT(tid != TT_INVALID_TIME_SERIES_ID);
+
+    int idx = 1;
+    double precision = Compressor_v3::get_precision();
+
+    if (tid <= 0xFFFFFF)
+    {
+        buff[0] = 0x00;
+        int32_t x = htobe32(tid);
+        buff[idx++] = ((uint8_t*)&x)[1];
+        buff[idx++] = ((uint8_t*)&x)[2];
+        buff[idx++] = ((uint8_t*)&x)[3];
+    }
+    else
+    {
+        buff[0] = 0x80;
+        int32_t x = htobe32(tid);
+        buff[idx++] = ((uint8_t*)&x)[0];
+        buff[idx++] = ((uint8_t*)&x)[1];
+        buff[idx++] = ((uint8_t*)&x)[2];
+        buff[idx++] = ((uint8_t*)&x)[3];
+    }
+
+    if (cnt <= 0xFFFF)
+    {
+        int32_t x = htobe32(cnt);
+        buff[idx++] = ((uint8_t*)&x)[2];
+        buff[idx++] = ((uint8_t*)&x)[3];
+    }
+    else
+    {
+        buff[0] |= 0x40;
+        int32_t x = htobe32(cnt);
+        buff[idx++] = ((uint8_t*)&x)[0];
+        buff[idx++] = ((uint8_t*)&x)[1];
+        buff[idx++] = ((uint8_t*)&x)[2];
+        buff[idx++] = ((uint8_t*)&x)[3];
+    }
+
+    if (cnt == 0)
+        return idx;
+
+    int64_t n = std::lround(min * precision);
+
+    if (n <= 0x7FFF)
+    {
+        int16_t x = htobe16((int16_t)n);
+        buff[idx++] = ((uint8_t*)&x)[0];
+        buff[idx++] = ((uint8_t*)&x)[1];
+    }
+    else if (0x7FFF < n && n <= 0x7FFFFF)
+    {
+        buff[0] |= 0x10;
+        int32_t x = htobe32((int32_t)n);
+        buff[idx++] = ((uint8_t*)&x)[1];
+        buff[idx++] = ((uint8_t*)&x)[2];
+        buff[idx++] = ((uint8_t*)&x)[3];
+    }
+    else if (0x7FFFFF < n && n <= 0x7FFFFFFF)
+    {
+        buff[0] |= 0x20;
+        int32_t x = htobe32((int32_t)n);
+        buff[idx++] = ((uint8_t*)&x)[0];
+        buff[idx++] = ((uint8_t*)&x)[1];
+        buff[idx++] = ((uint8_t*)&x)[2];
+        buff[idx++] = ((uint8_t*)&x)[3];
+    }
+    else
+    {
+        buff[0] |= 0x30;
+        int64_t x = htobe64(n);
+        std::memcpy(buff+idx, (uint8_t*)&x, 8);
+        idx += 8;
+    }
+
+    n = std::lround(max * precision);
+
+    if (n <= 0x7FFFFF)
+    {
+        int32_t x = htobe32((int32_t)n);
+        buff[idx++] = ((uint8_t*)&x)[1];
+        buff[idx++] = ((uint8_t*)&x)[2];
+        buff[idx++] = ((uint8_t*)&x)[3];
+    }
+    else if (0x7FFFFF < n && n <= 0x7FFFFFFF)
+    {
+        buff[0] |= 0x04;
+        int32_t x = htobe32((int32_t)n);
+        buff[idx++] = ((uint8_t*)&x)[0];
+        buff[idx++] = ((uint8_t*)&x)[1];
+        buff[idx++] = ((uint8_t*)&x)[2];
+        buff[idx++] = ((uint8_t*)&x)[3];
+    }
+    else if (0x7FFFFFFF < n && n <= 0x7FFFFFFFFF)
+    {
+        buff[0] |= 0x08;
+        int64_t x = htobe64(n);
+        buff[idx++] = ((uint8_t*)&x)[3];
+        buff[idx++] = ((uint8_t*)&x)[4];
+        buff[idx++] = ((uint8_t*)&x)[5];
+        buff[idx++] = ((uint8_t*)&x)[6];
+        buff[idx++] = ((uint8_t*)&x)[7];
+    }
+    else
+    {
+        buff[0] |= 0x0C;
+        int64_t x = htobe64(n);
+        std::memcpy(buff+idx, (uint8_t*)&x, 8);
+        idx += 8;
+    }
+
+    n = std::lround(sum * precision);
+
+    if (n <= 0x7FFFFF)
+    {
+        int32_t x = htobe32((int32_t)n);
+        buff[idx++] = ((uint8_t*)&x)[1];
+        buff[idx++] = ((uint8_t*)&x)[2];
+        buff[idx++] = ((uint8_t*)&x)[3];
+    }
+    else if (0x7FFFFF < n && n <= 0x7FFFFFFF)
+    {
+        buff[0] |= 0x01;
+        int32_t x = htobe32((int32_t)n);
+        buff[idx++] = ((uint8_t*)&x)[0];
+        buff[idx++] = ((uint8_t*)&x)[1];
+        buff[idx++] = ((uint8_t*)&x)[2];
+        buff[idx++] = ((uint8_t*)&x)[3];
+    }
+    else if (0x7FFFFFFF < n && n <= 0x7FFFFFFFFF)
+    {
+        buff[0] |= 0x02;
+        int64_t x = htobe64(n);
+        buff[idx++] = ((uint8_t*)&x)[3];
+        buff[idx++] = ((uint8_t*)&x)[4];
+        buff[idx++] = ((uint8_t*)&x)[5];
+        buff[idx++] = ((uint8_t*)&x)[6];
+        buff[idx++] = ((uint8_t*)&x)[7];
+    }
+    else
+    {
+        buff[0] |= 0x03;
+        int64_t x = htobe64(n);
+        std::memcpy(buff+idx, (uint8_t*)&x, 8);
+        idx += 8;
+    }
+
+    return idx;
+}
+
+
 }

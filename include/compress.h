@@ -189,6 +189,11 @@ public:
         return 3;
     };
 
+    static inline double get_precision()
+    {
+        return m_precision;
+    }
+
     virtual bool recycle();
 
 private:
@@ -441,6 +446,15 @@ private:
     size_t m_size;  // capacity of m_dps (number of dps)
     DataPointPair *m_data_points;
     DataPointVector m_dps;
+};
+
+
+class RollupCompressor_v1
+{
+public:
+    static int compress(uint8_t *buff, TimeSeriesId tid, uint32_t cnt, double min, double max, double sum);
+
+private:
 };
 
 
