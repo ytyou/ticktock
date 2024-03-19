@@ -95,6 +95,7 @@ class Compressor : public Recyclable
 {
 public:
     static Compressor *create(int version);
+    static void initialize();
 
     virtual void init(Timestamp start, uint8_t *base, size_t size);
     virtual void restore(DataPointVector& dps, CompressorPosition& position, uint8_t *base) = 0;
@@ -188,11 +189,6 @@ public:
     {
         return 3;
     };
-
-    static inline double get_precision()
-    {
-        return m_precision;
-    }
 
     virtual bool recycle();
 
@@ -452,9 +448,12 @@ private:
 class RollupCompressor_v1
 {
 public:
+    static void init();
     static int compress(uint8_t *buff, TimeSeriesId tid, uint32_t cnt, double min, double max, double sum);
+    static int uncompress(uint8_t *buff, int size, struct rollup_entry *entry);
 
 private:
+    static double m_precision;
 };
 
 

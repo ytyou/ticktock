@@ -41,6 +41,8 @@ private:
     void save_restore2(Compressor *compressor, Timestamp ts);
     void stress_test(Compressor *compressor, Timestamp ts);
     void best_scenario(bool ms);
+    void rollup_compress1();
+    void rollup_compress2();
 };
 
 

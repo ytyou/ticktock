@@ -141,8 +141,10 @@
 #else
 #define CFG_TSDB_ROLLUP_BUCKETS_DEF             64
 #endif
+#define CFG_TSDB_ROLLUP_COMPRESSOR_PRECISION    "tsdb.rollup.compressor.precision"
+#define CFG_TSDB_ROLLUP_COMPRESSOR_PRECISION_DEF 3
 #define CFG_TSDB_ROLLUP_COMPRESSOR_VERSION      "tsdb.rollup.compressor.version"
-#define CFG_TSDB_ROLLUP_COMPRESSOR_VERSION_DEF  0
+#define CFG_TSDB_ROLLUP_COMPRESSOR_VERSION_DEF  1
 #define CFG_TSDB_ROLLUP_ENABLED                 "tsdb.rollup.enabled"
 #define CFG_TSDB_ROLLUP_ENABLED_DEF             true
 #define CFG_TSDB_ROLLUP_FREQUENCY               "tsdb.rollup.frequency"

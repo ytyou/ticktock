@@ -285,7 +285,7 @@ initialize()
 #endif
     Tag_v2::init();
     MemoryManager::init();
-    Compressor_v3::initialize();
+    Compressor::initialize();
     Tsdb::init();
     RollupManager::init();
     AppendLog::init();

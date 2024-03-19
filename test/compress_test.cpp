@@ -30,7 +30,7 @@ void
 CompressTests::run()
 {
     log("Running compress tests with millisecond resolution...");
-    Compressor_v3::initialize();
+    Compressor::initialize();
     run_with(true);
     log("Running compress tests with second resolution...");
     run_with(false);
@@ -38,6 +38,9 @@ CompressTests::run()
     best_scenario(true);
     log("Running best scenario case with second resolution...");
     best_scenario(false);
+    log("Running rollup compression tests...");
+    rollup_compress1();
+    for (int i = 0; i < 10000; i++) rollup_compress2();
 }
 
 void
@@ -347,6 +350,85 @@ CompressTests::best_scenario(bool ms)
         compress_uncompress(compressor, ts, true, false);
         delete compressor;
     }
+
+    m_stats.add_passed(1);
+}
+void
+CompressTests::rollup_compress1()
+{
+    uint8_t buff[4096];
+    struct rollup_entry entry;
+    uint32_t tid = 0;
+    uint32_t cnt = 1;
+    double min = 0.0;
+    double max = 100.0;
+    double sum = 84155849.918796;
+    int len = 0;
+
+    // compress
+    int m = RollupCompressor_v1::compress(&buff[0], tid, cnt, min, max, sum);
+    CONFIRM(m >= 14);
+
+    // uncompress
+    int n = RollupCompressor_v1::uncompress(&buff[0], m, &entry);
+    CONFIRM(m == n);
+    CONFIRM(tid == entry.tid);
+    CONFIRM(cnt == entry.cnt);
+    CONFIRM(min == entry.min);
+    CONFIRM(max == entry.max);
+    CONFIRM(std::abs(sum - entry.sum) < 0.001);
+
+    m_stats.add_passed(1);
+}
+
+void
+CompressTests::rollup_compress2()
+{
+    uint8_t buff[4096];
+    struct rollup_entry entries[100];
+    int len = 0;
+
+    // generate data
+    for (int i = 0; i < sizeof(entries)/sizeof(entries[0]); i++)
+    {
+        entries[i].tid = tt::random(0, 1000000);
+        entries[i].cnt = tt::random(0, 3600);
+        entries[i].min = tt::random(-10000.0, 10000.0);
+        entries[i].max = tt::random(-1000000.0, 1000000.0);
+        entries[i].sum = tt::random(-100000000.0, 100000000.0);
+    }
+
+    // compress
+    for (int i = 0; i < sizeof(entries)/sizeof(entries[0]); i++)
+    {
+        CONFIRM((sizeof(buff) - len) >= 33);
+        int n = RollupCompressor_v1::compress(&buff[len], entries[i].tid, entries[i].cnt, entries[i].min, entries[i].max, entries[i].sum);
+        CONFIRM(n >= 14 || entries[i].cnt == 0);
+        len += n;
+    }
+
+    // uncompress
+    int idx = 0;
+
+    for (int i = 0; i < sizeof(entries)/sizeof(entries[0]); i++)
+    {
+        struct rollup_entry entry;
+        int n = RollupCompressor_v1::uncompress(&buff[idx], len-idx, &entry);
+        CONFIRM(n >= 14 || entries[i].cnt == 0);
+        CONFIRM(entries[i].tid == entry.tid);
+        CONFIRM(entries[i].cnt == entry.cnt);
+
+        if (entry.cnt != 0)
+        {
+            CONFIRM(std::abs(entries[i].min - entry.min) < 0.001);
+            CONFIRM(std::abs(entries[i].max - entry.max) < 0.001);
+            CONFIRM(std::abs(entries[i].sum - entry.sum) < 0.001);
+        }
+
+        idx += n;
+    }
+
+    m_stats.add_passed(1);
 }
 
 
