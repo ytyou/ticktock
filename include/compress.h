@@ -453,6 +453,22 @@ public:
     static int uncompress(uint8_t *buff, int size, struct rollup_entry *entry);
 
 private:
+    static void compress_int16(int64_t n, uint8_t *buff);
+    static void compress_int24(int64_t n, uint8_t *buff);
+    static void compress_int32(int64_t n, uint8_t *buff);
+    static void compress_int40(int64_t n, uint8_t *buff);
+    static void compress_int64(int64_t n, uint8_t *buff);
+
+    static int16_t uncompress_int16(uint8_t *buff);
+    static int32_t uncompress_int24(uint8_t *buff);
+    static int32_t uncompress_int32(uint8_t *buff);
+    static int64_t uncompress_int40(uint8_t *buff);
+    static int64_t uncompress_int64(uint8_t *buff);
+
+    static uint32_t uncompress_uint16(uint8_t *buff);
+    static uint32_t uncompress_uint24(uint8_t *buff);
+    static uint32_t uncompress_uint32(uint8_t *buff);
+
     static double m_precision;
 };
 
