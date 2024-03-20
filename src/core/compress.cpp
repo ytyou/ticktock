@@ -293,7 +293,7 @@ Compressor_v3::compress(double v)
     {
         uint8_t one_zero = 0x80;
         m_bitset.append(reinterpret_cast<uint8_t*>(&one_zero), 1, 0);
-        compress((int64_t)std::lround(v * m_precision));
+        compress((int64_t)std::llround(v * m_precision));
     }
 }
 
@@ -1385,7 +1385,7 @@ RollupCompressor_v1::compress(uint8_t *buff, TimeSeriesId tid, uint32_t cnt, dou
     if (cnt == 0)
         return idx;
 
-    int64_t n = std::lround(min * precision);
+    int64_t n = std::llround(min * precision);
 
     if (-32768 <= n && n <= 32767)
     {
@@ -1411,7 +1411,7 @@ RollupCompressor_v1::compress(uint8_t *buff, TimeSeriesId tid, uint32_t cnt, dou
         idx += 8;
     }
 
-    n = std::lround(max * precision);
+    n = std::llround(max * precision);
 
     if (-8388608 <= n && n <= 8388607)
     {
@@ -1437,7 +1437,7 @@ RollupCompressor_v1::compress(uint8_t *buff, TimeSeriesId tid, uint32_t cnt, dou
         idx += 8;
     }
 
-    n = std::lround(sum * precision);
+    n = std::llround(sum * precision);
 
     if (-8388608 <= n && n <= 8388607)
     {
