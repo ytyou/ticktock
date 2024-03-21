@@ -1648,7 +1648,7 @@ RollupDataFile::query(const TimeRange& range, std::unordered_map<TimeSeriesId,Qu
     {
         struct rollup_entry entry;
         len = RollupCompressor_v1::uncompress((uint8_t*)(m_buff+i), m_index-i, &entry, m_compressor_precision);
-        ASSERT(len >= 6);
+        if (len <= 0) break;
         if (query_entry(range, &entry, map, rollup) > 0) break;
     }
 }
