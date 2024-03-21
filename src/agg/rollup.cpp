@@ -16,6 +16,7 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+#include <iomanip>
 #include <limits.h>
 #include <unordered_map>
 #include "config.h"
@@ -39,6 +40,8 @@ std::unordered_map<uint64_t, RollupDataFile*> RollupManager::m_data_files2; // a
 RollupDataFile *RollupManager::m_wal_data_file = nullptr;
 std::queue<int64_t> RollupManager::m_sizes;
 int64_t RollupManager::m_size_hint;
+std::mutex RollupManager::m_cfg_lock;
+std::unordered_map<uint32_t, Config*> RollupManager::m_configs;
 
 
 RollupManager::RollupManager() :
@@ -156,6 +159,18 @@ RollupManager::shutdown()
     {
         delete m_wal_data_file;
         m_wal_data_file = nullptr;
+    }
+
+    {
+        std::lock_guard<std::mutex> guard(m_cfg_lock);
+
+        for (const auto& entry: m_configs)
+        {
+            Config *cfg = entry.second;
+            delete cfg;
+        }
+
+        m_configs.clear();
     }
 }
 
@@ -437,10 +452,13 @@ RollupManager::get_data_file(MetricId mid, Timestamp tstamp, std::unordered_map<
 
     if (search == map.end())
     {
+        int year, month;
+        get_year_month(tstamp, year, month);
+
         std::string name =
             monthly ?
-                RollupDataFile::get_name_by_mid_1h(mid, tstamp, false) :
-                RollupDataFile::get_name_by_mid_1d(mid, tstamp, false);
+                RollupDataFile::get_name_by_mid_1h(mid, year, month) :
+                RollupDataFile::get_name_by_mid_1d(mid, year);
 
         if (file_exists(name))
         {
@@ -547,7 +565,9 @@ RollupManager::get_data_file_by_bucket_1h(int bucket, Timestamp tstamp)
 
     if (search == m_data_files.end())
     {
-        std::string name = RollupDataFile::get_name_by_bucket_1h(bucket, tstamp, false);
+        int year, month;
+        get_year_month(tstamp, year, month);
+        std::string name = RollupDataFile::get_name_by_bucket_1h(bucket, year, month);
 
         if (file_exists(name))
         {
@@ -713,6 +733,91 @@ RollupManager::restore(struct rollup_append_entry *entry)
     m_max = entry->max;
     m_sum = entry->sum;
     m_tstamp = entry->tstamp;
+}
+
+Config *
+RollupManager::get_rollup_config(int year, bool create)
+{
+    return get_rollup_config(year, 0, create);
+}
+
+Config *
+RollupManager::get_rollup_config(int year, int month, bool create)
+{
+    ASSERT(1970 <= year && year < 3000);
+    ASSERT(0 <= month && month <= 12);
+
+    uint32_t key = year * 100 + month;
+    std::lock_guard<std::mutex> guard(m_cfg_lock);
+    auto search = m_configs.find(key);
+    Config *cfg = nullptr;
+    bool monthly;
+
+    if (search == m_configs.end())
+    {
+        std::string dir_name;
+
+        if (month == 0)
+        {
+            // 1d
+            monthly = false;
+            std::ostringstream oss;
+            oss << Config::get_data_dir() << "/"
+                << std::to_string(year) << "/rollup";
+            dir_name = oss.str();
+        }
+        else
+        {
+            // 1h
+            monthly = true;
+            std::ostringstream oss;
+            oss << Config::get_data_dir() << "/"
+                << std::to_string(year) << "/"
+                << std::setfill('0') << std::setw(2) << month << "/rollup";
+            dir_name = oss.str();
+        }
+
+        if (create)
+        {
+            if (! file_exists(dir_name))
+            {
+                create_dir(dir_name);
+
+                // create config file
+                cfg = new Config(dir_name + "/config");
+                int compressor = monthly ? CFG_TSDB_ROLLUP_COMPRESSOR_VERSION_DEF : 0;
+                    //Config::inst()->get_int(CFG_TSDB_ROLLUP_COMPRESSOR_VERSION, CFG_TSDB_ROLLUP_COMPRESSOR_VERSION_DEF);
+                int precision =
+                    Config::inst()->get_int(CFG_TSDB_ROLLUP_COMPRESSOR_PRECISION, CFG_TSDB_ROLLUP_COMPRESSOR_PRECISION_DEF);
+                cfg->set_value(CFG_TSDB_ROLLUP_COMPRESSOR_VERSION, std::to_string(compressor));
+                cfg->set_value(CFG_TSDB_ROLLUP_COMPRESSOR_PRECISION, std::to_string(precision));
+                cfg->set_value(CFG_TSDB_ROLLUP_BUCKETS,
+                    std::to_string(Config::inst()->get_int(CFG_TSDB_ROLLUP_BUCKETS, CFG_TSDB_ROLLUP_BUCKETS_DEF)));
+                cfg->persist();
+            }
+            else
+            {
+                // load config file
+                cfg = new Config(dir_name + "/config");
+                cfg->load(false);
+            }
+        }
+        else if (file_exists(dir_name + "/config"))
+        {
+            // load config file
+            cfg = new Config(dir_name + "/config");
+            cfg->load(false);
+        }
+
+        if (cfg != nullptr)
+            m_configs.insert(std::make_pair(key, cfg));
+    }
+    else
+    {
+        cfg = search->second;
+    }
+
+    return cfg;
 }
 
 

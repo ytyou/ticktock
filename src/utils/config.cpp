@@ -149,6 +149,7 @@ Config::~Config()
 {
     for (auto& prop: m_properties)
         prop.second.reset();
+    m_properties.clear();
 }
 
 void

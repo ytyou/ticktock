@@ -20,6 +20,7 @@
 
 #include <queue>
 #include <unordered_map>
+#include "config.h"
 #include "dp.h"
 #include "mmap.h"
 #include "type.h"
@@ -79,6 +80,9 @@ public:
     static double query(struct rollup_entry *entry, RollupType type);
     static void rotate();
 
+    static Config *get_rollup_config(int year, bool create);
+    static Config *get_rollup_config(int year, int month, bool create);
+
 private:
     static Timestamp step_down(Timestamp tstamp);
     static RollupDataFile *get_data_file(MetricId mid, Timestamp tstamp, std::unordered_map<uint64_t, RollupDataFile*>& map, bool monthly);
@@ -101,6 +105,8 @@ private:
     static std::unordered_map<uint64_t, RollupDataFile*> m_data_files2; // annually
     static std::queue<int64_t> m_sizes;   // sizes of 'recent' monthly data files
     static int64_t m_size_hint;
+    static std::mutex m_cfg_lock;
+    static std::unordered_map<uint32_t, Config*> m_configs;
 };
 
 

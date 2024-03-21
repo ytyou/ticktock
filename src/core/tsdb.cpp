@@ -3603,7 +3603,8 @@ bool
 Tsdb::rollup(TaskData& data)
 {
     // called from scheduled task? if so, enforce off-hour rule;
-    if ((data.integer == 0) && ! is_off_hour()) return false;
+    bool interactive = (data.integer != 0);
+    if (! interactive && ! is_off_hour()) return false;
     data.integer = 0;
 
     Tsdb *tsdb = nullptr;
@@ -3693,7 +3694,7 @@ Tsdb::rollup(TaskData& data)
     {
         int bucket_count =
             Config::inst()->get_int(CFG_TSDB_ROLLUP_BUCKETS,CFG_TSDB_ROLLUP_BUCKETS_DEF);
-        int pause =
+        int pause = interactive ? 0 :
             Config::inst()->get_time(CFG_TSDB_ROLLUP_PAUSE,TimeUnit::SEC,CFG_TSDB_ROLLUP_PAUSE_DEF);
 
         for (int bucket = 0; bucket < bucket_count; bucket++)

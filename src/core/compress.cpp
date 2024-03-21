@@ -1349,13 +1349,12 @@ RollupCompressor_v1::init()
  *   7-8 bit: sum (00 => 3 bytes, 01 => 4 bytes, 10 => 5 bytes, 11 => 8 bytes)
  */
 int
-RollupCompressor_v1::compress(uint8_t *buff, TimeSeriesId tid, uint32_t cnt, double min, double max, double sum)
+RollupCompressor_v1::compress(uint8_t *buff, TimeSeriesId tid, uint32_t cnt, double min, double max, double sum, double precision)
 {
     ASSERT(buff != nullptr);
     ASSERT(tid != TT_INVALID_TIME_SERIES_ID);
 
     int idx = 1;
-    double precision = m_precision;
 
     if (tid <= 0xFFFFFF)
     {
@@ -1469,16 +1468,16 @@ RollupCompressor_v1::compress(uint8_t *buff, TimeSeriesId tid, uint32_t cnt, dou
 /* @return Number of bytes processed during uncompress; 0 if not enough data in the buff
  */
 int
-RollupCompressor_v1::uncompress(uint8_t *buff, int size, struct rollup_entry *entry)
+RollupCompressor_v1::uncompress(uint8_t *buff, int size, struct rollup_entry *entry, double precision)
 {
     ASSERT(buff != nullptr);
     ASSERT(entry != nullptr);
+    ASSERT(precision != 0.0);
 
     if (size < 6) return 0;
 
     int len = 1;
     uint8_t flag = buff[0];
-    double precision = m_precision;
 
     if (flag & 0x80)            // tid
     {

@@ -359,10 +359,10 @@ public:
     void dec_ref_count_no_lock() { m_ref_count--; }
     void inc_ref_count();
 
-    static std::string get_name_by_mid_1h(MetricId mid, Timestamp tstamp, bool create);
-    static std::string get_name_by_bucket_1h(int bucket, Timestamp tstamp, bool create);
-    static std::string get_name_by_mid_1d(MetricId mid, Timestamp tstamp, bool create);
-    static std::string get_name_by_bucket_1d(int bucket, Timestamp tstamp, bool create);
+    static std::string get_name_by_mid_1h(MetricId mid, int year, int month);
+    static std::string get_name_by_bucket_1h(int bucket, int year, int month);
+    static std::string get_name_by_mid_1d(MetricId mid, int year);
+    static std::string get_name_by_bucket_1d(int bucket, int year);
 
 private:
     void flush();
@@ -377,6 +377,8 @@ private:
     int64_t m_size;
     std::mutex m_lock;
     int m_ref_count;        // prevent unload when in use
+    short m_compressor_version;
+    double m_compressor_precision;
     bool m_monthly;         // true: monthly; false: annually
     bool m_for_read;
 };

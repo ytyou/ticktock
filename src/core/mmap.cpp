@@ -1300,9 +1300,30 @@ RollupDataFile::RollupDataFile(MetricId mid, Timestamp begin, bool monthly) :
     m_for_read(false),
     m_monthly(monthly)
 {
-    m_name = monthly ? get_name_by_mid_1h(mid, begin, true) : get_name_by_mid_1d(mid, begin, true);
+    int year, month;
+    get_year_month(begin, year, month);
+    Config *cfg = nullptr;
+
+    if (monthly)
+    {
+        cfg = RollupManager::get_rollup_config(year, month, true);
+        m_name = get_name_by_mid_1h(mid, year, month);;
+    }
+    else
+    {
+        cfg = RollupManager::get_rollup_config(year, true);
+        m_name = get_name_by_mid_1d(mid, year);
+    }
+
+    ASSERT(cfg != nullptr);
+    m_compressor_version = monthly ?
+        cfg->get_int(CFG_TSDB_ROLLUP_COMPRESSOR_VERSION, CFG_TSDB_ROLLUP_COMPRESSOR_VERSION_DEF)
+        : 0;
+    m_compressor_precision = std::pow(10,
+        cfg->get_int(CFG_TSDB_ROLLUP_COMPRESSOR_PRECISION, CFG_TSDB_ROLLUP_COMPRESSOR_PRECISION_DEF));
 }
 
+// create 1h rollup file
 RollupDataFile::RollupDataFile(const std::string& name, Timestamp begin) :
     m_file(nullptr),
     m_begin(begin),
@@ -1312,8 +1333,18 @@ RollupDataFile::RollupDataFile(const std::string& name, Timestamp begin) :
     m_ref_count(0),
     m_name(name),
     m_for_read(false),
-    m_monthly(false)
+    m_monthly(true)
 {
+    int year, month;
+    get_year_month(begin, year, month);
+    Config *cfg = RollupManager::get_rollup_config(year, month, false);
+    if (cfg != nullptr)
+    {
+        m_compressor_version =
+            cfg->get_int(CFG_TSDB_ROLLUP_COMPRESSOR_VERSION, CFG_TSDB_ROLLUP_COMPRESSOR_VERSION_DEF);
+        m_compressor_precision = std::pow(10,
+            cfg->get_int(CFG_TSDB_ROLLUP_COMPRESSOR_PRECISION, CFG_TSDB_ROLLUP_COMPRESSOR_PRECISION_DEF));
+    }
 }
 
 // create 1d rollup file
@@ -1330,8 +1361,15 @@ RollupDataFile::RollupDataFile(int bucket, Timestamp tstamp) :
     ASSERT(bucket >= 0);
     ASSERT(is_sec(tstamp));
 
-    // name of the file
-    m_name = get_name_by_bucket_1d(bucket, tstamp, true);
+    int year, month;
+    get_year_month(tstamp, year, month);
+    m_name = get_name_by_bucket_1d(bucket, year);
+    Config *cfg = RollupManager::get_rollup_config(year, true);
+    ASSERT(cfg != nullptr);
+    m_compressor_version = 0;   // TODO: compress 1d rollup data file
+        //cfg->get_int(CFG_TSDB_ROLLUP_COMPRESSOR_VERSION, CFG_TSDB_ROLLUP_COMPRESSOR_VERSION_DEF);;
+    m_compressor_precision = std::pow(10,
+        cfg->get_int(CFG_TSDB_ROLLUP_COMPRESSOR_PRECISION, CFG_TSDB_ROLLUP_COMPRESSOR_PRECISION_DEF));
 }
 
 RollupDataFile::~RollupDataFile()
@@ -1439,7 +1477,7 @@ RollupDataFile::add_data_point(TimeSeriesId tid, uint32_t cnt, double min, doubl
     int size;
     uint8_t buff[128];
 
-    size = RollupCompressor_v1::compress(buff, tid, cnt, min, max, sum);
+    size = RollupCompressor_v1::compress(buff, tid, cnt, min, max, sum, m_compressor_precision);
 
     std::lock_guard<std::mutex> guard(m_lock);
 
@@ -1587,7 +1625,7 @@ RollupDataFile::query(const TimeRange& range, std::unordered_map<TimeSeriesId,Qu
             ASSERT((n-i) <= sizeof(buff));
 
             struct rollup_entry entry;
-            len = RollupCompressor_v1::uncompress((uint8_t*)(buff+i), n-i, &entry);
+            len = RollupCompressor_v1::uncompress((uint8_t*)(buff+i), n-i, &entry, m_compressor_precision);
 
             if (len == 0)
             {
@@ -1609,7 +1647,7 @@ RollupDataFile::query(const TimeRange& range, std::unordered_map<TimeSeriesId,Qu
     for (int i = 0; i < m_index; i += len)
     {
         struct rollup_entry entry;
-        len = RollupCompressor_v1::uncompress((uint8_t*)(m_buff+i), m_index-i, &entry);
+        len = RollupCompressor_v1::uncompress((uint8_t*)(m_buff+i), m_index-i, &entry, m_compressor_precision);
         ASSERT(len >= 6);
         if (query_entry(range, &entry, map, rollup) > 0) break;
     }
@@ -1669,22 +1707,41 @@ void
 RollupDataFile::query(const TimeRange& range, std::unordered_map<TimeSeriesId,struct rollup_entry_ext>& outputs)
 {
     std::lock_guard<std::mutex> guard(m_lock);
-    uint8_t buff[1024*sizeof(struct rollup_entry)];
+    uint8_t buff[4096];
     std::size_t n;
+    int len, offset = 0;
 
     m_last_access = ts_now_sec();
     close();
     open(true);
     std::fseek(m_file, 0, SEEK_SET);    // seek to beginning of file
 
-    while ((n = std::fread(&buff[0], 1, sizeof(buff), m_file)) > 0)
+    while ((n = std::fread(&buff[offset], 1, sizeof(buff)-offset, m_file)) > 0)
     {
-        ASSERT((n % sizeof(struct rollup_entry)) == 0);
+        ASSERT((n + offset) <= sizeof(buff));
+        n += offset;
+        offset = 0;
 
-        for (std::size_t i = 0; i < n; i += sizeof(struct rollup_entry))
+        for (int i = 0; i < n; i += len)
         {
-            struct rollup_entry *entry = (struct rollup_entry*)&buff[i];
-            auto search = outputs.find(entry->tid);
+            ASSERT(i < sizeof(buff));
+            ASSERT(n <= sizeof(buff));
+            ASSERT((n-i) <= sizeof(buff));
+
+            struct rollup_entry entry;
+            len = RollupCompressor_v1::uncompress((uint8_t*)(buff+i), n-i, &entry, m_compressor_precision);
+
+            if (len == 0)
+            {
+                ASSERT(i > 0);
+                // copy remaining unprocessed data to the beginning of buff
+                for (int j = 0; (i+j) < n; j++)
+                    buff[j] = buff[i+j];
+                offset = n - i;
+                break;
+            }
+
+            auto search = outputs.find(entry.tid);
 
             if (search != outputs.end())
             {
@@ -1693,12 +1750,12 @@ RollupDataFile::query(const TimeRange& range, std::unordered_map<TimeSeriesId,st
                 else
                     search->second.tstamp += g_rollup_interval_1h;  // in seconds
 
-                if ((entry->cnt != 0) && (range.in_range(search->second.tstamp) == 0))
+                if ((entry.cnt != 0) && (range.in_range(search->second.tstamp) == 0))
                 {
-                    search->second.cnt += entry->cnt;
-                    search->second.min = std::min(search->second.min,entry->min);
-                    search->second.max = std::max(search->second.max,entry->max);
-                    search->second.sum += entry->sum;
+                    search->second.cnt += entry.cnt;
+                    search->second.min = std::min(search->second.min,entry.min);
+                    search->second.max = std::max(search->second.max,entry.max);
+                    search->second.sum += entry.sum;
                 }
             }
         }
@@ -1755,8 +1812,9 @@ void
 RollupDataFile::query(std::unordered_map<TimeSeriesId,std::vector<struct rollup_entry_ext>>& data)
 {
     std::lock_guard<std::mutex> guard(m_lock);
-    uint8_t buff[1024*sizeof(struct rollup_entry)];
+    uint8_t buff[4096];
     std::size_t n;
+    int len, offset = 0;
 
     m_last_access = ts_now_sec();
     if (! is_open(true) && ! is_open(false))
@@ -1765,27 +1823,47 @@ RollupDataFile::query(std::unordered_map<TimeSeriesId,std::vector<struct rollup_
         flush();
     std::fseek(m_file, 0, SEEK_SET);    // seek to beginning of file
 
-    while ((n = std::fread(&buff[0], 1, sizeof(buff), m_file)) > 0)
+    while ((n = std::fread(&buff[offset], 1, sizeof(buff)-offset, m_file)) > 0)
     {
-        for (std::size_t i = 0; i < n; i += sizeof(struct rollup_entry))
+        ASSERT((n + offset) <= sizeof(buff));
+        n += offset;
+        offset = 0;
+
+        for (int i = 0; i < n; i += len)
         {
-            struct rollup_entry *entry = (struct rollup_entry*)&buff[i];
-            auto search = data.find(entry->tid);
+            ASSERT(i < sizeof(buff));
+            ASSERT(n <= sizeof(buff));
+            ASSERT((n-i) <= sizeof(buff));
+
+            struct rollup_entry entry;
+            len = RollupCompressor_v1::uncompress((uint8_t*)(buff+i), n-i, &entry, m_compressor_precision);
+
+            if (len == 0)
+            {
+                ASSERT(i > 0);
+                // copy remaining unprocessed data to the beginning of buff
+                for (int j = 0; (i+j) < n; j++)
+                    buff[j] = buff[i+j];
+                offset = n - i;
+                break;
+            }
+
+            auto search = data.find(entry.tid);
 
             if (search == data.end())
             {
                 // first data point
                 std::vector<struct rollup_entry_ext> entries;
-                data.emplace(std::make_pair((TimeSeriesId)entry->tid, entries));
-                search = data.find(entry->tid);
+                data.emplace(std::make_pair((TimeSeriesId)entry.tid, entries));
+                search = data.find(entry.tid);
                 ASSERT(search != data.end());
                 struct rollup_entry_ext ext;
 
-                ext.tid = entry->tid;
-                ext.cnt = entry->cnt;
-                ext.min = entry->min;
-                ext.max = entry->max;
-                ext.sum = entry->sum;
+                ext.tid = entry.tid;
+                ext.cnt = entry.cnt;
+                ext.min = entry.min;
+                ext.max = entry.max;
+                ext.sum = entry.sum;
                 ext.tstamp = m_begin;
 
                 search->second.emplace_back(ext);
@@ -1800,10 +1878,10 @@ RollupDataFile::query(std::unordered_map<TimeSeriesId,std::vector<struct rollup_
 
                 if (last_step_down == curr_step_down)
                 {
-                    ext.cnt += entry->cnt;
-                    ext.min = std::min(ext.min, entry->min);
-                    ext.max = std::max(ext.max, entry->max);
-                    ext.sum += entry->sum;
+                    ext.cnt += entry.cnt;
+                    ext.min = std::min(ext.min, entry.min);
+                    ext.max = std::max(ext.max, entry.max);
+                    ext.sum += entry.sum;
                     ext.tstamp += g_rollup_interval_1h;
                 }
                 else
@@ -1812,11 +1890,11 @@ RollupDataFile::query(std::unordered_map<TimeSeriesId,std::vector<struct rollup_
 
                     struct rollup_entry_ext new_ext;
 
-                    new_ext.tid = entry->tid;
-                    new_ext.cnt = entry->cnt;
-                    new_ext.min = entry->min;
-                    new_ext.max = entry->max;
-                    new_ext.sum = entry->sum;
+                    new_ext.tid = entry.tid;
+                    new_ext.cnt = entry.cnt;
+                    new_ext.min = entry.min;
+                    new_ext.max = entry.max;
+                    new_ext.sum = entry.sum;
                     new_ext.tstamp = curr_ts;
 
                     search->second.emplace_back(new_ext);
@@ -1836,70 +1914,35 @@ RollupDataFile::query(std::unordered_map<TimeSeriesId,std::vector<struct rollup_
 }
 
 std::string
-RollupDataFile::get_name_by_mid_1h(MetricId mid, Timestamp tstamp, bool create)
+RollupDataFile::get_name_by_mid_1h(MetricId mid, int year, int month)
 {
-    return get_name_by_bucket_1h(RollupManager::get_rollup_bucket(mid), tstamp, create);
+    return get_name_by_bucket_1h(RollupManager::get_rollup_bucket(mid), year, month);
 }
 
 std::string
-RollupDataFile::get_name_by_bucket_1h(int bucket, Timestamp tstamp, bool create)
+RollupDataFile::get_name_by_bucket_1h(int bucket, int year, int month)
 {
-    ASSERT(is_sec(tstamp));
-    int year, month;
-    get_year_month(tstamp, year, month);
     std::ostringstream oss;
     oss << Config::get_data_dir() << "/"
         << std::to_string(year) << "/"
-        << std::setfill('0') << std::setw(2) << month << "/rollup";
-    if (create && ! file_exists(oss.str()))
-    {
-        create_dir(oss.str());
-
-        // remember configs
-        Config cfg(oss.str() + "/config");
-        int compressor = CFG_TSDB_ROLLUP_COMPRESSOR_VERSION_DEF;
-            //Config::inst()->get_int(CFG_TSDB_ROLLUP_COMPRESSOR_VERSION, CFG_TSDB_ROLLUP_COMPRESSOR_VERSION_DEF);
-        int precision =
-            Config::inst()->get_int(CFG_TSDB_ROLLUP_COMPRESSOR_PRECISION, CFG_TSDB_ROLLUP_COMPRESSOR_PRECISION_DEF);
-        cfg.set_value(CFG_TSDB_ROLLUP_COMPRESSOR_VERSION, std::to_string(compressor));
-        cfg.set_value(CFG_TSDB_ROLLUP_COMPRESSOR_PRECISION, std::to_string(precision));
-        cfg.set_value(CFG_TSDB_ROLLUP_BUCKETS, std::to_string(Config::inst()->get_int(CFG_TSDB_ROLLUP_BUCKETS, CFG_TSDB_ROLLUP_BUCKETS_DEF)));
-        cfg.persist();
-    }
-    oss << "/r" << std::setfill('0') << std::setw(6) << bucket << ".data";
+        << std::setfill('0') << std::setw(2) << month << "/rollup"
+        << "/r" << std::setfill('0') << std::setw(6) << bucket << ".data";
     return oss.str();
 }
 
 std::string
-RollupDataFile::get_name_by_mid_1d(MetricId mid, Timestamp tstamp, bool create)
+RollupDataFile::get_name_by_mid_1d(MetricId mid, int year)
 {
-    return get_name_by_bucket_1d(RollupManager::get_rollup_bucket(mid), tstamp, create);
+    return get_name_by_bucket_1d(RollupManager::get_rollup_bucket(mid), year);
 }
 
 std::string
-RollupDataFile::get_name_by_bucket_1d(int bucket, Timestamp tstamp, bool create)
+RollupDataFile::get_name_by_bucket_1d(int bucket, int year)
 {
-    ASSERT(is_sec(tstamp));
-    int year, month;
-    get_year_month(tstamp, year, month);
     std::ostringstream oss;
     oss << Config::get_data_dir() << "/"
-        << std::to_string(year) << "/rollup";
-    if (create && ! file_exists(oss.str()))
-    {
-        create_dir(oss.str());
-
-        // remember configs
-        Config cfg(oss.str() + "/config");
-        int compressor = 0; //CFG_TSDB_ROLLUP_COMPRESSOR_VERSION_DEF;
-            //Config::inst()->get_str(CFG_TSDB_ROLLUP_COMPRESSOR_VERSION, CFG_TSDB_ROLLUP_COMPRESSOR_VERSION_DEF);
-        int precision = CFG_TSDB_ROLLUP_COMPRESSOR_PRECISION_DEF;
-        cfg.set_value(CFG_TSDB_ROLLUP_COMPRESSOR_VERSION, std::to_string(compressor));
-        cfg.set_value(CFG_TSDB_ROLLUP_COMPRESSOR_PRECISION, std::to_string(precision));
-        cfg.set_value(CFG_TSDB_ROLLUP_BUCKETS, std::to_string(Config::inst()->get_int(CFG_TSDB_ROLLUP_BUCKETS, CFG_TSDB_ROLLUP_BUCKETS_DEF)));
-        cfg.persist();
-    }
-    oss << "/r" << std::setfill('0') << std::setw(6) << bucket << ".data";
+        << std::to_string(year) << "/rollup"
+        << "/r" << std::setfill('0') << std::setw(6) << bucket << ".data";
     return oss.str();
 }
 
