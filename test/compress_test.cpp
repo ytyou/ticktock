@@ -363,14 +363,15 @@ CompressTests::rollup_compress1()
     double min = 0.0;
     double max = 100.0;
     double sum = 84155849.918796;
+    double precision = std::pow(10, 3);
     int len = 0;
 
     // compress
-    int m = RollupCompressor_v1::compress(&buff[0], tid, cnt, min, max, sum);
+    int m = RollupCompressor_v1::compress(&buff[0], tid, cnt, min, max, sum, precision);
     CONFIRM(m >= 14);
 
     // uncompress
-    int n = RollupCompressor_v1::uncompress(&buff[0], m, &entry);
+    int n = RollupCompressor_v1::uncompress(&buff[0], m, &entry, precision);
     CONFIRM(m == n);
     CONFIRM(tid == entry.tid);
     CONFIRM(cnt == entry.cnt);
@@ -386,6 +387,7 @@ CompressTests::rollup_compress2()
 {
     uint8_t buff[4096];
     struct rollup_entry entries[100];
+    double precision = std::pow(10, 3);
     int len = 0;
 
     // generate data
@@ -402,7 +404,7 @@ CompressTests::rollup_compress2()
     for (int i = 0; i < sizeof(entries)/sizeof(entries[0]); i++)
     {
         CONFIRM((sizeof(buff) - len) >= 33);
-        int n = RollupCompressor_v1::compress(&buff[len], entries[i].tid, entries[i].cnt, entries[i].min, entries[i].max, entries[i].sum);
+        int n = RollupCompressor_v1::compress(&buff[len], entries[i].tid, entries[i].cnt, entries[i].min, entries[i].max, entries[i].sum, precision);
         CONFIRM(n >= 14 || entries[i].cnt == 0);
         len += n;
     }
@@ -413,7 +415,7 @@ CompressTests::rollup_compress2()
     for (int i = 0; i < sizeof(entries)/sizeof(entries[0]); i++)
     {
         struct rollup_entry entry;
-        int n = RollupCompressor_v1::uncompress(&buff[idx], len-idx, &entry);
+        int n = RollupCompressor_v1::uncompress(&buff[idx], len-idx, &entry, precision);
         CONFIRM(n >= 14 || entries[i].cnt == 0);
         CONFIRM(entries[i].tid == entry.tid);
         CONFIRM(entries[i].cnt == entry.cnt);
