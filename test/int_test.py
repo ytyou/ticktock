@@ -251,6 +251,7 @@ class Test(object):
         self._ticktock_time = 0.0
         self._udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self._tcp_socket = tcp_socket
+        self._precision = 0.00000000012
 
     def start_tt(self, conf_file="tt.conf"):
         while True:
@@ -301,6 +302,9 @@ class Test(object):
         response.raise_for_status()
 
     def do_rollup(self):
+        if self._options.debug:
+            requests.post("http://"+self._options.ip+":6182/api/admin?cmd=rollup")
+
         response = requests.post("http://"+self._options.ip+":"+str(self._options.port)+"/api/admin?cmd=rollup")
         response.raise_for_status()
 
@@ -332,6 +336,11 @@ class Test(object):
             response.raise_for_status()
         else:
             payload = dps.to_plain()
+
+            # send a copy to another TT for debugging
+            if self._options.debug:
+                requests.post("http://"+self._options.ip+":6182/api/put?details", data=payload, timeout=self._options.timeout)
+
             # send to ticktock
             start = time.time()
             response = requests.post("http://"+self._options.ip+":"+str(self._options.port)+"/api/put?details", data=payload, timeout=self._options.timeout)
@@ -366,6 +375,10 @@ class Test(object):
 
         # send to ticktock in plain format
         payload = dps.to_plain()
+
+        if self._options.debug:
+            requests.post("http://"+self._options.ip+":6182/api/put?details", data=payload, timeout=self._options.timeout)
+
         start = time.time()
         response = requests.post("http://"+self._options.ip+":"+str(self._options.port)+"/api/put?details", data=payload, timeout=self._options.timeout)
         self._ticktock_time += time.time() - start
@@ -406,6 +419,11 @@ class Test(object):
 
         if self._options.method == "post":
             payload = query.to_json()
+
+            # send a copy to debugging TT
+            if self._options.debug:
+                requests.post("http://"+self._options.ip+":6182/api/query", json=payload, timeout=self._options.timeout)
+
             start = time.time()
             response = requests.post("http://"+self._options.ip+":"+str(self._options.port)+"/api/query", json=payload, timeout=self._options.timeout)
             self._ticktock_time += time.time() - start
@@ -413,6 +431,11 @@ class Test(object):
             params = query.to_params()
             if self._options.verbose:
                 print "params = " + str(params)
+
+            # send a copy to debugging TT
+            if self._options.debug:
+                requests.get("http://"+self._options.ip+":6182/api/query", params=params, timeout=self._options.timeout)
+
             start = time.time()
             response = requests.get("http://"+self._options.ip+":"+str(self._options.port)+"/api/query", params=params, timeout=self._options.timeout)
             self._ticktock_time += time.time() - start
@@ -555,7 +578,7 @@ class Test(object):
                 print "actual not float: " + str(actual)
                 return False
             diff = abs(expected - actual)
-            if diff > 0.00000000012:
+            if diff > self._precision:
                 if diff < 0.001:
                     print "expected not same as actual (float): {:.16f} vs {:.16f}; diff = {:.16f}".format(expected, actual, diff)
                 return False
@@ -1248,6 +1271,7 @@ class Query_With_Rollup(Test):
 
     def __init__(self, options, prefix="rq", tcp_socket=None):
         super(Query_With_Rollup, self).__init__(options, prefix, tcp_socket)
+        self._precision = 0.014
 
     def __call__(self, metric_cardinality=4):
 
@@ -2041,7 +2065,7 @@ def main(argv):
     if options.leak:
         tests.append(Memory_Leak_Tests(options))
     else:
-        #tests.append(Compaction_Tests(options))
+        ##tests.append(Compaction_Tests(options))
         tests.append(Multi_Thread_Tests(options))
         tests.append(Stop_Restart_Tests(options))
         tests.append(Out_Of_Order_Write_Tests(options))
@@ -2125,6 +2149,9 @@ def get_options(argv):
     parser.add_option('-v', '--verbose', dest='verbose', action='store_true',
                       default=defaults['verbose'],
                       help='Print more debug info.')
+    parser.add_option('-x', '--debug', dest='debug', action='store_true',
+                      default=defaults['debug'],
+                      help='Send requests to debugging TT as well.')
 
     (options, args) = parser.parse_args(args=argv[1:])
 
@@ -2137,6 +2164,7 @@ def get_options(argv):
 def get_defaults():
 
     defaults = {
+        'debug': False,
         'form': 'plain',
         'ip': '127.0.0.1',
         'leak': False,

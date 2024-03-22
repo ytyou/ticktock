@@ -16,6 +16,8 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+#include <algorithm>
+#include <cstring>
 #include "utils.h"
 #include "compress_test.h"
 
@@ -41,6 +43,7 @@ CompressTests::run()
     log("Running rollup compression tests...");
     rollup_compress1();
     for (int i = 0; i < 10000; i++) rollup_compress2();
+    rollup_compress3();
 }
 
 void
@@ -431,6 +434,140 @@ CompressTests::rollup_compress2()
     }
 
     m_stats.add_passed(1);
+}
+
+void
+CompressTests::rollup_compress3()
+{
+    struct rollup_entry entries[22000];
+
+    // generate data
+    log("generating data...");
+    for (int i = 0; i < sizeof(entries)/sizeof(entries[0]); i++)
+    {
+        entries[i].tid = tt::random(0, 1000000);
+        entries[i].cnt = tt::random(0, 36000);
+        entries[i].min = tt::random(-10000.0, 10000.0);
+        entries[i].max = tt::random(-1000000.0, 1000000.0);
+        entries[i].sum = tt::random(-100000000.0, 100000000.0);
+    }
+
+    m_buff_offset = m_disk_offset = m_disk_size = 0;
+    m_precision = std::pow(10, 3);
+
+    // compress
+    log("compress data...");
+    for (int i = 0; i < sizeof(entries)/sizeof(entries[0]); i++)
+        add_data_point(entries[i]);
+
+    // flush
+    if (m_buff_offset > 0)
+    {
+        std::memcpy(m_disk+m_disk_offset, m_buff, m_buff_offset);
+        m_disk_offset += m_buff_offset;
+        m_disk_size += m_buff_offset;
+        m_buff_offset = 0;
+    }
+
+    log("disk size: %d", m_disk_size);
+
+    // uncompress: simulates RollupDataFile::query()
+    log("uncompress data...");
+    uint8_t buff[4096];
+    std::size_t n;
+    int len, offset = 0;
+    int entry_idx = 0;
+
+    m_disk_offset = 0;  // rewind
+
+    while ((n = read_disk(&buff[offset], sizeof(buff)-offset)) > 0)
+    {
+        ASSERT((n + offset) <= sizeof(buff));
+
+        n += offset;
+        ASSERT(n <= sizeof(buff));
+        offset = 0;
+
+        for (int i = 0; i < n; i += len)
+        {
+            ASSERT(i < sizeof(buff));
+            ASSERT(n <= sizeof(buff));
+            ASSERT((n-i) <= sizeof(buff));
+
+            struct rollup_entry entry;
+            len = RollupCompressor_v1::uncompress((uint8_t*)(buff+i), n-i, &entry, m_precision);
+
+            if (len == 0)
+            {
+                ASSERT(i > 0);
+                // copy remaining unprocessed data to the beginning of buff
+                for (int j = 0; (i+j) < n; j++)
+                    buff[j] = buff[i+j];
+                offset = n - i;
+                break;
+            }
+
+            int failed = m_stats.get_failed();
+
+            CONFIRM(entries[entry_idx].tid == entry.tid);
+            CONFIRM(entries[entry_idx].cnt == entry.cnt);
+
+            if (entry.cnt != 0)
+            {
+                CONFIRM(std::abs(entries[entry_idx].min - entry.min) < 0.0005);
+                CONFIRM(std::abs(entries[entry_idx].max - entry.max) < 0.0005);
+                CONFIRM(std::abs(entries[entry_idx].sum - entry.sum) < 0.014);
+            }
+
+            if (failed < m_stats.get_failed())
+            {
+                log("entry_idx = %d", entry_idx);
+                log("entries[entry_idx].tid=%u, entry.tid=%u", entries[entry_idx].tid, entry.tid);
+                log("entries[entry_idx].cnt=%u, entry.cnt=%u", entries[entry_idx].cnt, entry.cnt);
+                log("entries[entry_idx].min=%f, entry.min=%f", entries[entry_idx].min, entry.min);
+                log("entries[entry_idx].max=%f, entry.max=%f", entries[entry_idx].max, entry.max);
+                log("entries[entry_idx].sum=%f, entry.sum=%f", entries[entry_idx].sum, entry.sum);
+            }
+
+            entry_idx++;
+        }
+    }
+
+    m_stats.add_passed(1);
+}
+
+// This simulates RollupDataFile::add_data_point()
+void
+CompressTests::add_data_point(struct rollup_entry& entry)
+{
+    int size;
+    uint8_t buff[128];
+
+    size = RollupCompressor_v1::compress(buff, entry.tid, entry.cnt, entry.min, entry.max, entry.sum, m_precision);
+
+    if (sizeof(m_buff) < (m_buff_offset + size))
+    {
+        ASSERT((m_disk_offset + m_buff_offset) < sizeof(m_disk));
+        std::memcpy(m_disk+m_disk_offset, m_buff, m_buff_offset);
+        m_disk_offset += m_buff_offset;
+        m_disk_size += m_buff_offset;
+        m_buff_offset = 0;
+    }
+
+    std::memcpy(m_buff+m_buff_offset, buff, size);
+    m_buff_offset += size;
+}
+
+// simualtes std::fread()
+std::size_t
+CompressTests::read_disk(uint8_t *buff, std::size_t size)
+{
+    ASSERT((m_disk_offset+size) < sizeof(m_disk));
+    int len = std::min((int)size, (int)m_disk_size-m_disk_offset);
+    if (len > 0)
+        std::memcpy(buff, m_disk+m_disk_offset, len);
+    m_disk_offset += len;
+    return len;
 }
 
 

@@ -1506,7 +1506,8 @@ RollupCompressor_v1::uncompress(uint8_t *buff, int size, struct rollup_entry *en
     }
 
     ASSERT(len <= 9);
-    if ((size - len) < 8) return 0;
+    if ((size - len) < 8)
+        return (entry->cnt == 0) ? len : 0;
 
     if (entry->cnt != 0)
     {

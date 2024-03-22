@@ -43,6 +43,15 @@ private:
     void best_scenario(bool ms);
     void rollup_compress1();
     void rollup_compress2();
+    void rollup_compress3();
+
+    void add_data_point(struct rollup_entry& entry);
+    std::size_t read_disk(uint8_t *buff, std::size_t size);
+
+    int m_buff_offset, m_disk_offset, m_disk_size;
+    uint8_t m_buff[4096];
+    uint8_t m_disk[409600];
+    double m_precision;
 };
 
 
