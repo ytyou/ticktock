@@ -1506,12 +1506,12 @@ RollupCompressor_v1::uncompress(uint8_t *buff, int size, struct rollup_entry *en
     }
 
     ASSERT(len <= 9);
-    if ((size - len) < 8)
-        return (entry->cnt == 0) ? len : 0;
 
     if (entry->cnt != 0)
     {
-        if ((flag & 0x30) == 0x00)              // min
+        if ((size - len) < 8) return 0;     // not enough data in buffer
+
+        if ((flag & 0x30) == 0x00)          // min
         {
             int16_t min = uncompress_int16(buff+len);
             entry->min = (double)min / precision;
@@ -1538,7 +1538,7 @@ RollupCompressor_v1::uncompress(uint8_t *buff, int size, struct rollup_entry *en
 
         if ((size - len) < 6) return 0;
 
-        if ((flag & 0x0C) == 0x00)              // max
+        if ((flag & 0x0C) == 0x00)          // max
         {
             int32_t max = uncompress_int24(buff+len);
             entry->max = (double)max / precision;
@@ -1565,7 +1565,7 @@ RollupCompressor_v1::uncompress(uint8_t *buff, int size, struct rollup_entry *en
             len += 8;
         }
 
-        if ((flag & 0x03) == 0x00)              // sum
+        if ((flag & 0x03) == 0x00)          // sum
         {
             if ((size - len) < 3) return 0;
             int32_t sum = uncompress_int24(buff+len);
