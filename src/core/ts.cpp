@@ -343,7 +343,8 @@ TimeSeries::add_data_point(MetricId mid, DataPoint& dp)
     ASSERT(! m_buff->is_empty());
 
     // rollup
-    m_rollup.add_data_point(m_buff->get_tsdb(), mid, m_id, dp);
+    if (g_rollup_enabled)
+        m_rollup.add_data_point(m_buff->get_tsdb(), mid, m_id, dp);
 
     return ok;
 }
@@ -394,7 +395,8 @@ TimeSeries::add_ooo_data_point(MetricId mid, DataPoint& dp)
     }
 
     // rollup
-    m_rollup.add_data_point(m_ooo_buff->get_tsdb(), mid, m_id, dp);
+    if (g_rollup_enabled)
+        m_rollup.add_data_point(m_ooo_buff->get_tsdb(), mid, m_id, dp);
 
     return ok;
 }

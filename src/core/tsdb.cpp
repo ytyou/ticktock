@@ -2990,8 +2990,7 @@ Tsdb::init()
     task.doit = &Tsdb::rollup;
     task.data.integer = 0;  // indicates this is from scheduled task (vs. interactive cmd)
     freq_sec = Config::inst()->get_time(CFG_TSDB_ROLLUP_FREQUENCY, TimeUnit::SEC, CFG_TSDB_ROLLUP_FREQUENCY_DEF);
-    bool enabled = Config::inst()->get_bool(CFG_TSDB_ROLLUP_ENABLED, CFG_TSDB_ROLLUP_ENABLED_DEF);
-    if (freq_sec > 0 && enabled)
+    if (freq_sec > 0)
     {
         Timer::inst()->add_task(task, freq_sec, "tsdb_rollup");
         Logger::info("Will try to rollup tsdb every %d secs.", freq_sec);
