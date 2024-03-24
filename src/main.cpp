@@ -246,11 +246,7 @@ initialize()
     std::srand(std::time(0));
 
     // get our host name
-    char buff[PATH_MAX];
-    gethostname(buff, sizeof(buff));
-    g_host_name.assign(buff);
-    getcwd(buff, sizeof(buff)); // get current working dir
-    g_working_dir = buff;
+    set_hostname_working_dir();
 
     if (g_run_as_daemon)
     {

@@ -126,6 +126,7 @@ extern void for_all_dirs(const std::string& root, void (*func)(const std::string
 extern int create_dir(const std::string& path);
 extern FileIndex get_file_suffix(const std::string& file_name);
 extern bool is_dir_empty(const std::string& path);
+extern void set_hostname_working_dir();
 
 extern bool url_unescape(const char *url, char *buff, size_t len);
 

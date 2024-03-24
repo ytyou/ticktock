@@ -959,6 +959,18 @@ is_dir_empty(const std::string& path)
     return empty;
 }
 
+void
+set_hostname_working_dir()
+{
+    char buff[PATH_MAX];
+
+    gethostname(buff, sizeof(buff));
+    g_host_name.assign(buff);
+
+    getcwd(buff, sizeof(buff)); // get current working dir
+    g_working_dir.assign(buff);
+}
+
 // find for all files matching 'pattern'
 void
 get_all_files(const std::string& pattern, std::vector<std::string>& files)

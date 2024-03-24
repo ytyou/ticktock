@@ -713,6 +713,9 @@ main(int argc, char *argv[])
     std::locale loc("");
     std::cerr.imbue(loc);
 
+    // set working dir
+    set_hostname_working_dir();
+
     g_quiet = true;
     Config::init();
     MemoryManager::init();
