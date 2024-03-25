@@ -1271,7 +1271,7 @@ class Query_With_Rollup(Test):
 
     def __init__(self, options, prefix="rq", tcp_socket=None):
         super(Query_With_Rollup, self).__init__(options, prefix, tcp_socket)
-        self._precision = 0.014
+        self._precision = 0.000091
 
     def __call__(self, metric_cardinality=4):
 
