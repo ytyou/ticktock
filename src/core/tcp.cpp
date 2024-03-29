@@ -163,7 +163,24 @@ TcpServer::listen(int port, int listener_count)
     else
         Logger::info("getsockopt(SO_RCVBUF) failed, errno = %d", errno);
 
-    uint64_t opt64 = Config::inst()->get_bytes(CFG_TCP_SOCKET_RCVBUF_SIZE, CFG_TCP_SOCKET_RCVBUF_SIZE_DEF);
+    uint64_t opt64;
+    if (Config::inst()->exists(CFG_TCP_SOCKET_RCVBUF_SIZE))
+        opt64 = Config::inst()->get_bytes(CFG_TCP_SOCKET_RCVBUF_SIZE);  // user-specified win
+    else    // choose based on RAM size
+    {
+        uint64_t ram_total = get_ram_total();
+
+        if (ram_total == 0)
+            opt64 = Config::inst()->get_bytes(CFG_TCP_SOCKET_RCVBUF_SIZE,CFG_TCP_SOCKET_RCVBUF_SIZE_DEF);
+        else if (ram_total <= 1000000000)   // RAM less than 1GB?
+            opt64 = 16384;
+        else if (ram_total <= 2000000000)   // RAM less than 2GB?
+            opt64 = 32768;
+        else if (ram_total <= 4000000000)   // RAM less than 4GB?
+            opt64 = 65536;
+        else
+            opt64 = Config::inst()->get_bytes(CFG_TCP_SOCKET_RCVBUF_SIZE,CFG_TCP_SOCKET_RCVBUF_SIZE_DEF);
+    }
     if (opt64 > INT_MAX) opt64 = INT_MAX;
     opt = (int)opt64;
     retval = setsockopt(fd, SOL_SOCKET, SO_RCVBUF, &opt, optlen);
@@ -533,14 +550,17 @@ TcpServer::process_data(TcpConnection *conn, char *data, int len)
                     send_response(conn->fd, body, std::strlen(body));
             }
         }
+
+        if (response.status_code != 200)
+            Logger::error("Failed to process tcp request: status = %u", response.status_code);
     }
     catch (const std::exception& ex)
     {
-        Logger::debug("Failed to process tcp request: %s", ex.what());
+        Logger::error("Failed to process tcp request: %s", ex.what());
     }
     catch (...)
     {
-        Logger::debug("Failed to process tcp request with unknown exception");
+        Logger::error("Failed to process tcp request with unknown exception");
     }
 
     return false;
@@ -1143,7 +1163,7 @@ TcpListener::listener1()
             if ((events[i].events & err_flags) || (!(events[i].events & EPOLLIN)))
             {
                 // socket errors
-                Logger::tcp("socket error on listener1, events: 0x%x, closing conn", fd, events[i].events);
+                Logger::error("socket error on listener1, events: 0x%x, closing conn %d", fd, events[i].events, fd);
                 close_conn(fd);
             }
             else if (fd == m_pipe_fds[0])

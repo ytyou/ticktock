@@ -122,6 +122,7 @@ extern int rotate_files(const std::string& pattern, int retain_count);
 extern std::string last_file(const std::string& pattern);
 extern uint64_t get_disk_block_size(const std::string& full_path);
 extern uint64_t get_disk_available_blocks(const std::string& full_path);
+extern uint64_t get_ram_total();
 extern void for_all_dirs(const std::string& root, void (*func)(const std::string& dir), int level);
 extern int create_dir(const std::string& path);
 extern FileIndex get_file_suffix(const std::string& file_name);

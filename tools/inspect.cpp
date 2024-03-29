@@ -44,10 +44,10 @@ using namespace tt;
 std::string g_tsdb_dir, g_data_dir;
 char *g_index_base = nullptr;
 std::vector<TimeSeries*> g_time_series;
-#ifdef __x86_64__
-std::atomic<uint64_t> g_total_dps_cnt{0};
-#else
+#if (__ARM_32BIT_STATE == 1)
 std::atomic<unsigned long> g_total_dps_cnt{0};
+#else
+std::atomic<unsigned long long> g_total_dps_cnt{0};
 #endif
 std::atomic<long> g_total_page_cnt{0};
 bool g_quick_mode = false;

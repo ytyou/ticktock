@@ -22,6 +22,7 @@
 #include <cstdlib>
 #include <chrono>
 #include <dirent.h>
+#include <fstream>
 #include <glob.h>
 #include <string>
 #include <cstring>
@@ -893,6 +894,35 @@ get_disk_available_blocks(const std::string& full_path)
     int rc = statvfs(full_path.c_str(), &st);
     if (rc != 0) return 0;
     return st.f_bavail;
+}
+
+uint64_t
+get_ram_total()
+{
+    std::string token;
+    std::ifstream meminfo("/proc/meminfo");
+
+    while (meminfo >> token)
+    {
+        if (token == "MemTotal:")
+        {
+            uint64_t mem_total;
+
+            if (meminfo >> mem_total)
+            {
+                uint64_t factor = 1;
+                if (meminfo >> token)
+                    factor = get_bytes_factor(token);
+                return mem_total * factor;
+            }
+            else
+                return 0;
+        }
+
+        meminfo.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+    }
+
+    return 0;
 }
 
 // perform func() for all dirs at 'level'
