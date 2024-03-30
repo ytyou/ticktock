@@ -172,13 +172,13 @@ TcpServer::listen(int port, int listener_count)
 
         if (ram_total == 0)
             opt64 = Config::inst()->get_bytes(CFG_TCP_SOCKET_RCVBUF_SIZE,CFG_TCP_SOCKET_RCVBUF_SIZE_DEF);
-        else if (ram_total <= 1000000000)   // RAM less than 1GB?
+        else if (ram_total <= 1073741824)   // 1GB or less?
             opt64 = 16384;
-        else if (ram_total <= 2000000000)   // RAM less than 2GB?
+        else if (ram_total <= 2147483648)   // 2GB or less?
             opt64 = 32768;
-        else if (ram_total <= 4000000000)   // RAM less than 4GB?
+        else if (ram_total <= 4294967296)   // 4GB or less?
             opt64 = 65536;
-        else
+        else                                // more than 4G
             opt64 = Config::inst()->get_bytes(CFG_TCP_SOCKET_RCVBUF_SIZE,CFG_TCP_SOCKET_RCVBUF_SIZE_DEF);
     }
     if (opt64 > INT_MAX) opt64 = INT_MAX;

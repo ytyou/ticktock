@@ -326,6 +326,20 @@ struct __attribute__ ((__packed__)) rollup_append_entry
 };
 
 
+class RollupDataFileCursor
+{
+    RollupDataFileCursor() : m_index(0), m_size(0) {}
+
+private:
+    friend class RollupDataFile;
+
+    int m_index;    // index to m_buff[]
+    int m_size;     // number of bytes in m_buff[]
+    uint8_t m_buff[4096];
+    struct rollup_entry m_entry;
+};
+
+
 class RollupDataFile
 {
 public:
@@ -343,6 +357,11 @@ public:
 
     inline bool empty() const { return (m_index == 0) && !file_exists(m_name); }
     inline void remove() { rm_file(m_name); }
+
+    // iterate through the file, forward only
+    // returns nullptr when no more entry left
+    struct rollup_entry *first_entry(RollupDataFileCursor& cursor);
+    struct rollup_entry *next_entry(RollupDataFileCursor& cursor);
 
     void add_data_point(TimeSeriesId tid, uint32_t cnt, double min, double max, double sum);
     void add_data_point(TimeSeriesId tid, Timestamp tstamp, uint32_t cnt, double min, double max, double sum);  // called during shutdown
