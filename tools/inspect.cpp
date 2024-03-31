@@ -667,6 +667,7 @@ bool
 inspect_tsdb_task(TaskData& data)
 {
     std::string tsdb_dir((char*)data.pointer);
+    std::free((char*)data.pointer);
 
     if (ends_with(tsdb_dir, "/rollup"))
         return false;
@@ -719,6 +720,7 @@ main(int argc, char *argv[])
     g_quiet = true;
     Config::init();
     MemoryManager::init();
+    TimeSeries::init();
 
     if (! g_data_dir.empty())
     {
@@ -759,6 +761,7 @@ main(int argc, char *argv[])
 
     inspector.shutdown();
     inspector.wait(1);
+    Tsdb::shutdown();
 
     //fprintf(stderr, "Grand Total = %" PRIu64 "\n", g_total_dps_cnt);
     std::cerr << "Grand Total = " << g_total_dps_cnt.load() << std::endl;
