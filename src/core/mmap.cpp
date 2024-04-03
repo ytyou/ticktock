@@ -1660,11 +1660,8 @@ RollupDataFile::query_entry(const TimeRange& range, struct rollup_entry *entry, 
 void
 RollupDataFile::query(const TimeRange& range, std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupType rollup)
 {
-    std::lock_guard<std::mutex> guard(m_lock);
-    //uint8_t buff[4096];
-    //std::size_t n;
-    //int len, offset = 0;
     RollupDataFileCursor cursor;
+    std::lock_guard<std::mutex> guard(m_lock);
 
     for (struct rollup_entry *entry = first_entry(cursor); entry != nullptr; entry = next_entry(cursor))
     {

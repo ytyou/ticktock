@@ -475,14 +475,6 @@ RollupManager::get_data_file(MetricId mid, Timestamp tstamp, std::unordered_map<
     return data_file;
 }
 
-// get monthly data file
-RollupDataFile *
-RollupManager::get_data_file(MetricId mid, Timestamp tstamp)
-{
-    Timestamp begin = Calendar::begin_month_of(tstamp);
-    return get_data_file(mid, begin, m_data_files, true);
-}
-
 void
 RollupManager::get_data_files_1h(MetricId mid, const TimeRange& range, std::vector<RollupDataFile*>& files)
 {
@@ -493,6 +485,12 @@ RollupManager::get_data_files_1h(MetricId mid, const TimeRange& range, std::vect
     month--;
     year -= 1900;
 
+    if (year < 70)
+    {
+        year = 70;
+        month = 0;
+    }
+
     std::lock_guard<std::mutex> guard(m_lock);
 
     for ( ; ; )
@@ -500,7 +498,7 @@ RollupManager::get_data_files_1h(MetricId mid, const TimeRange& range, std::vect
         Timestamp ts = begin_month(year, month);
         if (end <= ts) break;
 
-        RollupDataFile *data_file = get_data_file(mid, ts);
+        RollupDataFile *data_file = get_data_file(mid, ts, m_data_files, true);
 
         if (data_file != nullptr)
         {
@@ -516,6 +514,7 @@ RollupManager::get_data_files_1h(MetricId mid, const TimeRange& range, std::vect
             month = 0;
             year++;
         }
+        if (year > 400) break;
     }
 }
 
@@ -526,8 +525,10 @@ RollupManager::get_data_files_1d(MetricId mid, const TimeRange& range, std::vect
     Timestamp end = range.get_to_sec();
 
     get_year_month(range.get_from_sec(), year, month);
-    month--;
     year -= 1900;
+
+    if (year < 70)
+        year = 70;
 
     std::lock_guard<std::mutex> guard(m_lock2);
 
@@ -536,7 +537,7 @@ RollupManager::get_data_files_1d(MetricId mid, const TimeRange& range, std::vect
         Timestamp ts = begin_month(year, 0);
         if (end <= ts) break;
 
-        RollupDataFile *data_file = get_data_file2_no_lock(mid, ts);
+        RollupDataFile *data_file = get_data_file(mid, ts, m_data_files2, false);
 
         if (data_file != nullptr)
         {
@@ -547,6 +548,7 @@ RollupManager::get_data_files_1d(MetricId mid, const TimeRange& range, std::vect
         }
 
         year++;
+        if (year > 400) break;
     }
 }
 
@@ -618,13 +620,6 @@ RollupManager::get_data_file2(MetricId mid, Timestamp tstamp)
 {
     Timestamp begin = begin_year(tstamp);
     std::lock_guard<std::mutex> guard(m_lock2);
-    return get_data_file(mid, begin, m_data_files2, false);
-}
-
-RollupDataFile *
-RollupManager::get_data_file2_no_lock(MetricId mid, Timestamp tstamp)
-{
-    Timestamp begin = begin_year(tstamp);
     return get_data_file(mid, begin, m_data_files2, false);
 }
 

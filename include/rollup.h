@@ -67,9 +67,7 @@ public:
     static void add_data_file_size(int64_t size);
     static int64_t get_rollup_data_file_size(bool monthly);
     static int get_rollup_bucket(MetricId mid);
-    static RollupDataFile *get_data_file(MetricId mid, Timestamp tstamp);   // get monthly data files
     static RollupDataFile *get_data_file2(MetricId mid, Timestamp tstamp);  // get annual data files
-    static RollupDataFile *get_data_file2_no_lock(MetricId mid, Timestamp tstamp);  // get annual data files
     static RollupDataFile *get_data_file_by_bucket_1h(int bucket, Timestamp begin); // get monthly data files
     static RollupDataFile *get_or_create_data_file(MetricId mid, Timestamp tstamp);   // get monthly data files
     static RollupDataFile *get_or_create_data_file_by_bucket_1d(int bucket, Timestamp begin); // get annual data files

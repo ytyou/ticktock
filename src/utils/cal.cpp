@@ -122,15 +122,21 @@ Calendar::add_month(Timestamp ts, int n)
     {
         ASSERT(end < m_months[0]);
         Timestamp front = m_months.front();
+        std::vector<Timestamp> tmp = std::move(m_months);
+
+        ASSERT(m_months.empty());
+        m_months.push_back(begin);
 
         while (end < front)
         {
-            Timestamp front = begin_month(front - 1);
-            m_months.insert(m_months.begin(), front);
+            m_months.push_back(end);
+            end = begin_month(end + 45 * 24 * 3600);
         }
 
+        // merge tmp and m_months
+        m_months.insert(m_months.end(), tmp.begin(), tmp.end());
+
         ASSERT(end == front);
-        m_months.insert(m_months.begin(), begin);
         n = 0;
     }
 
