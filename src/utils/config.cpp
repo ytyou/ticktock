@@ -66,14 +66,14 @@ Config::init()
     {
         const std::string& ver = cfg.get_str("ticktockdb.version");
         if (ver.empty())
-            throw std::runtime_error("ticktockdb.version config missing; TickTockDB version mismatch!");
+            throw std::runtime_error("ticktockdb.version config missing; TickTockDB version mismatch! Please see\nhttps://github.com/ytyou/ticktock/wiki/How-to-migrate-data-from-old-versions-to-new-one%3F");
         std::vector<std::string> tokens;
         if (! tokenize(ver, tokens, '.'))
-            throw std::runtime_error("bad ticktockdb.version format; TickTockDB version mismatch!");
+            throw std::runtime_error("bad ticktockdb.version format; TickTockDB version mismatch! Please see\nhttps://github.com/ytyou/ticktock/wiki/How-to-migrate-data-from-old-versions-to-new-one%3F");
         if (tokens.size() != 3)
-            throw std::runtime_error("bad ticktockdb.version format; TickTockDB version mismatch!");
+            throw std::runtime_error("bad ticktockdb.version format; TickTockDB version mismatch! Please see\nhttps://github.com/ytyou/ticktock/wiki/How-to-migrate-data-from-old-versions-to-new-one%3F");
         if (std::stoi(tokens[0]) <= 0 && std::stoi(tokens[1]) < 20)
-            throw std::runtime_error("ticktockdb.version too old; TickTockDB version mismatch!");
+            throw std::runtime_error("ticktockdb.version too old; TickTockDB version mismatch! Please see\nhttps://github.com/ytyou/ticktock/wiki/How-to-migrate-data-from-old-versions-to-new-one%3F");
     }
 
     if (cfg.exists(CFG_TSDB_ROLLUP_BUCKETS))
