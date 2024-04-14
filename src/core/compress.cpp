@@ -1223,6 +1223,26 @@ Compressor_v0::init(Timestamp start, uint8_t *base, size_t size)
     ASSERT(base != nullptr);
 
     Compressor::init(start, base, size);
+
+    // 'base' needs to be aligned
+#if (__ARM_32BIT_STATE == 1)
+    unsigned int r = (unsigned int)base % 4;
+    if (r != 0)
+    {
+        ASSERT((4 - r) <= size);
+        base += 4 - r;
+        m_size -= 4 - r;
+    }
+#elif (__ARM_64BIT_STATE == 1)
+    unsigned int r = (unsigned int)base % 8;
+    if (r != 0)
+    {
+        ASSERT((8 - r) <= size);
+        base += 8 - r;
+        m_size -= 8 - r;
+    }
+#endif
+
     m_dps.clear();
     m_dps.reserve(g_page_size/sizeof(DataPointPair));
     m_size = std::floor(size / sizeof(DataPointPair));
@@ -1254,6 +1274,23 @@ void
 Compressor_v0::save(uint8_t *base)
 {
     ASSERT(base != nullptr);
+
+    // 'base' needs to be aligned
+#if (__ARM_32BIT_STATE == 1)
+    unsigned int r = (unsigned int)base % 4;
+    if (r != 0)
+    {
+        ASSERT(r <= size);
+        base += 4 - r;
+    }
+#elif (__ARM_64BIT_STATE == 1)
+    unsigned int r = (unsigned int)base % 8;
+    if (r != 0)
+    {
+        ASSERT(r <= size);
+        base += 8 - r;
+    }
+#endif
 
     DataPointPair *dps = reinterpret_cast<DataPointPair*>(base);
     //if (dps == m_data_points) return;
