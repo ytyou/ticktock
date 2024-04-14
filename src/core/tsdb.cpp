@@ -783,14 +783,9 @@ void
 Mapping::restore_measurement(std::string& measurement, std::string& tags, std::vector<std::pair<std::string,TimeSeriesId>>& fields, std::vector<TimeSeries*>& tsv)
 {
     TagOwner owner(false);
-    char* buff = MemoryManager::alloc_network_buffer();
     int len = tags.length();
-
-    if (len >= MemoryManager::get_network_buffer_size())
-    {
-        Logger::error("Failed to restore measurement: %s,%s", measurement.c_str(), tags.c_str());
-        return;
-    }
+    ASSERT(len >= 0);
+    char buff[len+1];
 
     tags.copy(buff, len);
     buff[len] = 0;
@@ -817,8 +812,6 @@ Mapping::restore_measurement(std::string& measurement, std::string& tags, std::v
         mm->add_ts(i++, ts);
         tsv.push_back(ts);
     }
-
-    MemoryManager::free_network_buffer(buff);
 }
 
 void
@@ -912,7 +905,7 @@ Metric::get_metric_dir(std::string& tsdb_dir)
 }
 
 std::string
-Metric::get_metric_dir(std::string& tsdb_dir, MetricId id)
+Metric::get_metric_dir(const std::string& tsdb_dir, MetricId id)
 {
     std::ostringstream oss;
     oss << tsdb_dir << "/m" << std::setfill('0') << std::setw(6) << id;

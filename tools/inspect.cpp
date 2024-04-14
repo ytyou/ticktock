@@ -548,6 +548,7 @@ inspect_tsdb_quick(const std::string& dir)
 void
 inspect_tsdb_for_restore(const std::string& dir)
 {
+    if (ends_with(dir, "/rollup")) return;
     std::cerr << "Inspecting tsdb " << dir << "..." << std::endl;
 
     // dump all headers first...
@@ -555,6 +556,14 @@ inspect_tsdb_for_restore(const std::string& dir)
     //std::string header_files_pattern = dir + "/header.*";
     //std::vector<std::string> header_files;
     //find_matching_files(header_files_pattern, header_files);
+
+    int mbucket = Config::inst()->get_int(CFG_TSDB_METRIC_BUCKETS, CFG_TSDB_METRIC_BUCKETS_DEF);
+    std::string cfg_file = dir + "/config";
+    if (file_exists(cfg_file))
+    {
+        Config cfg(dir + "/config");
+        mbucket = cfg.get_int(CFG_TSDB_METRIC_BUCKETS, CFG_TSDB_METRIC_BUCKETS_DEF);
+    }
 
     std::string index_file_name = dir + "/index";
     int index_file_fd;
@@ -570,6 +579,11 @@ inspect_tsdb_for_restore(const std::string& dir)
     for (Mapping* mapping : mappings)
     {
         MetricId mid = mapping->get_id();
+        mid %= mbucket;
+        std::string metrics_dir = Metric::get_metric_dir(dir, mid);
+
+        if (! file_exists(metrics_dir)) continue;
+
         std::vector<TimeSeries*> tsv;
         mapping->get_all_ts(tsv);
 

@@ -192,7 +192,7 @@ public:
 
     MetricId get_id() const { return m_id; }
     std::string get_metric_dir(std::string& tsdb_dir);
-    static std::string get_metric_dir(std::string& tsdb_dir, MetricId id);
+    static std::string get_metric_dir(const std::string& tsdb_dir, MetricId id);
     std::string get_data_file_name(std::string& tsdb_dir, FileIndex idx);
     std::string get_header_file_name(std::string& tsdb_dir, FileIndex idx);
 
