@@ -749,14 +749,9 @@ void
 Mapping::restore_measurement(std::string& measurement, std::string& tags, std::vector<std::pair<std::string,TimeSeriesId>>& fields, std::vector<TimeSeries*>& tsv)
 {
     TagOwner owner(false);
-    char* buff = MemoryManager::alloc_network_buffer();
     int len = tags.length();
-
-    if (len >= MemoryManager::get_network_buffer_size())
-    {
-        Logger::error("Failed to restore measurement: %s,%s", measurement.c_str(), tags.c_str());
-        return;
-    }
+    ASSERT(len >= 0);
+    char buff[len+1];
 
     tags.copy(buff, len);
     buff[len] = 0;

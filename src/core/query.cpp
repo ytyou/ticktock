@@ -843,7 +843,7 @@ QueryTask::get_ts_id() const
 double
 QueryTask::get_max(int n) const
 {
-    double max = std::numeric_limits<double>::min();
+    double max = std::numeric_limits<double>::lowest();
 
     for (int i = m_dps.size()-1; i >= 0 && n > 0; i--, n--)
     {
