@@ -73,7 +73,7 @@
 #define CFG_TCP_BUFFER_SIZE                     "tcp.buffer.size"
 #define CFG_TCP_BUFFER_SIZE_DEF                 "512kb"
 #define CFG_TCP_MIN_FILE_DESCRIPTOR             "tcp.min.file.descriptor"
-#define CFG_TCP_MIN_FILE_DESCRIPTOR_DEF         128
+#define CFG_TCP_MIN_FILE_DESCRIPTOR_DEF         256
 #define CFG_TCP_MIN_HTTP_STEP                   "tcp.min.http.step"
 #define CFG_TCP_MIN_HTTP_STEP_DEF               64
 #define CFG_TCP_RESPONDERS_PER_LISTENER         "tcp.responders.per.listener"
