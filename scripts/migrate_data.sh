@@ -15,9 +15,8 @@ if [ $# -eq 4 ]; then
 else
     echo "Usage  : $0 <host> <tcp port for put> <inspect binary> <data file dir>"
     echo "Note: Inspect binary must be version compatible to data files."
-    echo "E.g., if the data files are generated with TT v0.12.1, then you'd better use the inspect binary in v0.12.1."
-    echo "You can simply copy the inspect binary into a backup dir before you update your TT binary dir."
-    echo "Example: $0 localhost 6181 /tmp/inspect.0.12.1 /home/usr1/backup/data"
+    echo "For data files generted by TT from v0.10.0 to v0.12.2, please use v0.12.2 inspect."
+    echo "Example: $0 localhost 6181 /tmp/inspect.0.12.2 /home/usr1/backup/data"
     exit 1
 fi
 
