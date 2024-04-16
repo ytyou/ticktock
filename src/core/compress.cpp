@@ -1234,7 +1234,7 @@ Compressor_v0::init(Timestamp start, uint8_t *base, size_t size)
         m_size -= 4 - r;
     }
 #elif (__ARM_64BIT_STATE == 1)
-    unsigned int r = (unsigned int)base % 8;
+    uint64_t r = (uint64_t)base % 8;
     if (r != 0)
     {
         ASSERT((8 - r) <= size);
@@ -1284,7 +1284,7 @@ Compressor_v0::save(uint8_t *base)
         base += 4 - r;
     }
 #elif (__ARM_64BIT_STATE == 1)
-    unsigned int r = (unsigned int)base % 8;
+    uint64_t r = (uint64_t)base % 8;
     if (r != 0)
     {
         ASSERT(r <= size);
