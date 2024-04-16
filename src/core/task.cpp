@@ -20,6 +20,7 @@
 #include "global.h"
 #include "task.h"
 #include "config.h"
+#include "limit.h"
 #include "logger.h"
 
 
@@ -86,7 +87,7 @@ void
 TaskScheduler::init(std::string id, size_t thread_count, size_t queue_size)
 {
     m_id = id;
-    m_thread_count = thread_count;
+    m_thread_count = std::min(MAX_THREAD_COUNT, thread_count);
     m_next_worker = 0;
 
     // create threads
