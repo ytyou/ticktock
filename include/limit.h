@@ -22,7 +22,7 @@
 namespace tt
 {
 
-#define MAX_THREAD_COUNT            1024UL
+#define MAX_THREAD_COUNT            1024
 #define MAX_TOTAL_TAG_LENGTH        1024
 #define MAX_METRIC_BUCKET_COUNT     1000000
 #define MAX_ROLLUP_BUCKET_COUNT     1000000
