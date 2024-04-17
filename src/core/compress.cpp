@@ -1256,6 +1256,16 @@ Compressor_v0::restore(DataPointVector& dpv, CompressorPosition& position, uint8
     ASSERT(position.m_start == 0);
     //ASSERT(position.m_offset <= m_size);
 
+#if (__ARM_32BIT_STATE == 1)
+    unsigned int r = (unsigned int)base % 4;
+    if (r != 0)
+        base += 4 - r;
+#elif (__ARM_64BIT_STATE == 1)
+    uint64_t r = (uint64_t)base % 8;
+    if (r != 0)
+        base += 8 - r;
+#endif
+
     DataPointPair *dps = m_data_points;
 
     if (base != nullptr)
