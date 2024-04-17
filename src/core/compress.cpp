@@ -1279,17 +1279,11 @@ Compressor_v0::save(uint8_t *base)
 #if (__ARM_32BIT_STATE == 1)
     unsigned int r = (unsigned int)base % 4;
     if (r != 0)
-    {
-        ASSERT(r <= size);
         base += 4 - r;
-    }
 #elif (__ARM_64BIT_STATE == 1)
     uint64_t r = (uint64_t)base % 8;
     if (r != 0)
-    {
-        ASSERT(r <= size);
         base += 8 - r;
-    }
 #endif
 
     DataPointPair *dps = reinterpret_cast<DataPointPair*>(base);
