@@ -724,9 +724,15 @@ main(int argc, char *argv[])
         return 2;
     }
 
-    //std::locale loc("en_US.UTF-8");
-    std::locale loc("");
-    std::cerr.imbue(loc);
+    try
+    {
+        std::locale loc("");
+        std::cerr.imbue(loc);
+    }
+    catch (...)
+    {
+        // ignore
+    }
 
     // set working dir
     set_hostname_working_dir();
