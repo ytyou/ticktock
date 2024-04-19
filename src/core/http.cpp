@@ -155,7 +155,7 @@ HttpServer::get_recv_data_task(TcpConnection *conn) const
 bool
 HttpServer::recv_http_data(TaskData& data)
 {
-    size_t buff_size = MemoryManager::get_network_buffer_size() - 6;
+    size_t buff_size = MemoryManager::get_network_buffer_size() - 8;
     HttpConnection *conn = static_cast<HttpConnection*>(data.pointer);
 
     Logger::http("recv_http_data: conn=%p", conn->fd, conn);
@@ -217,10 +217,13 @@ HttpServer::recv_http_data(TaskData& data)
     }
     else if (len > 0)
     {
-        buff[len] = '\n';
-        buff[len+1] = '\n';
+        buff[len] = 0;
+        buff[len+1] = ' ';
         buff[len+2] = 0;
-        buff[len+3] = 0;
+        buff[len+3] = '\r';
+        buff[len+4] = 0;
+        buff[len+5] = ';';
+        buff[len+6] = 0;
 
         Logger::http("Recved request on %p: len=%d\n%s", fd, conn, len, buff);
 
@@ -302,7 +305,7 @@ HttpServer::recv_http_data(TaskData& data)
 bool
 HttpServer::recv_http_data_cont(HttpConnection *conn)
 {
-    size_t buff_size = MemoryManager::get_network_buffer_size() - 6;
+    size_t buff_size = MemoryManager::get_network_buffer_size() - 8;
     int fd = conn->fd;
     char* buff = conn->buff;
     int len = conn->offset;
@@ -342,12 +345,13 @@ HttpServer::recv_http_data_cont(HttpConnection *conn)
     else if (len > conn->offset)
     {
         // now do something about buff
-        buff[len] = ' ';
-        buff[len+1] = 0;
-        buff[len+2] = '\r';
-        buff[len+3] = 0;
-        buff[len+4] = ';';
-        buff[len+5] = 0;
+        buff[len] = 0;
+        buff[len+1] = ' ';
+        buff[len+2] = 0;
+        buff[len+3] = '\r';
+        buff[len+4] = 0;
+        buff[len+5] = ';';
+        buff[len+6] = 0;
 
         Logger::http("recv-cont'ed: offset=%d, len=%d\n%s", fd,
             conn->offset, len, &buff[conn->offset]);

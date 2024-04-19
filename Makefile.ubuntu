@@ -40,7 +40,7 @@ OBJT = $(patsubst %.cpp,%.o,$(TMPT))
 
 TARGET = bin/tt
 TESTS = bin/all_tests
-TOOLS = bin/inspect bin/iobench bin/append
+TOOLS = bin/inspect
 
 build: $(TARGET)
 
@@ -94,6 +94,10 @@ bin/iobench: objs/tools/iobench.o $(OBJI)
 bin/append: objs/tools/append.o $(OBJI)
 	@mkdir -p $(@D)
 	$(LINK) $(LFLAGS) -o $@ $< $(OBJI) $(LIBS)
+
+bin/client_http: objs/tools/client_http.o
+	@mkdir -p $(@D)
+	$(LINK) $(LFLAGS) -o $@ $<
 
 tt: clean build
 all: build test tools
