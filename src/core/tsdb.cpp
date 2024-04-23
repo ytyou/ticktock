@@ -3718,6 +3718,8 @@ Tsdb::rollup(TaskData& data)
         {
             std::lock_guard<std::mutex> guard(tsdb->m_lock);
             tsdb->m_mode |= TSDB_MODE_ROLLED_UP;
+            std::string dir = get_tsdb_dir_name(tsdb->m_time_range);
+            tsdb->write_config(dir);    // persist the 'rolled_up' status
             tsdb->dec_ref_count_no_lock();
         }
 
