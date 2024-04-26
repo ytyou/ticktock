@@ -1005,6 +1005,13 @@ Metric::get_last_header(std::string& tsdb_dir, PageCount page_cnt, PageSize page
     return header_file;
 }
 
+int
+Metric::get_data_file_cnt()
+{
+    std::lock_guard<std::mutex> guard(m_lock);
+    return m_data_files.size();
+}
+
 /**
 void
 Metric::add_rollup_point(TimeSeriesId tid, uint32_t cnt, double min, double max, double sum)
@@ -1167,6 +1174,14 @@ Tsdb::Tsdb(TimeRange& range, bool existing, const char *suffix) :
         Logger::error("Tsdb range %" PRIu64 " can't be shorter than rollup-interval (1 hour)",
             range.get_duration_sec());
     }
+
+    if (! existing && (suffix == nullptr))
+    {
+        // Try auto-adjust m_page_count
+        m_page_count = adjust_page_count();
+    }
+    ASSERT(0 < m_page_count);
+
     m_mode = mode_of();
     Logger::debug("tsdb %T created (mode=%d)", &range, m_mode);
 }
@@ -1247,6 +1262,48 @@ Tsdb::restore_tsdb(const std::string& dir)
 
     TimeRange range(start, end);
     Tsdb *tsdb = Tsdb::create(range, true);
+}
+
+/* Caller should acquire m_tsdb_lock!
+ */
+PageCount
+Tsdb::adjust_page_count()
+{
+    // honor user specified setting
+    int count = Config::inst()->get_int(CFG_TSDB_PAGE_COUNT, CFG_TSDB_PAGE_COUNT_DEF);
+    if (count >= 16)    // min page count
+        return (PageCount)count;
+
+    // default staring page-count: 16384
+    if (m_tsdbs.empty())
+        return (PageCount)16384;
+
+    float cnt = 0.0, sum = 0.0;
+    int i, j;
+
+    // calc avg data file count of the last 7 days
+    for (i = m_tsdbs.size()-1, j = 6; i >= 0 && j >= 0; i--, j--)
+    {
+        auto tsdb = m_tsdbs[i];
+        sum += tsdb->get_data_file_cnt();
+        cnt++;
+    }
+
+    float data_file_cnt = sum / cnt;
+    PageCount last_cnt = m_tsdbs.back()->m_page_count;
+
+    if ((data_file_cnt <= 1.0) && (32 < last_cnt))
+        last_cnt /= 2;
+    else if (10.0 <= data_file_cnt)
+    {
+        if (last_cnt >= 32768)
+            last_cnt = UINT16_MAX;
+        else
+            last_cnt *= 2;
+    }
+
+    ASSERT(0 < last_cnt);
+    return last_cnt;
 }
 
 void
@@ -2230,6 +2287,22 @@ Tsdb::get_header_file(MetricId mid, FileIndex file_idx)
 
 }
 
+int
+Tsdb::get_data_file_cnt()
+{
+    int cnt = 0;
+    std::lock_guard<std::mutex> guard(m_metrics_lock);
+
+    for (auto metric: m_metrics)
+    {
+        if (metric == nullptr) continue;
+        int c = metric->get_data_file_cnt();
+        cnt = std::max(c, cnt);
+    }
+
+    return cnt;
+}
+
 PageSize
 Tsdb::append_page(MetricId mid, TimeSeriesId tid, FileIndex prev_file_idx, HeaderIndex prev_header_idx, struct page_info_on_disk *header, uint32_t tstamp_from, void *page, bool compact)
 {
@@ -2920,7 +2993,7 @@ Tsdb::init()
 
     // check if we have enough disk space
     unsigned long page_count =
-        Config::inst()->get_int(CFG_TSDB_PAGE_COUNT, CFG_TSDB_PAGE_COUNT_DEF);
+        Config::inst()->get_int(CFG_TSDB_PAGE_COUNT, MAX_PAGE_COUNT);
     uint64_t avail = get_disk_available_blocks(data_dir);
 
     // make sure page-count is not greater than UINT16_MAX

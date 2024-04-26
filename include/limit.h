@@ -22,6 +22,7 @@
 namespace tt
 {
 
+#define MAX_PAGE_COUNT              UINT16_MAX
 #define MAX_THREAD_COUNT            1024
 #define MAX_TOTAL_TAG_LENGTH        1024
 #define MAX_METRIC_BUCKET_COUNT     1000000

@@ -21,6 +21,7 @@
 #include "global.h"
 #include "cp.h"
 #include "kv.h"
+#include "limit.h"
 #include "logger.h"
 #include "stats.h"
 #include "tsdb.h"
@@ -309,7 +310,7 @@ Admin::shutdown(TaskData& data)
 bool
 Admin::shutdown_if_disk_full(TaskData& data)
 {
-    long page_cnt = Config::inst()->get_int(CFG_TSDB_PAGE_COUNT, CFG_TSDB_PAGE_COUNT_DEF);
+    long page_cnt = Config::inst()->get_int(CFG_TSDB_PAGE_COUNT, MAX_PAGE_COUNT);
     long min_disk = Config::inst()->get_int(CFG_TSDB_MIN_DISK_SPACE, CFG_TSDB_MIN_DISK_SPACE_DEF);
 
     if (Stats::get_disk_avail() < (min_disk*g_page_size*page_cnt))

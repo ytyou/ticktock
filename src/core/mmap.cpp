@@ -691,7 +691,10 @@ HeaderFile::open(bool for_read)
         ASSERT(m_page_count > 0);
     }
 
-    Logger::info("opening %s for %s", m_name.c_str(), for_read?"read":"write");
+    if (is_new)
+        Logger::info("opening new %s for %s, page-count=%u", m_name.c_str(), for_read?"read":"write", m_page_count);
+    else
+        Logger::info("opening %s for %s", m_name.c_str(), for_read?"read":"write");
 }
 
 PageSize

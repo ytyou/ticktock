@@ -153,7 +153,6 @@ process_cmdline_opts(int argc, char *argv[])
         { CFG_TSDB_DATA_DIR,                        required_argument,  0,  0 },
         { CFG_TSDB_FLUSH_FREQUENCY,                 required_argument,  0,  0 },
         { CFG_TSDB_GC_FREQUENCY,                    required_argument,  0,  0 },
-        { CFG_TSDB_PAGE_COUNT,                      required_argument,  0,  0 },
         { CFG_TSDB_PAGE_SIZE,                       required_argument,  0,  0 },
         { CFG_TSDB_READ_ONLY_THRESHOLD,             required_argument,  0,  0 },
         { CFG_TSDB_RETENTION_THRESHOLD,             required_argument,  0,  0 },

@@ -201,6 +201,7 @@ public:
 
     DataFile *get_data_file(FileIndex file_idx);
     HeaderFile *get_header_file(FileIndex file_idx);
+    int get_data_file_cnt();
 
     //RollupDataFile *get_rollup_data_file() { return &m_rollup_data_file; }
     //RollupHeaderFile *get_rollup_header_file() { return &m_rollup_header_file; }
@@ -298,6 +299,7 @@ public:
                          bool compact);
     DataFile *get_data_file(MetricId mid, FileIndex file_idx);
     HeaderFile *get_header_file(MetricId mid, FileIndex file_idx);
+    int get_data_file_cnt();
 
     inline int get_rollup_entries() const
     {
@@ -397,6 +399,7 @@ private:
     static void get_range(Timestamp tstamp, TimeRange& range);
     static Tsdb *create(TimeRange& range, bool existing, const char *suffix = nullptr); // caller needs to acquire m_tsdb_lock!
     static void restore_tsdb(const std::string& dir);
+    static PageCount adjust_page_count();
 
     void add_config(const std::string& name, const std::string& value);
     void write_config(const std::string& dir);
