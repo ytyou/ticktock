@@ -595,7 +595,7 @@ TcpServer::send_response(int fd, char *content, int len)
         sent_total += sent;
     }
 
-    Logger::tcp("Sent %d bytes:\n%s", sent_total, content);
+    Logger::tcp("Sent %d bytes:\n%s", fd, sent_total, content);
 }
 
 void

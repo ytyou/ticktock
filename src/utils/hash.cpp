@@ -16,6 +16,7 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+#include <cstdio>
 #include <cstring>
 #include "hash.h"
 #include "utils.h"
