@@ -1163,7 +1163,7 @@ TcpListener::listener1()
             if ((events[i].events & err_flags) || (!(events[i].events & EPOLLIN)))
             {
                 // socket errors
-                Logger::error("socket error on listener1, events: 0x%x, closing conn %d", fd, events[i].events, fd);
+                Logger::error("socket error on listener1, events: 0x%x, closing conn %d", events[i].events, fd);
                 close_conn(fd);
             }
             else if (fd == m_pipe_fds[0])
