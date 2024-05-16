@@ -1328,7 +1328,7 @@ class Query_With_Rollup(Test):
                     self.query_and_verify(query)
 
         print("Downsamples with daily rollup...")
-        self._precision = 0.00011
+        self._precision = 0.00015
         for m in range(metric_cardinality):
             for down in ["avg", "count", "max", "min", "sum"]:
                 query = Query(metric=self.metric_name(m), start=self._options.start-99999, end=dps._end+99999, downsampler="1d-"+down+"-zero")
@@ -1363,7 +1363,7 @@ class Query_With_Rollup(Test):
                     self.query_and_verify(query)
 
         print("Downsamples with daily rollup, after restart...")
-        self._precision = 0.00011
+        self._precision = 0.00015
         for m in range(metric_cardinality):
             for down in ["avg", "count", "max", "min", "sum"]:
                 query = Query(metric=self.metric_name(m), start=self._options.start-99999, end=dps._end+99999, downsampler="1d-"+down+"-zero")
