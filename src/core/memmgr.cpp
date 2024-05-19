@@ -260,6 +260,7 @@ MemoryManager::collect_stats(Timestamp ts, std::vector<DataPoint> &dps)
     COLLECT_STATS_FOR(RT_COMPRESSOR_V1, "compressor_v1", sizeof(Compressor_v1))
     COLLECT_STATS_FOR(RT_COMPRESSOR_V2, "compressor_v2", sizeof(Compressor_v2))
     COLLECT_STATS_FOR(RT_COMPRESSOR_V3, "compressor_v3", sizeof(Compressor_v3))
+    COLLECT_STATS_FOR(RT_COMPRESSOR_V4, "compressor_v4", sizeof(Compressor_v4))
     COLLECT_STATS_FOR(RT_DATA_POINT, "data_point", sizeof(DataPoint))
     COLLECT_STATS_FOR(RT_DATA_POINT_CONTAINER, "data_point_container", sizeof(DataPointContainer))
     COLLECT_STATS_FOR(RT_DOWNSAMPLER_AVG, "downsampler_avg", sizeof(DownsamplerAvg))
@@ -298,6 +299,7 @@ MemoryManager::collect_stats(Timestamp ts, std::vector<DataPoint> &dps)
     total += m_total[RT_COMPRESSOR_V1] * sizeof(Compressor_v1);
     total += m_total[RT_COMPRESSOR_V2] * sizeof(Compressor_v2);
     total += m_total[RT_COMPRESSOR_V3] * sizeof(Compressor_v3);
+    total += m_total[RT_COMPRESSOR_V4] * sizeof(Compressor_v4);
     total += m_total[RT_DATA_POINT] * sizeof(DataPoint);
     total += m_total[RT_DATA_POINT_CONTAINER] * sizeof(DataPointContainer);
     total += m_total[RT_DOWNSAMPLER_AVG] * sizeof(DownsamplerAvg);
@@ -521,6 +523,14 @@ MemoryManager::cleanup()
         m_free_lists[RecyclableType::RT_COMPRESSOR_V3] = r->next();
         ASSERT(r->recyclable_type() == RecyclableType::RT_COMPRESSOR_V3);
         delete static_cast<Compressor_v3*>(r);
+    }
+
+    while (m_free_lists[RecyclableType::RT_COMPRESSOR_V4] != nullptr)
+    {
+        Recyclable *r = m_free_lists[RecyclableType::RT_COMPRESSOR_V4];
+        m_free_lists[RecyclableType::RT_COMPRESSOR_V4] = r->next();
+        ASSERT(r->recyclable_type() == RecyclableType::RT_COMPRESSOR_V4);
+        delete static_cast<Compressor_v4*>(r);
     }
 
     while (m_free_lists[RecyclableType::RT_DATA_POINT] != nullptr)
@@ -774,6 +784,7 @@ MemoryManager::alloc_recyclable(RecyclableType type)
                 case RecyclableType::RT_COMPRESSOR_V1:
                 case RecyclableType::RT_COMPRESSOR_V2:
                 case RecyclableType::RT_COMPRESSOR_V3:
+                case RecyclableType::RT_COMPRESSOR_V4:
                     r = Compressor::create(type - RecyclableType::RT_COMPRESSOR_V0);
                     break;
 

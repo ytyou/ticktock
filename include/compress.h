@@ -132,6 +132,94 @@ protected:
 };
 
 
+// Taking advantage of repetitions.
+class __attribute__ ((__packed__)) Compressor_v4 : public Compressor
+{
+public:
+    static void initialize();
+    void init(Timestamp start, uint8_t *base, size_t size);
+    void restore(DataPointVector& dps, CompressorPosition& position, uint8_t *base);
+    void save(CompressorPosition& position);
+    inline void rebase(uint8_t *base)
+    {
+        m_bitset.rebase(base);
+    }
+
+    inline void save(uint8_t *base)
+    {
+        ASSERT(base != nullptr);
+        m_bitset.copy_to(base);
+    }
+
+    int append(FILE *file) override;    // write to append.log, return #bytes written
+
+    bool compress(Timestamp timestamp, double value);
+
+    inline void uncompress(DataPointVector& dps)
+    {
+        uncompress(dps, false);
+    }
+
+    inline bool is_full() const
+    {
+        return m_is_full;
+    }
+
+    inline bool is_empty() const
+    {
+        return (m_dp_count == 0);
+    }
+
+    inline size_t size() const  // return number of bytes
+    {
+        return m_bitset.size_in_bytes();
+    }
+
+    inline uint16_t get_dp_count() const
+    {
+        return m_dp_count;
+    }
+
+    inline Timestamp get_last_tstamp() const
+    {
+        return m_prev_tstamp;
+    }
+
+    inline int get_version() const override
+    {
+        return 4;
+    };
+
+    virtual bool recycle();
+
+private:
+    friend class Compressor;
+
+    Compressor_v4();
+    void compress1(Timestamp timestamp, double value);
+    void compress(double n);
+    void compress(int64_t n);
+    void uncompress(DataPointVector& dps, bool restore);
+    double uncompress_f(BitSetCursor *cursor);
+    int64_t uncompress_i(BitSetCursor *cursor);
+
+    BitSet m_bitset;
+    uint16_t m_dp_count;
+
+    Timestamp m_prev_tstamp;
+    Timestamp m_prev_tstamp_delta;
+    Timestamp m_prev_tstamp_delta_of_delta;
+    double m_prev_value;
+    double m_prev_value_delta;
+    bool m_is_full;
+    uint8_t m_repeat;
+
+    static double m_precision;
+    static short m_repetition;	// number of bits to represent repetition
+    static unsigned short m_max_repetition; // 2^m_repetition - 1
+};
+
+
 // This is a modified version of Facebook's Gorilla compression algorithm.
 class __attribute__ ((__packed__)) Compressor_v3 : public Compressor
 {
