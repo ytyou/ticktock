@@ -198,6 +198,7 @@ private:
     Compressor_v4();
     void compress1(Timestamp timestamp, double value);
     void compress(double n);
+    void compress(double v, bool zero);
     void compress(int64_t n);
     void uncompress(DataPointVector& dps, bool restore);
     double uncompress_f(BitSetCursor *cursor);
@@ -208,7 +209,6 @@ private:
 
     Timestamp m_prev_tstamp;
     Timestamp m_prev_tstamp_delta;
-    Timestamp m_prev_tstamp_delta_of_delta;
     double m_prev_value;
     double m_prev_value_delta;
     bool m_is_full;

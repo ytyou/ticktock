@@ -148,7 +148,6 @@ Compressor_v4::Compressor_v4()
     m_dp_count = 0;
     m_prev_tstamp = 0L;
     m_prev_tstamp_delta = 0L;
-    m_prev_tstamp_delta_of_delta = 0L;
     m_prev_value = 0.0;
     m_prev_value_delta = 0.0;
     m_is_full = false;
@@ -186,7 +185,6 @@ Compressor_v4::init(Timestamp start, uint8_t *base, size_t size)
     m_dp_count = 0;
     m_prev_tstamp = start;
     m_prev_tstamp_delta = 0L;
-    m_prev_tstamp_delta_of_delta = 0L;
     m_prev_value = 0.0;
     m_prev_value_delta = 0.0;
     m_is_full = false;
@@ -273,8 +271,13 @@ Compressor_v4::compress(Timestamp timestamp, double value)
         Timestamp delta = timestamp - m_prev_tstamp;
         int64_t delta_of_delta = (uint64_t)delta - (uint64_t)m_prev_tstamp_delta;
         double val = value - m_prev_value;
+        double i, f;
+        bool zero;
 
-        if ((val == m_prev_value_delta) && (delta_of_delta == m_prev_tstamp_delta_of_delta) && (m_repeat < m_max_repetition))
+        f = std::modf(val, &i);
+        zero = (std::abs(f) < (1.0 / m_precision));
+
+        if (zero && (delta == m_prev_tstamp_delta) && (m_repeat < m_max_repetition))
         {
             m_repeat++;
         }
@@ -293,12 +296,11 @@ Compressor_v4::compress(Timestamp timestamp, double value)
             }
 
             compress(delta_of_delta);
-            compress(val);
+            compress(val, zero);
         }
 
         m_prev_tstamp = timestamp;
         m_prev_tstamp_delta = delta;
-        m_prev_tstamp_delta_of_delta = delta_of_delta;
 
         m_dp_count++;
         m_prev_value = value;
@@ -312,6 +314,23 @@ Compressor_v4::compress(Timestamp timestamp, double value)
     }
 
     return true;
+}
+
+void
+Compressor_v4::compress(double v, bool zero)
+{
+    if (zero)
+    {
+        uint8_t one_zero = 0x00;
+        m_bitset.append(reinterpret_cast<uint8_t*>(&one_zero), 1, 0);
+        compress((int64_t)v);
+    }
+    else
+    {
+        uint8_t one_zero = 0x80;
+        m_bitset.append(reinterpret_cast<uint8_t*>(&one_zero), 1, 0);
+        compress((int64_t)std::llround(v * m_precision));
+    }
 }
 
 void
@@ -554,7 +573,6 @@ Compressor_v4::recycle()
 {
     m_dp_count = 0;
     m_prev_tstamp_delta = 0L;
-    m_prev_tstamp_delta_of_delta = 0L;
     m_prev_tstamp = get_start_tstamp();
     m_prev_value = 0.0;
     m_prev_value_delta = 0.0;
