@@ -217,6 +217,21 @@ Compressor_v4::save(CompressorPosition& position)
         position.m_offset, position.m_start, m_dp_count);
 }
 
+void
+Compressor_v4::save(uint8_t *base)
+{
+    ASSERT(base != nullptr);
+
+    if (m_repeat > 0)
+    {
+        uint8_t one_zero = (uint8_t)(1 << m_repetition) & m_repeat;
+        m_bitset.append(reinterpret_cast<uint8_t*>(&one_zero), m_repetition+1, 7-m_repetition);
+        m_repeat = 0;
+    }
+
+    m_bitset.copy_to(base);
+}
+
 int
 Compressor_v4::append(FILE *file)
 {
@@ -249,12 +264,13 @@ Compressor_v4::compress(Timestamp timestamp, double value)
     ASSERT(get_start_tstamp() <= timestamp);
     ASSERT(m_is_full == false);
 
-    m_bitset.save_check_point();
+    //m_bitset.save_check_point();
 
     try
     {
         if (m_dp_count == 0)
         {
+            m_bitset.save_check_point();
             compress1(timestamp, value);
             return true;
         }
@@ -279,6 +295,8 @@ Compressor_v4::compress(Timestamp timestamp, double value)
 
         if (zero && (delta == m_prev_tstamp_delta) && (m_repeat < m_max_repetition))
         {
+            if ((m_repeat == 0) && (m_bitset.avail_capacity_in_bytes() < 1))
+                throw std::out_of_range("bitset is full");
             m_repeat++;
         }
         else
@@ -295,6 +313,7 @@ Compressor_v4::compress(Timestamp timestamp, double value)
                 m_bitset.append(reinterpret_cast<uint8_t*>(&one_zero), 1, 0);
             }
 
+            m_bitset.save_check_point();
             compress(delta_of_delta);
             compress(val, zero);
         }
@@ -320,27 +339,6 @@ void
 Compressor_v4::compress(double v, bool zero)
 {
     if (zero)
-    {
-        uint8_t one_zero = 0x00;
-        m_bitset.append(reinterpret_cast<uint8_t*>(&one_zero), 1, 0);
-        compress((int64_t)v);
-    }
-    else
-    {
-        uint8_t one_zero = 0x80;
-        m_bitset.append(reinterpret_cast<uint8_t*>(&one_zero), 1, 0);
-        compress((int64_t)std::llround(v * m_precision));
-    }
-}
-
-void
-Compressor_v4::compress(double v)
-{
-    double i, f;
-
-    f = std::modf(v, &i);
-
-    if (std::abs(f) < (1.0 / m_precision))
     {
         uint8_t one_zero = 0x00;
         m_bitset.append(reinterpret_cast<uint8_t*>(&one_zero), 1, 0);

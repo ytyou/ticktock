@@ -140,15 +140,10 @@ public:
     void init(Timestamp start, uint8_t *base, size_t size);
     void restore(DataPointVector& dps, CompressorPosition& position, uint8_t *base);
     void save(CompressorPosition& position);
+    void save(uint8_t *base);
     inline void rebase(uint8_t *base)
     {
         m_bitset.rebase(base);
-    }
-
-    inline void save(uint8_t *base)
-    {
-        ASSERT(base != nullptr);
-        m_bitset.copy_to(base);
     }
 
     int append(FILE *file) override;    // write to append.log, return #bytes written
@@ -197,7 +192,6 @@ private:
 
     Compressor_v4();
     void compress1(Timestamp timestamp, double value);
-    void compress(double n);
     void compress(double v, bool zero);
     void compress(int64_t n);
     void uncompress(DataPointVector& dps, bool restore);

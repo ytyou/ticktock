@@ -103,6 +103,11 @@ public:
         return size;
     }
 
+    inline size_t avail_capacity_in_bytes() const
+    {
+        return m_capacity_in_bytes - size_in_bytes();
+    }
+
     inline bool is_empty() const
     {
         return (m_cursor == m_bits) && (m_start == 0);
