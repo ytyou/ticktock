@@ -192,7 +192,7 @@ private:
 
     Compressor_v4();
     void compress1(Timestamp timestamp, double value);
-    void compress(double v, bool zero);
+    void compress(double v);
     void compress(int64_t n);
     void uncompress(DataPointVector& dps, bool restore);
     double uncompress_f(BitSetCursor *cursor);

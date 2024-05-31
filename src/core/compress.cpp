@@ -286,14 +286,15 @@ Compressor_v4::compress(Timestamp timestamp, double value)
         // calcullate delta
         Timestamp delta = timestamp - m_prev_tstamp;
         int64_t delta_of_delta = (uint64_t)delta - (uint64_t)m_prev_tstamp_delta;
-        double val = value - m_prev_value;
-        double i, f;
-        bool zero;
+        double delta_v = value - m_prev_value;
 
-        f = std::modf(val, &i);
-        zero = (std::abs(f) < (1.0 / m_precision));
-
-        if (zero && (delta == m_prev_tstamp_delta) && (m_repeat < m_max_repetition))
+        if (UNLIKELY(m_dp_count == 1))
+        {
+            m_bitset.save_check_point();
+            compress(delta_of_delta);
+            compress(delta_v);
+        }
+        else if ((std::abs(delta_v - m_prev_value_delta) < (1.0 / m_precision)) && (delta == m_prev_tstamp_delta) && (m_repeat < m_max_repetition))
         {
             if ((m_repeat == 0) && (m_bitset.avail_capacity_in_bytes() < 1))
                 throw std::out_of_range("bitset is full");
@@ -303,7 +304,7 @@ Compressor_v4::compress(Timestamp timestamp, double value)
         {
             if (m_repeat > 0)
             {
-                uint8_t one_zero = (uint8_t)(1 << m_repetition) & m_repeat;
+                uint8_t one_zero = (uint8_t)(1 << m_repetition) | m_repeat;
                 m_bitset.append(reinterpret_cast<uint8_t*>(&one_zero), m_repetition+1, 7-m_repetition);
                 m_repeat = 0;
             }
@@ -315,7 +316,7 @@ Compressor_v4::compress(Timestamp timestamp, double value)
 
             m_bitset.save_check_point();
             compress(delta_of_delta);
-            compress(val, zero);
+            compress(delta_v);
         }
 
         m_prev_tstamp = timestamp;
@@ -323,7 +324,7 @@ Compressor_v4::compress(Timestamp timestamp, double value)
 
         m_dp_count++;
         m_prev_value = value;
-        m_prev_value_delta = val;
+        m_prev_value_delta = delta_v;
     }
     catch (const std::out_of_range& ex)
     {
@@ -336,9 +337,13 @@ Compressor_v4::compress(Timestamp timestamp, double value)
 }
 
 void
-Compressor_v4::compress(double v, bool zero)
+Compressor_v4::compress(double v)
 {
-    if (zero)
+    double i, f;
+
+    f = std::modf(v, &i);
+
+    if (std::abs(f) < (1.0 / m_precision))
     {
         uint8_t one_zero = 0x00;
         m_bitset.append(reinterpret_cast<uint8_t*>(&one_zero), 1, 0);
@@ -421,13 +426,6 @@ Compressor_v4::uncompress(DataPointVector& dps, bool restore)
 
     Timestamp timestamp;
     double value = 0.0;
-
-    //uint64_t value_be;
-
-    //uint8_t leading_zeros = 0;
-    //uint8_t trailing_zeros = 0;
-    //uint8_t none_zeros = 0;
-
     BitSetCursor *cursor = m_bitset.new_cursor();
 
     // TODO: check for m_bitset being empty
@@ -440,9 +438,7 @@ Compressor_v4::uncompress(DataPointVector& dps, bool restore)
     ASSERT(get_start_tstamp() <= timestamp);
     dps.emplace_back(timestamp, value);
 
-    //value_be = htobe64(*reinterpret_cast<uint64_t*>(&value));
-
-    //uint64_t y = *reinterpret_cast<uint64_t*>(&value);
+    double delta_v = 0.0;
 
     while (true)
     {
@@ -456,13 +452,40 @@ Compressor_v4::uncompress(DataPointVector& dps, bool restore)
             timestamp += delta;
 
             // value
-            double delta_of_delta_v = uncompress_f(cursor);
-            value += delta_of_delta_v;
+            delta_v = uncompress_f(cursor);
+            value += delta_v;
             dps.emplace_back(timestamp, value);
+
+            // repeat, if any
+            uint8_t byte = 0;
+            m_bitset.retrieve(cursor, &byte, 1, 0);
+            if ((byte & 0x80) != 0)
+            {
+                byte = 0;
+                m_bitset.retrieve(cursor, &byte, m_repetition, 8-m_repetition);
+                ASSERT(byte != 0);
+
+                for (uint8_t i = 0; i < byte; i++)
+                {
+                    timestamp += delta;
+                    value += delta_v;
+                    dps.emplace_back(timestamp, value);
+                }
+            }
         }
         catch (const std::out_of_range& ex)
         {
             break;
+        }
+    }
+
+    if (m_repeat > 0)
+    {
+        for (uint8_t i = 0; i < m_repeat; i++)
+        {
+            timestamp += delta;
+            value += delta_v;
+            dps.emplace_back(timestamp, value);
         }
     }
 

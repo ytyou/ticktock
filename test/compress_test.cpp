@@ -31,8 +31,8 @@ namespace tt_test
 void
 CompressTests::run()
 {
-    log("Running compress tests with millisecond resolution...");
     Compressor::initialize();
+    log("Running compress tests with millisecond resolution...");
     run_with(true);
     log("Running compress tests with second resolution...");
     run_with(false);
@@ -58,7 +58,7 @@ CompressTests::run_with(bool ms)
 
     Timestamp ts = ts_now();
 
-    for (int v = 0; v <= 3; v++)
+    for (int v = 0; v <= 4; v++)
     {
         log("Testing compress/uncompress for Compressor_v%d...", v);
         compressor = Compressor::create(v);
@@ -67,7 +67,7 @@ CompressTests::run_with(bool ms)
         delete compressor;
     }
 
-    for (int v = 0; v <= 3; v++)
+    for (int v = 0; v <= 4; v++)
     {
         log("Testing compress/uncompress for Compressor_v%d...", v);
         compressor = Compressor::create(v);
@@ -76,7 +76,7 @@ CompressTests::run_with(bool ms)
         delete compressor;
     }
 
-    for (int v = 0; v <= 3; v++)
+    for (int v = 0; v <= 4; v++)
     {
         log("Testing save/restore for Compressor_v%d...", v);
         compressor = Compressor::create(v);
@@ -85,7 +85,7 @@ CompressTests::run_with(bool ms)
         delete compressor;
     }
 
-    for (int v = 0; v <= 3; v++)
+    for (int v = 0; v <= 4; v++)
     {
         log("Testing save/restore again for Compressor_v%d...", v);
         compressor = Compressor::create(v);
@@ -94,7 +94,7 @@ CompressTests::run_with(bool ms)
         delete compressor;
     }
 
-    for (int v = 0; v <= 3; v++)
+    for (int v = 0; v <= 4; v++)
     {
         log("Stress testing for Compressor_v%d...", v);
         compressor = Compressor::create(v);
@@ -133,7 +133,7 @@ CompressTests::compress_uncompress(Compressor *compressor, Timestamp ts, bool be
     std::vector<std::pair<Timestamp,double>> uncompressed;
     compressor->uncompress(uncompressed);
 
-    log("uncompressed.size() = %d", uncompressed.size());
+    log("uncompressed.size() = %d, dp_cnt = %d", uncompressed.size(), dp_cnt);
     CONFIRM(dp_cnt == uncompressed.size());
 
     for (int i = 0; i < dp_cnt; i++)
@@ -345,7 +345,7 @@ CompressTests::best_scenario(bool ms)
 
     Timestamp ts = ts_now();
 
-    for (int v = 0; v <= 3; v++)
+    for (int v = 0; v <= 4; v++)
     {
         log("Testing compress/uncompress for Compressor_v%d...", v);
         compressor = Compressor::create(v);
