@@ -167,7 +167,9 @@ public:
 
     inline size_t size() const  // return number of bytes
     {
-        return m_bitset.size_in_bytes();
+        size_t sz = m_bitset.size_in_bytes();
+        if (m_repeat > 0) sz++;
+        return sz;
     }
 
     inline uint16_t get_dp_count() const
