@@ -1482,11 +1482,11 @@ Tsdb::get_compressor_version()
 void
 Tsdb::get_range(Timestamp tstamp, TimeRange& range)
 {
-    //Timestamp start = (tstamp / tsdb_rotation_freq) * tsdb_rotation_freq;
-    //range.init(start, start + tsdb_rotation_freq);
-    std::time_t begin, end;
-    get_day_range(to_sec(tstamp), begin, end);
-    range.init(validate_resolution(begin), validate_resolution(end));
+    Timestamp start = (tstamp / tsdb_rotation_freq) * tsdb_rotation_freq;
+    range.init(start, start + tsdb_rotation_freq);
+    //std::time_t begin, end;
+    //get_day_range(to_sec(tstamp), begin, end);
+    //range.init(validate_resolution(begin), validate_resolution(end));
 }
 
 Mapping *
@@ -2979,7 +2979,7 @@ Tsdb::init()
     if (Config::inst()->exists(CFG_TSDB_ROTATION_FREQUENCY))
         Logger::warn("%s config ignored, using 1d", CFG_TSDB_ROTATION_FREQUENCY);
 
-    tsdb_rotation_freq = 24 * 3600L;    // 1d
+    tsdb_rotation_freq = 30 * 24 * 3600L;    // 30d
     if (g_tstamp_resolution_ms)
         tsdb_rotation_freq *= 1000L;
 
