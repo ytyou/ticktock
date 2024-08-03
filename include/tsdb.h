@@ -275,8 +275,8 @@ public:
     void inc_ref_count();
 
     inline PageSize get_page_size() const { return m_page_size; }
-    PageCount get_page_count() const;
-    int get_compressor_version();
+    inline PageCount get_page_count() const { return m_page_count; }
+    inline int get_compressor_version() const { return m_compressor_version; }
 
     bool has_daily_rollup();
     bool can_use_rollup(bool level2);

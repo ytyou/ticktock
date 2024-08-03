@@ -1564,6 +1564,7 @@ DataPointContainer::collect_data(PageInMemory *page)
     page->get_all_data_points(m_dps);
 }
 
+/*
 void
 DataPointContainer::collect_data(Timestamp from, struct tsdb_header *tsdb_header, struct page_info_on_disk *page_header, void *page)
 {
@@ -1571,9 +1572,19 @@ DataPointContainer::collect_data(Timestamp from, struct tsdb_header *tsdb_header
     ASSERT(page_header != nullptr);
     ASSERT(page != nullptr);
 
+    collect_data(from, tsdb_header->m_page_size, tsdb_header->get_compressor_version(), page_header, page);
+}
+*/
+
+void
+DataPointContainer::collect_data(Timestamp from, PageSize page_size, int compressor_version, struct page_info_on_disk *page_header, void *page)
+{
+    ASSERT(page_header != nullptr);
+    ASSERT(page != nullptr);
+    ASSERT(compressor_version > 0 && compressor_version < 5);
+
     struct compress_info_on_disk *ciod = reinterpret_cast<struct compress_info_on_disk*>(page);
     CompressorPosition position(ciod);
-    int compressor_version = tsdb_header->get_compressor_version();
     RecyclableType type;
     if (page_header->is_out_of_order())
         type = RecyclableType::RT_COMPRESSOR_V0;
@@ -1582,7 +1593,7 @@ DataPointContainer::collect_data(Timestamp from, struct tsdb_header *tsdb_header
     Compressor *compressor = (Compressor*)MemoryManager::alloc_recyclable(type);
     compressor->init(from,
                      reinterpret_cast<uint8_t*>(page) + sizeof(struct compress_info_on_disk),
-                     tsdb_header->m_page_size);
+                     page_size);
     compressor->restore(m_dps, position, (uint8_t*)page + sizeof(struct compress_info_on_disk));
     ASSERT(! m_dps.empty());
     MemoryManager::free_recyclable(compressor);

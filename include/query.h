@@ -483,7 +483,8 @@ public:
     void set_page_index(PageIndex idx) { m_page_index = idx; }
 
     void collect_data(PageInMemory *page);
-    void collect_data(Timestamp from, struct tsdb_header *tsdb_header, struct page_info_on_disk *page_header, void *page);
+    //void collect_data(Timestamp from, struct tsdb_header *tsdb_header, struct page_info_on_disk *page_header, void *page);
+    void collect_data(Timestamp from, PageSize page_size, int compressor_version, struct page_info_on_disk *page_header, void *page);
     void collect_data(RollupManager& rollup_mgr, RollupType rollup_type);
 
 private:

@@ -1467,18 +1467,6 @@ Tsdb::mode_of() const
     return mode;
 }
 
-PageCount
-Tsdb::get_page_count() const
-{
-    return m_page_count;
-}
-
-int
-Tsdb::get_compressor_version()
-{
-    return m_compressor_version;
-}
-
 void
 Tsdb::get_range(Timestamp tstamp, TimeRange& range)
 {
@@ -1820,7 +1808,8 @@ Tsdb::query_for_data_no_lock(MetricId mid, QueryTask *task)
             MemoryManager::alloc_recyclable(RecyclableType::RT_DATA_POINT_CONTAINER);
         container->set_out_of_order(page_header->is_out_of_order());
         container->set_page_index(page_header->get_global_page_index(file_idx, m_page_count));
-        container->collect_data(from, tsdb_header, page_header, page);
+        //container->collect_data(from, tsdb_header, page_header, page);
+        container->collect_data(from, get_page_size(), get_compressor_version(), page_header, page);
         ASSERT(container->size() > 0);
         lock.unlock();
 
@@ -2113,7 +2102,8 @@ Tsdb::get_last_tstamp(MetricId mid, TimeSeriesId tid)
         DataPointContainer *container = (DataPointContainer*)
             MemoryManager::alloc_recyclable(RecyclableType::RT_DATA_POINT_CONTAINER);
         container->set_page_index(page_header->get_global_page_index(file_idx, m_page_count));
-        container->collect_data(m_time_range.get_from(), tsdb_header, page_header, page);
+        //container->collect_data(m_time_range.get_from(), tsdb_header, page_header, page);
+        container->collect_data(m_time_range.get_from(), get_page_size(), get_compressor_version(), page_header, page);
         lock.unlock();
         if (! container->is_empty())
             tstamp = container->get_last_data_point().first;
