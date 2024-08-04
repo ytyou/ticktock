@@ -256,6 +256,8 @@ Compressor_v4::compress1(Timestamp timestamp, double value)
     m_prev_value = value;
     m_prev_tstamp_delta = delta;
     m_dp_count++;
+
+    ASSERT(size() == 12);
 }
 
 bool
@@ -287,12 +289,19 @@ Compressor_v4::compress(Timestamp timestamp, double value)
         Timestamp delta = timestamp - m_prev_tstamp;
         int64_t delta_of_delta = (uint64_t)delta - (uint64_t)m_prev_tstamp_delta;
         double delta_v = value - m_prev_value;
+        double delta_of_delta_v = delta_v - m_prev_value_delta;
 
         if (UNLIKELY(m_dp_count == 1))
         {
             m_bitset.save_check_point();
             compress(delta_of_delta);
             compress(delta_v);
+        }
+        else if (UNLIKELY(m_dp_count == 2))
+        {
+            m_bitset.save_check_point();
+            compress(delta_of_delta);
+            compress(delta_of_delta_v);
         }
         else if ((std::abs(delta_v - m_prev_value_delta) < (1.0 / m_precision)) && (delta == m_prev_tstamp_delta) && (m_repeat < m_max_repetition))
         {
@@ -305,6 +314,7 @@ Compressor_v4::compress(Timestamp timestamp, double value)
             if (m_repeat > 0)
             {
                 uint8_t one_zero = (uint8_t)(1 << m_repetition) | m_repeat;
+                ASSERT((0x80 & one_zero) != 0x00);
                 m_bitset.append(reinterpret_cast<uint8_t*>(&one_zero), m_repetition+1, 7-m_repetition);
                 m_repeat = 0;
             }
@@ -316,7 +326,7 @@ Compressor_v4::compress(Timestamp timestamp, double value)
 
             m_bitset.save_check_point();
             compress(delta_of_delta);
-            compress(delta_v);
+            compress(delta_of_delta_v);
         }
 
         m_prev_tstamp = timestamp;
@@ -438,21 +448,36 @@ Compressor_v4::uncompress(DataPointVector& dps, bool restore)
     ASSERT(get_start_tstamp() <= timestamp);
     dps.emplace_back(timestamp, value);
 
-    double delta_v = 0.0;
+    double delta_v;
+    int64_t delta_of_delta;
+
+    // 2nd data-point
+    try
+    {
+        delta_of_delta = uncompress_i(cursor);
+        delta += delta_of_delta;
+        timestamp += delta;
+
+        delta_v = uncompress_f(cursor);
+        value += delta_v;
+        dps.emplace_back(timestamp, value);
+    }
+    catch (const std::out_of_range& ex)
+    {
+    }
 
     while (true)
     {
         try
         {
             // timestamp
-            int64_t delta_of_delta;
-
             delta_of_delta = uncompress_i(cursor);
             delta += delta_of_delta;
             timestamp += delta;
 
             // value
-            delta_v = uncompress_f(cursor);
+            double delta_of_delta_v = uncompress_f(cursor);
+            delta_v += delta_of_delta_v;
             value += delta_v;
             dps.emplace_back(timestamp, value);
 
@@ -494,9 +519,11 @@ Compressor_v4::uncompress(DataPointVector& dps, bool restore)
     if (restore)
     {
         m_dp_count = dps.size();
+        m_repeat = 0;
         m_prev_tstamp_delta = delta;
         m_prev_tstamp = timestamp;
         m_prev_value = value;
+        m_prev_value_delta = delta_v;
     }
 
     ASSERT(get_start_tstamp() <= m_prev_tstamp);
@@ -541,7 +568,7 @@ Compressor_v4::uncompress_i(BitSetCursor *cursor)
         if ((byte & 0x80) == 0)
         {
             // 12-bit
-            uint16_t dod_be;
+            uint16_t dod_be = 0;
             m_bitset.retrieve(cursor, reinterpret_cast<uint8_t*>(&dod_be), 12, 16-12);
 
             if ((*reinterpret_cast<uint16_t*>(&dod_be) & 0x0008) != 0)
@@ -562,7 +589,7 @@ Compressor_v4::uncompress_i(BitSetCursor *cursor)
             if ((byte & 0x80) == 0)
             {
                 // 17-bit
-                uint32_t dod_be;
+                uint32_t dod_be = 0;
                 m_bitset.retrieve(cursor, reinterpret_cast<uint8_t*>(&dod_be), 17, 32-17);
 
                 if ((*reinterpret_cast<uint32_t*>(&dod_be) & 0x00000100) != 0)
@@ -933,7 +960,7 @@ Compressor_v3::uncompress_i(BitSetCursor *cursor)
         if ((byte & 0x80) == 0)
         {
             // 12-bit
-            uint16_t dod_be;
+            uint16_t dod_be = 0;
             m_bitset.retrieve(cursor, reinterpret_cast<uint8_t*>(&dod_be), 12, 16-12);
 
             if ((*reinterpret_cast<uint16_t*>(&dod_be) & 0x0008) != 0)
@@ -954,7 +981,7 @@ Compressor_v3::uncompress_i(BitSetCursor *cursor)
             if ((byte & 0x80) == 0)
             {
                 // 17-bit
-                uint32_t dod_be;
+                uint32_t dod_be = 0;
                 m_bitset.retrieve(cursor, reinterpret_cast<uint8_t*>(&dod_be), 17, 32-17);
 
                 if ((*reinterpret_cast<uint32_t*>(&dod_be) & 0x00000100) != 0)

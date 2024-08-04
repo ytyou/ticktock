@@ -106,7 +106,7 @@
 #define CFG_TSDB_COMPACT_THRESHOLD              "tsdb.compact.threshold"
 #define CFG_TSDB_COMPACT_THRESHOLD_DEF          "1d"
 #define CFG_TSDB_COMPRESSOR_PRECISION           "tsdb.compressor.precision"
-#define CFG_TSDB_COMPRESSOR_PRECISION_DEF       5
+#define CFG_TSDB_COMPRESSOR_PRECISION_DEF       8
 #define CFG_TSDB_COMPRESSOR_VERSION             "tsdb.compressor.version"
 #define CFG_TSDB_COMPRESSOR_VERSION_DEF         4
 #define CFG_TSDB_DATA_DIR                       "tsdb.data.dir"

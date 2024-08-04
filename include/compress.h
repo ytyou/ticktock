@@ -533,8 +533,8 @@ class RollupCompressor_v1
 {
 public:
     static void init();
-    static int compress(uint8_t *buff, TimeSeriesId tid, uint32_t cnt, double min, double max, double sum, double m_precision);
-    static int uncompress(uint8_t *buff, int size, struct rollup_entry *entry, double m_precision);
+    static int compress(uint8_t *buff, TimeSeriesId tid, uint32_t cnt, double min, double max, double sum, double precision);
+    static int uncompress(uint8_t *buff, int size, struct rollup_entry *entry, double precision);
 
 private:
     static void compress_int16(int64_t n, uint8_t *buff);

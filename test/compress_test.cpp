@@ -40,6 +40,8 @@ CompressTests::run()
     best_scenario(true);
     log("Running best scenario case with second resolution...");
     best_scenario(false);
+    log("Running compress_v4 tests...");
+    compress_v4_tests();
     log("Running rollup compression tests...");
     rollup_compress1();
     for (int i = 0; i < 10000; i++) rollup_compress2();
@@ -138,8 +140,13 @@ CompressTests::compress_uncompress(Compressor *compressor, Timestamp ts, bool be
 
     for (int i = 0; i < dp_cnt; i++)
     {
-        //log("t: exp=%" PRIu64 ", act=%" PRIu64 "; v: exp=%f, act=%f",
-            //dps[i].first, uncompressed[i].first, dps[i].second, uncompressed[i].second);
+        if ((std::fabs(dps[i].second - uncompressed[i].second)) >= 0.001)
+        {
+            log("t: exp=%" PRIu64 ", act=%" PRIu64 "; v: exp=%f, act=%f, diff=%f",
+                dps[i].first, uncompressed[i].first, dps[i].second, uncompressed[i].second,
+                std::fabs(dps[i].second - uncompressed[i].second));
+        }
+
         CONFIRM(dps[i].first == uncompressed[i].first);
         CONFIRM(std::fabs(dps[i].second - uncompressed[i].second) < 0.001);
     }
@@ -356,6 +363,83 @@ CompressTests::best_scenario(bool ms)
 
     m_stats.add_passed(1);
 }
+
+void
+CompressTests::compress_v4_tests()
+{
+    uint8_t buff[131072];
+    Compressor *compressor;
+    Timestamp ts = ts_now();
+    Timestamp ts_inc = 5000;
+    double value = 123.456;
+    double value_inc = 1.1;
+    int cnt;
+
+    tt::g_tstamp_resolution_ms = true;
+
+    // 1 dp => 12 bytes
+    compressor = Compressor::create(4);
+    compressor->init(ts, buff, sizeof(buff));
+    ts += ts_inc;
+    compressor->compress(ts, value);
+    CONFIRM(compressor->size() == 12);
+    delete compressor;
+
+    // 3 dp => 12 bytes + 6 bits
+    cnt = 3;
+    compressor = Compressor::create(4);
+    compressor->init(ts, buff, sizeof(buff));
+    for (int i = 0; i < cnt; i++)
+    {
+        ts += ts_inc;
+        compressor->compress(ts, value);
+    }
+    log("compressor->size() == %u", compressor->size());
+    CONFIRM(compressor->size() == 13);
+    delete compressor;
+
+    // 128 dp => 12 bytes + 2 bytes
+    cnt = 128;
+    compressor = Compressor::create(4);
+    compressor->init(ts, buff, sizeof(buff));
+    for (int i = 0; i < cnt; i++)
+    {
+        ts += ts_inc;
+        compressor->compress(ts, value);
+    }
+    log("compressor->size() == %u", compressor->size());
+    CONFIRM(compressor->size() == 14);
+    delete compressor;
+
+    // 256 dp => 12 bytes + 3 bytes
+    cnt = 130;
+    compressor = Compressor::create(4);
+    compressor->init(ts, buff, sizeof(buff));
+    for (int i = 0; i < cnt; i++)
+    {
+        ts += ts_inc;
+        compressor->compress(ts, value);
+    }
+    log("compressor->size() == %u", compressor->size());
+    CONFIRM(compressor->size() == 14);
+    delete compressor;
+
+    // 256 dp => 12 bytes + 3 bytes
+    cnt = 258;
+    compressor = Compressor::create(4);
+    compressor->init(ts, buff, sizeof(buff));
+    log("compressor->size() == %u", compressor->size());
+    for (int i = 0; i < cnt; i++)
+    {
+        ts += ts_inc;
+        value += value_inc;
+        compressor->compress(ts, value);
+    }
+    log("compressor->size() == %u", compressor->size());
+    CONFIRM(compressor->size() == 24);
+    delete compressor;
+}
+
 void
 CompressTests::rollup_compress1()
 {
