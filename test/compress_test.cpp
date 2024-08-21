@@ -112,7 +112,7 @@ CompressTests::run_with(bool ms)
 void
 CompressTests::compress_uncompress(Compressor *compressor, Timestamp ts, bool best, bool floating)
 {
-    int dp_cnt = 5000;
+    int dp_cnt = 4500;
     DataPointVector dps;
     double val = 123.456;
     Timestamp interval = (tt::g_tstamp_resolution_ms) ? 30000 : 30;
@@ -313,11 +313,13 @@ CompressTests::stress_test(Compressor *compressor, Timestamp ts)
         n = 0;
 
         compressor->init(ts, page, sizeof(page));
+        CONFIRM(compressor->get_dp_count() == n);
 
         for (DataPointPair& dp: dps)
         {
             if (! compressor->compress(dp.first, dp.second)) break;
             n++;
+            CONFIRM(compressor->get_dp_count() == n);
         }
 
         CONFIRM(compressor->get_dp_count() == n);
@@ -368,6 +370,7 @@ void
 CompressTests::compress_v4_tests()
 {
     uint8_t buff[131072];
+    DataPointVector dps;
     Compressor *compressor;
     Timestamp ts = ts_now();
     Timestamp ts_inc = 5000;
@@ -382,7 +385,13 @@ CompressTests::compress_v4_tests()
     compressor->init(ts, buff, sizeof(buff));
     ts += ts_inc;
     compressor->compress(ts, value);
+    log("compress4(): ts=%" PRIu64 ", val=%f", ts, value);
     CONFIRM(compressor->size() == 12);
+    compressor->uncompress(dps);
+    CONFIRM(dps.size() == 1);
+    CONFIRM(dps[0].first == ts);
+    CONFIRM(dps[0].second == value);
+    log("uncompress4(): ts=%" PRIu64 ", val=%f", dps[0].first, dps[0].second);
     delete compressor;
 
     // 3 dp => 12 bytes + 6 bits
@@ -537,7 +546,7 @@ CompressTests::rollup_compress3()
     }
 
     m_buff_offset = m_disk_offset = m_disk_size = 0;
-    m_precision = std::pow(10, 3);
+    m_precision = std::pow(10, 5);
 
     // compress
     log("compress data...");

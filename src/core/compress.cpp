@@ -311,6 +311,8 @@ Compressor_v4::compress(Timestamp timestamp, double value)
         }
         else
         {
+            m_bitset.save_check_point();
+
             if (m_repeat > 0)
             {
                 uint8_t one_zero = (uint8_t)(1 << m_repetition) | m_repeat;
@@ -324,7 +326,6 @@ Compressor_v4::compress(Timestamp timestamp, double value)
                 m_bitset.append(reinterpret_cast<uint8_t*>(&one_zero), 1, 0);
             }
 
-            m_bitset.save_check_point();
             compress(delta_of_delta);
             compress(delta_of_delta_v);
         }

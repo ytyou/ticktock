@@ -51,7 +51,7 @@ private:
 
     int m_buff_offset, m_disk_offset, m_disk_size;
     uint8_t m_buff[4096];
-    uint8_t m_disk[409600];
+    uint8_t m_disk[819200];
     double m_precision;
 };
 
