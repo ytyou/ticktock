@@ -156,7 +156,7 @@ AppendLog::restore(std::vector<TimeSeries*>& tsv)
         bool is_ooo = ((flags&0x80)==0x80);
         int bytes = offset;
 
-        if ((flags & 0x03) == 0)    // version 0 compressor
+        if ((flags & 0x07) == 0)    // version 0 compressor
             bytes *= sizeof(DataPointPair);
         else if (start != 0)
             bytes++;

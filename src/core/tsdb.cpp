@@ -2210,7 +2210,8 @@ Tsdb::get_last_header_indices(MetricId mid, TimeSeriesId tid, FileIndex& file_id
         header_idx = hidx;
 
         HeaderFile *header_file = get_header_file(mid, fidx);
-        ASSERT(header_file != nullptr);
+
+        if (header_file == nullptr) break;
         ASSERT(header_file->get_id() == fidx);
 
         header_file->ensure_open(true);

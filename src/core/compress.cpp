@@ -224,9 +224,14 @@ Compressor_v4::save(uint8_t *base)
 
     if (m_repeat > 0)
     {
-        uint8_t one_zero = (uint8_t)(1 << m_repetition) & m_repeat;
+        uint8_t one_zero = (uint8_t)(1 << m_repetition) | m_repeat;
         m_bitset.append(reinterpret_cast<uint8_t*>(&one_zero), m_repetition+1, 7-m_repetition);
         m_repeat = 0;
+    }
+    else
+    {
+        uint8_t one_zero = 0;
+        m_bitset.append(reinterpret_cast<uint8_t*>(&one_zero), 1, 0);
     }
 
     m_bitset.copy_to(base);
@@ -449,7 +454,7 @@ Compressor_v4::uncompress(DataPointVector& dps, bool restore)
     ASSERT(get_start_tstamp() <= timestamp);
     dps.emplace_back(timestamp, value);
 
-    double delta_v;
+    double delta_v = 0;
     int64_t delta_of_delta;
 
     // 2nd data-point

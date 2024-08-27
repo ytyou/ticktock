@@ -259,9 +259,9 @@ PageInMemory::flush(MetricId mid, TimeSeriesId tid, bool compact)
     FileIndex prev_file_idx = m_page_header.m_next_file;
     HeaderIndex prev_header_idx = m_page_header.m_next_header;
 
+    m_compressor->save((uint8_t*)m_page + sizeof(struct compress_info_on_disk));
     CompressorPosition position;
     m_compressor->save(position);
-    m_compressor->save((uint8_t*)m_page + sizeof(struct compress_info_on_disk));
 
     struct compress_info_on_disk *ciod = get_compress_header();
     ciod->m_cursor = position.m_offset;
