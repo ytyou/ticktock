@@ -151,6 +151,7 @@ Compressor_v4::Compressor_v4()
     m_prev_value = 0.0;
     m_prev_value_delta = 0.0;
     m_is_full = false;
+    m_padded = true;
     m_repeat = 0;
 
     ASSERT(get_start_tstamp() <= m_prev_tstamp);
@@ -188,9 +189,11 @@ Compressor_v4::init(Timestamp start, uint8_t *base, size_t size)
     m_prev_value = 0.0;
     m_prev_value_delta = 0.0;
     m_is_full = false;
+    m_padded = true;
     m_repeat = 0;
 
     ASSERT(get_start_tstamp() <= m_prev_tstamp);
+    ASSERT(m_bitset.avail_capacity_in_bits() >= 1);
 }
 
 void
@@ -222,16 +225,22 @@ Compressor_v4::save(uint8_t *base)
 {
     ASSERT(base != nullptr);
 
-    if (m_repeat > 0)
+    if (! m_padded)
     {
-        uint8_t one_zero = (uint8_t)(1 << m_repetition) | m_repeat;
-        m_bitset.append(reinterpret_cast<uint8_t*>(&one_zero), m_repetition+1, 7-m_repetition);
-        m_repeat = 0;
-    }
-    else
-    {
-        uint8_t one_zero = 0;
-        m_bitset.append(reinterpret_cast<uint8_t*>(&one_zero), 1, 0);
+        if (m_repeat > 0)
+        {
+            uint8_t one_zero = (uint8_t)(1 << m_repetition) | m_repeat;
+            m_bitset.append(reinterpret_cast<uint8_t*>(&one_zero), m_repetition+1, 7-m_repetition);
+            m_repeat = 0;
+        }
+        else
+        {
+            uint8_t one_zero = 0;
+            ASSERT(m_bitset.avail_capacity_in_bits() >= 1);
+            m_bitset.append(reinterpret_cast<uint8_t*>(&one_zero), 1, 0);
+        }
+
+        m_padded = true;
     }
 
     m_bitset.copy_to(base);
@@ -263,14 +272,17 @@ Compressor_v4::compress1(Timestamp timestamp, double value)
     m_dp_count++;
 
     ASSERT(size() == 12);
+    ASSERT(m_bitset.avail_capacity_in_bits() >= 1);
 }
 
 bool
 Compressor_v4::compress(Timestamp timestamp, double value)
 {
     ASSERT(get_start_tstamp() <= timestamp);
-    ASSERT(m_is_full == false);
+    //ASSERT(m_is_full == false);
+    ASSERT(m_bitset.avail_capacity_in_bits() >= 1);
 
+    if (UNLIKELY(m_is_full)) return false;
     //m_bitset.save_check_point();
 
     try
@@ -279,6 +291,7 @@ Compressor_v4::compress(Timestamp timestamp, double value)
         {
             m_bitset.save_check_point();
             compress1(timestamp, value);
+            m_padded = false;
             return true;
         }
 
@@ -308,7 +321,7 @@ Compressor_v4::compress(Timestamp timestamp, double value)
             compress(delta_of_delta);
             compress(delta_of_delta_v);
         }
-        else if ((std::abs(delta_v - m_prev_value_delta) < (1.0 / m_precision)) && (delta == m_prev_tstamp_delta) && (m_repeat < m_max_repetition))
+        else if (((std::abs(delta_v - m_prev_value_delta) < (1.0 / m_precision)) && (delta == m_prev_tstamp_delta) && (m_repeat < m_max_repetition)) && !m_padded)
         {
             if ((m_repeat == 0) && (m_bitset.avail_capacity_in_bytes() < 1))
                 throw std::out_of_range("bitset is full");
@@ -316,8 +329,8 @@ Compressor_v4::compress(Timestamp timestamp, double value)
         }
         else
         {
-            m_bitset.save_check_point();
-
+            if (! m_padded)
+            {
             if (m_repeat > 0)
             {
                 uint8_t one_zero = (uint8_t)(1 << m_repetition) | m_repeat;
@@ -330,9 +343,15 @@ Compressor_v4::compress(Timestamp timestamp, double value)
                 uint8_t one_zero = 0x00;
                 m_bitset.append(reinterpret_cast<uint8_t*>(&one_zero), 1, 0);
             }
+                m_padded = true;
+            }
 
+            m_bitset.save_check_point();
             compress(delta_of_delta);
             compress(delta_of_delta_v);
+
+            if (m_bitset.avail_capacity_in_bits() < 1)
+                throw std::out_of_range("bitset is full");
         }
 
         m_prev_tstamp = timestamp;
@@ -341,14 +360,17 @@ Compressor_v4::compress(Timestamp timestamp, double value)
         m_dp_count++;
         m_prev_value = value;
         m_prev_value_delta = delta_v;
+        m_padded = false;
     }
     catch (const std::out_of_range& ex)
     {
         m_bitset.restore_from_check_point();
+        ASSERT(m_bitset.avail_capacity_in_bits() >= 1 || m_padded);
         m_is_full = true;
         return false;
     }
 
+    ASSERT(m_bitset.avail_capacity_in_bits() >= 1);
     return true;
 }
 
@@ -490,7 +512,8 @@ Compressor_v4::uncompress(DataPointVector& dps, bool restore)
             // repeat, if any
             uint8_t byte = 0;
             m_bitset.retrieve(cursor, &byte, 1, 0);
-            if ((byte & 0x80) != 0)
+            //if ((byte & 0x80) != 0)
+            if (byte != 0)
             {
                 byte = 0;
                 m_bitset.retrieve(cursor, &byte, m_repetition, 8-m_repetition);
@@ -526,6 +549,7 @@ Compressor_v4::uncompress(DataPointVector& dps, bool restore)
     {
         m_dp_count = dps.size();
         m_repeat = 0;
+        m_padded = true;
         m_prev_tstamp_delta = delta;
         m_prev_tstamp = timestamp;
         m_prev_value = value;
@@ -734,8 +758,9 @@ bool
 Compressor_v3::compress(Timestamp timestamp, double value)
 {
     ASSERT(get_start_tstamp() <= timestamp);
-    ASSERT(m_is_full == false);
+    //ASSERT(m_is_full == false);
 
+    if (UNLIKELY(m_is_full)) return false;
     m_bitset.save_check_point();
 
     try

@@ -103,6 +103,11 @@ public:
         return size;
     }
 
+    inline size_t avail_capacity_in_bits() const
+    {
+        return m_capacity_in_bytes * 8 - size_in_bits();
+    }
+
     inline size_t avail_capacity_in_bytes() const
     {
         return m_capacity_in_bytes - size_in_bytes();

@@ -208,6 +208,7 @@ private:
     double m_prev_value;
     double m_prev_value_delta;
     bool m_is_full;
+    bool m_padded;
     uint8_t m_repeat;
 
     static double m_precision;
