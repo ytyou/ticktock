@@ -174,7 +174,7 @@ DataPoint::from_plain(char* &text)
         text = (char*)rawmemchr((void*)text, ' ');
     *text++ = 0;
     m_timestamp = (Timestamp)std::atoll(text);
-    ASSERT(g_tstamp_resolution_ms ? is_ms(m_timestamp) : is_sec(m_timestamp));
+    //ASSERT(g_tstamp_resolution_ms ? is_ms(m_timestamp) : is_sec(m_timestamp));
     text = (char*)rawmemchr((void*)text, ' ');
     m_value = std::atof(++text);
     while ((*text != ' ') && (*text != '\n')) text++;

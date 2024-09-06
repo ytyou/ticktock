@@ -1156,7 +1156,8 @@ Tsdb::Tsdb(TimeRange& range, bool existing, const char *suffix) :
     m_time_range(range),
     m_index_file(Tsdb::get_index_file_name(range, suffix)),
     m_page_size(g_page_size),
-    m_page_count(g_page_count)
+    m_page_count(g_page_count),
+    m_tstamp_ms(g_tstamp_resolution_ms)
 {
     ASSERT(g_tstamp_resolution_ms ? is_ms(range.get_from()) : is_sec(range.get_from()));
 
@@ -1179,8 +1180,8 @@ Tsdb::Tsdb(TimeRange& range, bool existing, const char *suffix) :
     {
         // Try auto-adjust m_page_count
         m_page_count = adjust_page_count();
+        ASSERT(0 < m_page_count);
     }
-    ASSERT(0 < m_page_count);
 
     m_mode = mode_of();
     Logger::debug("tsdb %T created (mode=%d)", &range, m_mode);
@@ -1333,6 +1334,9 @@ Tsdb::restore_config(const std::string& dir)
 
     if (cfg.exists("crashed") && cfg.get_bool("crashed", false))
         m_mode |= TSDB_MODE_CRASHED;
+
+    if (cfg.exists(CFG_TSDB_TIMESTAMP_RESOLUTION))
+        m_tstamp_ms = starts_with(cfg.get_str(CFG_TSDB_TIMESTAMP_RESOLUTION), 'm');
 }
 
 void
@@ -1343,6 +1347,7 @@ Tsdb::write_config(const std::string& dir)
     cfg.set_value(CFG_TSDB_PAGE_SIZE, std::to_string(m_page_size)+"b");
     cfg.set_value(CFG_TSDB_PAGE_COUNT, std::to_string(m_page_count));
     cfg.set_value(CFG_TSDB_COMPRESSOR_VERSION, std::to_string(m_compressor_version));
+    cfg.set_value(CFG_TSDB_TIMESTAMP_RESOLUTION, m_tstamp_ms?"ms":"sec");
 
     if (m_mbucket_count != UINT32_MAX)
     {
@@ -2418,6 +2423,8 @@ Tsdb *
 Tsdb::inst(Timestamp tstamp, bool create)
 {
     Tsdb *tsdb = nullptr;
+
+    tstamp = validate_resolution(tstamp);
 
     {
         PThread_ReadLock guard(&m_tsdb_lock);

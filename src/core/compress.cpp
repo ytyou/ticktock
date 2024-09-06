@@ -331,18 +331,18 @@ Compressor_v4::compress(Timestamp timestamp, double value)
         {
             if (! m_padded)
             {
-            if (m_repeat > 0)
-            {
-                uint8_t one_zero = (uint8_t)(1 << m_repetition) | m_repeat;
-                ASSERT((0x80 & one_zero) != 0x00);
-                m_bitset.append(reinterpret_cast<uint8_t*>(&one_zero), m_repetition+1, 7-m_repetition);
-                m_repeat = 0;
-            }
-            else
-            {
-                uint8_t one_zero = 0x00;
-                m_bitset.append(reinterpret_cast<uint8_t*>(&one_zero), 1, 0);
-            }
+                if (m_repeat > 0)
+                {
+                    uint8_t one_zero = (uint8_t)(1 << m_repetition) | m_repeat;
+                    ASSERT((0x80 & one_zero) != 0x00);
+                    m_bitset.append(reinterpret_cast<uint8_t*>(&one_zero), m_repetition+1, 7-m_repetition);
+                    m_repeat = 0;
+                }
+                else
+                {
+                    uint8_t one_zero = 0x00;
+                    m_bitset.append(reinterpret_cast<uint8_t*>(&one_zero), 1, 0);
+                }
                 m_padded = true;
             }
 
@@ -512,8 +512,8 @@ Compressor_v4::uncompress(DataPointVector& dps, bool restore)
             // repeat, if any
             uint8_t byte = 0;
             m_bitset.retrieve(cursor, &byte, 1, 0);
-            //if ((byte & 0x80) != 0)
-            if (byte != 0)
+            if ((byte & 0x80) != 0)
+            //if (byte != 0)
             {
                 byte = 0;
                 m_bitset.retrieve(cursor, &byte, m_repetition, 8-m_repetition);

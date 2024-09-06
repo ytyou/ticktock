@@ -261,6 +261,7 @@ public:
     bool is_full();
     bool is_empty();
     inline bool is_out_of_order() { return get_page_header()->is_out_of_order(); }
+    bool is_out_of_order(MetricId mid, TimeSeriesId tid, Timestamp tstamp) const;
 
     Timestamp get_last_tstamp(MetricId mid, TimeSeriesId tid) const;
     TimeRange get_time_range();

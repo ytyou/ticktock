@@ -311,15 +311,16 @@ TimeSeries::add_data_point(MetricId mid, DataPoint& dp)
     }
     else
     {
-        Timestamp last_tstamp = m_buff->get_last_tstamp(mid, m_id);
-        is_ooo = (tstamp <= last_tstamp);
+        //Timestamp last_tstamp = m_buff->get_last_tstamp(mid, m_id);
+        //is_ooo = (tstamp <= last_tstamp);
+        is_ooo = m_buff->is_out_of_order(mid, m_id, tstamp);
     }
 
     if (is_ooo)
         return add_ooo_data_point(mid, dp);
 
     ASSERT(m_buff != nullptr);
-    ASSERT(m_buff->in_range(tstamp) == 0);
+    //ASSERT(m_buff->in_range(tstamp) == 0);
 
     bool ok = m_buff->add_data_point(tstamp, dp.get_value());
 

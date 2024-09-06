@@ -278,6 +278,7 @@ public:
     inline PageCount get_page_count() const { return m_page_count; }
     inline int get_compressor_version() const { return m_compressor_version; }
 
+    bool is_tstamp_ms() const { return m_tstamp_ms; }
     bool has_daily_rollup();
     bool can_use_rollup(bool level2);
     bool can_use_rollup(TimeSeriesId tid);
@@ -439,6 +440,7 @@ private:
     PageSize m_page_size;
     PageCount m_page_count;
     int m_compressor_version;
+    bool m_tstamp_ms;       // timestamp resolution is ms?
 };
 
 

@@ -75,6 +75,7 @@ int
 PageInMemory::in_range(Timestamp tstamp) const
 {
     ASSERT(m_tsdb != nullptr);
+    tstamp = validate_resolution(tstamp, m_tsdb->is_tstamp_ms());
     return m_tsdb->in_range(tstamp);
 }
 
@@ -124,6 +125,14 @@ PageInMemory::get_last_tstamp(MetricId mid, TimeSeriesId tid) const
         return m_tsdb->get_last_tstamp(mid, tid);
     else
         return m_compressor->get_last_tstamp();
+}
+
+bool
+PageInMemory::is_out_of_order(MetricId mid, TimeSeriesId tid, Timestamp tstamp) const
+{
+    Timestamp last_tstamp = get_last_tstamp(mid, tid);
+    tstamp = validate_resolution(tstamp, m_tsdb->is_tstamp_ms());
+    return (tstamp <= last_tstamp);
 }
 
 void
@@ -343,6 +352,7 @@ bool
 PageInMemory::add_data_point(Timestamp tstamp, double value)
 {
     ASSERT(m_compressor != nullptr);
+    tstamp = validate_resolution(tstamp, m_tsdb->is_tstamp_ms());
     bool success = m_compressor->compress(tstamp, value);
     if (success)
     {

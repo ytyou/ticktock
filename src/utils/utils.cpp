@@ -327,7 +327,13 @@ ts_resolution_ms()
 Timestamp
 validate_resolution(Timestamp tstamp)
 {
-    if (g_tstamp_resolution_ms)
+    return validate_resolution(tstamp, g_tstamp_resolution_ms);
+}
+
+Timestamp
+validate_resolution(Timestamp tstamp, bool ms)
+{
+    if (ms)
     {
         if (tstamp < MAX_SEC_SINCE_EPOCH)
             tstamp *= 1000L;
