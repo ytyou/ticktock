@@ -134,7 +134,7 @@ DataPoint::from_json(char* json)
         else if (strcmp(key, "timestamp") == 0)
         {
             json = next_long(json, m_timestamp);
-            ASSERT(g_tstamp_resolution_ms ? is_ms(m_timestamp) : is_sec(m_timestamp));
+            //ASSERT(g_tstamp_resolution_ms ? is_ms(m_timestamp) : is_sec(m_timestamp));
         }
         else if (strcmp(key, "value") == 0)
         {

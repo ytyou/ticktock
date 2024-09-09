@@ -41,7 +41,7 @@ namespace tt
 
 #define NONE_NULL_STR(_X)       (((_X) == nullptr) ? EMPTY_STRING : (_X))
 
-#define MAX_SEC_SINCE_EPOCH     (100000000000ull)
+#define MAX_SEC_SINCE_EPOCH     (10000000000ull)
 #define MAX_MS_SINCE_EPOCH      (100000000000000ull)
 #define MAX_US_SINCE_EPOCH      (100000000000000000ull)
 
