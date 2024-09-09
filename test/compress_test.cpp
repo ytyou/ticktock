@@ -175,8 +175,8 @@ CompressTests::save_restore(Compressor *compressor, Timestamp ts)
 
     CompressorPosition position;
 
-    compressor->save(position);
     compressor->save(buff2);
+    compressor->save(position);
 
     std::vector<std::pair<Timestamp,double>> uncompressed;
     compressor->init(ts, buff3, sizeof(buff3));
@@ -217,8 +217,8 @@ CompressTests::save_restore2(Compressor *compressor, Timestamp ts)
 
     CONFIRM(compressor->get_dp_count() == 1000);
 
-    compressor->save(position);
     compressor->save(buff2);
+    compressor->save(position);
 
     uncompressed.clear();
     compressor->init(ts, buff3, sizeof(buff3));
@@ -245,8 +245,8 @@ CompressTests::save_restore2(Compressor *compressor, Timestamp ts)
 
     CONFIRM(compressor->get_dp_count() == 2000);
 
-    compressor->save(position);
     compressor->save(buff2);
+    compressor->save(position);
 
     uncompressed.clear();
     compressor->init(ts, buff3, sizeof(buff3));
@@ -273,8 +273,8 @@ CompressTests::save_restore2(Compressor *compressor, Timestamp ts)
 
     CONFIRM(compressor->get_dp_count() == dps.size());
 
-    compressor->save(position);
     compressor->save(buff2);
+    compressor->save(position);
 
     uncompressed.clear();
     compressor->init(ts, buff3, sizeof(buff3));
