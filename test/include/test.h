@@ -145,9 +145,9 @@ public:
         tt::HttpResponse response;
         char content[4096];
         if (downsample == nullptr)
-            sprintf(content, "{\"start\":%" PRIu64 ",\"queries\":[{\"metric\":\"%s\"}]}", start, metric);
+            sprintf(content, "{\"start\":%" PRIu64 ",\"msResolution\":\"true\",\"queries\":[{\"metric\":\"%s\"}]}", start, metric);
         else
-            sprintf(content, "{\"start\":%" PRIu64 ",\"queries\":[{\"metric\":\"%s\",\"downsample\":\"%s\"}]}",
+            sprintf(content, "{\"start\":%" PRIu64 ",\"msResolution\":\"true\",\"queries\":[{\"metric\":\"%s\",\"downsample\":\"%s\"}]}",
                 start, metric, downsample);
         request.init();
         request.content = content;
@@ -166,7 +166,7 @@ public:
         tt::HttpRequest request;
         tt::HttpResponse response;
         char content[4096];
-        sprintf(content, "{\"start\":\"%s\",\"queries\":[{\"metric\":\"%s\"}]}", start, metric);
+        sprintf(content, "{\"start\":\"%s\",\"msResolution\":\"true\",\"queries\":[{\"metric\":\"%s\"}]}", start, metric);
         request.init();
         request.content = content;
         log("query request: %s", request.content);

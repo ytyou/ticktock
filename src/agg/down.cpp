@@ -55,7 +55,7 @@ Downsampler::initialize(char *interval, char *fill, TimeRange& range, bool ms)
 
     if (interval == nullptr)
     {
-        m_interval = (g_tstamp_resolution_ms ? 60000 : 60); // default to 1 minute
+        m_interval = (m_ms ? 60000 : 60); // default to 1 minute
         Logger::error("null interval passed into Downsampler::init()");
     }
     else
@@ -64,7 +64,7 @@ Downsampler::initialize(char *interval, char *fill, TimeRange& range, bool ms)
         double factor = 1;
 
         if (ends_with(interval, "ms"))
-            factor = g_tstamp_resolution_ms ? 1 : 0.001;
+            factor = m_ms ? 1 : 0.001;
         else
         {
             //char& unit = std::string(interval).back();
@@ -81,7 +81,7 @@ Downsampler::initialize(char *interval, char *fill, TimeRange& range, bool ms)
                 default:    throw std::runtime_error("unrecognized downsampler");
             };
 
-            if (g_tstamp_resolution_ms) factor *= 1000;
+            if (m_ms) factor *= 1000;
         }
 
         m_interval = (Timestamp)((double)std::atoll(interval) * factor);

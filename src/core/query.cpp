@@ -743,7 +743,14 @@ void
 QueryTask::convert_to_ms()
 {
     for (DataPointPair& dp: m_dps)
-        dp.first *= 1000;
+        dp.first = to_ms(dp.first);
+}
+
+void
+QueryTask::convert_to_sec()
+{
+    for (DataPointPair& dp: m_dps)
+        dp.first = to_sec(dp.first);
 }
 
 void
@@ -1277,6 +1284,11 @@ QuerySuperTask::perform(bool lock)
         {
             task->sort_if_needed();
             task->fill();
+
+            if (m_ms)
+                task->convert_to_ms();
+            else
+                task->convert_to_sec();
         }
     }
     catch (const std::exception& e)

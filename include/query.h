@@ -243,6 +243,7 @@ public:
     void merge_data();
     void fill();
     void convert_to_ms();
+    void convert_to_sec();
     void add_data_point(struct rollup_entry_ext *entry, RollupType rollup);
     void remove_dps(const TimeRange& range);
     void sort_if_needed();
