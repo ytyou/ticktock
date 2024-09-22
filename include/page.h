@@ -41,7 +41,7 @@ class Tsdb;
  * m_minor_version: minor version of ticktock that created this file;
  *                  different minor versions should be compatible with
  *                  each other;
- * m_flags:         2 least significant bits represent compressor version
+ * m_flags:         3 least significant bits represent compressor version
  *                  used in this file; it can be specified in the config
  *                  (tsdb.compressor.version); the most significant bit
  *                  indicates whether or not the file is compacted;
@@ -80,12 +80,12 @@ struct __attribute__ ((__packed__)) tsdb_header
 
     inline int get_compressor_version() const
     {
-        return (int)(m_flags & 0x03);
+        return (int)(m_flags & 0x07);
     }
 
     inline void set_compressor_version(int version)
     {
-        m_flags = (m_flags & 0xF6) | (uint8_t)version;
+        m_flags = (m_flags & 0xF8) | (uint8_t)version;
     }
 
     inline bool is_compacted() const

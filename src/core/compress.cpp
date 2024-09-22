@@ -323,6 +323,7 @@ Compressor_v4::compress(Timestamp timestamp, double value)
         }
         else if (((std::abs(delta_v - m_prev_value_delta) < (1.0 / m_precision)) && (delta == m_prev_tstamp_delta) && (m_repeat < m_max_repetition)) && !m_padded)
         {
+            m_bitset.save_check_point();
             if ((m_repeat == 0) && (m_bitset.avail_capacity_in_bytes() < 1))
                 throw std::out_of_range("bitset is full");
             m_repeat++;

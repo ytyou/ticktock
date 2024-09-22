@@ -741,6 +741,7 @@ main(int argc, char *argv[])
     Config::init();
     MemoryManager::init();
     TimeSeries::init();
+    Compressor::initialize();
 
     if (! g_data_dir.empty())
     {

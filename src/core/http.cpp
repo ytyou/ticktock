@@ -268,6 +268,7 @@ HttpServer::recv_http_data(TaskData& data)
             conn_error = false;
             conn->buff = buff;
             conn->offset = len;
+            Logger::http("received partial request size %d of total %d", fd, len, conn->request.length);
         }
     }
     else
