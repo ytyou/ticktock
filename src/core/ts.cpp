@@ -280,6 +280,11 @@ TimeSeries::add_data_point(MetricId mid, DataPoint& dp)
     bool is_ooo = false;
     const Timestamp tstamp = dp.get_timestamp();
     //std::lock_guard<std::mutex> guard(m_lock);
+
+    // timestamp can't be 14 digits or more
+    if (MAX_MS_SINCE_EPOCH <= tstamp)
+        return false;
+
     std::lock_guard<std::mutex> guard(m_locks[m_id % m_lock_count]);
 
     // Make sure we have a valid m_buff (PageInMemory)

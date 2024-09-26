@@ -2575,7 +2575,7 @@ Tsdb::http_api_put_handler_json(HttpRequest& request, HttpResponse& response)
 
     char buff[64];
     snprintf(buff, sizeof(buff), "{\"success\":%d,\"failed\":%d}", success, failed);
-    response.init(200, HttpContentType::JSON, std::strlen(buff), buff);
+    response.init((failed<=0) ? 200 : 400, HttpContentType::JSON, std::strlen(buff), buff);
     return true;
 }
 
@@ -2587,7 +2587,8 @@ Tsdb::http_api_put_handler_plain(HttpRequest& request, HttpResponse& response)
 
     char *curr = request.content;
     bool forward = request.forward;
-    bool success = true;
+    int success = 0;
+    int failed = 0;
 
     // handle special requests
     if (request.length <= 10)
@@ -2663,17 +2664,24 @@ Tsdb::http_api_put_handler_plain(HttpRequest& request, HttpResponse& response)
 
         curr += 4;
         bool ok = dp.from_plain(curr);
-        if (! ok) { success = false; break; }
+        if (! ok) { failed++; break; }
 
-        success = add_data_point(dp, forward) && success;
+        if (add_data_point(dp, forward))
+            success++;
+        else
+            failed++;
     }
 
     // TODO: Now what???
     //if (forward && (tsdb != nullptr))
         //success = tsdb->submit_data_points() && success; // flush
-    response.init((success ? 200 : 400), HttpContentType::PLAIN);
+    //response.init((success ? 200 : 400), HttpContentType::PLAIN);
+    //return success;
 
-    return success;
+    char buff[64];
+    snprintf(buff, sizeof(buff), "{\"success\":%d,\"failed\":%d}", success, failed);
+    response.init((failed<=0) ? 200 : 400, HttpContentType::JSON, std::strlen(buff), buff);
+    return true;
 }
 
 /* Data format:
