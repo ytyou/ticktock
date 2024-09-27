@@ -17,6 +17,7 @@
  */
 
 #include <cstdio>
+#include <stdio.h>
 #include <cstring>
 #include "hash.h"
 #include "utils.h"
