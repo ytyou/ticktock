@@ -2587,8 +2587,7 @@ Tsdb::http_api_put_handler_plain(HttpRequest& request, HttpResponse& response)
 
     char *curr = request.content;
     bool forward = request.forward;
-    int success = 0;
-    int failed = 0;
+    bool success = true;
 
     // handle special requests
     if (request.length <= 10)
@@ -2664,24 +2663,16 @@ Tsdb::http_api_put_handler_plain(HttpRequest& request, HttpResponse& response)
 
         curr += 4;
         bool ok = dp.from_plain(curr);
-        if (! ok) { failed++; break; }
+        if (! ok) { success = false; break; }
 
-        if (add_data_point(dp, forward))
-            success++;
-        else
-            failed++;
+        success = add_data_point(dp, forward) && success;
     }
 
     // TODO: Now what???
     //if (forward && (tsdb != nullptr))
         //success = tsdb->submit_data_points() && success; // flush
-    //response.init((success ? 200 : 400), HttpContentType::PLAIN);
-    //return success;
-
-    char buff[64];
-    snprintf(buff, sizeof(buff), "{\"success\":%d,\"failed\":%d}", success, failed);
-    response.init((failed<=0) ? 200 : 400, HttpContentType::JSON, std::strlen(buff), buff);
-    return true;
+    response.init((success ? 200 : 400), HttpContentType::PLAIN);
+    return success;
 }
 
 /* Data format:
