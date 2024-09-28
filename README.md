@@ -41,7 +41,7 @@ We prepare a TickTockDB Demo in a docker image. With a single command to launch 
 1. You need to install [Docker Engine](https://docs.docker.com/engine/install/) first. 
 2. Then simply run
 
-       docker run -d --name ticktock -p 3000:3000 -p 6181-6182:6181-6182 -p 6181:6181/udp ytyou/ticktock:latest-grafana
+       docker run -d --name ticktock -p 3000:3000 -p 6181-6182:6181-6182 -p 6181:6181/udp docker.io/ytyou/ticktock:latest-grafana
     
    ![Docker command execution example](/docs/images/dockerDemoCmd.jpg)
     
