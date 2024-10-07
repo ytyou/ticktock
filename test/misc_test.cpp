@@ -271,49 +271,98 @@ MiscTests::time_conv_tests()
     CONFIRM(convert_time(2, TimeUnit::YEAR, TimeUnit::MS) == (Timestamp)2*365*24*3600000L);
 
     JsonValue value;
-    char buff[20];
+    char buff[64];
 
     std::strcpy(buff, "1m-ago");
     value.set_value(buff);
     if (g_tstamp_resolution_ms)
-        CONFIRM(parse_ts(&value, 60*1000+1) == 1);
+        CONFIRM(parse_ts(&value, 60*1000+1, "UTC") == 1);
     else
-        CONFIRM(parse_ts(&value, 61) == 1);
+        CONFIRM(parse_ts(&value, 61, "UTC") == 1);
 
     std::strcpy(buff, "1h-ago");
     value.set_value(buff);
     if (g_tstamp_resolution_ms)
-        CONFIRM(parse_ts(&value, 3600*1000+1) == 1);
+        CONFIRM(parse_ts(&value, 3600*1000+1, "UTC") == 1);
     else
-        CONFIRM(parse_ts(&value, 3601) == 1);
+        CONFIRM(parse_ts(&value, 3601, "UTC") == 1);
 
     std::strcpy(buff, "1d-ago");
     value.set_value(buff);
     if (g_tstamp_resolution_ms)
-        CONFIRM(parse_ts(&value, 24*3600*1000+1) == 1);
+        CONFIRM(parse_ts(&value, 24*3600*1000+1, "UTC") == 1);
     else
-        CONFIRM(parse_ts(&value, 24*3600+1) == 1);
+        CONFIRM(parse_ts(&value, 24*3600+1, "UTC") == 1);
 
     std::strcpy(buff, "1w-ago");
     value.set_value(buff);
     if (g_tstamp_resolution_ms)
-        CONFIRM(parse_ts(&value, 7*24*3600*1000+1) == 1);
+        CONFIRM(parse_ts(&value, 7*24*3600*1000+1, "UTC") == 1);
     else
-        CONFIRM(parse_ts(&value, 7*24*3600+1) == 1);
+        CONFIRM(parse_ts(&value, 7*24*3600+1, "UTC") == 1);
 
     std::strcpy(buff, "1month-ago");
     value.set_value(buff);
     if (g_tstamp_resolution_ms)
-        CONFIRM(parse_ts(&value, (Timestamp)30*24*3600*1000+1) == 1);
+        CONFIRM(parse_ts(&value, (Timestamp)30*24*3600*1000+1, "UTC") == 1);
     else
-        CONFIRM(parse_ts(&value, 30*24*3600+1) == 1);
+        CONFIRM(parse_ts(&value, 30*24*3600+1, "UTC") == 1);
 
     std::strcpy(buff, "1n-ago");
     value.set_value(buff);
     if (g_tstamp_resolution_ms)
-        CONFIRM(parse_ts(&value, (Timestamp)30*24*3600*1000+1) == 1);
+        CONFIRM(parse_ts(&value, (Timestamp)30*24*3600*1000+1, "UTC") == 1);
     else
-        CONFIRM(parse_ts(&value, 30*24*3600+1) == 1);
+        CONFIRM(parse_ts(&value, 30*24*3600+1, "UTC") == 1);
+
+    // absolute formatted time
+    std::strcpy(buff, "2024/10/07 08:48:26");
+    value.set_value(buff);
+    if (g_tstamp_resolution_ms)
+        CONFIRM(parse_ts(&value, (Timestamp)1, "UTC") == 1728290906000);
+    else
+        CONFIRM(parse_ts(&value, (Timestamp)1, "UTC") == 1728290906);
+
+    std::strcpy(buff, "2024/10/07-08:48:26");
+    value.set_value(buff);
+    if (g_tstamp_resolution_ms)
+        CONFIRM(parse_ts(&value, (Timestamp)1, "UTC") == 1728290906000);
+    else
+        CONFIRM(parse_ts(&value, (Timestamp)1, "UTC") == 1728290906);
+
+    std::strcpy(buff, "2024/10/07 08:48");
+    value.set_value(buff);
+    if (g_tstamp_resolution_ms)
+        CONFIRM(parse_ts(&value, (Timestamp)1, "UTC") == 1728290880000);
+    else
+        CONFIRM(parse_ts(&value, (Timestamp)1, "UTC") == 1728290880);
+
+    std::strcpy(buff, "2024/10/07-08:48");
+    value.set_value(buff);
+    if (g_tstamp_resolution_ms)
+        CONFIRM(parse_ts(&value, (Timestamp)1, "UTC") == 1728290880000);
+    else
+        CONFIRM(parse_ts(&value, (Timestamp)1, "UTC") == 1728290880);
+
+    std::strcpy(buff, "2024/10/07");
+    value.set_value(buff);
+    if (g_tstamp_resolution_ms)
+        CONFIRM(parse_ts(&value, (Timestamp)1, "UTC") == 1728259200000);
+    else
+        CONFIRM(parse_ts(&value, (Timestamp)1, "UTC") == 1728259200);
+
+    std::strcpy(buff, "2024/10/07");
+    value.set_value(buff);
+    if (g_tstamp_resolution_ms)
+    {
+        CONFIRM(parse_ts(&value, (Timestamp)1, "UTC+1") == 1728259200000-3600000);
+        CONFIRM(parse_ts(&value, (Timestamp)1, "UTC-1") == 1728259200000+3600000);
+    }
+    else
+    {
+        CONFIRM(parse_ts(&value, (Timestamp)1, "UTC+1") == 1728259200-3600);
+        CONFIRM(parse_ts(&value, (Timestamp)1, "UTC-1") == 1728259200+3600);
+    }
 
     m_stats.add_passed(1);
 }

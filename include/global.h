@@ -30,7 +30,7 @@ namespace tt
 
 #define TT_MAJOR_VERSION    0
 #define TT_MINOR_VERSION    20
-#define TT_PATCH_VERSION    1
+#define TT_PATCH_VERSION    2
 
 class HttpServer;
 class TcpServer;
@@ -63,6 +63,7 @@ extern uint32_t g_rollup_interval_1h;   // 1-hour
 extern uint32_t g_rollup_interval_1d;   // 1-day
 extern short g_rollup_compressor_version;   // 0 means no compression
 extern bool g_quiet;    // minimal console output
+extern std::string g_timezone;
 
 
 }

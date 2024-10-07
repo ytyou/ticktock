@@ -51,12 +51,13 @@ static std::atomic<unsigned long> s_dp_count {0};
 //QueryExecutor *QueryExecutor::m_instance = nullptr;
 
 
-Query::Query(JsonMap& map, TimeRange& range, StringBuffer& strbuf, bool ms) :
+Query::Query(JsonMap& map, TimeRange& range, StringBuffer& strbuf, bool ms, const char *tz) :
     m_time_range(range),
     m_metric(nullptr),
     m_aggregate(nullptr),
     m_aggregator(nullptr),
     m_downsample(nullptr),
+    m_tz(tz),
     m_rate_calculator(nullptr),
     m_ms(ms),
     m_explicit_tags(false),
@@ -172,6 +173,7 @@ Query::Query(JsonMap& map, StringBuffer& strbuf) :
     m_aggregate(nullptr),
     m_aggregator(nullptr),
     m_downsample(nullptr),
+    m_tz(nullptr),
     m_rate_calculator(nullptr),
     m_ms(false),
     m_explicit_tags(false),
@@ -180,17 +182,25 @@ Query::Query(JsonMap& map, StringBuffer& strbuf) :
     m_errno(0),
     TagOwner(false)
 {
+    auto search = map.find("tz");
+
+    // timezone
+    if (search != map.end())
+        m_tz = search->second->to_string();
+    else
+        m_tz = g_timezone.c_str();
+
     Timestamp now = ts_now();
-    auto search = map.find("start");
+    search = map.find("start");
     if (search == map.end())
         throw std::runtime_error("Must specify start time when query.");
-    Timestamp start = parse_ts(search->second, now);
+    Timestamp start = parse_ts(search->second, now, m_tz);
     start = validate_resolution(start);
 
     search = map.find("end");
     Timestamp end;
     if (search != map.end())
-        end = parse_ts(search->second, now);
+        end = parse_ts(search->second, now, m_tz);
     else
         end = now;
     end = validate_resolution(end);
@@ -1363,7 +1373,15 @@ QueryExecutor::http_post_api_query_handler(HttpRequest& request, HttpResponse& r
     }
 
     JsonParser::parse_map(request.content, map);
-    auto search = map.find("start");
+    const char *tz;
+    auto search = map.find("tz");
+
+    if (search != map.end())
+        tz = search->second->to_string();
+    else
+        tz = g_timezone.c_str();
+
+    search = map.find("start");
     if (search == map.end())
     {
         const char* errMsg = "Error: POST request doesn't specify parameter 'start'!\n";
@@ -1372,13 +1390,13 @@ QueryExecutor::http_post_api_query_handler(HttpRequest& request, HttpResponse& r
     }
 
     Timestamp now = ts_now();
-    Timestamp start = parse_ts(search->second, now);
+    Timestamp start = parse_ts(search->second, now, tz);
     start = validate_resolution(start);
 
     Timestamp end;
     search = map.find("end");
     if (search != map.end())
-        end = parse_ts(search->second, now);
+        end = parse_ts(search->second, now, tz);
     else
         end = now;
     end = validate_resolution(end);
@@ -1406,7 +1424,7 @@ QueryExecutor::http_post_api_query_handler(HttpRequest& request, HttpResponse& r
     {
         JsonMap& m = array[i]->to_map();
         TimeRange range(start, end);
-        Query query(m, range, strbuf, ms);
+        Query query(m, range, strbuf, ms, tz);
         std::vector<QueryResults*> res;
 
         Logger::debug("query: %T", &query);

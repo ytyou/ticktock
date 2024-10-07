@@ -179,7 +179,7 @@ class Query : public Serializable, public TagOwner
 {
 public:
     Query(JsonMap& map, StringBuffer& strbuf);
-    Query(JsonMap& map, TimeRange& range, StringBuffer& strbuf, bool ms);
+    Query(JsonMap& map, TimeRange& range, StringBuffer& strbuf, bool ms, const char *tz);
     virtual ~Query();
 
     inline bool in_range(const TimeRange& range) const
@@ -227,6 +227,7 @@ private:
     const char *m_metric;
     const char *m_aggregate;
     const char *m_downsample;
+    const char *m_tz;
 
     Tag *m_non_grouping_tags;
     Aggregator *m_aggregator;

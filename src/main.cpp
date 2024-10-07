@@ -297,6 +297,7 @@ initialize()
     Logger::info("sys-page-size = %d", sysconf(_SC_PAGE_SIZE));
     Logger::info("Using config file: %s", g_config_file.c_str());
     Logger::info("Timestamp resolution: %s", (g_tstamp_resolution_ms ? "millisecond" : "second"));
+    Logger::info("Timezone: %s", g_timezone.c_str());
     if (g_run_as_daemon)
         Logger::info("Running TickTockDB as daemon");
 }

@@ -66,5 +66,7 @@ PageSize g_page_size;
 PageCount g_page_count;
 const long int g_sys_page_size = sysconf(_SC_PAGE_SIZE);
 
+std::string g_timezone;
+
 
 }

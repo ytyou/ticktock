@@ -405,11 +405,15 @@ to_sec(Timestamp tstamp)
     return tstamp;
 }
 
-// 'value' should be either absolute time (e.g. 1633418206)
-// or relative time (e.g. 2h-ago)
+// 'value' should be either an absolute time (e.g. 1633418206),
+// a relative time (e.g. 2h-ago), or an absolute formatted time
+// (e.g. 2024/01/23-05:10:22)
 Timestamp
-parse_ts(const JsonValue *value, Timestamp now)
+parse_ts(const JsonValue *value, Timestamp now, const char *tz)
 {
+    ASSERT(tz != nullptr);
+    ASSERT(value != nullptr);
+
     if (JsonValueType::JVT_DOUBLE == value->get_type())
         return (Timestamp)(value->to_double());
 
@@ -425,8 +429,63 @@ parse_ts(const JsonValue *value, Timestamp now)
         ts = convert_time(ts, unit, g_tstamp_resolution_ms ? TimeUnit::MS : TimeUnit::SEC);
         ts = now - ts;  // relative to 'now'
     }
+    // absolute formatted time?
+    else if ((len >= 10) && (str[4] == '/') && (str[7] == '/'))
+    {
+        struct tm tm;
+
+        memset(&tm, 0, sizeof(struct tm));
+
+        if (len >= 19)
+        {
+            // yyyy/MM/dd HH:mm:ss or yyyy/MM/dd-HH:mm:ss
+            ASSERT(str[10] == ' ' || str[10] == '-');
+            if (str[10] == ' ')
+                ::strptime(str, "%Y/%m/%d %H:%M:%S", &tm);
+            else
+                ::strptime(str, "%Y/%m/%d-%H:%M:%S", &tm);
+        }
+        else if (len >= 16)
+        {
+            // yyyy/MM/dd HH:mm or yyyy/MM/dd-HH:mm
+            ASSERT(str[10] == ' ' || str[10] == '-');
+            if (str[10] == ' ')
+                ::strptime(str, "%Y/%m/%d %H:%M", &tm);
+            else
+                ::strptime(str, "%Y/%m/%d-%H:%M", &tm);
+        }
+        else
+        {
+            // yyyy/MM/dd
+            ::strptime(str, "%Y/%m/%d", &tm);
+        }
+
+        // set timezone
+        long tzdiff = 0;    // in seconds
+
+        if (strcmp(tz, CFG_TSDB_TIMEZONE_DEF) != 0)
+            tzdiff = get_tz_diff(tz);
+
+        ts = timegm(&tm);
+
+        if (g_tstamp_resolution_ms)
+            ts -= tzdiff * 1000;
+        else
+            ts -= tzdiff;
+    }
 
     return ts;
+}
+
+long
+get_tz_diff(const char *tz)
+{
+    static std::mutex s_tz_lock;
+    std::lock_guard<std::mutex> guard(s_tz_lock);
+
+    setenv("TZ", tz, 1);
+    tzset();
+    return timezone;
 }
 
 // 'str' should look something like: "2h"

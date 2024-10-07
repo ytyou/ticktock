@@ -165,6 +165,8 @@
 #define CFG_TSDB_THRASHING_THRESHOLD_DEF        "10min"
 #define CFG_TSDB_TIMESTAMP_RESOLUTION           "tsdb.timestamp.resolution"
 #define CFG_TSDB_TIMESTAMP_RESOLUTION_DEF       "second"
+#define CFG_TSDB_TIMEZONE                       "tsdb.timezone"
+#define CFG_TSDB_TIMEZONE_DEF                   "UTC"
 #define CFG_UDP_LISTENER_COUNT                  "udp.listener.count"
 #define CFG_UDP_LISTENER_COUNT_DEF              2
 #define CFG_UDP_BATCH_SIZE                      "udp.batch.size"
