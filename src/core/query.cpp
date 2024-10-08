@@ -424,24 +424,7 @@ Query::aggregate(std::vector<QueryTask*>& qtv, std::vector<QueryResults*>& resul
     ASSERT(m_aggregator != nullptr);
 
     if (m_aggregator->is_none())
-    {
         m_aggregator->aggregate(m_metric, qtv, results, strbuf);
-#if 0
-        // no aggregation
-        for (QueryTask *qt: qtv)
-        {
-            QueryResults *result =
-                (QueryResults*)MemoryManager::alloc_recyclable(RecyclableType::RT_QUERY_RESULTS);
-            result->m_metric = m_metric;
-            result->set_tags(qt->get_cloned_tags(strbuf));
-            results.push_back(result);
-
-            DataPointVector& dps = qt->get_dps();
-            result->m_dps.insert(result->m_dps.end(), dps.begin(), dps.end());  // TODO: how to avoid copy?
-            dps.clear();
-        }
-#endif
-    }
     else
     {
         // split qtv into results
@@ -455,6 +438,16 @@ Query::aggregate(std::vector<QueryTask*>& qtv, std::vector<QueryResults*>& resul
             //result->m_ts_to_dps.clear();
             m_aggregator->aggregate(result);
         }
+    }
+
+    // sort query result-sets in alphabetical order
+    if (! results.empty())
+    {
+        std::stable_sort(results.begin(), results.end(),
+            [](const QueryResults* const & left, const QueryResults* const & right)
+            {
+                return left->less_than(*right);
+            });
     }
 }
 
@@ -573,13 +566,6 @@ Query::create_query_results(std::vector<QueryTask*>& qtv, std::vector<QueryResul
                 result->add_query_task(qt, strbuf);
             }
         }
-
-        // sort query result-sets in alphabetical order
-        std::sort(results.begin(), results.end(),
-            [](const QueryResults* const & left, const QueryResults* const & right)
-            {
-                return left->ordered(*right);
-            });
     }
 
     Logger::debug("created %d QueryResults", results.size());
@@ -1601,18 +1587,6 @@ DataPointContainer::collect_data(PageInMemory *page)
     set_out_of_order(page->is_out_of_order());
     page->get_all_data_points(m_dps);
 }
-
-/*
-void
-DataPointContainer::collect_data(Timestamp from, struct tsdb_header *tsdb_header, struct page_info_on_disk *page_header, void *page)
-{
-    ASSERT(tsdb_header != nullptr);
-    ASSERT(page_header != nullptr);
-    ASSERT(page != nullptr);
-
-    collect_data(from, tsdb_header->m_page_size, tsdb_header->get_compressor_version(), page_header, page);
-}
-*/
 
 void
 DataPointContainer::collect_data(Timestamp from, PageSize page_size, int compressor_version, struct page_info_on_disk *page_header, void *page)

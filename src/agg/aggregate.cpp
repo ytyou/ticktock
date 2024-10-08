@@ -138,6 +138,7 @@ Aggregator::http_get_api_aggregators_handler(HttpRequest& request, HttpResponse&
     return true;
 }
 
+// perform aggregation in the resultset passed in
 void
 Aggregator::aggregate(QueryResults *results)
 {
@@ -150,13 +151,13 @@ Aggregator::aggregate(QueryResults *results)
     std::vector<std::reference_wrapper<DataPointVector>> vv;
 
     for (QueryTask *qt: results->m_qtv)
-    {
         vv.push_back(qt->get_dps());
-    }
 
     merge(vv, results->m_dps);
 }
 
+// data points in 'src' are sorted by the timestamp; they will be
+// aggregated into 'dst';
 void
 Aggregator::merge(std::vector<std::reference_wrapper<DataPointVector>>& src, DataPointVector& dst)
 {
@@ -190,6 +191,7 @@ Aggregator::merge(std::vector<std::reference_wrapper<DataPointVector>>& src, Dat
 
             if (dp.first == ts)
             {
+                // accumulate data points for the current timestamp
                 add_data_point(dp);
                 idx[i]++;
 
@@ -206,6 +208,8 @@ Aggregator::merge(std::vector<std::reference_wrapper<DataPointVector>>& src, Dat
 
         if (! has_data()) break;
 
+        // perform aggregation for the current timestamp;
+        // it will generate one dp in the final resultset;
         add_aggregated(ts, dst);
         ts = next_ts;
     }
@@ -230,6 +234,7 @@ AggregatorNone::aggregate(const char *metric, std::vector<QueryTask*>& qtv, std:
 }
 
 
+// keep bottom N resultsets
 void
 AggregatorBottom::aggregate(const char *metric, std::vector<QueryTask*>& qtv, std::vector<QueryResults*>& results, StringBuffer& strbuf)
 {
@@ -260,13 +265,9 @@ double
 AggregatorDev::stddev(const std::vector<double>& values)
 {
     if (values.empty())
-    {
         return std::nan("");
-    }
     else if (values.size() == 1)
-    {
         return 0.0;
-    }
 
     double old_mean = values[0];
     double new_mean = 0.0;
@@ -293,9 +294,7 @@ AggregatorPercentile::set_quantile(double quantile)
     ASSERT(0 <= m_quantile);
 
     while (m_quantile > 100.0)
-    {
         m_quantile /= (double)10.0;
-    }
 }
 
 double
@@ -304,13 +303,9 @@ AggregatorPercentile::percentile(std::vector<double>& values) const
     int length = values.size();
 
     if (length == 0)
-    {
         return std::nan("");
-    }
     else if (length == 1)
-    {
         return values[0];
-    }
     else
     {
         double idx = index(length);
@@ -351,6 +346,7 @@ AggregatorPercentile::index(int length) const
 }
 
 
+// keep top N resultsets
 void
 AggregatorTop::aggregate(const char *metric, std::vector<QueryTask*>& qtv, std::vector<QueryResults*>& results, StringBuffer& strbuf)
 {

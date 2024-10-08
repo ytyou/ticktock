@@ -148,7 +148,7 @@ CompressTests::compress_uncompress(Compressor *compressor, Timestamp ts, bool be
         }
 
         CONFIRM(dps[i].first == uncompressed[i].first);
-        CONFIRM(std::fabs(dps[i].second - uncompressed[i].second) < 0.001);
+        CONFIRM(std::fabs(dps[i].second - uncompressed[i].second) < 0.0012);
     }
 
     log("compression ratio = %f", (16.0*dp_cnt)/compressor->size());

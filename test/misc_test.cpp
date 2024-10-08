@@ -39,6 +39,7 @@ MiscTests::run()
     url_decode_tests();
     time_conv_tests();
     parse_dp_tests();
+    tag_tests();
 
     log("Finished %s", m_name);
 }
@@ -543,6 +544,26 @@ MiscTests::parse_dp_tests()
     }
 
     MemoryManager::cleanup();
+    m_stats.add_passed(1);
+}
+
+void
+MiscTests::tag_tests()
+{
+    TagOwner tag1(false), tag2(false), tag3(false);
+
+    tag1.add_tag("t1", "v1");
+    tag2.add_tag("_field", "f1");
+    tag2.add_tag("t1", "v1");
+    tag3.add_tag("t1", "v1");
+    tag3.add_tag("_field", "f1");
+
+    CONFIRM(tag2.less_than(tag1));
+    CONFIRM(! tag1.less_than(tag2));
+
+    CONFIRM(tag3.less_than(tag1));
+    CONFIRM(! tag1.less_than(tag3));
+
     m_stats.add_passed(1);
 }
 

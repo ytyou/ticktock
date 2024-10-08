@@ -136,7 +136,7 @@ TagOwner::find_by_key(Tag *tags, const char *key)
 // return true if this is less than the 'other', in alphabetical order
 // of tag names, values
 bool
-TagOwner::ordered(const TagOwner& other) const
+TagOwner::less_than(const TagOwner& other) const
 {
     Tag *tag1, *tag2;
     int i;
@@ -150,7 +150,11 @@ TagOwner::ordered(const TagOwner& other) const
         if (i != 0) return i < 0;
     }
 
-    return true;
+    if ((tag1 == nullptr) && (tag2 != nullptr))
+        return true;
+
+    // make sure this is irreflexive by returning false
+    return false;
 }
 
 char *

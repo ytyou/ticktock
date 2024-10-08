@@ -77,7 +77,7 @@ BitSet::init(uint8_t *base, size_t capacity_in_bytes)
 }
 
 size_t
-BitSet::capacity()
+BitSet::capacity_in_bytes() const
 {
     if ((m_bits == nullptr) || (m_end == nullptr))
         return 0;
@@ -98,7 +98,7 @@ void
 BitSet::reset()
 {
     recycle();
-    size_t size_in_bytes = capacity();
+    size_t size_in_bytes = capacity_in_bytes();
     if ((size_in_bytes > 0) && (m_bits != nullptr))
         std::memset(m_bits, 0, size_in_bytes);
 }

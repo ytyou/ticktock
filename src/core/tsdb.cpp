@@ -612,31 +612,12 @@ bool
 Mapping::add_data_point(DataPoint& dp, bool forward)
 {
     return add(dp);
-#if 0
-    bool success = true;
-
-    if (m_partition == nullptr)
-    {
-        success = add(dp);
-    }
-    else
-    {
-        if (m_partition->is_local())
-            success = add(dp);
-
-        if (forward)
-            success = m_partition->add_data_point(dp) && success;
-    }
-
-    return success;
-#endif
 }
 
 bool
 Mapping::add_data_points(const char *measurement, char *tags, Timestamp ts, std::vector<DataPoint>& dps)
 {
     ASSERT(measurement != nullptr);
-    //ASSERT(tags != nullptr);
     ASSERT(! dps.empty());
 
     char buff[8];
@@ -979,9 +960,6 @@ Metric::get_last_header(std::string& tsdb_dir, PageCount page_cnt, PageSize page
     if (m_header_files.empty())
     {
         ASSERT(m_data_files.empty());
-        // make sure the metric directory under tsdb exists
-        //std::string metric_dir = get_metric_dir(tsdb_dir);
-        //create_dir(metric_dir);
 
         header_file = new HeaderFile(get_header_file_name(tsdb_dir, 0), 0, page_cnt, page_size),
         m_header_files.push_back(header_file);
@@ -1011,18 +989,6 @@ Metric::get_data_file_cnt()
     std::lock_guard<std::mutex> guard(m_lock);
     return m_data_files.size();
 }
-
-/**
-void
-Metric::add_rollup_point(TimeSeriesId tid, uint32_t cnt, double min, double max, double sum)
-{
-    std::lock_guard<std::mutex> guard(m_rollup_lock);
-    m_rollup_data_file.ensure_open(false);
-    RollupEntry data_idx = m_rollup_data_file.add_data_point(cnt, min, max, sum);
-    m_rollup_header_tmp_file.ensure_open(false);
-    m_rollup_header_tmp_file.add_index(tid, data_idx);
-}
-**/
 
 bool
 Metric::rotate(Timestamp now_sec, Timestamp thrashing_threshold)
@@ -1081,21 +1047,6 @@ Metric::rotate(Timestamp now_sec, Timestamp thrashing_threshold)
 
     return all_closed;
 }
-
-// return true if operation was a success; false otherwise
-/**
-bool
-Metric::rollup(IndexFile *idx_file, int no_entries)
-{
-    std::lock_guard<std::mutex> guard(m_rollup_lock);
-
-    // remove existing, if any
-    m_rollup_header_file.close();
-    m_rollup_header_file.build(idx_file, &m_rollup_header_tmp_file, no_entries);
-
-    return true;
-}
-**/
 
 int
 Metric::get_page_count(bool ooo)
@@ -1475,8 +1426,6 @@ Tsdb::mode_of() const
 void
 Tsdb::get_range(Timestamp tstamp, TimeRange& range)
 {
-    //Timestamp start = (tstamp / tsdb_rotation_freq) * tsdb_rotation_freq;
-    //range.init(start, start + tsdb_rotation_freq);
     std::time_t begin, end;
     get_day_range(to_sec(tstamp), begin, end);
     range.init(validate_resolution(begin), validate_resolution(end));
@@ -1485,7 +1434,6 @@ Tsdb::get_range(Timestamp tstamp, TimeRange& range)
 Mapping *
 Tsdb::get_or_add_mapping(const char *metric)
 {
-    //const char *metric = dp.get_metric();
     ASSERT(metric != nullptr);
 
     auto result = thread_local_cache.find(metric);
@@ -1574,16 +1522,6 @@ Tsdb::get_or_create_metric(MetricId mid)
     return m_metrics[bucket];
 }
 
-/**
-void
-Tsdb::add_rollup_point(MetricId mid, TimeSeriesId tid, uint32_t cnt, double min, double max, double sum)
-{
-    Metric *metric = get_or_create_metric(mid);
-    ASSERT(metric != nullptr);
-    metric->add_rollup_point(tid, cnt, min, max, sum);
-}
-**/
-
 bool
 Tsdb::add_data_point(DataPoint& dp, bool forward)
 {
@@ -1660,97 +1598,6 @@ Tsdb::query_for_ts(const char *metric, Tag *tags, std::unordered_set<TimeSeries*
 
     return id;
 }
-
-#if 0
-bool
-Tsdb::query_for_data(TimeSeriesId id, TimeRange& query_range, std::vector<DataPointContainer*>& data)
-{
-    std::lock_guard<std::mutex> guard(m_lock);
-    return query_for_data_no_lock(id, query_range, data);
-}
-
-// Query for a single TimeSeries
-bool
-Tsdb::query_for_data_no_lock(TimeSeriesId id, TimeRange& query_range, std::vector<DataPointContainer*>& data)
-{
-    FileIndex file_idx;
-    HeaderIndex header_idx;
-    Timestamp from = m_time_range.get_from();
-    bool has_ooo = false;
-
-    m_mode |= TSDB_MODE_READ;
-    m_index_file.ensure_open(true);
-    m_index_file.get_indices(id, file_idx, header_idx);
-
-    while (file_idx != TT_INVALID_FILE_INDEX)
-    {
-        ASSERT(header_idx != TT_INVALID_HEADER_INDEX);
-        ASSERT(file_idx < m_header_files.size());
-        ASSERT(m_data_files.size() == m_header_files.size());
-
-        HeaderFile *header_file = m_header_files[file_idx];
-        header_file->ensure_open(true);
-        struct tsdb_header *tsdb_header = header_file->get_tsdb_header();
-        struct page_info_on_disk *page_header = header_file->get_page_header(header_idx);
-        TimeRange range(from + page_header->m_tstamp_from, from + page_header->m_tstamp_to);
-
-        if (query_range.has_intersection(range))
-        {
-            DataFile *data_file = m_data_files[file_idx];
-            PThread_Lock lock(data_file->get_lock());
-            lock.lock_for_read();
-            data_file->ensure_open(true);
-            void *page = data_file->get_page(page_header->m_page_index, page_header->m_offset, page_header->m_cursor);
-
-            if (page == nullptr)
-            {
-                lock.unlock();
-                lock.lock_for_write();
-                data_file->remap();
-                lock.unlock();
-                lock.lock_for_read();
-                page = data_file->get_page(page_header->m_page_index, page_header->m_offset, page_header->m_cursor);
-            }
-
-            if (page == nullptr)
-            {
-                lock.unlock();
-                throw std::runtime_error("Failed to open data file for read.");
-            }
-
-            DataPointContainer *container = (DataPointContainer*)
-                MemoryManager::alloc_recyclable(RecyclableType::RT_DATA_POINT_CONTAINER);
-            container->set_out_of_order(page_header->is_out_of_order());
-            container->set_page_index(page_header->get_global_page_index(file_idx, m_page_count));
-            container->collect_data(from, tsdb_header, page_header, page);
-            ASSERT(container->size() > 0);
-            lock.unlock();
-
-            if (page_header->is_out_of_order()) has_ooo = true;
-
-#ifdef _DEBUG
-            if (! has_ooo && ! data.empty())    // safety check
-            {
-                DataPointPair& dp0 = container->get_data_point(0);
-                DataPointContainer *prev = data.back();
-                size_t size = prev->size();
-                ASSERT(size > 0);
-                DataPointPair& dp1 = prev->get_data_point(size-1);
-                //if (dp0.first < dp1.first) has_ooo = true;
-                ASSERT(dp0.first >= dp1.first);
-            }
-#endif
-
-            data.push_back(container);
-        }
-
-        file_idx = page_header->get_next_file();
-        header_idx = page_header->get_next_header();
-    }
-
-    return has_ooo;
-}
-#endif
 
 // Query ONE page, for a single TimeSeries
 void
@@ -2107,7 +1954,6 @@ Tsdb::get_last_tstamp(MetricId mid, TimeSeriesId tid)
         DataPointContainer *container = (DataPointContainer*)
             MemoryManager::alloc_recyclable(RecyclableType::RT_DATA_POINT_CONTAINER);
         container->set_page_index(page_header->get_global_page_index(file_idx, m_page_count));
-        //container->collect_data(m_time_range.get_from(), tsdb_header, page_header, page);
         container->collect_data(m_time_range.get_from(), get_page_size(), get_compressor_version(), page_header, page);
         lock.unlock();
         if (! container->is_empty())
@@ -2143,7 +1989,6 @@ Tsdb::can_use_rollup(bool level2)
 bool
 Tsdb::can_use_rollup(TimeSeriesId tid)
 {
-    //ASSERT((m_mode & TSDB_MODE_OUT_OF_ORDER) != 0);
     std::lock_guard<std::mutex> guard(m_lock);
     m_index_file.ensure_open(true);
     return m_index_file.get_out_of_order2(tid);
@@ -2202,7 +2047,6 @@ Tsdb::get_last_header_indices(MetricId mid, TimeSeriesId tid, FileIndex& file_id
     if (is_rolled_up()) add_config("rolled_up", "false");
     m_mode &= ~(TSDB_MODE_COMPACTED|TSDB_MODE_ROLLED_UP);
     m_index_file.ensure_open(false);
-    //m_index_file.get_indices(tid, fidx, hidx);
     m_index_file.get_indices2(tid, fidx, hidx);
     if (fidx == TT_INVALID_FILE_INDEX)
         m_index_file.get_indices(tid, fidx, hidx);
@@ -2226,7 +2070,7 @@ Tsdb::get_last_header_indices(MetricId mid, TimeSeriesId tid, FileIndex& file_id
     }
 }
 
-/* @params  crossed 
+/* @params  crossed  True if the second index needs to be set.
  */
 void
 Tsdb::set_indices(MetricId mid, TimeSeriesId tid, FileIndex prev_file_idx, HeaderIndex prev_header_idx, FileIndex this_file_idx, HeaderIndex this_header_idx, bool crossed)
@@ -2304,45 +2148,11 @@ Tsdb::append_page(MetricId mid, TimeSeriesId tid, FileIndex prev_file_idx, Heade
 {
     ASSERT(page != nullptr);
     ASSERT(header != nullptr);
-    //ASSERT(mid < m_metrics.size());
-    //ASSERT(m_metrics[mid] != nullptr);
     std::lock_guard<std::mutex> guard(m_lock);
     //WriteLock guard(m_lock);
     Metric *metric = get_or_create_metric(mid);
 
     ASSERT(metric != nullptr);
-
-#if 0
-    uint32_t bucket = mid % m_mbucket_count;
-
-    // create Metric if necessary
-    if (bucket >= m_metrics.size())
-    {
-        if (m_metrics.empty())
-            m_metrics.reserve(Mapping::get_metric_count());
-
-        std::string tsdb_dir = get_tsdb_dir_name(m_time_range); // TODO: tsdb may have a suffix?
-        std::string metric_dir = Metric::get_metric_dir(tsdb_dir, bucket);
-        Metric *metric = new Metric(metric_dir, m_page_size, m_page_count);
-
-        if (bucket == m_metrics.size())
-            m_metrics.push_back(metric);
-        else
-        {
-            while (bucket > m_metrics.size())
-                m_metrics.push_back(nullptr);
-            m_metrics.push_back(metric);
-        }
-    }
-    else if (m_metrics[bucket] == nullptr)
-    {
-        std::string tsdb_dir = get_tsdb_dir_name(m_time_range); // TODO: tsdb may have a suffix?
-        std::string metric_dir = Metric::get_metric_dir(tsdb_dir, bucket);
-        m_metrics[bucket] = new Metric(metric_dir, m_page_size, m_page_count);
-    }
-
-    ASSERT(bucket < m_metrics.size());
-#endif
 
     const char *suffix = compact ? TEMP_SUFFIX : nullptr;
     std::string tsdb_dir = get_tsdb_dir_name(m_time_range, suffix);

@@ -28,6 +28,9 @@ namespace tt
 
 class BitSet;
 
+
+/* This is used to traverse a BitSet.
+ */
 class BitSetCursor : public Recyclable
 {
 private:
@@ -60,7 +63,7 @@ public:
     bool test(size_t idx);
 
     void reset();
-    size_t capacity();
+    size_t capacity_in_bytes() const;
 
     // append 'len' of bits stored in 'bits', starting at
     // offset 'start'; return true if successful, return
@@ -76,12 +79,14 @@ public:
     // destination 'bits' we should store the retrieved bits;
     void retrieve(BitSetCursor *cursor, uint8_t *bits, uint8_t len, uint8_t start);
 
+    // save the current endpoint, which can be used to rollback future append() operations
     inline void save_check_point()
     {
         m_cp_cursor = m_cursor;
         m_cp_start = m_start;
     }
 
+    // rollback to previously saved endpoint
     inline void restore_from_check_point()
     {
         m_cursor = m_cp_cursor;
