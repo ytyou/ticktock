@@ -19,6 +19,7 @@
 #include <cassert>
 #include <chrono>
 #include <cstring>
+#include <algorithm>
 #include "aggregate.h"
 #include "compress.h"
 #include "config.h"
@@ -572,6 +573,13 @@ Query::create_query_results(std::vector<QueryTask*>& qtv, std::vector<QueryResul
                 result->add_query_task(qt, strbuf);
             }
         }
+
+        // sort query result-sets in alphabetical order
+        std::sort(results.begin(), results.end(),
+            [](const QueryResults* const & left, const QueryResults* const & right)
+            {
+                return left->ordered(*right);
+            });
     }
 
     Logger::debug("created %d QueryResults", results.size());

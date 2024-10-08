@@ -133,6 +133,26 @@ TagOwner::find_by_key(Tag *tags, const char *key)
     return KeyValuePair::get_key_value_pair(tags, key);
 }
 
+// return true if this is less than the 'other', in alphabetical order
+// of tag names, values
+bool
+TagOwner::ordered(const TagOwner& other) const
+{
+    Tag *tag1, *tag2;
+    int i;
+
+    for (tag1 = m_tags, tag2 = other.m_tags; tag1 != nullptr && tag2 != nullptr; tag1 = tag1->next(), tag2 = tag2->next())
+    {
+        i = strcmp(tag1->m_key, tag2->m_key);
+        if (i != 0) return i < 0;
+
+        i = strcmp(tag1->m_value, tag2->m_value);
+        if (i != 0) return i < 0;
+    }
+
+    return true;
+}
+
 char *
 TagOwner::get_ordered_tags(char *buff, size_t size) const
 {
@@ -501,14 +521,7 @@ Tag_v2::get_cloned_v1_tags(StringBuffer& strbuf) const
     Tag *head = nullptr;
 
     for (int i = 2*m_count-1; i >= 0; i -= 2)
-    {
-        Tag *tag = (Tag *)
-            MemoryManager::alloc_recyclable(RecyclableType::RT_KEY_VALUE_PAIR);
-        tag->m_key = strbuf.strdup(get_name(m_tags[i-1]));
-        tag->m_value = strbuf.strdup(get_name(m_tags[i]));
-        tag->next() = head;
-        head = tag;
-    }
+        KeyValuePair::insert_in_order(&head, strbuf.strdup(get_name(m_tags[i-1])), strbuf.strdup(get_name(m_tags[i])));
 
     return head;
 }

@@ -80,6 +80,8 @@ public:
         return KeyValuePair::clone(m_tags, strbuf);
     }
 
+    bool ordered(const TagOwner& other) const;
+
     char *get_ordered_tags(char* buff, size_t size) const;
 
     void get_keys(std::set<std::string>& keys) const;
