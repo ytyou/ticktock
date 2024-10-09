@@ -40,7 +40,6 @@ Aggregator::create(const char *aggregate)
 {
     Aggregator *aggregator;
 
-    // TODO: switch (aggregate[0])
     if (aggregate == nullptr)
     {
         Logger::debug("aggregator not specified");

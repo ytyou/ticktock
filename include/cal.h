@@ -37,6 +37,7 @@ private:
     Calendar() = default;
     static std::size_t add_month(Timestamp ts, int n);
 
+    // cache for known (beginning of) months
     static std::mutex m_lock;
     static std::vector<Timestamp> m_months;
 };

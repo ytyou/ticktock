@@ -87,14 +87,6 @@ public:
     void get_keys(std::set<std::string>& keys) const;
     void get_values(std::set<std::string>& values) const;
 
-/*
-    inline void add_tag(Tag *tag)
-    {
-        ASSERT(tag != nullptr);
-        KeyValuePair::insert_in_order(&m_tags, tag->m_key, tag->m_value);
-    }
-*/
-
     inline void add_tag(const char *name, const char *value)
     {
         ASSERT(std::strchr(name, ' ') == nullptr);
@@ -184,7 +176,6 @@ private:
     TagCount m_count;
 
     static TagId m_next_id;
-    //static default_contention_free_shared_mutex m_lock;
     static pthread_rwlock_t m_lock;
     static std::unordered_map<const char*,TagId,hash_func,eq_func> m_map;
     static const char **m_names;    // indexed by id

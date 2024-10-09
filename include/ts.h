@@ -89,54 +89,18 @@ public:
     TimeSeries *m_next;
 
 private:
-    //char *m_key;            // this uniquely defines the time-series
-    //std::mutex m_lock;
     RollupManager m_rollup;
-
     PageInMemory *m_buff;   // in-memory buffer; if m_id is 0, it's contents are
                             // not on disk; otherwise it's contents are at least
                             // partially on the page indexed by m_id
-
     PageInMemory *m_ooo_buff;
-
-    //char *m_metric;
-    //Tsdb *m_tsdb;           // current tsdb we are writing into
-
     Tag_v2 m_tags;
-
     TimeSeriesId m_id;      // global, unique, permanent id starting at 0
 
     static uint32_t m_lock_count;
     static std::mutex *m_locks;
-
     static std::atomic<TimeSeriesId> m_next_id;
 };
-
-
-/*
-class DataPointContainer : public Recyclable
-{
-public:
-    void init(PageInfo *info)
-    {
-        m_dps.clear();
-        m_dps.reserve(700);
-        m_out_of_order = info->is_out_of_order();
-        m_page_index = info->get_global_page_index();
-        info->get_all_data_points(m_dps);
-    }
-
-    inline size_t size() const { return m_dps.size(); }
-    inline DataPointPair& get_data_point(int i) { return m_dps[i]; }
-    inline PageCount get_page_index() const { return m_page_index; }
-    inline bool is_out_of_order() const { return m_out_of_order; }
-
-private:
-    bool m_out_of_order;
-    PageCount m_page_index;
-    DataPointVector m_dps;
-};
-*/
 
 
 }

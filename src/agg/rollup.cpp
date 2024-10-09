@@ -117,7 +117,6 @@ RollupManager::init()
     // restore if necessary
     if (! m_wal_data_file->empty())
     {
-        //std::unordered_map<TimeSeriesId,RollupManager> map;
         std::unordered_map<TimeSeriesId,struct rollup_entry_ext> map;
 
         m_wal_data_file->open(true);

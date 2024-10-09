@@ -41,6 +41,7 @@ MiscTests::run()
     parse_dp_tests();
     tag_tests();
 
+    MemoryManager::cleanup();
     log("Finished %s", m_name);
 }
 
@@ -86,7 +87,6 @@ MiscTests::memmgr_tests()
         }
     }
 
-    MemoryManager::cleanup();
     m_stats.add_passed(1);
 }
 
@@ -543,7 +543,6 @@ MiscTests::parse_dp_tests()
         CONFIRM(*curr == 0);
     }
 
-    MemoryManager::cleanup();
     m_stats.add_passed(1);
 }
 

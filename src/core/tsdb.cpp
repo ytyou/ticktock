@@ -523,7 +523,6 @@ Mapping::get_measurement(char *raw_tags, TagOwner& owner, const char *measuremen
         char ordered[MAX_TOTAL_TAG_LENGTH];
         char original[MAX_TOTAL_TAG_LENGTH+1];
 
-        //original[0] = 0;    // owner.parse() may check this
         std::strncpy(original, raw_tags, MAX_TOTAL_TAG_LENGTH);
 
         if (raw_tags[1] == 0)   // no tags
@@ -536,7 +535,6 @@ Mapping::get_measurement(char *raw_tags, TagOwner& owner, const char *measuremen
             // parse raw tags...
             if (owner.get_tags() == nullptr)
             {
-                //if (! owner.parse(&original[1]))
                 if (! owner.parse(raw_tags))
                     return nullptr;
             }
@@ -567,7 +565,6 @@ Mapping::get_measurement(char *raw_tags, TagOwner& owner, const char *measuremen
             m_map[STRDUP(ordered)] = bt;
         }
 
-        //if (ts == nullptr)
         if (m_map.find(original) == m_map.end())
             m_map[STRDUP(original)] = bt;
         else

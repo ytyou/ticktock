@@ -132,7 +132,11 @@ protected:
 };
 
 
-// Taking advantage of repetitions.
+/* This compressor takes advantage of repetitions. It is otherwise the same as
+ * Compressor_v3. If the next N dps are exactly the same as the current one,
+ * we will append an N at the end of the current dp; otherwise we will append
+ * a 0 (1 bit).
+ */
 class __attribute__ ((__packed__)) Compressor_v4 : public Compressor
 {
 public:

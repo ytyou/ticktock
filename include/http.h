@@ -202,8 +202,6 @@ private:
     static std::map<const char*,HttpRequestHandler,cstr_less> m_get_handlers;
     static std::map<const char*,HttpRequestHandler,cstr_less> m_put_handlers;
     static std::map<const char*,HttpRequestHandler,cstr_less> m_post_handlers;
-
-    //static int m_max_resend;
 };
 
 

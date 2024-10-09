@@ -25,6 +25,7 @@
 #include "memmgr.h"
 #include "meter.h"
 #include "leak.h"
+#include "limit.h"
 #include "logger.h"
 #include "query.h"
 #include "ts.h"
@@ -146,10 +147,6 @@ TimeSeries::init(TimeSeriesId id, const char *metric, const char *key, Tag *tags
     m_id = id;
     m_buff = nullptr;
     m_ooo_buff = nullptr;
-
-    //m_metric = STRDUP(metric);
-    //m_key = STRDUP(key);
-    //m_tags = tags;
 }
 
 void

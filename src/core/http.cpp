@@ -74,8 +74,6 @@ static const char *HTTP_CONTENT_TYPES[] =
     "text/plain"
 };
 
-//int HttpServer::m_max_resend = 0;
-
 
 std::map<const char*,HttpRequestHandler,cstr_less> HttpServer::m_get_handlers;
 std::map<const char*,HttpRequestHandler,cstr_less> HttpServer::m_put_handlers;
@@ -93,7 +91,6 @@ void
 HttpServer::init()
 {
     TcpServer::init();
-    //m_max_resend = Config::get_int(CFG_HTTP_MAX_RETRIES, CFG_HTTP_MAX_RETRIES_DEF);
 
     add_get_handler(HTTP_API_AGGREGATORS, &Aggregator::http_get_api_aggregators_handler);
     add_get_handler(HTTP_API_CONFIG, &HttpServer::http_get_api_config_handler);
@@ -122,8 +119,6 @@ int
 HttpServer::get_responders_per_listener(int which) const
 {
     return Config::inst()->get_http_responders_per_listener(which);
-    //int n = Config::get_int(CFG_HTTP_RESPONDERS_PER_LISTENER, CFG_HTTP_RESPONDERS_PER_LISTENER_DEF);
-    //return (n > 0) ? n : CFG_HTTP_RESPONDERS_PER_LISTENER_DEF;
 }
 
 int
@@ -823,7 +818,6 @@ HttpResponse::HttpResponse() :
     response(nullptr)
 {
     init();
-    //init(0, HttpContentType::PLAIN);
 }
 
 HttpResponse::HttpResponse(uint16_t code, HttpContentType type) :
@@ -849,7 +843,6 @@ HttpResponse::init()
     content_type = HttpContentType::JSON;
     content_length = 0;
     response = buffer = nullptr;
-    //response = buffer = MemoryManager::alloc_network_buffer();
 }
 
 void
@@ -934,10 +927,6 @@ HttpResponse::init(uint16_t code, HttpContentType type, size_t length)
 void
 HttpResponse::init(uint16_t code, HttpContentType type, size_t length, const char *body)
 {
-    //size_t buff_size = MemoryManager::get_network_buffer_size() - 1;
-
-    //ASSERT(buff_size > length);
-
     status_code = code;
     content_type = type;
     content_length = length;

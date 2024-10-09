@@ -49,7 +49,6 @@ static std::atomic<uint64_t> s_dp_count {0};
 static std::atomic<unsigned long> s_dp_count {0};
 #endif
 #endif
-//QueryExecutor *QueryExecutor::m_instance = nullptr;
 
 
 Query::Query(JsonMap& map, TimeRange& range, StringBuffer& strbuf, bool ms, const char *tz) :
@@ -402,12 +401,6 @@ Query::add_data_point(DataPointPair& dp, DataPointVector& dps, Downsampler *down
 void
 Query::get_query_tasks(QuerySuperTask& super_task)
 {
-    //ASSERT(qtv.empty());
-    //ASSERT(tsdbs != nullptr);
-
-    //Tsdb::insts(m_time_range, *tsdbs);
-    //Logger::debug("Found %d tsdbs within %T", tsdbs->size(), &m_time_range);
-
     std::unordered_set<TimeSeries*> tsv;
     char buff[MAX_TOTAL_TAG_LENGTH];
     get_ordered_tags(buff, sizeof(buff));
@@ -427,21 +420,16 @@ Query::aggregate(std::vector<QueryTask*>& qtv, std::vector<QueryResults*>& resul
         m_aggregator->aggregate(m_metric, qtv, results, strbuf);
     else
     {
-        // split qtv into results
+        // group qtv into results
         create_query_results(qtv, results, strbuf);
 
         // aggregate results
         for (QueryResults* result: results)
-        {
-            // merge dps from dpsv[] into result->dps
-            //merge(dpsv, result->dps);
-            //result->m_ts_to_dps.clear();
             m_aggregator->aggregate(result);
-        }
     }
 
     // sort query result-sets in alphabetical order
-    if (! results.empty())
+    if (results.size() > 1)
     {
         std::stable_sort(results.begin(), results.end(),
             [](const QueryResults* const & left, const QueryResults* const & right)
@@ -539,7 +527,6 @@ Query::create_query_results(std::vector<QueryTask*>& qtv, std::vector<QueryResul
                     // skip non-grouping tags
                     if (TagOwner::find_by_key(m_non_grouping_tags, tag->m_key) != nullptr) continue;
 
-                    //if (! Tag::match_value(qt->get_tags(), tag->m_key, tag->m_value))
                     if (! qt_tags.match(tag->m_key, tag->m_value))
                     {
                         match = false;
@@ -574,8 +561,6 @@ Query::create_query_results(std::vector<QueryTask*>& qtv, std::vector<QueryResul
 void
 Query::execute(std::vector<QueryResults*>& results, StringBuffer& strbuf)
 {
-    //std::vector<QueryTask*> qtv;
-    //std::vector<Tsdb*> tsdbs;
     QuerySuperTask super_task(m_time_range, m_downsample, m_ms, m_rollup);
 
     get_query_tasks(super_task);
@@ -588,67 +573,6 @@ Query::execute(std::vector<QueryResults*>& results, StringBuffer& strbuf)
         m_errno = super_task.get_errno();
     }
 }
-
-#if 0
-
-// perform query by submitting task to QueryExecutor
-void
-Query::execute_in_parallel(std::vector<QueryResults*>& results, StringBuffer& strbuf)
-{
-    std::vector<QueryTask*> qtv;
-    std::vector<Tsdb*> tsdbs;
-    QueryExecutor *executor = QueryExecutor::inst();
-
-    get_query_tasks(qtv, &tsdbs);
-
-    if (qtv.size() > 1) // TODO: config?
-    {
-        int size = qtv.size() - 1;
-        CountingSignal signal(size);
-
-        {
-            std::lock_guard<std::mutex> guard(executor->m_lock);
-
-            for (int i = 0; i < size; i++)
-            {
-                QueryTask *task = qtv[i];
-                //ASSERT(! task->m_tsv.empty());
-                task->set_signal(&signal);
-                executor->submit_query(task);
-            }
-        }
-
-        qtv[size]->perform();
-        signal.wait(false);
-    }
-    else
-    {
-        for (QueryTask *qt: qtv)
-            qt->perform();
-    }
-
-    {
-        Meter meter(METRIC_TICKTOCK_QUERY_AGGREGATE_LATENCY_MS);
-        Logger::trace("calling aggregate()...");
-        aggregate(qtv, results, strbuf);
-        Logger::trace("calling calculate_rate()...");
-        calculate_rate(results);
-    }
-
-    // cleanup
-    Logger::trace("cleanup...");
-    for (QueryTask *qt: qtv)
-    {
-        if (qt->get_errno() != 0)
-            m_errno = qt->get_errno();
-        MemoryManager::free_recyclable(qt);
-    }
-
-    for (Tsdb *tsdb: tsdbs)
-        tsdb->dec_ref_count();
-}
-
-#endif
 
 uint64_t
 Query::get_dp_count()
@@ -1569,7 +1493,6 @@ QueryResults::add_query_task(QueryTask *qt, StringBuffer& strbuf)
             // move it from tags to aggregate_tags
             remove_tag(match->m_key, true); // free the tag just removed, instead of return it
             add_aggregate_tag(strbuf.strdup(tag->m_key));
-            //m_aggregate_tags.push_back(tag->m_key);
         }
     }
 

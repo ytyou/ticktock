@@ -98,20 +98,6 @@ public:
         return m_dps.empty();
     }
 
-/*
-    bool has_tag(const char *key) const
-    {
-        ASSERT(key != nullptr);
-        return Tag::has_key(m_tags, key);
-    }
-
-    bool has_exact_tag(Tag *tag) const
-    {
-        ASSERT(tag != nullptr);
-        return Tag::has_key_value(m_tags, tag->m_key, tag->m_value);
-    }
-*/
-
     char *to_json_aggregate_tags(char *buff, int size) const
     {
         int n = snprintf(buff, size, "\"aggregateTags\":[");
@@ -195,7 +181,6 @@ public:
     void get_query_tasks(QuerySuperTask& super_task);
 
     void execute(std::vector<QueryResults*>& results, StringBuffer& strbuf);
-    //void execute_in_parallel(std::vector<QueryResults*>& results, StringBuffer& strbuf);
 
     inline int get_errno() const
     { return m_errno; }
@@ -403,61 +388,24 @@ private:
 
 
 // this is a singleton
-//class QueryExecutor : public Stoppable
 class QueryExecutor
 {
 public:
-    //static void init();
-
-    //inline static QueryExecutor *inst()
-    //{
-        //return m_instance;
-    //}
-
-    //void submit_query(QueryTask *task);
-    //void shutdown(ShutdownRequest request = ShutdownRequest::ASAP);
-
     static bool http_get_api_config_filters_handler(HttpRequest& request, HttpResponse& response);
     static bool http_get_api_query_handler(HttpRequest& request, HttpResponse& response);
     static bool http_post_api_query_handler(HttpRequest& request, HttpResponse& response);
 
-    //static bool perform_query(TaskData& data);
-    //static size_t get_pending_task_count(std::vector<size_t> &counts);
-
 private:
     friend class Query;
 
-    //QueryExecutor();
+    QueryExecutor() = default;
     static bool prepare_response(std::vector<QueryResults*>& results, HttpResponse& response, int error);
-
-    //std::mutex m_lock;
-    //TaskScheduler m_executors;
-
-    //static QueryExecutor *m_instance;
 };
 
 
 class DataPointContainer : public Recyclable
 {
 public:
-/*
-    void init(PageInfo *info)
-    {
-        m_dps.clear();
-        m_dps.reserve(700);
-        m_out_of_order = info->is_out_of_order();
-        m_page_index = info->get_global_page_index();
-        info->get_all_data_points(m_dps);
-    }
-
-    void init(struct page_info_on_disk *header)
-    {
-        ASSERT(header != nullptr);
-        m_out_of_order = header->is_out_of_order();
-        m_page_index = header->get_global_page_index();
-    }
-*/
-
     void init() override
     {
         m_dps.clear();
@@ -485,7 +433,6 @@ public:
     void set_page_index(PageIndex idx) { m_page_index = idx; }
 
     void collect_data(PageInMemory *page);
-    //void collect_data(Timestamp from, struct tsdb_header *tsdb_header, struct page_info_on_disk *page_header, void *page);
     void collect_data(Timestamp from, PageSize page_size, int compressor_version, struct page_info_on_disk *page_header, void *page);
     void collect_data(RollupManager& rollup_mgr, RollupType rollup_type);
 

@@ -222,9 +222,6 @@ private:
     void restore_data(const std::string& file, PageSize page_size, PageCount page_cnt);
 
     MetricId m_id;
-    //RollupHeaderFile m_rollup_header_file;
-    //RollupHeaderTmpFile m_rollup_header_tmp_file;
-    //RollupDataFile m_rollup_data_file;
     std::mutex m_lock;
     std::vector<HeaderFile*> m_header_files;
     std::vector<DataFile*> m_data_files;
@@ -258,11 +255,8 @@ public:
     static void get_all_mappings(std::vector<Mapping*>& mappings);
 
     bool add(DataPoint& dp);
-    //void add_rollup_point(MetricId mid, TimeSeriesId tid, uint32_t cnt, double min, double max, double sum);
 
     static MetricId query_for_ts(const char *metric, Tag *tags, std::unordered_set<TimeSeries*>& ts, const char *key, bool explicit_tags);
-    //bool query_for_data(TimeSeriesId id, TimeRange& range, std::vector<DataPointContainer*>& data);
-    //bool query_for_data_no_lock(TimeSeriesId id, TimeRange& range, std::vector<DataPointContainer*>& data);
 
     void query_for_data_no_lock(MetricId mid, QueryTask *task);
     void query_for_data(MetricId mid, TimeRange& range, std::vector<QueryTask*>& tasks, bool compact = false);

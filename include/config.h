@@ -40,8 +40,6 @@
 #define CFG_CONFIG_RELOAD_FREQUENCY_DEF         "5min"
 #define CFG_HTTP_LISTENER_COUNT                 "http.listener.count"
 #define CFG_HTTP_LISTENER_COUNT_DEF             std::thread::hardware_concurrency()
-//#define CFG_HTTP_MAX_RETRIES                    "http.max.retries"
-//#define CFG_HTTP_MAX_RETRIES_DEF                1024
 #define CFG_HTTP_REQUEST_FORMAT                 "http.request.format"
 #define CFG_HTTP_REQUEST_FORMAT_DEF             "plain"
 #define CFG_HTTP_RESPONDERS_PER_LISTENER        "http.responders.per.listener"
@@ -55,12 +53,6 @@
 #define CFG_LOG_RETENTION_COUNT_DEF             10
 #define CFG_LOG_ROTATION_SIZE                   "log.rotation.size"
 #define CFG_LOG_ROTATION_SIZE_DEF               "10mb"
-//#define CFG_QUERY_EXECUTOR_PARALLEL             "query.executor.parallel"
-//#define CFG_QUERY_EXECUTOR_PARALLEL_DEF         true
-//#define CFG_QUERY_EXECUTOR_QUEUE_SIZE           "query.executor.queue.size"
-//#define CFG_QUERY_EXECUTOR_QUEUE_SIZE_DEF       1024
-//#define CFG_QUERY_EXECUTOR_THREAD_COUNT         "query.executor.thread.count"
-//#define CFG_QUERY_EXECUTOR_THREAD_COUNT_DEF     std::thread::hardware_concurrency()
 #define CFG_STATS_FREQUENCY                     "stats.frequency"
 #define CFG_STATS_FREQUENCY_DEF                 "30s"
 #define CFG_TCP_CONNECTION_IDLE_TIMEOUT         "tcp.connection.idle.timeout"

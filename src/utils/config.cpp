@@ -32,11 +32,6 @@ namespace tt
 {
 
 
-/*
-std::mutex Config::m_lock;
-std::map<std::string, std::shared_ptr<Property>> Config::m_properties;
-std::map<std::string, std::shared_ptr<Property>> Config::m_overrides;
-*/
 Config *Config::m_instance = nullptr;
 std::map<std::string, std::shared_ptr<Property>> Config::m_overrides;
 

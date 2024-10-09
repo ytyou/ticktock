@@ -34,6 +34,19 @@ enum FileDescriptorType : unsigned char
 };
 
 
+/* Because file descriptors can be reused, problems could arise when
+ * one type of file descriptors are then being used as a different type.
+ * This is because there could be a task sitting in a queue waiting for
+ * CPU to process the file descriptor of previous type; when the task is
+ * finally being processed, it will cause an error because the file
+ * descriptor is now representing something of different type.
+ *
+ * To prevent this kind of problem, we will always 'assign' the same type
+ * of resources to the same range of file descriptors. For example, HTTP
+ * connections will always be assigned file descriptors from the last
+ * section of all usable file descriptors; TCP connections, and files
+ * will all have their own range of file descriptors.
+ */
 class FileDescriptorManager
 {
 public:

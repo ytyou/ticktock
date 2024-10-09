@@ -40,6 +40,7 @@
 #include <cctype>
 #include "config.h"
 #include "global.h"
+#include "limit.h"
 #include "logger.h"
 #include "stats.h"
 #include "utils.h"
