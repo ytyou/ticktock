@@ -380,6 +380,12 @@ Query::~Query()
         MemoryManager::free_recyclable(m_rate_calculator);
         m_rate_calculator = nullptr;
     }
+
+    if (m_non_grouping_tags != nullptr)
+    {
+        Tag::free_list(m_non_grouping_tags, false);
+        m_non_grouping_tags = nullptr;
+    }
 }
 
 int
