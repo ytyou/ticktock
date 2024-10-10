@@ -500,9 +500,7 @@ Query::create_query_results(std::vector<QueryTask*>& qtv, std::vector<QueryResul
         QueryResults *result = create_one_query_results(strbuf);
 
         for (QueryTask *qt: qtv)
-        {
             result->add_query_task(qt, strbuf);
-        }
 
         results.push_back(result);
     }
@@ -1465,22 +1463,8 @@ QueryResults::add_query_task(QueryTask *qt, StringBuffer& strbuf)
 
         if (match == nullptr)
         {
-            // see if it's in aggregate_tags[]
-            bool found = false;
-
-            for (const char *t: m_aggregate_tags)
-            {
-                if (std::strcmp(t, tag->m_key) == 0)
-                {
-                    found = true;
-                    break;
-                }
-            }
-
-            if (! found)
-            {
+            if (m_qtv.empty())
                 add_tag(strbuf.strdup(tag->m_key), strbuf.strdup(tag->m_value));
-            }
         }
         else if (ends_with(match->m_value, '*') || ((std::strchr(match->m_value, '|') != nullptr)))
         {
@@ -1493,6 +1477,21 @@ QueryResults::add_query_task(QueryTask *qt, StringBuffer& strbuf)
             // move it from tags to aggregate_tags
             remove_tag(match->m_key, true); // free the tag just removed, instead of return it
             add_aggregate_tag(strbuf.strdup(tag->m_key));
+        }
+    }
+
+    // remove any aggregate-tags that's not also in 'qt'
+    // because tags in aggregate-tags must be common to ALL tasks
+    if (! m_qtv.empty())    // not first qt?
+    {
+        for (auto it = m_aggregate_tags.begin(); it != m_aggregate_tags.end(); )
+        {
+            char *key = *it;
+
+            if (TagOwner::find_by_key(tag_head, key) == nullptr)
+                it = m_aggregate_tags.erase(it);
+            else
+                it++;
         }
     }
 
