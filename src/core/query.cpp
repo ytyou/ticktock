@@ -159,6 +159,17 @@ Query::Query(JsonMap& map, TimeRange& range, StringBuffer& strbuf, bool ms, cons
         {
             const char *name = curr->first;
             const char *value = curr->second->to_string();
+
+            // handle 'literal_or(...)'
+            if (starts_with(value, "literal_or(") && ends_with(value, ')'))
+            {
+                // copy whatever is in (...) into buff[]
+                char buff[MAX_TOTAL_TAG_LENGTH];
+                std::strncpy(buff, value+11, sizeof(buff));
+                buff[std::strlen(buff)-1] = 0;  // remove trailing ')'
+                value = strbuf.strdup(buff);
+            }
+
             add_tag(name, value);
         }
     }
@@ -337,7 +348,21 @@ Query::Query(JsonMap& map, StringBuffer& strbuf) :
         tag = std::strchr(curr, '{');
 
         for (auto it = m.begin(); it != m.end(); it++)
-            add_tag(strbuf.strdup((const char*)it->first), strbuf.strdup(it->second->to_string()));
+        {
+            const char *name = strbuf.strdup((const char*)it->first);
+            const char *value = strbuf.strdup(it->second->to_string());
+
+            if (starts_with(value, "literal_or(") && ends_with(value, ')'))
+            {
+                // copy whatever is in (...) into buff[]
+                char buff[MAX_TOTAL_TAG_LENGTH];
+                std::strncpy(buff, value+11, sizeof(buff));
+                buff[std::strlen(buff)-1] = 0;  // remove trailing ')'
+                value = strbuf.strdup(buff);
+            }
+
+            add_tag(name, value);
+        }
 
         JsonParser::free_map(m);
     }
@@ -1391,8 +1416,11 @@ QueryExecutor::http_post_api_query_handler(HttpRequest& request, HttpResponse& r
 bool
 QueryExecutor::http_get_api_config_filters_handler(HttpRequest& request, HttpResponse& response)
 {
+    static const char *filters =
+        "{\"literal_or\":{\"examples\":\"host=literal_or(web01), host=literal_or(web01|web02|web03) {\\\"type\\\":\\\"literal_or\\\",\\\"tagk\\\":\\\"host\\\",\\\"filter\\\":\\\"web01|web02|web03\\\",\\\"groupBy\\\":false}\",\"description\":\"Accepts one or more exact values and matches if the series contains any of them. Multiple values can be included and must be separated by the | (pipe) character. The filter is case sensitive and will not allow characters that TickTockDB does not allow at write time.\"}}";
+
     // right now we do not support any filters
-    response.init(200, HttpContentType::JSON, 2, "{}");
+    response.init(200, HttpContentType::JSON, std::strlen(filters), filters);
     return true;
 }
 
