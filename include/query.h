@@ -86,6 +86,7 @@ public:
     }
 
     void add_query_task(QueryTask *qt, StringBuffer& strbuf);
+    void add_query_task_case_insensitive(QueryTask *qt, StringBuffer& strbuf);
 
     inline void add_aggregate_tag(char *key)
     {
@@ -207,6 +208,7 @@ private:
 
     bool m_ms;  // milli-second resolution?
     bool m_explicit_tags;
+    bool m_case_sensitive;
     RollupUsage m_rollup;
     int m_errno;
     const char *m_metric;

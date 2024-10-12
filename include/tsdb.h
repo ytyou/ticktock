@@ -148,6 +148,7 @@ private:
     Measurement *get_measurement(char *raw_tags, TagOwner& owner, const char *measurement, std::vector<DataPoint>& dps);
     void init_measurement(Measurement *mm, const char *measurement, char *tags, TagOwner& owner, std::vector<DataPoint>& dps);
     void query_for_ts(Tag *tags, std::unordered_set<TimeSeries*>& tsv, const char *key, bool explicit_tags);
+    void query_for_ts_case_insensitive(Tag *tags, std::unordered_set<TimeSeries*>& tsv, bool explicit_tags);
     TimeSeries *restore_ts(std::string& metric, std::string& key, TimeSeriesId id);
     void restore_measurement(std::string& measurement, std::string& tags, std::vector<std::pair<std::string,TimeSeriesId>>& fields, std::vector<TimeSeries*>& tsv);
     void set_tag_count(int tag_count);
@@ -256,7 +257,7 @@ public:
 
     bool add(DataPoint& dp);
 
-    static MetricId query_for_ts(const char *metric, Tag *tags, std::unordered_set<TimeSeries*>& ts, const char *key, bool explicit_tags);
+    static MetricId query_for_ts(const char *metric, Tag *tags, std::unordered_set<TimeSeries*>& ts, const char *key, bool explicit_tags, bool case_sensitive);
 
     void query_for_data_no_lock(MetricId mid, QueryTask *task);
     void query_for_data(MetricId mid, TimeRange& range, std::vector<QueryTask*>& tasks, bool compact = false);

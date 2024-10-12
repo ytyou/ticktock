@@ -731,6 +731,41 @@ Mapping::query_for_ts(Tag *tags, std::unordered_set<TimeSeries*>& tsv, const cha
     }
 }
 
+// case insensitive when comparing tags
+void
+Mapping::query_for_ts_case_insensitive(Tag *tags, std::unordered_set<TimeSeries*>& tsv, bool explicit_tags)
+{
+    if (tags == nullptr)
+    {
+        // matches ALL
+        for (TimeSeries *ts = m_ts_head.load(); ts != nullptr; ts = ts->m_next)
+            tsv.insert(ts);
+    }
+    else
+    {
+        int tag_count = TagOwner::get_tag_count(tags, false);
+        Tag1Matcher *matcher = (Tag1Matcher*)
+            MemoryManager::alloc_recyclable(RecyclableType::RT_TAG1_MATCHER);
+        matcher->init(tags);
+
+        for (TimeSeries *ts = m_ts_head.load(); ts != nullptr; ts = ts->m_next)
+        {
+            if (explicit_tags && (ts->get_tag_count() != tag_count))
+                continue;
+
+            Tag *ts_tags = ts->get_tags();
+
+            if (matcher->match_case_insensitive(ts_tags))
+                tsv.insert(ts);
+
+            if (ts_tags != nullptr)
+                Tag::free_list(ts_tags);
+        }
+
+        MemoryManager::free_recyclable(matcher);
+    }
+}
+
 TimeSeries *
 Mapping::restore_ts(std::string& metric, std::string& keys, TimeSeriesId id)
 {
@@ -1572,7 +1607,7 @@ Tsdb::restore_measurement(std::string& measurement, std::string& tags, std::vect
 /* The 'key' should not include the special '_field' tag.
  */
 MetricId
-Tsdb::query_for_ts(const char *metric, Tag *tags, std::unordered_set<TimeSeries*>& ts, const char *key, bool explicit_tags)
+Tsdb::query_for_ts(const char *metric, Tag *tags, std::unordered_set<TimeSeries*>& ts, const char *key, bool explicit_tags, bool case_sensitive)
 {
     Mapping *mapping = nullptr;
     MetricId id = TT_INVALID_METRIC_ID;
@@ -1590,7 +1625,11 @@ Tsdb::query_for_ts(const char *metric, Tag *tags, std::unordered_set<TimeSeries*
     if (mapping != nullptr)
     {
         id = mapping->get_id();
-        mapping->query_for_ts(tags, ts, key, explicit_tags);
+
+        if (case_sensitive)
+            mapping->query_for_ts(tags, ts, key, explicit_tags);
+        else
+            mapping->query_for_ts_case_insensitive(tags, ts, explicit_tags);
     }
 
     return id;

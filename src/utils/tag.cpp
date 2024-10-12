@@ -481,6 +481,46 @@ Tag_v2::match(const char *key, const char *value)
 }
 
 bool
+Tag_v2::match_case_insensitive(const char *key, const char *value)
+{
+    ASSERT(key != nullptr);
+    ASSERT(value != nullptr);
+    //ASSERT(std::strchr(value, '|') == nullptr);
+
+    TagId kid = get_id(key);
+    if (TT_INVALID_TAG_ID == kid) return false;
+
+    TagId vid = get_value_id(kid);
+    if (TT_INVALID_TAG_ID == vid) return false;
+
+    const char *vname = get_name(vid);
+    ASSERT(vname != nullptr);
+
+    if (std::strchr(value, '|') != nullptr)
+    {
+        char buff[std::strlen(value)+1];
+        std::strcpy(buff, value);
+        std::vector<char*> tokens;
+        tokenize(buff, '|', tokens);
+        for (char *v: tokens)
+        {
+            if (::strcasecmp(vname, v) == 0)
+                return true;
+        }
+        return false;
+    }
+    else if (ends_with(value, '*'))
+    {
+        size_t len = std::strlen(value) - 1;
+        return (::strncasecmp(vname, value, len) == 0);
+    }
+    else
+    {
+        return (::strcasecmp(vname, value) == 0);
+    }
+}
+
+bool
 Tag_v2::match_last(TagId key_id, TagId value_id)
 {
     if (m_count == 0) return false;
@@ -685,6 +725,114 @@ TagMatcher::recycle()
     m_key_id = TT_INVALID_TAG_ID;
     m_value = nullptr;
     m_value_ids.clear();
+    return true;
+}
+
+
+Tag1Matcher::Tag1Matcher() :
+    m_key(nullptr)
+{
+}
+
+void
+Tag1Matcher::init(Tag *tags)
+{
+    ASSERT(tags != nullptr);
+    ASSERT(next() == nullptr);
+
+    m_key = tags->m_key;
+
+    if (std::strchr(tags->m_value, '|') != nullptr)
+    {
+        char buff[std::strlen(tags->m_value)+1];
+        std::strcpy(buff, tags->m_value);
+        std::vector<char*> tokens;
+        tokenize(buff, '|', tokens);
+        int i = 0;
+
+        for (char *v: tokens)
+        {
+            std::strcpy(m_value+i, v);
+            m_values.push_back(m_value+i);
+            i += std::strlen(v)+1;
+        }
+    }
+    else if (ends_with(tags->m_value, '*'))
+    {
+        if (tags->m_value[1] != 0)  // key=val*
+            std::strncpy(m_value, tags->m_value, std::strlen(tags->m_value)-1);
+    }
+    else
+    {
+        m_values.push_back(tags->m_value);
+    }
+
+    if (tags->next() == nullptr)
+        next() = nullptr;
+    else
+    {
+        Tag1Matcher *matcher = (Tag1Matcher*)
+            MemoryManager::alloc_recyclable(RecyclableType::RT_TAG1_MATCHER);
+        matcher->init(tags->next());
+        next() = matcher;
+    }
+}
+
+bool
+Tag1Matcher::match_case_insensitive(Tag *tags)
+{
+    Tag1Matcher *next = this->next();
+
+    if ((next != nullptr) && ! next->match_case_insensitive(tags))
+        return false;
+
+    if (! m_values.empty())
+    {
+        for (Tag *tag = tags; tag != nullptr; tag = tag->next())
+        {
+            if (std::strcmp(m_key, tag->m_key) != 0)
+                continue;
+
+            for (auto v: m_values)
+            {
+                if (::strcasecmp(tag->m_value, v) == 0)
+                    return true;
+            }
+        }
+
+        return false;
+    }
+
+    if (m_value != nullptr)
+    {
+        for (Tag *tag = tags; tag != nullptr; tag = tag->next())
+        {
+            if ((std::strcmp(m_key, tag->m_key) == 0) && (starts_with_case_insensitive(tag->m_value, m_value)))
+                return true;
+        }
+
+        return false;
+    }
+
+    // return true if our key exists in 'tags'
+    for (Tag *tag = tags; tag != nullptr; tag = tag->next())
+    {
+        if (std::strcmp(m_key, tag->m_key) == 0)
+            return true;
+    }
+
+    return false;
+}
+
+bool
+Tag1Matcher::recycle()
+{
+    Tag1Matcher *next = this->next();
+    if (next != nullptr)
+        MemoryManager::free_recyclable(next);
+    m_key = nullptr;
+    m_value[0] = 0;
+    m_values.clear();
     return true;
 }
 

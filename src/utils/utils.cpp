@@ -1172,7 +1172,16 @@ starts_with(const char *str, const char *prefix)
     if (prefix == nullptr) return false;
     int len = strlen(prefix);
     if (len > strlen(str)) return false;
-    return (strncmp(str, prefix, len) == 0);
+    return (::strncmp(str, prefix, len) == 0);
+}
+
+bool
+starts_with_case_insensitive(const char *str, const char *prefix)
+{
+    if (prefix == nullptr) return false;
+    int len = strlen(prefix);
+    if (len > strlen(str)) return false;
+    return (::strncasecmp(str, prefix, len) == 0);
 }
 
 bool

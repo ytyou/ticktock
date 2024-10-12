@@ -61,6 +61,7 @@ Query::Query(JsonMap& map, TimeRange& range, StringBuffer& strbuf, bool ms, cons
     m_rate_calculator(nullptr),
     m_ms(ms),
     m_explicit_tags(false),
+    m_case_sensitive(true),
     m_rollup(RollupUsage::RU_FALLBACK_RAW),
     m_non_grouping_tags(nullptr),
     m_errno(0),
@@ -169,6 +170,15 @@ Query::Query(JsonMap& map, TimeRange& range, StringBuffer& strbuf, bool ms, cons
                 buff[std::strlen(buff)-1] = 0;  // remove trailing ')'
                 value = strbuf.strdup(buff);
             }
+            else if (starts_with(value, "iliteral_or(") && ends_with(value, ')'))
+            {
+                // copy whatever is in (...) into buff[]
+                char buff[MAX_TOTAL_TAG_LENGTH];
+                std::strncpy(buff, value+12, sizeof(buff));
+                buff[std::strlen(buff)-1] = 0;  // remove trailing ')'
+                value = strbuf.strdup(buff);
+                m_case_sensitive = false;
+            }
 
             add_tag(name, value);
         }
@@ -188,6 +198,7 @@ Query::Query(JsonMap& map, StringBuffer& strbuf) :
     m_rate_calculator(nullptr),
     m_ms(false),
     m_explicit_tags(false),
+    m_case_sensitive(true),
     m_rollup(RollupUsage::RU_FALLBACK_RAW),
     m_non_grouping_tags(nullptr),
     m_errno(0),
@@ -360,6 +371,15 @@ Query::Query(JsonMap& map, StringBuffer& strbuf) :
                 buff[std::strlen(buff)-1] = 0;  // remove trailing ')'
                 value = strbuf.strdup(buff);
             }
+            else if (starts_with(value, "iliteral_or(") && ends_with(value, ')'))
+            {
+                // copy whatever is in (...) into buff[]
+                char buff[MAX_TOTAL_TAG_LENGTH];
+                std::strncpy(buff, value+12, sizeof(buff));
+                buff[std::strlen(buff)-1] = 0;  // remove trailing ')'
+                value = strbuf.strdup(buff);
+                m_case_sensitive = false;
+            }
 
             add_tag(name, value);
         }
@@ -435,7 +455,7 @@ Query::get_query_tasks(QuerySuperTask& super_task)
     std::unordered_set<TimeSeries*> tsv;
     char buff[MAX_TOTAL_TAG_LENGTH];
     get_ordered_tags(buff, sizeof(buff));
-    MetricId mid = Tsdb::query_for_ts(m_metric, m_tags, tsv, buff, m_explicit_tags);
+    MetricId mid = Tsdb::query_for_ts(m_metric, m_tags, tsv, buff, m_explicit_tags, m_case_sensitive);
 
     for (TimeSeries *ts: tsv)
         super_task.add_task(ts);
@@ -531,7 +551,12 @@ Query::create_query_results(std::vector<QueryTask*>& qtv, std::vector<QueryResul
         QueryResults *result = create_one_query_results(strbuf);
 
         for (QueryTask *qt: qtv)
-            result->add_query_task(qt, strbuf);
+        {
+            if (m_case_sensitive)
+                result->add_query_task(qt, strbuf);
+            else
+                result->add_query_task_case_insensitive(qt, strbuf);
+        }
 
         results.push_back(result);
     }
@@ -556,10 +581,21 @@ Query::create_query_results(std::vector<QueryTask*>& qtv, std::vector<QueryResul
                     // skip non-grouping tags
                     if (TagOwner::find_by_key(m_non_grouping_tags, tag->m_key) != nullptr) continue;
 
-                    if (! qt_tags.match(tag->m_key, tag->m_value))
+                    if (m_case_sensitive)
                     {
-                        match = false;
-                        break;
+                        if (! qt_tags.match(tag->m_key, tag->m_value))
+                        {
+                            match = false;
+                            break;
+                        }
+                    }
+                    else    // case insensitive
+                    {
+                        if (! qt_tags.match_case_insensitive(tag->m_key, tag->m_value))
+                        {
+                            match = false;
+                            break;
+                        }
                     }
                 }
 
@@ -574,12 +610,18 @@ Query::create_query_results(std::vector<QueryTask*>& qtv, std::vector<QueryResul
             {
                 // did not find the matching QueryResults, create one
                 result = create_one_query_results(strbuf);
-                result->add_query_task(qt, strbuf);
+                if (m_case_sensitive)
+                    result->add_query_task(qt, strbuf);
+                else
+                    result->add_query_task_case_insensitive(qt, strbuf);
                 results.push_back(result);
             }
             else
             {
-                result->add_query_task(qt, strbuf);
+                if (m_case_sensitive)
+                    result->add_query_task(qt, strbuf);
+                else
+                    result->add_query_task_case_insensitive(qt, strbuf);
             }
         }
     }
@@ -1417,7 +1459,7 @@ bool
 QueryExecutor::http_get_api_config_filters_handler(HttpRequest& request, HttpResponse& response)
 {
     static const char *filters =
-        "{\"literal_or\":{\"examples\":\"host=literal_or(web01), host=literal_or(web01|web02|web03) {\\\"type\\\":\\\"literal_or\\\",\\\"tagk\\\":\\\"host\\\",\\\"filter\\\":\\\"web01|web02|web03\\\",\\\"groupBy\\\":false}\",\"description\":\"Accepts one or more exact values and matches if the series contains any of them. Multiple values can be included and must be separated by the | (pipe) character. The filter is case sensitive and will not allow characters that TickTockDB does not allow at write time.\"}}";
+        "{\"literal_or\":{\"examples\":\"host=literal_or(web01), host=literal_or(web01|web02|web03) {\\\"type\\\":\\\"literal_or\\\",\\\"tagk\\\":\\\"host\\\",\\\"filter\\\":\\\"web01|web02|web03\\\",\\\"groupBy\\\":false}\",\"description\":\"Accepts one or more exact values and matches if the series contains any of them. Multiple values can be included and must be separated by the | (pipe) character. The filter is case sensitive and will not allow characters that TickTockDB does not allow at write time.\"},\"iliteral_or\":{\"examples\":\"host=iliteral_or(web01), host=iliteral_or(Web01|WEB02|web03) {\\\"type\\\":\\\"iliteral_or\\\",\\\"tagk\\\":\\\"host\\\",\\\"filter\\\":\\\"web01|web02|web03\\\",\\\"groupBy\\\":false}\",\"description\":\"Accepts one or more exact values and matches if the series contains any of them. Multiple values can be included and must be separated by the | (pipe) character. The filter is case insensitive and will not allow characters that TickTockDB does not allow at write time.\"}}";
 
     // right now we do not support any filters
     response.init(200, HttpContentType::JSON, std::strlen(filters), filters);
@@ -1502,7 +1544,7 @@ QueryResults::add_query_task(QueryTask *qt, StringBuffer& strbuf)
         }
         else if (ends_with(match->m_value, '*') || ((std::strchr(match->m_value, '|') != nullptr)))
         {
-            // move it from tags to aggregate_tags
+            // replace it
             remove_tag(match->m_key, true); // free the tag just removed, instead of return it
             add_tag(strbuf.strdup(tag->m_key), strbuf.strdup(tag->m_value));
         }
@@ -1526,6 +1568,80 @@ QueryResults::add_query_task(QueryTask *qt, StringBuffer& strbuf)
                 it = m_aggregate_tags.erase(it);
             else
                 it++;
+        }
+
+        Tag *next;
+
+        for (Tag *tag = m_tags; tag != nullptr; tag = next)
+        {
+            next = tag->next();
+
+            if (TagOwner::find_by_key(tag_head, tag->m_key) == nullptr)
+                remove_tag(tag->m_key, true); // free the tag just removed, instead of return it
+        }
+    }
+
+    if (tag_head != nullptr)
+        Tag::free_list(tag_head);
+
+    m_qtv.push_back(qt);
+}
+
+// compare tag values in case insensitive fashion
+void
+QueryResults::add_query_task_case_insensitive(QueryTask *qt, StringBuffer& strbuf)
+{
+    ASSERT(qt != nullptr);
+    Tag *tag_head = qt->get_tags();
+
+    for (Tag *tag = tag_head; tag != nullptr; tag = tag->next())
+    {
+        //if (std::strcmp(tag->m_key, METRIC_TAG_NAME) == 0) continue;
+        ASSERT(::strcasecmp(tag->m_key, METRIC_TAG_NAME) != 0);
+
+        Tag *match = find_by_key(tag->m_key);
+
+        if (match == nullptr)
+        {
+            if (m_qtv.empty())
+                add_tag(strbuf.strdup(tag->m_key), strbuf.strdup(tag->m_value));
+        }
+        else if (ends_with(match->m_value, '*') || ((std::strchr(match->m_value, '|') != nullptr)))
+        {
+            // move it from tags to aggregate_tags
+            remove_tag(match->m_key, true); // free the tag just removed, instead of return it
+            add_tag(strbuf.strdup(tag->m_key), strbuf.strdup(tag->m_value));
+        }
+        else if (::strcasecmp(match->m_value, tag->m_value) != 0)
+        {
+            // move it from tags to aggregate_tags
+            remove_tag(match->m_key, true); // free the tag just removed, instead of return it
+            add_aggregate_tag(strbuf.strdup(tag->m_key));
+        }
+    }
+
+    // remove any aggregate-tags that's not also in 'qt'
+    // because tags in aggregate-tags must be common to ALL tasks
+    if (! m_qtv.empty())    // not first qt?
+    {
+        for (auto it = m_aggregate_tags.begin(); it != m_aggregate_tags.end(); )
+        {
+            char *key = *it;
+
+            if (TagOwner::find_by_key(tag_head, key) == nullptr)
+                it = m_aggregate_tags.erase(it);
+            else
+                it++;
+        }
+
+        Tag *next;
+
+        for (Tag *tag = m_tags; tag != nullptr; tag = next)
+        {
+            next = tag->next();
+
+            if (TagOwner::find_by_key(tag_head, tag->m_key) == nullptr)
+                remove_tag(tag->m_key, true); // free the tag just removed, instead of return it
         }
     }
 

@@ -24,6 +24,7 @@
 #include <set>
 #include <unordered_map>
 #include "kv.h"
+#include "limit.h"
 #include "lock.h"
 #include "strbuf.h"
 #include "type.h"
@@ -150,6 +151,7 @@ public:
     bool match(TagId key_id, std::vector<TagId> value_ids);
     bool match(const char *key, const char *value);
     bool match_last(TagId key_id, TagId value_id);
+    bool match_case_insensitive(const char *key, const char *value);
 
     Tag *get_v1_tags() const;
     Tag *get_ordered_v1_tags() const;
@@ -220,6 +222,28 @@ private:
     TagId m_key_id;
     const char *m_value;
     std::vector<TagId> m_value_ids;
+};
+
+
+class Tag1Matcher : public Recyclable
+{
+public:
+    Tag1Matcher();
+
+    void init(Tag *tags);
+    bool match_case_insensitive(Tag *tags);
+
+    bool recycle() override;
+
+private:
+    inline Tag1Matcher*& next()
+    {
+        return (Tag1Matcher*&)Recyclable::next();
+    }
+
+    const char *m_key;
+    char m_value[MAX_TOTAL_TAG_LENGTH]; // value that ends with a '*'
+    std::vector<const char*> m_values;
 };
 
 
