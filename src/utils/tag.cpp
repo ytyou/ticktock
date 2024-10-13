@@ -521,11 +521,24 @@ Tag_v2::match_case_insensitive(const char *key, const char *value)
 }
 
 bool
-Tag_v2::match_last(TagId key_id, TagId value_id)
+Tag_v2::match_last(TagId key_id, TagId value_id) const
 {
     if (m_count == 0) return false;
     TagCount cnt = 2 * m_count;
     return (m_tags[cnt-2] == key_id) && (m_tags[cnt-1] == value_id);
+}
+
+bool
+Tag_v2::exists(const char *key) const
+{
+    ASSERT(key != nullptr);
+    TagId kid = get_id(key);
+
+    for (int i = 0; i < 2*m_count; i += 2)
+        if (m_tags[i] == kid)
+            return true;
+
+    return false;
 }
 
 Tag *

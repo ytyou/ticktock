@@ -666,15 +666,16 @@ Mapping::init_measurement(Measurement *mm, const char *measurement, char *tags, 
 }
 
 void
-Mapping::query_for_ts(Tag *tags, std::unordered_set<TimeSeries*>& tsv, const char *key, bool explicit_tags)
+Mapping::query_for_ts(Tag *tags, std::unordered_set<TimeSeries*>& tsv, const char *key, bool explicit_tags, bool negative)
 {
     int tag_count = TagOwner::get_tag_count(tags, true);
 
-    if ((key != nullptr) && (tag_count == m_tag_count))
+    if ((key != nullptr) && (tag_count == m_tag_count) && !negative)
     {
         PThread_ReadLock guard(&m_lock);
         //std::lock_guard<std::mutex> guard(m_lock);
         auto result = m_map.find(key);
+
         if (result != m_map.end())
         {
             TimeSeries *ts = nullptr;
@@ -722,8 +723,26 @@ Mapping::query_for_ts(Tag *tags, std::unordered_set<TimeSeries*>& tsv, const cha
                 Tag_v2& tags_v2 = ts->get_v2_tags();
                 if (explicit_tags && (tags_v2.get_count() != tag_count))
                     continue;
-                if (matcher->match(tags_v2))
-                    tsv.insert(ts);
+                bool match = matcher->match(tags_v2);
+                if (negative != match)
+                {
+                    // make sure 'ts' has all the tags in 'tags'
+                    bool ok = true;
+
+                    if (! match)
+                    {
+                        for (Tag *tag = tags; tag != nullptr; tag = tag->next())
+                        {
+                            if (! tags_v2.exists(tag->m_key))
+                            {
+                                ok = false;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (ok) tsv.insert(ts);
+                }
             }
 
             MemoryManager::free_recyclable(matcher);
@@ -733,7 +752,7 @@ Mapping::query_for_ts(Tag *tags, std::unordered_set<TimeSeries*>& tsv, const cha
 
 // case insensitive when comparing tags
 void
-Mapping::query_for_ts_case_insensitive(Tag *tags, std::unordered_set<TimeSeries*>& tsv, bool explicit_tags)
+Mapping::query_for_ts_case_insensitive(Tag *tags, std::unordered_set<TimeSeries*>& tsv, bool explicit_tags, bool negative)
 {
     if (tags == nullptr)
     {
@@ -754,9 +773,27 @@ Mapping::query_for_ts_case_insensitive(Tag *tags, std::unordered_set<TimeSeries*
                 continue;
 
             Tag *ts_tags = ts->get_tags();
+            bool match = matcher->match_case_insensitive(ts_tags);
 
-            if (matcher->match_case_insensitive(ts_tags))
-                tsv.insert(ts);
+            if (negative != match)
+            {
+                // make sure 'ts' has all the tags in 'tags'
+                bool ok = true;
+
+                if (! match)
+                {
+                    for (Tag *tag = tags; tag != nullptr; tag = tag->next())
+                    {
+                        if (TagOwner::find_by_key(ts_tags, tag->m_key) == nullptr)
+                        {
+                            ok = false;
+                            break;
+                        }
+                    }
+                }
+
+                if (ok) tsv.insert(ts);
+            }
 
             if (ts_tags != nullptr)
                 Tag::free_list(ts_tags);
@@ -1607,7 +1644,7 @@ Tsdb::restore_measurement(std::string& measurement, std::string& tags, std::vect
 /* The 'key' should not include the special '_field' tag.
  */
 MetricId
-Tsdb::query_for_ts(const char *metric, Tag *tags, std::unordered_set<TimeSeries*>& ts, const char *key, bool explicit_tags, bool case_sensitive)
+Tsdb::query_for_ts(const char *metric, Tag *tags, std::unordered_set<TimeSeries*>& ts, const char *key, bool explicit_tags, bool case_sensitive, bool negative)
 {
     Mapping *mapping = nullptr;
     MetricId id = TT_INVALID_METRIC_ID;
@@ -1627,9 +1664,9 @@ Tsdb::query_for_ts(const char *metric, Tag *tags, std::unordered_set<TimeSeries*
         id = mapping->get_id();
 
         if (case_sensitive)
-            mapping->query_for_ts(tags, ts, key, explicit_tags);
+            mapping->query_for_ts(tags, ts, key, explicit_tags, negative);
         else
-            mapping->query_for_ts_case_insensitive(tags, ts, explicit_tags);
+            mapping->query_for_ts_case_insensitive(tags, ts, explicit_tags, negative);
     }
 
     return id;

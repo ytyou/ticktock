@@ -150,8 +150,10 @@ public:
     bool match(TagId key_id, const char *value);
     bool match(TagId key_id, std::vector<TagId> value_ids);
     bool match(const char *key, const char *value);
-    bool match_last(TagId key_id, TagId value_id);
+    bool match_last(TagId key_id, TagId value_id) const;
     bool match_case_insensitive(const char *key, const char *value);
+
+    bool exists(const char *key) const;
 
     Tag *get_v1_tags() const;
     Tag *get_ordered_v1_tags() const;

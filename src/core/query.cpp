@@ -62,6 +62,7 @@ Query::Query(JsonMap& map, TimeRange& range, StringBuffer& strbuf, bool ms, cons
     m_ms(ms),
     m_explicit_tags(false),
     m_case_sensitive(true),
+    m_negative(false),
     m_rollup(RollupUsage::RU_FALLBACK_RAW),
     m_non_grouping_tags(nullptr),
     m_errno(0),
@@ -179,6 +180,25 @@ Query::Query(JsonMap& map, TimeRange& range, StringBuffer& strbuf, bool ms, cons
                 value = strbuf.strdup(buff);
                 m_case_sensitive = false;
             }
+            else if (starts_with(value, "not_literal_or(") && ends_with(value, ')'))
+            {
+                // copy whatever is in (...) into buff[]
+                char buff[MAX_TOTAL_TAG_LENGTH];
+                std::strncpy(buff, value+15, sizeof(buff));
+                buff[std::strlen(buff)-1] = 0;  // remove trailing ')'
+                value = strbuf.strdup(buff);
+                m_negative = true;
+            }
+            else if (starts_with(value, "not_iliteral_or(") && ends_with(value, ')'))
+            {
+                // copy whatever is in (...) into buff[]
+                char buff[MAX_TOTAL_TAG_LENGTH];
+                std::strncpy(buff, value+16, sizeof(buff));
+                buff[std::strlen(buff)-1] = 0;  // remove trailing ')'
+                value = strbuf.strdup(buff);
+                m_case_sensitive = false;
+                m_negative = true;
+            }
 
             add_tag(name, value);
         }
@@ -199,6 +219,7 @@ Query::Query(JsonMap& map, StringBuffer& strbuf) :
     m_ms(false),
     m_explicit_tags(false),
     m_case_sensitive(true),
+    m_negative(false),
     m_rollup(RollupUsage::RU_FALLBACK_RAW),
     m_non_grouping_tags(nullptr),
     m_errno(0),
@@ -380,6 +401,25 @@ Query::Query(JsonMap& map, StringBuffer& strbuf) :
                 value = strbuf.strdup(buff);
                 m_case_sensitive = false;
             }
+            else if (starts_with(value, "not_literal_or(") && ends_with(value, ')'))
+            {
+                // copy whatever is in (...) into buff[]
+                char buff[MAX_TOTAL_TAG_LENGTH];
+                std::strncpy(buff, value+15, sizeof(buff));
+                buff[std::strlen(buff)-1] = 0;  // remove trailing ')'
+                value = strbuf.strdup(buff);
+                m_negative = true;
+            }
+            else if (starts_with(value, "not_iliteral_or(") && ends_with(value, ')'))
+            {
+                // copy whatever is in (...) into buff[]
+                char buff[MAX_TOTAL_TAG_LENGTH];
+                std::strncpy(buff, value+16, sizeof(buff));
+                buff[std::strlen(buff)-1] = 0;  // remove trailing ')'
+                value = strbuf.strdup(buff);
+                m_case_sensitive = false;
+                m_negative = true;
+            }
 
             add_tag(name, value);
         }
@@ -455,7 +495,7 @@ Query::get_query_tasks(QuerySuperTask& super_task)
     std::unordered_set<TimeSeries*> tsv;
     char buff[MAX_TOTAL_TAG_LENGTH];
     get_ordered_tags(buff, sizeof(buff));
-    MetricId mid = Tsdb::query_for_ts(m_metric, m_tags, tsv, buff, m_explicit_tags, m_case_sensitive);
+    MetricId mid = Tsdb::query_for_ts(m_metric, m_tags, tsv, buff, m_explicit_tags, m_case_sensitive, m_negative);
 
     for (TimeSeries *ts: tsv)
         super_task.add_task(ts);
@@ -472,7 +512,10 @@ Query::aggregate(std::vector<QueryTask*>& qtv, std::vector<QueryResults*>& resul
     else
     {
         // group qtv into results
-        create_query_results(qtv, results, strbuf);
+        if (m_negative)
+            create_query_results_negative(qtv, results, strbuf);
+        else
+            create_query_results(qtv, results, strbuf);
 
         // aggregate results
         for (QueryResults* result: results)
@@ -532,6 +575,7 @@ Query::create_one_query_results(StringBuffer& strbuf)
 void
 Query::create_query_results(std::vector<QueryTask*>& qtv, std::vector<QueryResults*>& results, StringBuffer& strbuf)
 {
+    ASSERT(! m_negative);
     bool star_tags = false;
 
     for (Tag *tag = m_tags; tag != nullptr; tag = tag->next())
@@ -623,6 +667,76 @@ Query::create_query_results(std::vector<QueryTask*>& qtv, std::vector<QueryResul
                 else
                     result->add_query_task_case_insensitive(qt, strbuf);
             }
+        }
+    }
+
+    Logger::debug("created %d QueryResults", results.size());
+}
+
+void
+Query::create_query_results_negative(std::vector<QueryTask*>& qtv, std::vector<QueryResults*>& results, StringBuffer& strbuf)
+{
+    ASSERT(m_negative);
+
+    for (QueryTask *qt: qtv)
+    {
+        // find the existing QueryResults ts belongs to, if any
+        QueryResults *result = nullptr;
+        Tag_v2& qt_tags = qt->get_v2_tags();
+
+        for (QueryResults *r: results)
+        {
+            bool match = true;
+
+            for (Tag *tag = r->get_tags(); tag != nullptr; tag = tag->next())
+            {
+                // skip those tags that are not queried
+                if (find_by_key(tag->m_key) == nullptr) continue;
+
+                // skip non-grouping tags
+                if (TagOwner::find_by_key(m_non_grouping_tags, tag->m_key) != nullptr) continue;
+
+                if (m_case_sensitive)
+                {
+                    if (! qt_tags.match(tag->m_key, tag->m_value))
+                    {
+                        match = false;
+                        break;
+                    }
+                }
+                else    // case insensitive
+                {
+                    if (! qt_tags.match_case_insensitive(tag->m_key, tag->m_value))
+                    {
+                        match = false;
+                        break;
+                    }
+                }
+            }
+
+            if (match)
+            {
+                result = r;
+                break;
+            }
+        }
+
+        if (result == nullptr)
+        {
+            // did not find the matching QueryResults, create one
+            result = create_one_query_results(strbuf);
+            if (m_case_sensitive)
+                result->add_query_task(qt, strbuf, true);
+            else
+                result->add_query_task_case_insensitive(qt, strbuf, true);
+            results.push_back(result);
+        }
+        else
+        {
+            if (m_case_sensitive)
+                result->add_query_task(qt, strbuf, true);
+            else
+                result->add_query_task_case_insensitive(qt, strbuf, true);
         }
     }
 
@@ -1459,7 +1573,7 @@ bool
 QueryExecutor::http_get_api_config_filters_handler(HttpRequest& request, HttpResponse& response)
 {
     static const char *filters =
-        "{\"literal_or\":{\"examples\":\"host=literal_or(web01), host=literal_or(web01|web02|web03) {\\\"type\\\":\\\"literal_or\\\",\\\"tagk\\\":\\\"host\\\",\\\"filter\\\":\\\"web01|web02|web03\\\",\\\"groupBy\\\":false}\",\"description\":\"Accepts one or more exact values and matches if the series contains any of them. Multiple values can be included and must be separated by the | (pipe) character. The filter is case sensitive and will not allow characters that TickTockDB does not allow at write time.\"},\"iliteral_or\":{\"examples\":\"host=iliteral_or(web01), host=iliteral_or(Web01|WEB02|web03) {\\\"type\\\":\\\"iliteral_or\\\",\\\"tagk\\\":\\\"host\\\",\\\"filter\\\":\\\"web01|web02|web03\\\",\\\"groupBy\\\":false}\",\"description\":\"Accepts one or more exact values and matches if the series contains any of them. Multiple values can be included and must be separated by the | (pipe) character. The filter is case insensitive and will not allow characters that TickTockDB does not allow at write time.\"}}";
+        "{\"literal_or\":{\"examples\":\"host=literal_or(web01), host=literal_or(web01|web02|web03) {\\\"type\\\":\\\"literal_or\\\",\\\"tagk\\\":\\\"host\\\",\\\"filter\\\":\\\"web01|web02|web03\\\",\\\"groupBy\\\":false}\",\"description\":\"Accepts one or more exact values and matches if the series contains any of them. Multiple values can be included and must be separated by the | (pipe) character. The filter is case sensitive and will not allow characters that TickTockDB does not allow at write time.\"},\"iliteral_or\":{\"examples\":\"host=iliteral_or(web01), host=iliteral_or(Web01|WEB02|web03) {\\\"type\\\":\\\"iliteral_or\\\",\\\"tagk\\\":\\\"host\\\",\\\"filter\\\":\\\"web01|web02|web03\\\",\\\"groupBy\\\":false}\",\"description\":\"Accepts one or more exact values and matches if the series contains any of them. Multiple values can be included and must be separated by the | (pipe) character. The filter is case insensitive and will not allow characters that TickTockDB does not allow at write time.\"},\"not_literal_or\":{\"examples\":\"host=not_literal_or(web01), host=not_literal_or(web01|web02|web03) {\\\"type\\\":\\\"not_literal_or\\\",\\\"tagk\\\":\\\"host\\\",\\\"filter\\\":\\\"web01|web02|web03\\\",\\\"groupBy\\\":false}\",\"description\":\"Accepts one or more exact values and matches if the series does NOT contain any of them. Multiple values can be included and must be separated by the | (pipe) character. The filter is case sensitive and will not allow characters that TickTockDB does not allow at write time.\"},\"not_iliteral_or\":{\"examples\":\"host=not_iliteral_or(web01), host=not_iliteral_or(Web01|WEB02|web03) {\\\"type\\\":\\\"not_iliteral_or\\\",\\\"tagk\\\":\\\"host\\\",\\\"filter\\\":\\\"web01|web02|web03\\\",\\\"groupBy\\\":false}\",\"description\":\"Accepts one or more exact values and matches if the series does NOT contain any of them. Multiple values can be included and must be separated by the | (pipe) character. The filter is case insensitive and will not allow characters that TickTockDB does not allow at write time.\"}}";
 
     // right now we do not support any filters
     response.init(200, HttpContentType::JSON, std::strlen(filters), filters);
@@ -1525,7 +1639,7 @@ QueryExecutor::prepare_response(std::vector<QueryResults*>& results, HttpRespons
 
 
 void
-QueryResults::add_query_task(QueryTask *qt, StringBuffer& strbuf)
+QueryResults::add_query_task(QueryTask *qt, StringBuffer& strbuf, bool negative)
 {
     ASSERT(qt != nullptr);
     Tag *tag_head = qt->get_tags();
@@ -1550,9 +1664,26 @@ QueryResults::add_query_task(QueryTask *qt, StringBuffer& strbuf)
         }
         else if (std::strcmp(match->m_value, tag->m_value) != 0)
         {
-            // move it from tags to aggregate_tags
-            remove_tag(match->m_key, true); // free the tag just removed, instead of return it
-            add_aggregate_tag(strbuf.strdup(tag->m_key));
+            if (negative)
+            {
+                if (m_qtv.empty())
+                {
+                    remove_tag(match->m_key, true); // free the tag just removed, instead of return it
+                    add_tag(strbuf.strdup(tag->m_key), strbuf.strdup(tag->m_value));
+                }
+                else
+                {
+                    // move it from tags to aggregate_tags
+                    remove_tag(match->m_key, true); // free the tag just removed, instead of return it
+                    add_aggregate_tag(strbuf.strdup(tag->m_key));
+                }
+            }
+            else
+            {
+                // move it from tags to aggregate_tags
+                remove_tag(match->m_key, true); // free the tag just removed, instead of return it
+                add_aggregate_tag(strbuf.strdup(tag->m_key));
+            }
         }
     }
 
@@ -1589,7 +1720,7 @@ QueryResults::add_query_task(QueryTask *qt, StringBuffer& strbuf)
 
 // compare tag values in case insensitive fashion
 void
-QueryResults::add_query_task_case_insensitive(QueryTask *qt, StringBuffer& strbuf)
+QueryResults::add_query_task_case_insensitive(QueryTask *qt, StringBuffer& strbuf, bool negative)
 {
     ASSERT(qt != nullptr);
     Tag *tag_head = qt->get_tags();
@@ -1614,9 +1745,26 @@ QueryResults::add_query_task_case_insensitive(QueryTask *qt, StringBuffer& strbu
         }
         else if (::strcasecmp(match->m_value, tag->m_value) != 0)
         {
-            // move it from tags to aggregate_tags
-            remove_tag(match->m_key, true); // free the tag just removed, instead of return it
-            add_aggregate_tag(strbuf.strdup(tag->m_key));
+            if (negative)
+            {
+                if (m_qtv.empty())
+                {
+                    remove_tag(match->m_key, true); // free the tag just removed, instead of return it
+                    add_tag(strbuf.strdup(tag->m_key), strbuf.strdup(tag->m_value));
+                }
+                else
+                {
+                    // move it from tags to aggregate_tags
+                    remove_tag(match->m_key, true); // free the tag just removed, instead of return it
+                    add_aggregate_tag(strbuf.strdup(tag->m_key));
+                }
+            }
+            else
+            {
+                // move it from tags to aggregate_tags
+                remove_tag(match->m_key, true); // free the tag just removed, instead of return it
+                add_aggregate_tag(strbuf.strdup(tag->m_key));
+            }
         }
     }
 
