@@ -279,7 +279,6 @@ MemoryManager::collect_stats(Timestamp ts, std::vector<DataPoint> &dps)
     COLLECT_STATS_FOR(RT_QUERY_TASK, "query_task", sizeof(QueryTask))
     COLLECT_STATS_FOR(RT_RATE_CALCULATOR, "rate_calculator", sizeof(RateCalculator))
     COLLECT_STATS_FOR(RT_TAG_MATCHER, "tag_matcher", sizeof(TagMatcher))
-    COLLECT_STATS_FOR(RT_TAG1_MATCHER, "tag_matcher", sizeof(Tag1Matcher))
     COLLECT_STATS_FOR(RT_TCP_CONNECTION, "tcp_connection", sizeof(TcpConnection))
     COLLECT_STATS_FOR(RT_COUNT, "network_buffer", m_network_buffer_len)
     COLLECT_STATS_FOR(RT_COUNT+1, "network_buffer_small", m_network_buffer_small_len)
@@ -319,7 +318,6 @@ MemoryManager::collect_stats(Timestamp ts, std::vector<DataPoint> &dps)
     total += m_total[RT_QUERY_TASK] * sizeof(QueryTask);
     total += m_total[RT_RATE_CALCULATOR] * sizeof(RateCalculator);
     total += m_total[RT_TAG_MATCHER] * sizeof(TagMatcher);
-    total += m_total[RT_TAG1_MATCHER] * sizeof(Tag1Matcher);
     total += m_total[RT_TCP_CONNECTION] * sizeof(TcpConnection);
     total += m_total[RT_COUNT] * m_network_buffer_len;
     total += m_total[RT_COUNT+1] * m_network_buffer_small_len;
@@ -679,14 +677,6 @@ MemoryManager::cleanup()
         delete static_cast<TagMatcher*>(r);
     }
 
-    while (m_free_lists[RecyclableType::RT_TAG1_MATCHER] != nullptr)
-    {
-        Recyclable *r = m_free_lists[RecyclableType::RT_TAG1_MATCHER];
-        m_free_lists[RecyclableType::RT_TAG1_MATCHER] = r->next();
-        ASSERT(r->recyclable_type() == RecyclableType::RT_TAG1_MATCHER);
-        delete static_cast<Tag1Matcher*>(r);
-    }
-
     while (m_free_lists[RecyclableType::RT_TCP_CONNECTION] != nullptr)
     {
         Recyclable *r = m_free_lists[RecyclableType::RT_TCP_CONNECTION];
@@ -868,10 +858,6 @@ MemoryManager::alloc_recyclable(RecyclableType type)
 
                 case RecyclableType::RT_TAG_MATCHER:
                     r = new TagMatcher();
-                    break;
-
-                case RecyclableType::RT_TAG1_MATCHER:
-                    r = new Tag1Matcher();
                     break;
 
                 case RecyclableType::RT_TCP_CONNECTION:

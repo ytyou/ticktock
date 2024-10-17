@@ -21,6 +21,7 @@
 #include <cassert>
 #include <cstddef>
 #include <map>
+#include <regex>
 #include <set>
 #include <unordered_map>
 #include "kv.h"
@@ -147,6 +148,7 @@ public:
     void append(TagId key_id, TagId value_id);
 
     bool match(TagId key_id);
+    bool match(TagId key_id, TagId value_id);
     bool match(TagId key_id, const char *value);
     bool match(TagId key_id, std::vector<TagId> value_ids);
     bool match(const char *key, const char *value);
@@ -155,10 +157,13 @@ public:
 
     bool exists(const char *key) const;
 
+    Tag *get_v1_tag() const;
     Tag *get_v1_tags() const;
     Tag *get_ordered_v1_tags() const;
     Tag *get_cloned_v1_tags(StringBuffer& strbuf) const;
     TagCount clone(TagId *tags, TagCount capacity);
+
+    const char *get_value(TagId key_id);
 
     void get_keys(std::set<std::string>& keys) const;
     void get_values(std::set<std::string>& values) const;
@@ -168,12 +173,11 @@ public:
     static void init();
     static TagId get_id(const char *name);
     static TagId get_or_set_id(const char *name);
+    static const char *get_name(TagId id);
 
 private:
-    static const char *get_value(TagId value_id);
     TagId get_value_id(TagId key_id);
 
-    static const char *get_name(TagId id);
     static const char *set_name(TagId id, const char *name);
 
     TagId *m_tags;
@@ -221,31 +225,13 @@ private:
         return (TagMatcher*&)Recyclable::next();
     }
 
+    // return length of 'dst' string
+    static int replace_stars(char *dst, const char *src);
+    static std::size_t replace_literal_or(char *dst, const char *src);
+
     TagId m_key_id;
-    const char *m_value;
-    std::vector<TagId> m_value_ids;
-};
-
-
-class Tag1Matcher : public Recyclable
-{
-public:
-    Tag1Matcher();
-
-    void init(Tag *tags);
-    bool match_case_insensitive(Tag *tags);
-
-    bool recycle() override;
-
-private:
-    inline Tag1Matcher*& next()
-    {
-        return (Tag1Matcher*&)Recyclable::next();
-    }
-
-    const char *m_key;
-    char m_value[MAX_TOTAL_TAG_LENGTH]; // value that ends with a '*'
-    std::vector<const char*> m_values;
+    TagId m_value_id;
+    std::regex *m_regex;
 };
 
 

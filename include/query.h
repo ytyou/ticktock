@@ -85,8 +85,8 @@ public:
         return true;
     }
 
-    void add_query_task(QueryTask *qt, StringBuffer& strbuf, bool negative = false);
-    void add_query_task_case_insensitive(QueryTask *qt, StringBuffer& strbuf, bool negative = false);
+    void add_first_query_task(QueryTask *qtask, StringBuffer& strbuf);
+    void add_query_task(QueryTask *qtask, Tag *grouping_tags, Tag *non_grouping_tags, StringBuffer& strbuf);
 
     inline void add_aggregate_tag(char *key)
     {
@@ -199,9 +199,8 @@ private:
         return m_time_range.in_range(tstamp);
     }
 
-    QueryResults *create_one_query_results(StringBuffer& strbuf);
+    QueryResults *create_one_query_results(QueryTask *qtask, StringBuffer& strbuf);
     void create_query_results(std::vector<QueryTask*>& qtv, std::vector<QueryResults*>& results, StringBuffer& strbuf);
-    void create_query_results_negative(std::vector<QueryTask*>& qtv, std::vector<QueryResults*>& results, StringBuffer& strbuf);
     void aggregate(std::vector<QueryTask*>& qtv, std::vector<QueryResults*>& results, StringBuffer& strbuf);
     void calculate_rate(std::vector<QueryResults*>& results);
 
@@ -209,8 +208,6 @@ private:
 
     bool m_ms;  // milli-second resolution?
     bool m_explicit_tags;
-    bool m_case_sensitive;  // iliteral_or(), not_iliteral_or()
-    bool m_negative;        // not_literal_or(), not_iliteral_or()
     RollupUsage m_rollup;
     int m_errno;
     const char *m_metric;

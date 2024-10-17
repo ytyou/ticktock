@@ -422,6 +422,21 @@ Tag_v2::match(TagId key_id, const char *value)
 }
 
 bool
+Tag_v2::match(TagId key_id, TagId value_id)
+{
+    if (TT_INVALID_TAG_ID == value_id)
+        return false;
+
+    for (int i = 0; i < 2*m_count; i += 2)
+    {
+        if (m_tags[i] == key_id)
+            return value_id == m_tags[i+1];
+    }
+
+    return false;
+}
+
+bool
 Tag_v2::match(TagId key_id, std::vector<TagId> value_ids)
 {
     for (int i = 0; i < 2*m_count; i += 2)
@@ -526,6 +541,15 @@ Tag_v2::match_last(TagId key_id, TagId value_id) const
     if (m_count == 0) return false;
     TagCount cnt = 2 * m_count;
     return (m_tags[cnt-2] == key_id) && (m_tags[cnt-1] == value_id);
+}
+
+const char *
+Tag_v2::get_value(TagId key_id)
+{
+    for (int i = 0; i < 2*m_count; i += 2)
+        if (m_tags[i] == key_id)
+            return get_name(m_tags[i+1]);
+    return nullptr;
 }
 
 bool
@@ -660,7 +684,8 @@ TagBuilder::update_last(TagId kid, const char *value)
  */
 TagMatcher::TagMatcher() :
     m_key_id(TT_INVALID_TAG_ID),
-    m_value(nullptr)
+    m_value_id(TT_INVALID_TAG_ID),
+    m_regex(nullptr)
 {
 }
 
@@ -668,34 +693,95 @@ void
 TagMatcher::init(Tag *tags)
 {
     ASSERT(tags != nullptr);
+    ASSERT(tags->m_key != nullptr);
+    ASSERT(tags->m_value != nullptr);
+    ASSERT(tags->m_value[0] != 0);
+    ASSERT(m_regex == nullptr);
     ASSERT(next() == nullptr);
 
+    char buff[MAX_TOTAL_TAG_LENGTH];
+    const char *value = tags->m_value;
+    size_t last = std::strlen(value) - 1;
+
+    if (UNLIKELY(last >= MAX_TOTAL_TAG_LENGTH/2))
+    {
+        Logger::error("Tag value too long: %s", value);
+        return;
+    }
+
     m_key_id = Tag_v2::get_id(tags->m_key);
+    m_value_id = TT_INVALID_TAG_ID;
 
     if (TT_INVALID_TAG_ID == m_key_id)
         return;     // NOT going to match ANYTHING
 
-    if (std::strchr(tags->m_value, '|') != nullptr)
+    // handle 'literal_or(...)'
+    if (starts_with(value, "literal_or(") && (value[last] == ')'))
     {
-        char buff[std::strlen(tags->m_value)+1];
-        std::strcpy(buff, tags->m_value);
-        std::vector<char*> tokens;
-        tokenize(buff, '|', tokens);
-        for (char *v: tokens)
-        {
-            TagId id = Tag_v2::get_id(v);
-            if (id != TT_INVALID_TAG_ID)
-                m_value_ids.push_back(id);
-        }
+        m_regex = new std::regex(value+10, std::regex_constants::ECMAScript);
     }
-    else if (ends_with(tags->m_value, '*'))
+    else if (starts_with(value, "iliteral_or(") && (value[last] == ')'))
     {
-        if (tags->m_value[1] != 0)  // key=val*
-            m_value = tags->m_value;
+        m_regex = new std::regex(value+11, std::regex_constants::ECMAScript | std::regex_constants::icase);
+    }
+    else if (starts_with(value, "not_literal_or(") && (value[last] == ')'))
+    {
+        // use pattern (?!...|...) for negative match
+        //buff[0] = '('; buff[1] = '?'; buff[2] = '!';
+        //std::strncpy(&buff[3], value+15, sizeof(buff)-3);
+        //std::strcat(buff, "(.*)");
+        replace_literal_or(buff, value+14);
+        m_regex = new std::regex(buff, std::regex_constants::ECMAScript);
+    }
+    else if (starts_with(value, "not_iliteral_or(") && (value[last] == ')'))
+    {
+        // use pattern (?!...|...)(.*) for negative match
+        //buff[0] = '('; buff[1] = '?'; buff[2] = '!';
+        //std::strncpy(&buff[3], value+16, sizeof(buff)-7);
+        //std::strcat(buff, "(.*)");
+        replace_literal_or(buff, value+15);
+        m_regex = new std::regex(buff, std::regex_constants::ECMAScript | std::regex_constants::icase);
+    }
+    else if (starts_with(value, "wildcard(") && (value[last] == ')'))
+    {
+        // copy whatever is in (...) into buff[]
+        // escape special characters '.' and '*'
+        int len = replace_stars(buff, value+9);
+        buff[len-1] = 0;    // remove ')'
+        m_regex = new std::regex(buff, std::regex_constants::ECMAScript);
+    }
+    else if (starts_with(value, "iwildcard(") && (value[last] == ')'))
+    {
+        // copy whatever is in (...) into buff[]
+        // escape special characters '.' and '*'
+        int len = replace_stars(buff, value+10);
+        buff[len-1] = 0;    // remove ')'
+        m_regex = new std::regex(buff, std::regex_constants::ECMAScript | std::regex_constants::icase);
+    }
+    else if (starts_with(value, "regexp(") && (value[last] == ')'))
+    {
+        std::strncpy(buff, value+7, sizeof(buff));
+        buff[std::strlen(buff)-1] = 0;  // remove trailing ')'
+        m_regex = new std::regex(buff, std::regex_constants::basic);
+    }
+    else if (ends_with(value, '*'))
+    {
+        // OpenTSDB 1.x - 2.1 filter
+        int len = replace_stars(buff, value);
+        m_regex = new std::regex(buff, std::regex_constants::ECMAScript);
+    }
+    else if (std::strchr(value, '|') != nullptr)
+    {
+        // OpenTSDB 1.x - 2.1 filter
+        buff[0] = '(';
+        std::strncpy(buff, value, sizeof(buff)-2);
+        buff[last+2] = ')'; buff[last+3] = 0;
+        m_regex = new std::regex(buff, std::regex_constants::ECMAScript);
     }
     else
     {
-        m_value_ids.push_back(Tag_v2::get_id(tags->m_value));
+        m_value_id = Tag_v2::get_id(value);
+        m_regex = nullptr;
     }
 
     if (tags->next() == nullptr)
@@ -709,6 +795,61 @@ TagMatcher::init(Tag *tags)
     }
 }
 
+int
+TagMatcher::replace_stars(char *dst, const char *src)
+{
+    int i, j;
+
+    for (i = 0, j = 0; src[j] != 0; i++, j++)
+    {
+        if (src[j] == '.')      // escape '.'
+        {
+            dst[i++] = '\\';
+            dst[i] = '.';
+        }
+        else if (src[j] == '*') // replace '*' with '.*'
+        {
+            dst[i++] = '.';
+            dst[i] = '*';
+        }
+        else
+            dst[i] = src[j];
+    }
+
+    dst[i] = 0;     // null-terminate
+    return i;
+}
+
+/* @param src example: '(web01|web02)'
+ * @param dst example: '(?!web01$|web02$)(.*)'
+ */
+std::size_t
+TagMatcher::replace_literal_or(char *dst, const char *src)
+{
+    ASSERT(dst != nullptr);
+    ASSERT(src != nullptr);
+
+    dst[0] = '('; dst[1] = '?'; dst[2] = '!'; dst[3] = 0;
+
+    char buff[std::strlen(src)+1];
+    std::vector<char*> tokens;
+
+    std::strcpy(buff, src+1);       // skip leading '('
+    buff[std::strlen(buff)-1] = 0;  // remove trailing ')'
+    tokenize(buff, '|', tokens);
+
+    for (char *token: tokens)
+    {
+        strcat(dst, token);
+        strcat(dst, "$|");
+    }
+
+    std::size_t len = std::strlen(dst);
+    dst[len-1] = 0; // remove last '|'
+    strcat(dst+len-2, ")(.*)");
+    return len+3;
+}
+
 bool
 TagMatcher::match(Tag_v2& tags)
 {
@@ -720,13 +861,15 @@ TagMatcher::match(Tag_v2& tags)
     if ((next != nullptr) && ! next->match(tags))
         return false;
 
-    if (! m_value_ids.empty())
-        return tags.match(m_key_id, m_value_ids);
-
-    if (m_value != nullptr)
-        return tags.match(m_key_id, m_value);
-
-    return tags.match(m_key_id);
+    if (m_regex == nullptr)
+        return tags.match(m_key_id, m_value_id);
+    else
+    {
+        const char *value = tags.get_value(m_key_id);
+        if (value == nullptr) return false;
+        std::cmatch matches;
+        return std::regex_match(value, matches, *m_regex);
+    }
 }
 
 bool
@@ -736,116 +879,12 @@ TagMatcher::recycle()
     if (next != nullptr)
         MemoryManager::free_recyclable(next);
     m_key_id = TT_INVALID_TAG_ID;
-    m_value = nullptr;
-    m_value_ids.clear();
-    return true;
-}
-
-
-Tag1Matcher::Tag1Matcher() :
-    m_key(nullptr)
-{
-}
-
-void
-Tag1Matcher::init(Tag *tags)
-{
-    ASSERT(tags != nullptr);
-    ASSERT(next() == nullptr);
-
-    m_key = tags->m_key;
-
-    if (std::strchr(tags->m_value, '|') != nullptr)
+    m_value_id = TT_INVALID_TAG_ID;
+    if (m_regex != nullptr)
     {
-        char buff[std::strlen(tags->m_value)+1];
-        std::strcpy(buff, tags->m_value);
-        std::vector<char*> tokens;
-        tokenize(buff, '|', tokens);
-        int i = 0;
-
-        for (char *v: tokens)
-        {
-            std::strcpy(m_value+i, v);
-            m_values.push_back(m_value+i);
-            i += std::strlen(v)+1;
-        }
+        delete m_regex;
+        m_regex = nullptr;
     }
-    else if (ends_with(tags->m_value, '*'))
-    {
-        if (tags->m_value[1] != 0)  // key=val*
-            std::strncpy(m_value, tags->m_value, std::strlen(tags->m_value)-1);
-    }
-    else
-    {
-        m_values.push_back(tags->m_value);
-    }
-
-    if (tags->next() == nullptr)
-        next() = nullptr;
-    else
-    {
-        Tag1Matcher *matcher = (Tag1Matcher*)
-            MemoryManager::alloc_recyclable(RecyclableType::RT_TAG1_MATCHER);
-        matcher->init(tags->next());
-        next() = matcher;
-    }
-}
-
-bool
-Tag1Matcher::match_case_insensitive(Tag *tags)
-{
-    Tag1Matcher *next = this->next();
-
-    if ((next != nullptr) && ! next->match_case_insensitive(tags))
-        return false;
-
-    if (! m_values.empty())
-    {
-        for (Tag *tag = tags; tag != nullptr; tag = tag->next())
-        {
-            if (std::strcmp(m_key, tag->m_key) != 0)
-                continue;
-
-            for (auto v: m_values)
-            {
-                if (::strcasecmp(tag->m_value, v) == 0)
-                    return true;
-            }
-        }
-
-        return false;
-    }
-
-    if (m_value != nullptr)
-    {
-        for (Tag *tag = tags; tag != nullptr; tag = tag->next())
-        {
-            if ((std::strcmp(m_key, tag->m_key) == 0) && (starts_with_case_insensitive(tag->m_value, m_value)))
-                return true;
-        }
-
-        return false;
-    }
-
-    // return true if our key exists in 'tags'
-    for (Tag *tag = tags; tag != nullptr; tag = tag->next())
-    {
-        if (std::strcmp(m_key, tag->m_key) == 0)
-            return true;
-    }
-
-    return false;
-}
-
-bool
-Tag1Matcher::recycle()
-{
-    Tag1Matcher *next = this->next();
-    if (next != nullptr)
-        MemoryManager::free_recyclable(next);
-    m_key = nullptr;
-    m_value[0] = 0;
-    m_values.clear();
     return true;
 }
 

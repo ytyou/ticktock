@@ -27,6 +27,7 @@
 #include <limits>
 #include <stdio.h>
 #include <iomanip>
+#include <regex>
 #include <sstream>
 #include "admin.h"
 #include "config.h"
@@ -666,11 +667,11 @@ Mapping::init_measurement(Measurement *mm, const char *measurement, char *tags, 
 }
 
 void
-Mapping::query_for_ts(Tag *tags, std::unordered_set<TimeSeries*>& tsv, const char *key, bool explicit_tags, bool negative)
+Mapping::query_for_ts(Tag *tags, std::unordered_set<TimeSeries*>& tsv, const char *key, bool explicit_tags)
 {
     int tag_count = TagOwner::get_tag_count(tags, true);
 
-    if ((key != nullptr) && (tag_count == m_tag_count) && !negative)
+    if ((key != nullptr) && (tag_count == m_tag_count))
     {
         PThread_ReadLock guard(&m_lock);
         //std::lock_guard<std::mutex> guard(m_lock);
@@ -721,85 +722,16 @@ Mapping::query_for_ts(Tag *tags, std::unordered_set<TimeSeries*>& tsv, const cha
             for (TimeSeries *ts = m_ts_head.load(); ts != nullptr; ts = ts->m_next)
             {
                 Tag_v2& tags_v2 = ts->get_v2_tags();
+
                 if (explicit_tags && (tags_v2.get_count() != tag_count))
                     continue;
-                bool match = matcher->match(tags_v2);
-                if (negative != match)
-                {
-                    // make sure 'ts' has all the tags in 'tags'
-                    bool ok = true;
 
-                    if (! match)
-                    {
-                        for (Tag *tag = tags; tag != nullptr; tag = tag->next())
-                        {
-                            if (! tags_v2.exists(tag->m_key))
-                            {
-                                ok = false;
-                                break;
-                            }
-                        }
-                    }
-
-                    if (ok) tsv.insert(ts);
-                }
+                if (matcher->match(tags_v2))
+                    tsv.insert(ts);
             }
 
             MemoryManager::free_recyclable(matcher);
         }
-    }
-}
-
-// case insensitive when comparing tags
-void
-Mapping::query_for_ts_case_insensitive(Tag *tags, std::unordered_set<TimeSeries*>& tsv, bool explicit_tags, bool negative)
-{
-    if (tags == nullptr)
-    {
-        // matches ALL
-        for (TimeSeries *ts = m_ts_head.load(); ts != nullptr; ts = ts->m_next)
-            tsv.insert(ts);
-    }
-    else
-    {
-        int tag_count = TagOwner::get_tag_count(tags, false);
-        Tag1Matcher *matcher = (Tag1Matcher*)
-            MemoryManager::alloc_recyclable(RecyclableType::RT_TAG1_MATCHER);
-        matcher->init(tags);
-
-        for (TimeSeries *ts = m_ts_head.load(); ts != nullptr; ts = ts->m_next)
-        {
-            if (explicit_tags && (ts->get_tag_count() != tag_count))
-                continue;
-
-            Tag *ts_tags = ts->get_tags();
-            bool match = matcher->match_case_insensitive(ts_tags);
-
-            if (negative != match)
-            {
-                // make sure 'ts' has all the tags in 'tags'
-                bool ok = true;
-
-                if (! match)
-                {
-                    for (Tag *tag = tags; tag != nullptr; tag = tag->next())
-                    {
-                        if (TagOwner::find_by_key(ts_tags, tag->m_key) == nullptr)
-                        {
-                            ok = false;
-                            break;
-                        }
-                    }
-                }
-
-                if (ok) tsv.insert(ts);
-            }
-
-            if (ts_tags != nullptr)
-                Tag::free_list(ts_tags);
-        }
-
-        MemoryManager::free_recyclable(matcher);
     }
 }
 
@@ -1644,7 +1576,7 @@ Tsdb::restore_measurement(std::string& measurement, std::string& tags, std::vect
 /* The 'key' should not include the special '_field' tag.
  */
 MetricId
-Tsdb::query_for_ts(const char *metric, Tag *tags, std::unordered_set<TimeSeries*>& ts, const char *key, bool explicit_tags, bool case_sensitive, bool negative)
+Tsdb::query_for_ts(const char *metric, Tag *tags, std::unordered_set<TimeSeries*>& ts, const char *key, bool explicit_tags)
 {
     Mapping *mapping = nullptr;
     MetricId id = TT_INVALID_METRIC_ID;
@@ -1662,11 +1594,7 @@ Tsdb::query_for_ts(const char *metric, Tag *tags, std::unordered_set<TimeSeries*
     if (mapping != nullptr)
     {
         id = mapping->get_id();
-
-        if (case_sensitive)
-            mapping->query_for_ts(tags, ts, key, explicit_tags, negative);
-        else
-            mapping->query_for_ts_case_insensitive(tags, ts, explicit_tags, negative);
+        mapping->query_for_ts(tags, ts, key, explicit_tags);
     }
 
     return id;
