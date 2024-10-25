@@ -281,6 +281,8 @@ Compressor_v4::compress(Timestamp timestamp, double value)
     ASSERT(get_start_tstamp() <= timestamp);
     //ASSERT(m_is_full == false);
     ASSERT(m_bitset.avail_capacity_in_bits() >= 1);
+    ASSERT(1530576000 <= timestamp);
+    ASSERT(timestamp < MAX_MS_SINCE_EPOCH);
 
     if (UNLIKELY(m_is_full)) return false;
     //m_bitset.save_check_point();
@@ -463,7 +465,7 @@ Compressor_v4::uncompress(DataPointVector& dps, bool restore)
     if (m_bitset.is_empty())
         return;
 
-    Timestamp timestamp;
+    Timestamp timestamp, prev_timestamp;
     double value = 0.0;
     BitSetCursor *cursor = m_bitset.new_cursor();
 
@@ -475,6 +477,8 @@ Compressor_v4::uncompress(DataPointVector& dps, bool restore)
     uint64_t delta = delta32;
     m_bitset.retrieve(cursor, reinterpret_cast<uint8_t*>(&value), 8*sizeof(double), 0);
     ASSERT(get_start_tstamp() <= timestamp);
+    ASSERT(timestamp < MAX_MS_SINCE_EPOCH);
+    ASSERT(1530576000 <= timestamp);
     dps.emplace_back(timestamp, value);
 
     double delta_v = 0;
@@ -486,6 +490,8 @@ Compressor_v4::uncompress(DataPointVector& dps, bool restore)
         delta_of_delta = uncompress_i(cursor);
         delta += delta_of_delta;
         timestamp += delta;
+        ASSERT(timestamp < MAX_MS_SINCE_EPOCH);
+        ASSERT(1530576000 <= timestamp);
 
         delta_v = uncompress_f(cursor);
         value += delta_v;
@@ -501,8 +507,13 @@ Compressor_v4::uncompress(DataPointVector& dps, bool restore)
         {
             // timestamp
             delta_of_delta = uncompress_i(cursor);
+            ASSERT(delta_of_delta < (int64_t)MAX_MS_SINCE_EPOCH);
             delta += delta_of_delta;
+            prev_timestamp = timestamp;
             timestamp += delta;
+            ASSERT(prev_timestamp <= timestamp);
+            ASSERT(timestamp < MAX_MS_SINCE_EPOCH);
+            ASSERT(1530576000 <= timestamp);
 
             // value
             double delta_of_delta_v = uncompress_f(cursor);
@@ -522,7 +533,11 @@ Compressor_v4::uncompress(DataPointVector& dps, bool restore)
 
                 for (uint8_t i = 0; i < byte; i++)
                 {
+                    prev_timestamp = timestamp;
                     timestamp += delta;
+                    ASSERT(prev_timestamp <= timestamp);
+                    ASSERT(timestamp < MAX_MS_SINCE_EPOCH);
+                    ASSERT(1530576000 <= timestamp);
                     value += delta_v;
                     dps.emplace_back(timestamp, value);
                 }
@@ -538,7 +553,11 @@ Compressor_v4::uncompress(DataPointVector& dps, bool restore)
     {
         for (uint8_t i = 0; i < m_repeat; i++)
         {
+            prev_timestamp = timestamp;
             timestamp += delta;
+            ASSERT(prev_timestamp <= timestamp);
+            ASSERT(1530576000 <= timestamp);
+            ASSERT(timestamp < MAX_MS_SINCE_EPOCH);
             value += delta_v;
             dps.emplace_back(timestamp, value);
         }
