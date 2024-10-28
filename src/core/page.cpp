@@ -270,6 +270,7 @@ PageInMemory::flush(MetricId mid, TimeSeriesId tid, bool compact)
 
     m_compressor->save((uint8_t*)m_page + sizeof(struct compress_info_on_disk));
     CompressorPosition position;
+    m_compressor->pad();
     m_compressor->save(position);
 
     struct compress_info_on_disk *ciod = get_compress_header();
@@ -282,10 +283,6 @@ PageInMemory::flush(MetricId mid, TimeSeriesId tid, bool compact)
     m_page_header.m_next_header = TT_INVALID_HEADER_INDEX;
 
     return m_tsdb->append_page(mid, tid, prev_file_idx, prev_header_idx, &m_page_header, m_tstamp_from, m_page, compact);
-
-    // re-initialize the compressor
-    //m_compressor->init(m_start, (uint8_t*)m_page, m_tsdb->get_page_size());
-    //ASSERT(m_page != nullptr);
 }
 
 void
@@ -295,6 +292,7 @@ PageInMemory::append(MetricId mid, TimeSeriesId tid, FILE *file)
     if (m_compressor->is_empty()) return;
 
     CompressorPosition position;
+    m_compressor->pad();
     m_compressor->save(position);
 
     uint8_t flags = (uint8_t)m_compressor->get_version();
@@ -320,8 +318,8 @@ PageInMemory::append(MetricId mid, TimeSeriesId tid, FILE *file)
     ASSERT(ret > 0);
 }
 
-void
-PageInMemory::restore(Timestamp tstamp, uint8_t *buff, PageSize offset, uint8_t start)
+bool
+PageInMemory::restore(Timestamp tstamp, uint8_t *buff, PageSize offset, uint8_t start, MetricId mid, TimeSeriesId tid, bool is_ooo)
 {
     ASSERT(buff != nullptr);
     ASSERT(m_page != nullptr);
@@ -331,10 +329,23 @@ PageInMemory::restore(Timestamp tstamp, uint8_t *buff, PageSize offset, uint8_t 
     CompressorPosition position(offset, start);
     m_compressor->set_start_tstamp(tstamp);
     m_compressor->restore(dps, position, buff);
-    //m_compressor->restore(dps, position, buff + sizeof(struct compress_info_on_disk));
 
-    //struct page_info_on_disk *header = get_page_header();
-    //ASSERT(header != nullptr);
+    bool out_of_date = false;
+
+    // check if data just restored are already on disk?
+    if (! is_ooo)
+    {
+        if (m_compressor->is_empty())
+        {
+            out_of_date = true;
+        }
+        else
+        {
+            Timestamp last_ts_on_disk = m_tsdb->get_last_tstamp(mid, tid);
+            Timestamp last_ts_in_buff = m_compressor->get_last_tstamp();
+            out_of_date = (last_ts_in_buff <= last_ts_on_disk);
+        }
+    }
 
     m_start = tstamp;
     for (auto dp: dps)
@@ -346,6 +357,8 @@ PageInMemory::restore(Timestamp tstamp, uint8_t *buff, PageSize offset, uint8_t 
         if (m_page_header.m_tstamp_to < ts)
             m_page_header.m_tstamp_to = ts;
     }
+
+    return out_of_date;
 }
 
 bool
@@ -366,49 +379,6 @@ PageInMemory::add_data_point(Timestamp tstamp, double value)
     }
     return success;
 }
-
-
-#if 0
-void
-PageOnDisk::init(Tsdb *tsdb,
-                 struct page_info_on_disk *header,
-                 FileIndex file_idx,
-                 HeaderIndex header_idx,
-                 void *page,
-                 bool is_ooo)
-{
-    ASSERT(tsdb != nullptr);
-    ASSERT(page != nullptr);
-
-    m_tsdb = tsdb;
-    m_page = page;
-    m_file_index = file_idx;
-    m_header_index = header_idx;
-    m_page_header = header;
-
-    m_start = 0;
-    m_compressor = nullptr;
-}
-
-PageIndex
-PageOnDisk::get_global_page_index()
-{
-    PageCount page_count = m_tsdb->get_page_count();
-    return (m_file_index * page_count) + m_page_header->m_page_index;
-}
-
-bool
-PageOnDisk::recycle()
-{
-    if (m_compressor != nullptr)
-    {
-        MemoryManager::free_recyclable(m_compressor);
-        m_compressor = nullptr;
-    }
-
-    return true;
-}
-#endif
 
 
 }
