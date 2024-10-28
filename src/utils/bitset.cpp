@@ -177,6 +177,8 @@ BitSet::append(uint8_t *bits, uint8_t len, uint8_t start)
         append(*bits, len, start);
         if (start == 0) bits++;
     }
+
+    ASSERT(m_cursor <= m_end);
 }
 
 void
@@ -315,6 +317,8 @@ BitSet::retrieve(BitSetCursor *cursor, uint8_t *bits, uint8_t len, uint8_t start
         retrieve(cursor, *bits, len, start);
         if (start == 0) bits++;
     }
+
+    ASSERT(cursor->m_cursor <= m_cursor);
 }
 
 void

@@ -285,7 +285,8 @@ public:
     void init(MetricId mid, TimeSeriesId tid, Tsdb *tsdb, bool is_ooo, FileIndex file_idx, HeaderIndex header_idx);
     PageSize flush(MetricId mid, TimeSeriesId tid, bool compact = false);  // return next page size
     void append(MetricId mid, TimeSeriesId tid, FILE *file);
-    void restore(Timestamp tstamp, uint8_t *buff, PageSize offset, uint8_t start);
+    // return true if data just restored is older than what's on disk
+    bool restore(Timestamp tstamp, uint8_t *buff, PageSize offset, uint8_t start, MetricId mid, TimeSeriesId tid, bool is_ooo);
 
     // return true if dp is added; false if page is full;
     bool add_data_point(Timestamp tstamp, double value);

@@ -270,6 +270,7 @@ PageInMemory::flush(MetricId mid, TimeSeriesId tid, bool compact)
 
     m_compressor->save((uint8_t*)m_page + sizeof(struct compress_info_on_disk));
     CompressorPosition position;
+    m_compressor->pad();
     m_compressor->save(position);
 
     struct compress_info_on_disk *ciod = get_compress_header();
@@ -291,6 +292,7 @@ PageInMemory::append(MetricId mid, TimeSeriesId tid, FILE *file)
     if (m_compressor->is_empty()) return;
 
     CompressorPosition position;
+    m_compressor->pad();
     m_compressor->save(position);
 
     uint8_t flags = (uint8_t)m_compressor->get_version();
@@ -316,8 +318,8 @@ PageInMemory::append(MetricId mid, TimeSeriesId tid, FILE *file)
     ASSERT(ret > 0);
 }
 
-void
-PageInMemory::restore(Timestamp tstamp, uint8_t *buff, PageSize offset, uint8_t start)
+bool
+PageInMemory::restore(Timestamp tstamp, uint8_t *buff, PageSize offset, uint8_t start, MetricId mid, TimeSeriesId tid, bool is_ooo)
 {
     ASSERT(buff != nullptr);
     ASSERT(m_page != nullptr);
@@ -327,7 +329,23 @@ PageInMemory::restore(Timestamp tstamp, uint8_t *buff, PageSize offset, uint8_t 
     CompressorPosition position(offset, start);
     m_compressor->set_start_tstamp(tstamp);
     m_compressor->restore(dps, position, buff);
-    //m_compressor->restore(dps, position, buff + sizeof(struct compress_info_on_disk));
+
+    bool out_of_date = false;
+
+    // check if data just restored are already on disk?
+    if (! is_ooo)
+    {
+        if (m_compressor->is_empty())
+        {
+            out_of_date = true;
+        }
+        else
+        {
+            Timestamp last_ts_on_disk = m_tsdb->get_last_tstamp(mid, tid);
+            Timestamp last_ts_in_buff = m_compressor->get_last_tstamp();
+            out_of_date = (last_ts_in_buff <= last_ts_on_disk);
+        }
+    }
 
     m_start = tstamp;
     for (auto dp: dps)
@@ -339,6 +357,8 @@ PageInMemory::restore(Timestamp tstamp, uint8_t *buff, PageSize offset, uint8_t 
         if (m_page_header.m_tstamp_to < ts)
             m_page_header.m_tstamp_to = ts;
     }
+
+    return out_of_date;
 }
 
 bool

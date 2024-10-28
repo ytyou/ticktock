@@ -101,6 +101,7 @@ public:
     virtual void restore(DataPointVector& dps, CompressorPosition& position, uint8_t *base) = 0;
     virtual void save(CompressorPosition& position) = 0;    // save meta
     virtual void save(uint8_t *base) = 0;                   // save data
+    virtual void pad() {}               // only needed by v4
     virtual bool recycle() { return true; }
     virtual void rebase(uint8_t *base) = 0;
     virtual int append(FILE *file) = 0; // write to append.log, return #bytes written
@@ -143,8 +144,9 @@ public:
     static void initialize();
     void init(Timestamp start, uint8_t *base, size_t size);
     void restore(DataPointVector& dps, CompressorPosition& position, uint8_t *base);
-    void save(CompressorPosition& position);
-    void save(uint8_t *base);
+    void save(CompressorPosition& position) override;
+    void save(uint8_t *base) override;
+    void pad() override;
     inline void rebase(uint8_t *base)
     {
         m_bitset.rebase(base);

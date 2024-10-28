@@ -165,18 +165,29 @@ void
 TimeSeries::restore(Tsdb *tsdb, MetricId mid, Timestamp tstamp, PageSize offset, uint8_t start, uint8_t *buff, int size, bool is_ooo, FileIndex file_idx, HeaderIndex header_idx)
 {
     ASSERT(tsdb != nullptr);
+    bool out_of_date;
 
     if (is_ooo)
     {
         ASSERT(m_ooo_buff == nullptr);
         m_ooo_buff = new PageInMemory(mid, m_id, tsdb, true, file_idx, header_idx);
-        m_ooo_buff->restore(tstamp, buff, offset, start);
+        out_of_date = m_ooo_buff->restore(tstamp, buff, offset, start, mid, m_id, true);
+        ASSERT(! out_of_date);
     }
     else
     {
         ASSERT(m_buff == nullptr);
         m_buff = new PageInMemory(mid, m_id, tsdb, false, file_idx, header_idx);
-        m_buff->restore(tstamp, buff, offset, start);
+        out_of_date = m_buff->restore(tstamp, buff, offset, start, mid, m_id, false);
+
+        // See if data on disk is newer than what we've just restored?
+        // If so, the data we just restored is already on disk, ignore them.
+        if (out_of_date)
+        {
+            delete m_buff;
+            m_buff = nullptr;
+        }
+
         ASSERT(sizeof(struct rollup_append_entry) <= size);
         m_rollup.restore((struct rollup_append_entry*)&buff[size-sizeof(struct rollup_append_entry)]);
     }

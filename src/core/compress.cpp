@@ -155,6 +155,7 @@ Compressor_v4::Compressor_v4()
     m_repeat = 0;
 
     ASSERT(get_start_tstamp() <= m_prev_tstamp);
+    ASSERT(get_start_tstamp() < MAX_MS_SINCE_EPOCH);
 }
 
 void
@@ -193,6 +194,7 @@ Compressor_v4::init(Timestamp start, uint8_t *base, size_t size)
     m_repeat = 0;
 
     ASSERT(get_start_tstamp() <= m_prev_tstamp);
+    ASSERT(get_start_tstamp() < MAX_MS_SINCE_EPOCH);
     ASSERT(m_bitset.avail_capacity_in_bits() >= 1);
 }
 
@@ -206,6 +208,28 @@ Compressor_v4::restore(DataPointVector& dps, CompressorPosition& position, uint8
     uncompress(dps, true);
 
     Logger::debug("cv4: restored %d data-points", m_dp_count);
+}
+
+void
+Compressor_v4::pad()
+{
+    if (m_padded || (m_dp_count <= 2))
+        return;
+
+    if (m_repeat > 0)
+    {
+        uint8_t one_zero = (uint8_t)(1 << m_repetition) | m_repeat;
+        m_bitset.append(reinterpret_cast<uint8_t*>(&one_zero), m_repetition+1, 7-m_repetition);
+        m_repeat = 0;
+    }
+    else
+    {
+        uint8_t one_zero = 0;
+        ASSERT(m_bitset.avail_capacity_in_bits() >= 1);
+        m_bitset.append(reinterpret_cast<uint8_t*>(&one_zero), 1, 0);
+    }
+
+    m_padded = true;
 }
 
 void
@@ -225,24 +249,7 @@ Compressor_v4::save(uint8_t *base)
 {
     ASSERT(base != nullptr);
 
-    if (! m_padded)
-    {
-        if (m_repeat > 0)
-        {
-            uint8_t one_zero = (uint8_t)(1 << m_repetition) | m_repeat;
-            m_bitset.append(reinterpret_cast<uint8_t*>(&one_zero), m_repetition+1, 7-m_repetition);
-            m_repeat = 0;
-        }
-        else
-        {
-            uint8_t one_zero = 0;
-            ASSERT(m_bitset.avail_capacity_in_bits() >= 1);
-            m_bitset.append(reinterpret_cast<uint8_t*>(&one_zero), 1, 0);
-        }
-
-        m_padded = true;
-    }
-
+    pad();
     m_bitset.copy_to(base);
 }
 
@@ -280,7 +287,9 @@ Compressor_v4::compress(Timestamp timestamp, double value)
 {
     ASSERT(get_start_tstamp() <= timestamp);
     //ASSERT(m_is_full == false);
-    ASSERT(m_bitset.avail_capacity_in_bits() >= 1);
+    //ASSERT(m_bitset.avail_capacity_in_bits() >= 1);
+    ASSERT(timestamp < MAX_MS_SINCE_EPOCH);
+    ASSERT(m_prev_tstamp <= timestamp);
 
     if (UNLIKELY(m_is_full)) return false;
     //m_bitset.save_check_point();
@@ -306,6 +315,7 @@ Compressor_v4::compress(Timestamp timestamp, double value)
         // calcullate delta
         Timestamp delta = timestamp - m_prev_tstamp;
         int64_t delta_of_delta = (uint64_t)delta - (uint64_t)m_prev_tstamp_delta;
+        ASSERT((delta_of_delta >= 0) || (std::abs(delta_of_delta) < m_prev_tstamp_delta));
         double delta_v = value - m_prev_value;
         double delta_of_delta_v = delta_v - m_prev_value_delta;
 
@@ -330,23 +340,7 @@ Compressor_v4::compress(Timestamp timestamp, double value)
         }
         else
         {
-            if (! m_padded)
-            {
-                if (m_repeat > 0)
-                {
-                    uint8_t one_zero = (uint8_t)(1 << m_repetition) | m_repeat;
-                    ASSERT((0x80 & one_zero) != 0x00);
-                    m_bitset.append(reinterpret_cast<uint8_t*>(&one_zero), m_repetition+1, 7-m_repetition);
-                    m_repeat = 0;
-                }
-                else
-                {
-                    uint8_t one_zero = 0x00;
-                    m_bitset.append(reinterpret_cast<uint8_t*>(&one_zero), 1, 0);
-                }
-                m_padded = true;
-            }
-
+            pad();
             m_bitset.save_check_point();
             compress(delta_of_delta);
             compress(delta_of_delta_v);
@@ -354,6 +348,8 @@ Compressor_v4::compress(Timestamp timestamp, double value)
             if (m_bitset.avail_capacity_in_bits() < 1)
                 throw std::out_of_range("bitset is full");
         }
+
+        ASSERT((m_prev_tstamp_delta + delta_of_delta) < MAX_MS_SINCE_EPOCH);
 
         m_prev_tstamp = timestamp;
         m_prev_tstamp_delta = delta;
@@ -475,6 +471,7 @@ Compressor_v4::uncompress(DataPointVector& dps, bool restore)
     uint64_t delta = delta32;
     m_bitset.retrieve(cursor, reinterpret_cast<uint8_t*>(&value), 8*sizeof(double), 0);
     ASSERT(get_start_tstamp() <= timestamp);
+    ASSERT(timestamp < MAX_MS_SINCE_EPOCH);
     dps.emplace_back(timestamp, value);
 
     double delta_v = 0;
@@ -485,7 +482,9 @@ Compressor_v4::uncompress(DataPointVector& dps, bool restore)
     {
         delta_of_delta = uncompress_i(cursor);
         delta += delta_of_delta;
+        ASSERT(timestamp < (timestamp + delta));
         timestamp += delta;
+        ASSERT(timestamp < MAX_MS_SINCE_EPOCH);
 
         delta_v = uncompress_f(cursor);
         value += delta_v;
@@ -501,8 +500,12 @@ Compressor_v4::uncompress(DataPointVector& dps, bool restore)
         {
             // timestamp
             delta_of_delta = uncompress_i(cursor);
+            ASSERT(delta_of_delta < (int64_t)MAX_MS_SINCE_EPOCH);
+            ASSERT((delta + delta_of_delta) < MAX_MS_SINCE_EPOCH);
             delta += delta_of_delta;
+            ASSERT(timestamp < (timestamp + delta));
             timestamp += delta;
+            ASSERT(timestamp < MAX_MS_SINCE_EPOCH);
 
             // value
             double delta_of_delta_v = uncompress_f(cursor);
@@ -522,7 +525,9 @@ Compressor_v4::uncompress(DataPointVector& dps, bool restore)
 
                 for (uint8_t i = 0; i < byte; i++)
                 {
+                    ASSERT(timestamp < (timestamp + delta));
                     timestamp += delta;
+                    ASSERT(timestamp < MAX_MS_SINCE_EPOCH);
                     value += delta_v;
                     dps.emplace_back(timestamp, value);
                 }
@@ -538,7 +543,9 @@ Compressor_v4::uncompress(DataPointVector& dps, bool restore)
     {
         for (uint8_t i = 0; i < m_repeat; i++)
         {
+            ASSERT(timestamp < (timestamp + delta));
             timestamp += delta;
+            ASSERT(timestamp < MAX_MS_SINCE_EPOCH);
             value += delta_v;
             dps.emplace_back(timestamp, value);
         }

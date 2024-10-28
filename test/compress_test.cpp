@@ -42,6 +42,8 @@ CompressTests::run()
     best_scenario(false);
     log("Running compress_v4 tests...");
     compress_v4_tests();
+    log("Running sample data tests...");
+    sample_data_tests();
     log("Running rollup compression tests...");
     rollup_compress1();
     for (int i = 0; i < 10000; i++) rollup_compress2();
@@ -301,7 +303,7 @@ void
 CompressTests::stress_test(Compressor *compressor, Timestamp ts)
 {
     DataPointVector dps;
-    uint8_t page[4096];
+    uint8_t page[8192];
     int n;
 
     generate_data_points(dps, 5000, ts);
@@ -447,6 +449,114 @@ CompressTests::compress_v4_tests()
     log("compressor->size() == %u", compressor->size());
     CONFIRM(compressor->size() == 24);
     delete compressor;
+}
+
+void
+CompressTests::sample_data_tests()
+{
+    uint8_t buff[131072];
+    DataPointVector dps;
+    Compressor *compressor;
+    Timestamp ts = 1530576000000;
+    int cnt;
+
+    tt::g_tstamp_resolution_ms = true;
+
+    compressor = Compressor::create(4);
+    compressor->init(ts, buff, sizeof(buff));
+
+    // compress sample data
+    compressor->compress(1530634254000, 489);
+    compressor->pad();
+    compressor->compress(1530634255000, 1325);
+    compressor->pad();
+    compressor->compress(1530634256000, 1324);
+    compressor->pad();
+    compressor->compress(1530634257000, 940);
+    compressor->pad();
+
+    log("compressor->size() = %u", compressor->size());
+    CONFIRM(compressor->size() == 27);
+    compressor->uncompress(dps);
+    log("dps.size() = %u", dps.size());
+    CONFIRM(dps.size() == 4);
+
+    CONFIRM(dps[0].first == 1530634254000);
+    CONFIRM(dps[0].second == 489);
+    CONFIRM(dps[1].first == 1530634255000);
+    CONFIRM(dps[1].second == 1325);
+    CONFIRM(dps[2].first == 1530634256000);
+    CONFIRM(dps[2].second == 1324);
+    CONFIRM(dps[3].first == 1530634257000);
+    CONFIRM(dps[3].second == 940);
+
+    dps.clear();
+    compressor->recycle();
+    CONFIRM(compressor->is_empty());
+    CONFIRM(compressor->size() == 0);
+
+    // compress sample data
+    compressor->compress(1530634799000, 456);
+    compressor->compress(1530634800000, 1014);
+    compressor->compress(1530634801000, 1505);
+    compressor->compress(1530634802000, 1021);
+    compressor->compress(1530634803000, 754);
+    compressor->compress(1530634804000, 1510);
+    compressor->compress(1530634805000, 1256);
+    compressor->compress(1530634806000, 49);
+    compressor->compress(1530634807000, 1485);
+    compressor->compress(1530634808000, 459);
+    compressor->compress(1530634809000, 158);
+    compressor->compress(1530634810000, 698);
+    compressor->compress(1530634811000, 472);
+    compressor->compress(1530634812000, 180);
+    compressor->compress(1530634813000, 1436);
+    compressor->compress(1530634814000, 979);
+
+    log("compressor->size() = %u", compressor->size());
+    CONFIRM(compressor->size() == 54);
+    compressor->uncompress(dps);
+    log("dps.size() = %u", dps.size());
+    CONFIRM(dps.size() == 16);
+
+    CONFIRM(dps[0].first == 1530634799000);
+    CONFIRM(dps[0].second == 456);
+    CONFIRM(dps[1].first == 1530634800000);
+    CONFIRM(dps[1].second == 1014);
+    CONFIRM(dps[2].first == 1530634801000);
+    CONFIRM(dps[2].second == 1505);
+    CONFIRM(dps[3].first == 1530634802000);
+    CONFIRM(dps[3].second == 1021);
+    CONFIRM(dps[4].first == 1530634803000);
+    CONFIRM(dps[4].second == 754);
+    CONFIRM(dps[5].first == 1530634804000);
+    CONFIRM(dps[5].second == 1510);
+    CONFIRM(dps[6].first == 1530634805000);
+    CONFIRM(dps[6].second == 1256);
+    CONFIRM(dps[7].first == 1530634806000);
+    CONFIRM(dps[7].second == 49);
+    CONFIRM(dps[8].first == 1530634807000);
+    CONFIRM(dps[8].second == 1485);
+    CONFIRM(dps[9].first == 1530634808000);
+    CONFIRM(dps[9].second == 459);
+    CONFIRM(dps[10].first == 1530634809000);
+    CONFIRM(dps[10].second == 158);
+    CONFIRM(dps[11].first == 1530634810000);
+    CONFIRM(dps[11].second == 698);
+    CONFIRM(dps[12].first == 1530634811000);
+    CONFIRM(dps[12].second == 472);
+    CONFIRM(dps[13].first == 1530634812000);
+    CONFIRM(dps[13].second == 180);
+    CONFIRM(dps[14].first == 1530634813000);
+    CONFIRM(dps[14].second == 1436);
+    CONFIRM(dps[15].first == 1530634814000);
+    CONFIRM(dps[15].second == 979);
+
+    //for (int i = 0; i < compressor->size(); i++)
+        //log("buff[%d] = %u (%o)", i, buff[i], buff[i]);
+
+    delete compressor;
+    m_stats.add_passed(1);
 }
 
 void

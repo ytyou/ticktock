@@ -42,6 +42,7 @@ private:
     void stress_test(Compressor *compressor, Timestamp ts);
     void best_scenario(bool ms);
     void compress_v4_tests();
+    void sample_data_tests();
     void rollup_compress1();
     void rollup_compress2();
     void rollup_compress3();
