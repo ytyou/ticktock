@@ -96,6 +96,16 @@ class DataPoint(object):
     def set_value(self, value):
         self._value = value
 
+    def to_response(self):
+        j = {"metric":self._metric}
+        if self._tags:
+            j["tags"] = self._tags
+        else:
+            j["tags"] = {}
+        j["aggregateTags"] = []
+        j["dps"] = {str(self._timestamp):self._value}
+        return j
+
     def to_json(self):
         j = {"metric":self._metric,"timestamp":self._timestamp,"value":self._value}
         if self._tags:
@@ -163,6 +173,12 @@ class DataPoints(object):
     def update_values(self):
         for dp in self._dps:
             dp.set_value(dp.get_value() + random.randint(1,10))
+
+    def to_response(self):
+        arr = []
+        for dp in self._dps:
+            arr.append(dp.to_response())
+        return arr
 
     def to_json(self):
         arr = []
@@ -1994,29 +2010,34 @@ class Long_Running_Tests(Test):
     def __call__(self):
 
         config = TickTockConfig(self._options)
-        config.add_entry("append.log.enabled", "true");
-        config.add_entry("append.log.rotation.sec", 300);
-        config.add_entry("http.responders.per.listener", 2);
+        config.add_entry("tsdb.timestamp.resolution", "millisecond");
         config()
 
         self.start_tt()
+        start = round(time.time() * 1000) - 1000000
 
-        dps = DataPoints(self._prefix, self._options.start, interval_ms=128, metric_count=64, metric_cardinality=4, tag_cardinality=4)
+        for i in range(10):
+            for j in range(10000):
 
-        freq_ms = 5000
+                dps = DataPoints(self._prefix, start, interval_ms=1, metric_count=1, metric_cardinality=1, tag_cardinality=1)
 
-        for i in range(1000):
+                self.send_data_to_ticktock(dps)
+                query = Query(metric=self.metric_name(0), start=start, end=(start+2))
+                response = self.query_ticktock(query)
 
-            self.send_data_to_ticktock(dps)
+                if self.verify_json(dps.to_response(), response):
+                    self._passed = self._passed + 1
+                else:
+                    self._failed = self._failed + 1
+                    print("data=" + str(dps.to_response()))
+                    print("response=" + str(response))
 
-            # update dps
-            for dp in dps.get_dps():
-                dp.set_timestamp(dp.get_timestamp() + freq_ms)
-                dp.set_value(random.uniform(0,100))
+                start = start + 3
 
-            time.sleep(freq_ms / 1000)
-
-        self._passed = self._passed + 1
+            if self._failed == 0:
+                print("Iteration " + str(i+1) + "/10: ALL SUCCESS")
+            else:
+                print("Iteration " + str(i+1) + "/10: " + str(self._failed) + " FAILED")
 
         # stop tt
         self.stop_tt()
@@ -2093,8 +2114,7 @@ def main(argv):
         tests.append(Check_Point_Tests(options))
         tests.append(Query_Tests(options, metric_count=16, metric_cardinality=4, tag_cardinality=4))
         tests.append(Query_With_Rollup(options))
-
-        #tests.append(Long_Running_Tests(options))
+        tests.append(Long_Running_Tests(options))
 
         #tests.append(Backfill_Tests(options))
         #tests.append(Replication_Tests(options))
