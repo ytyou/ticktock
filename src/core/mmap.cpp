@@ -674,6 +674,8 @@ HeaderFile::open(bool for_read)
     bool is_new = ! exists();
     if (is_new && for_read) return;
 
+    m_last_access = ts_now_sec();
+
     if (is_new)
     {
         ASSERT(m_page_count > 0);
@@ -783,6 +785,7 @@ HeaderFile::update_next(HeaderIndex prev_header_idx, FileIndex this_file_idx, He
     ASSERT(header != nullptr);
     header->m_next_file = this_file_idx;
     header->m_next_header = this_header_idx;
+    m_last_access = ts_now_sec();
 }
 
 bool

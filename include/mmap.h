@@ -131,6 +131,7 @@ public:
     inline FileIndex get_id() const { return m_id; }
     bool is_full();
     void update_next(HeaderIndex prev_header_idx, FileIndex this_file_idx, HeaderIndex this_header_idx);
+    inline Timestamp get_last_access() const { return m_last_access; }
 
     static HeaderFile *restore(const std::string& file_name);
 
@@ -140,6 +141,7 @@ public:
 private:
     HeaderFile(FileIndex id, const std::string& file_name);
 
+    Timestamp m_last_access;
     PageCount m_page_count;
     FileIndex m_id;
 };
