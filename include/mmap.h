@@ -120,6 +120,7 @@ public:
 
     void init_tsdb_header(PageSize page_size);
     void open(bool for_read) override;
+    bool close_if_idle(Timestamp threshold_sec, Timestamp now_sec);
 
     PageSize get_page_size();
     PageCount get_page_index();
@@ -142,6 +143,7 @@ private:
 
     PageCount m_page_count;
     FileIndex m_id;
+    Timestamp m_last_access;
 };
 
 
@@ -154,6 +156,7 @@ public:
     void open(bool read_only) override;
     void close() override;
     void close(int rw);
+    bool close_if_idle(Timestamp threshold_sec, Timestamp now_sec);
     void flush(bool sync) override;
 
     PageCount append(const void *page, PageSize size);
@@ -260,7 +263,7 @@ public:
 
     void open(bool for_read);
     void close();
-    bool close_if_idle(Timestamp threshold, Timestamp now);
+    bool close_if_idle(Timestamp threshold_sec, Timestamp now_sec);
     bool is_open(bool for_read) const;
     inline int64_t size() const { return m_size; }
     inline Timestamp get_begin_timestamp() const { return m_begin; }

@@ -1001,40 +1001,13 @@ Metric::rotate(Timestamp now_sec, Timestamp thrashing_threshold)
     {
         FileIndex id = data_file->get_id();
         HeaderFile *header_file = m_header_files[id];
+        ASSERT(header_file != nullptr);
+        bool data_file_closed = data_file->close_if_idle(thrashing_threshold, now_sec);
 
-        if (data_file->is_open(true))
-        {
-            Timestamp last_read = data_file->get_last_read();
-            if (((int64_t)now_sec - (int64_t)last_read) > (int64_t)thrashing_threshold)
-            {
-                data_file->close(1);    // close read
-                header_file->close();
-            }
-            else
-            {
-                all_closed = false;
-                Logger::debug("data file %u last read at %" PRIu64 "; now is %" PRIu64,
-                    data_file->get_id(), last_read, now_sec);
-            }
-        }
-
-        if (data_file->is_open(false))
-        {
-            Timestamp last_write = data_file->get_last_write();
-            if (((int64_t)now_sec - (int64_t)last_write) > (int64_t)thrashing_threshold)
-            {
-                data_file->close(2);    // close for write
-                header_file->close();
-            }
-            else
-            {
-                all_closed = false;
-                Logger::debug("data file %u last write at %" PRIu64 "; now is %" PRIu64,
-                    data_file->get_id(), last_write, now_sec);
-            }
-        }
+        if (data_file_closed)
+            all_closed = header_file->close_if_idle(thrashing_threshold, now_sec) && all_closed;
         else
-            header_file->close();
+            all_closed = false;
     }
 
 /*

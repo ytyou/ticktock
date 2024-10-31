@@ -674,6 +674,8 @@ HeaderFile::open(bool for_read)
     bool is_new = ! exists();
     if (is_new && for_read) return;
 
+    m_last_access = ts_now_sec();   // to prevent it from being closed
+
     if (is_new)
     {
         ASSERT(m_page_count > 0);
@@ -695,6 +697,23 @@ HeaderFile::open(bool for_read)
         Logger::info("opening new %s for %s, page-count=%u", m_name.c_str(), for_read?"read":"write", m_page_count);
     else
         Logger::info("opening %s for %s", m_name.c_str(), for_read?"read":"write");
+}
+
+bool
+HeaderFile::close_if_idle(Timestamp threshold_sec, Timestamp now_sec)
+{
+    if (threshold_sec < (now_sec - m_last_access))
+    {
+        close();
+        return true;
+    }
+    else
+    {
+        Logger::debug("header file %u last access at %" PRIu64 "; now is %" PRIu64,
+            get_id(), m_last_access, now_sec);
+    }
+
+    return false;
 }
 
 PageSize
@@ -764,6 +783,7 @@ HeaderFile::get_tsdb_header()
     ASSERT(is_open(true));
     void *pages = get_pages();
     ASSERT(pages != nullptr);
+    m_last_access = ts_now_sec();   // to prevent it from being closed
     return (struct tsdb_header*)pages;
 }
 
@@ -783,6 +803,7 @@ HeaderFile::update_next(HeaderIndex prev_header_idx, FileIndex this_file_idx, He
     ASSERT(header != nullptr);
     header->m_next_file = this_file_idx;
     header->m_next_header = this_header_idx;
+    m_last_access = ts_now_sec();   // to prevent it from being closed
 }
 
 bool
@@ -928,6 +949,38 @@ DataFile::close(int rw)
         m_file = nullptr;
         Logger::info("closing %s for write", m_name.c_str());
     }
+}
+
+bool
+DataFile::close_if_idle(Timestamp threshold_sec, Timestamp now_sec)
+{
+    bool closed = true;
+
+    if (is_open(true))  // open for read?
+    {
+        if (threshold_sec < (now_sec - m_last_read))
+            close(1);   // close for read
+        else
+        {
+            closed = false;
+            Logger::debug("data file %u last read at %" PRIu64 "; now is %" PRIu64,
+                get_id(), m_last_read, now_sec);
+        }
+    }
+
+    if (is_open(false)) // open for write?
+    {
+        if (threshold_sec < (now_sec - m_last_write))
+            close(2);   // close for write
+        else
+        {
+            closed = false;
+            Logger::debug("data file %u last write at %" PRIu64 "; now is %" PRIu64,
+                get_id(), m_last_write, now_sec);
+        }
+    }
+
+    return closed;
 }
 
 bool
@@ -1455,14 +1508,19 @@ RollupDataFile::close()
 }
 
 bool
-RollupDataFile::close_if_idle(Timestamp threshold, Timestamp now)
+RollupDataFile::close_if_idle(Timestamp threshold_sec, Timestamp now_sec)
 {
     std::lock_guard<std::mutex> guard(m_lock);
 
-    if ((m_ref_count <= 0) && (threshold < (now - m_last_access)))
+    if ((m_ref_count <= 0) && (threshold_sec < (now_sec - m_last_access)))
     {
         close();
         return true;
+    }
+    else
+    {
+        Logger::debug("rollup data file %s last access at %" PRIu64 "; now is %" PRIu64,
+            m_name.c_str(), m_last_access, now_sec);
     }
 
     return false;
