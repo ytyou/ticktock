@@ -21,6 +21,10 @@ fi
 
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
+# change cwd so that 'data' directoy will be created under /tmp
+cd /tmp
+
+# run insect
 $DIR/../bin/inspect -q -d $DATA_DIR
 
 exit 0
