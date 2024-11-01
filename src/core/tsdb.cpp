@@ -1200,7 +1200,7 @@ Tsdb::adjust_page_count()
     if (count >= 16)    // min page count
         return (PageCount)count;
 
-    // default staring page-count: 16384
+    // default starting page-count: 16384
     if (m_tsdbs.empty())
         return (PageCount)16384;
 
@@ -1215,12 +1215,14 @@ Tsdb::adjust_page_count()
         cnt++;
     }
 
-    float data_file_cnt = sum / cnt;
+    float avg_data_file_cnt = sum / cnt;
     PageCount last_cnt = m_tsdbs.back()->m_page_count;
 
-    if ((data_file_cnt <= 1.0) && (32 < last_cnt))
+    Logger::debug("adjust_page_count: avg_data_file_cnt=%f, last_cnt=%u", avg_data_file_cnt, last_cnt);
+
+    if ((avg_data_file_cnt <= 1.0) && (32 < last_cnt))
         last_cnt /= 2;
-    else if (10.0 <= data_file_cnt)
+    else if (10.0 <= avg_data_file_cnt)
     {
         if (last_cnt >= 32768)
             last_cnt = UINT16_MAX;
