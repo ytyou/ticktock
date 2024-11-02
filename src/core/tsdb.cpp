@@ -3099,7 +3099,7 @@ Tsdb::rotate(TaskData& data)
         for (auto metric: tsdb->m_metrics)
         {
             if (metric == nullptr) continue;
-            all_closed = all_closed && metric->rotate(now_sec, thrashing_threshold);
+            all_closed = metric->rotate(now_sec, thrashing_threshold) && all_closed;
         }
 
         tsdb->flush(true);
