@@ -106,7 +106,10 @@ TaskScheduler::init(std::string id, size_t thread_count, size_t queue_size)
 TaskScheduler::~TaskScheduler()
 {
     if (m_threads != nullptr)
+    {
         delete[] m_threads;
+        m_threads = nullptr;
+    }
 
     if (m_workers != nullptr)
     {

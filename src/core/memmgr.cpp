@@ -123,8 +123,8 @@ MemoryManager::free_network_buffer(char* buff)
     }
 
     ASSERT(((long)buff % g_page_size) == 0);
-    ASSERT(((long)m_network_buffer_free_list % g_page_size) == 0);
     std::lock_guard<std::mutex> guard(m_network_lock);
+    ASSERT(((long)m_network_buffer_free_list % g_page_size) == 0);
     *((char**)buff) = m_network_buffer_free_list;
     m_network_buffer_free_list = buff;
     m_free[RecyclableType::RT_COUNT]++;

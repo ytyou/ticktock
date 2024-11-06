@@ -18,7 +18,7 @@
 
 #pragma once
 
-#include <atomic>
+#include <mutex>
 #include <random>
 #include <thread>
 #include "stop.h"
@@ -39,6 +39,9 @@ public:
         m_next_run(ts_now_sec() + random(0,freq_sec))
     {
     }
+
+    TimedTask(const TimedTask& copy);               // copy constructor
+    TimedTask& operator=(const TimedTask& copy);    // assignment constructor
 
 friend class Timer;
 private:
@@ -67,6 +70,7 @@ private:
 
     int m_granularity_sec;
     TaskScheduler m_scheduler;
+    std::mutex m_lock;  // lock for m_tasks
     std::vector<TimedTask> m_tasks;
     std::thread m_thread;
 

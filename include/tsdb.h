@@ -171,8 +171,9 @@ private:
     //default_contention_free_shared_mutex m_lock2;
     //tsl::robin_map<const char*,Measurement*,hash_func,eq_func> m_map2;
 
-    std::atomic<TimeSeries*> m_ts_head;
-    int16_t m_tag_count;    // -1: uninitialized; -2: inconsistent;
+    std::mutex m_ts_lock;   // to protect m_ts_head
+    TimeSeries *m_ts_head;
+    std::atomic<int16_t> m_tag_count;   // -1: uninitialized; -2: inconsistent;
 
     MetricId m_id;
     static std::atomic<MetricId> m_next_id;
@@ -415,7 +416,7 @@ private:
     // This time range will use the time unit specified in the config.
     TimeRange m_time_range;
     std::mutex m_lock;
-    int m_ref_count;        // prevent compaction when in use
+    std::atomic<int> m_ref_count;   // prevent compaction/rollup while in use
 
     IndexFile m_index_file;
     //std::vector<HeaderFile*> m_header_files;

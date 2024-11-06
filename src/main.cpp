@@ -304,6 +304,8 @@ initialize()
 static void
 shutdown()
 {
+    g_shutdown_requested = true;
+
     LD_STATS("Before shutdown");
     if (! g_quiet) printf("Start shutdown process...\n");
     Logger::info("Start shutdown process...");

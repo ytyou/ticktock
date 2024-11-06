@@ -54,6 +54,7 @@ Timer::stop()
 {
     shutdown();
     m_scheduler.shutdown();
+    m_scheduler.wait(0);
     if (m_thread.joinable()) m_thread.join();
 }
 
@@ -66,8 +67,16 @@ Timer::run()
     while (! is_shutdown_requested())
     {
         long now = ts_now_sec();
+        std::vector<TimedTask> tasks;
 
-        for (TimedTask& task: m_tasks)
+        // collect all tasks to be performed
+        {
+            std::lock_guard<std::mutex> guard(m_lock);
+            tasks.assign(m_tasks.begin(), m_tasks.end());
+            ASSERT(m_tasks.size() == tasks.size());
+        }
+
+        for (TimedTask& task: tasks)
         {
             if (task.m_next_run <= now)
             {
@@ -89,7 +98,27 @@ void
 Timer::add_task(Task& task, int freq_sec, const char *name)
 {
     TimedTask timed(task, freq_sec, name);
+    std::lock_guard<std::mutex> guard(m_lock);
     m_tasks.push_back(timed);
+}
+
+
+TimedTask::TimedTask(const TimedTask& copy) :
+    m_freq_sec(copy.m_freq_sec),
+    m_task(copy.m_task),
+    m_next_run(copy.m_next_run),
+    m_name(copy.m_name)
+{
+}
+
+TimedTask&
+TimedTask::operator=(const TimedTask& copy)
+{
+    m_freq_sec = copy.m_freq_sec;
+    m_task = copy.m_task;
+    m_next_run = copy.m_next_run;
+    m_name = copy.m_name;
+    return *this;
 }
 
 

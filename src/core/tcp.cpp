@@ -1375,12 +1375,20 @@ void
 TcpListener::close_conn(int fd)
 {
     auto search = m_conn_map.find(fd);
+    bool pending_task = false;
+    bool deregister = true;
 
     if (search != m_conn_map.end())
     {
         TcpConnection *conn = search->second;
+        ASSERT(conn != nullptr);
+
+        deregister = ((conn->state & TCS_REGISTERED) != 0);
 
         // do not close the connection if there are pending tasks
+        conn->state |= TCS_CLOSED;
+        conn->state &= ~TCS_REGISTERED;
+
         if (conn->pending_tasks <= 0)
         {
             Logger::debug("close_conn: conn=%p fd=%d", conn, conn->fd);
@@ -1389,14 +1397,11 @@ TcpListener::close_conn(int fd)
             MemoryManager::free_recyclable(conn);
         }
         else
-        {
-            conn->state |= TCS_CLOSED;
-            conn->state &= ~TCS_REGISTERED;
-        }
+            pending_task = true;
     }
 
-    deregister_with_epoll(fd);
-    close(fd);
+    if (deregister) deregister_with_epoll(fd);
+    if (! pending_task) close(fd);
 }
 
 // accept just one connection at a time

@@ -340,7 +340,6 @@ Mapping::Mapping(MetricId id, const char *name) :
     ASSERT(name != nullptr);
     m_metric = STRDUP(name);
     ASSERT(m_metric != nullptr);
-    ASSERT(m_ts_head.load() == nullptr);
 
     if (m_id >= m_next_id.load())
         m_next_id = m_id + 1;
@@ -376,7 +375,7 @@ Mapping::flush()
     //ReadLock guard(m_lock);
     //std::lock_guard<std::mutex> guard(m_lock);
 
-    for (TimeSeries *ts = m_ts_head.load(); ts != nullptr; ts = ts->m_next)
+    for (TimeSeries *ts = get_ts_head(); ts != nullptr; ts = ts->m_next)
     {
         Logger::trace("Flushing ts: %u", ts->get_id());
         ts->flush(m_id);
@@ -386,7 +385,7 @@ Mapping::flush()
 void
 Mapping::close()
 {
-    for (TimeSeries *ts = m_ts_head.load(); ts != nullptr; ts = ts->m_next)
+    for (TimeSeries *ts = get_ts_head(); ts != nullptr; ts = ts->m_next)
     {
         Logger::trace("Closing ts: %u", ts->get_id());
         ts->close(m_id);
@@ -396,7 +395,8 @@ Mapping::close()
 TimeSeries *
 Mapping::get_ts_head()
 {
-    return m_ts_head.load();
+    std::lock_guard<std::mutex> guard(m_ts_lock);
+    return m_ts_head;
 }
 
 TimeSeries *
@@ -588,13 +588,15 @@ void
 Mapping::add_ts(TimeSeries *ts)
 {
     ASSERT(ts != nullptr);
-    ts->m_next = m_ts_head.exchange(ts);
+    std::lock_guard<std::mutex> guard(m_ts_lock);
+    ts->m_next = m_ts_head;
+    m_ts_head = ts;
 }
 
 void
 Mapping::get_all_ts(std::vector<TimeSeries*>& tsv)
 {
-    for (TimeSeries *ts = m_ts_head.load(); ts != nullptr; ts = ts->m_next)
+    for (TimeSeries *ts = get_ts_head(); ts != nullptr; ts = ts->m_next)
         tsv.push_back(ts);
 }
 
@@ -671,7 +673,7 @@ Mapping::query_for_ts(Tag *tags, std::unordered_set<TimeSeries*>& tsv, const cha
 {
     int tag_count = TagOwner::get_tag_count(tags, true);
 
-    if ((key != nullptr) && (tag_count == m_tag_count))
+    if ((key != nullptr) && (tag_count == m_tag_count.load()))
     {
         PThread_ReadLock guard(&m_lock);
         //std::lock_guard<std::mutex> guard(m_lock);
@@ -709,7 +711,7 @@ Mapping::query_for_ts(Tag *tags, std::unordered_set<TimeSeries*>& tsv, const cha
         if (tags == nullptr)
         {
             // matches ALL
-            for (TimeSeries *ts = m_ts_head.load(); ts != nullptr; ts = ts->m_next)
+            for (TimeSeries *ts = get_ts_head(); ts != nullptr; ts = ts->m_next)
                 tsv.insert(ts);
         }
         else
@@ -719,7 +721,7 @@ Mapping::query_for_ts(Tag *tags, std::unordered_set<TimeSeries*>& tsv, const cha
             matcher->init(tags);
             int tag_count = TagOwner::get_tag_count(tags, false);
 
-            for (TimeSeries *ts = m_ts_head.load(); ts != nullptr; ts = ts->m_next)
+            for (TimeSeries *ts = get_ts_head(); ts != nullptr; ts = ts->m_next)
             {
                 Tag_v2& tags_v2 = ts->get_v2_tags();
 
@@ -799,8 +801,8 @@ Mapping::restore_measurement(std::string& measurement, std::string& tags, std::v
 void
 Mapping::set_tag_count(int tag_count)
 {
-    if (tag_count != m_tag_count)
-        m_tag_count = (m_tag_count == -1) ? tag_count : -2;
+    if (tag_count != m_tag_count.load())
+        m_tag_count = (m_tag_count.load() == -1) ? tag_count : -2;
 }
 
 int
@@ -1806,19 +1808,21 @@ Tsdb::shutdown()
 
     for (Tsdb *tsdb: m_tsdbs)
     {
-        //WriteLock guard(tsdb->m_lock);
-        std::lock_guard<std::mutex> guard(tsdb->m_lock);
-        tsdb->flush(true);
-        std::string dir = get_tsdb_dir_name(tsdb->m_time_range);
-        tsdb->write_config(dir);
-        //for (DataFile *file: tsdb->m_data_files) file->close();
-        //for (HeaderFile *file: tsdb->m_header_files) file->close();
-        for (auto metric: tsdb->m_metrics)
         {
-            if (metric != nullptr)
-                metric->close();
+            //WriteLock guard(tsdb->m_lock);
+            std::lock_guard<std::mutex> guard(tsdb->m_lock);
+            tsdb->flush(true);
+            std::string dir = get_tsdb_dir_name(tsdb->m_time_range);
+            tsdb->write_config(dir);
+            //for (DataFile *file: tsdb->m_data_files) file->close();
+            //for (HeaderFile *file: tsdb->m_header_files) file->close();
+            for (auto metric: tsdb->m_metrics)
+            {
+                if (metric != nullptr)
+                    metric->close();
+            }
+            tsdb->m_index_file.close();
         }
-        tsdb->m_index_file.close();
 #ifdef _DEBUG
         delete tsdb;
 #endif
@@ -1834,7 +1838,7 @@ Tsdb::shutdown()
 void
 Tsdb::dec_ref_count()
 {
-    std::lock_guard<std::mutex> guard(m_lock);
+    //std::lock_guard<std::mutex> guard(m_lock);
     m_ref_count--;
     ASSERT(m_ref_count >= 0);
 }
@@ -1849,7 +1853,7 @@ Tsdb::dec_ref_count_no_lock()
 void
 Tsdb::inc_ref_count()
 {
-    std::lock_guard<std::mutex> guard(m_lock);
+    //std::lock_guard<std::mutex> guard(m_lock);
     m_ref_count++;
     ASSERT(m_ref_count > 0);
 }
@@ -3248,17 +3252,17 @@ Tsdb::compact(TaskData& data)
             //if ((*it)->m_mode & (TSDB_MODE_COMPACTED | TSDB_MODE_READ_WRITE))
             if ((*it)->m_mode & TSDB_MODE_COMPACTED)
             {
-                Logger::debug("[compact] %T is already compacted, ref-count = %d", (*it), (*it)->m_ref_count);
+                Logger::debug("[compact] %T is already compacted, ref-count = %d", (*it), (*it)->m_ref_count.load());
                 continue;
             }
             else if (((*it)->m_mode & TSDB_MODE_READ_WRITE) && (data.integer == 0))
             {
-                Logger::debug("[compact] %T is still being accessed, ref-count = %d", (*it), (*it)->m_ref_count);
+                Logger::debug("[compact] %T is still being accessed, ref-count = %d", (*it), (*it)->m_ref_count.load());
                 continue;
             }
             else if ((*it)->m_ref_count > 0)
             {
-                Logger::debug("[compact] ref-count of %T is not zero: %d", (*it), (*it)->m_ref_count);
+                Logger::debug("[compact] ref-count of %T is not zero: %d", (*it), (*it)->m_ref_count.load());
                 continue;
             }
 
@@ -3354,7 +3358,7 @@ Tsdb::compact(TaskData& data)
         }
         else
         {
-            Logger::debug("[compact] Tsdb busy, not compacting. ref = %d", tsdb->m_ref_count);
+            Logger::debug("[compact] Tsdb busy, not compacting. ref = %d", tsdb->m_ref_count.load());
         }
     }
     else
@@ -3471,17 +3475,17 @@ Tsdb::rollup(TaskData& data)
 
             if ((*it)->is_rolled_up())
             {
-                Logger::info("[rollup] %T is already rolled up, ref-count = %d", (*it), (*it)->m_ref_count);
+                Logger::info("[rollup] %T is already rolled up, ref-count = %d", (*it), (*it)->m_ref_count.load());
                 continue;
             }
             else if (((*it)->m_mode & TSDB_MODE_READ_WRITE) && (data.integer == 0))
             {
-                Logger::info("[rollup] %T is still being accessed, ref-count = %d", (*it), (*it)->m_ref_count);
+                Logger::info("[rollup] %T is still being accessed, ref-count = %d", (*it), (*it)->m_ref_count.load());
                 break;
             }
             else if ((*it)->m_ref_count > 0)
             {
-                Logger::info("[rollup] ref-count of %T is not zero: %d", (*it), (*it)->m_ref_count);
+                Logger::info("[rollup] ref-count of %T is not zero: %d", (*it), (*it)->m_ref_count.load());
                 break;
             }
 
