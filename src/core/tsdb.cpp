@@ -3058,6 +3058,21 @@ Tsdb::unload_no_lock()
     m_mode &= ~TSDB_MODE_READ_WRITE;
 }
 
+void
+Tsdb::unload_if_idle(Timestamp threshold_sec, Timestamp now_sec)
+{
+    if (m_index_file.close_if_idle(threshold_sec, now_sec))
+    {
+        m_mode &= ~TSDB_MODE_READ_WRITE;
+
+        for (auto metric: m_metrics)
+        {
+            if (metric != nullptr)
+                metric->close();
+        }
+    }
+}
+
 bool
 Tsdb::rotate(TaskData& data)
 {
@@ -3130,7 +3145,7 @@ Tsdb::rotate(TaskData& data)
         if (all_closed)
         {
             Logger::info("[rotate] Archiving %T", tsdb);
-            tsdb->unload_no_lock();
+            tsdb->unload_if_idle(thrashing_threshold, now_sec);
         }
 
         tsdb->dec_ref_count_no_lock();

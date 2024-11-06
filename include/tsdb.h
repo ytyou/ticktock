@@ -380,6 +380,7 @@ private:
     virtual ~Tsdb();
     void unload();
     void unload_no_lock();
+    void unload_if_idle(Timestamp threshold_sec, Timestamp now_sec);
     uint32_t mode_of() const;
 
     Metric *get_metric(MetricId mid);

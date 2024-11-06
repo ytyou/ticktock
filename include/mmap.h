@@ -47,7 +47,7 @@ public:
     virtual void open(bool for_read) = 0;
     virtual void close();
     virtual void flush(bool sync);
-    void ensure_open(bool for_read);
+    virtual void ensure_open(bool for_read);
 
     void dont_need(void *addr, size_t length);
 
@@ -94,6 +94,8 @@ class IndexFile : public MmapFile
 public:
     IndexFile(const std::string& file_name);
     void open(bool for_read) override;
+    bool close_if_idle(Timestamp threshold_sec, Timestamp now_sec);
+    void ensure_open(bool for_read) override;
 
     bool set_indices(TimeSeriesId id, FileIndex file_index, HeaderIndex page_index);
     bool set_indices2(TimeSeriesId id, FileIndex file_index, HeaderIndex page_index);
@@ -109,6 +111,8 @@ public:
 
 private:
     bool expand(int64_t new_len);
+
+    Timestamp m_last_access;
 };
 
 
