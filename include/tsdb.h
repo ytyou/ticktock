@@ -197,18 +197,12 @@ public:
     static std::string get_metric_dir(const std::string& tsdb_dir, MetricId id);
     std::string get_data_file_name(std::string& tsdb_dir, FileIndex idx);
     std::string get_header_file_name(std::string& tsdb_dir, FileIndex idx);
-
-    //DataFile *get_last_data() { return m_data_files.back(); };  // call get_last_header() first
-    //HeaderFile *get_last_header(std::string& tsdb_dir, PageCount page_cnt, PageSize page_size);
     void get_last_files(std::string& tsdb_dir, PageCount page_cnt, PageSize page_size, HeaderFile* &header_file, DataFile* &data_file);
 
     DataFile *get_data_file(FileIndex file_idx);
     HeaderFile *get_header_file(FileIndex file_idx);
     HeaderFile *get_header_file_no_lock(FileIndex file_idx);
     int get_data_file_cnt();
-
-    //RollupDataFile *get_rollup_data_file() { return &m_rollup_data_file; }
-    //RollupHeaderFile *get_rollup_header_file() { return &m_rollup_header_file; }
 
     //void add_rollup_point(TimeSeriesId tid, uint32_t cnt, double min, double max, double sum);
     void get_rollup_point(RollupIndex header_idx, int entry_idx, int entries, uint32_t& cnt, double& min, double& max, double& sum);
@@ -218,8 +212,6 @@ public:
     int get_data_page_count();
     int get_open_data_file_count(bool for_read);
     int get_open_header_file_count(bool for_read);
-
-    //std::mutex m_rollup_lock;
 
     friend class Tsdb;
 
