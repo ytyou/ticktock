@@ -338,6 +338,30 @@ IndexFile::open(bool for_read)
 }
 
 bool
+IndexFile::close_if_idle(Timestamp threshold_sec, Timestamp now_sec)
+{
+    if (threshold_sec < (now_sec - m_last_access))
+    {
+        close();
+        return true;
+    }
+    else
+    {
+        Logger::debug("index file %s last access at %" PRIu64 "; now is %" PRIu64,
+            m_name.c_str(), m_last_access, now_sec);
+    }
+
+    return false;
+}
+
+void
+IndexFile::ensure_open(bool for_read)
+{
+    m_last_access = ts_now_sec();   // to prevent it from being closed
+    MmapFile::ensure_open(for_read);
+}
+
+bool
 IndexFile::expand(int64_t new_len)
 {
     size_t old_len = get_length();
@@ -871,6 +895,8 @@ DataFile::open(bool for_read)
         {
             MmapFile::open_existing(true, false);
         }
+
+        m_last_read = ts_now_sec();
         Logger::info("opening %s for read", m_name.c_str());
     }
     else
@@ -910,6 +936,7 @@ DataFile::open(bool for_read)
             m_file = fdopen(fd, "ab");
             ASSERT(m_file != nullptr);
             ASSERT(m_page_index != TT_INVALID_PAGE_INDEX);
+            m_last_write = ts_now_sec();
         }
     }
 }
