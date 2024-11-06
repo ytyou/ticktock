@@ -246,6 +246,8 @@ MmapFile::resize(int64_t length)
 void
 MmapFile::close()
 {
+    std::lock_guard<std::mutex> guard(m_lock);
+
     if (m_pages != nullptr)
     {
         if (! m_read_only) flush(true);
@@ -368,6 +370,7 @@ IndexFile::expand(int64_t new_len)
 bool
 IndexFile::set_indices(TimeSeriesId id, FileIndex file_index, HeaderIndex header_index)
 {
+    std::lock_guard<std::mutex> guard(m_lock);
     void *pages = get_pages();
     ASSERT(pages != nullptr);
     ASSERT(! is_read_only());
@@ -394,6 +397,7 @@ IndexFile::set_indices(TimeSeriesId id, FileIndex file_index, HeaderIndex header
 bool
 IndexFile::set_indices2(TimeSeriesId id, FileIndex file_index, HeaderIndex header_index)
 {
+    std::lock_guard<std::mutex> guard(m_lock);
     void *pages = get_pages();
     ASSERT(pages != nullptr);
     ASSERT(! is_read_only());
@@ -420,6 +424,7 @@ IndexFile::set_indices2(TimeSeriesId id, FileIndex file_index, HeaderIndex heade
 void
 IndexFile::get_indices(TimeSeriesId id, FileIndex& file_index, HeaderIndex& header_index)
 {
+    std::lock_guard<std::mutex> guard(m_lock);
     void *pages = get_pages();
 
     size_t idx = (id+1) * TT_INDEX_SIZE;
@@ -442,6 +447,7 @@ IndexFile::get_indices(TimeSeriesId id, FileIndex& file_index, HeaderIndex& head
 void
 IndexFile::get_indices2(TimeSeriesId id, FileIndex& file_index, HeaderIndex& header_index)
 {
+    std::lock_guard<std::mutex> guard(m_lock);
     void *pages = get_pages();
 
     size_t idx = (id+1) * TT_INDEX_SIZE;
@@ -510,6 +516,7 @@ IndexFile::get_rollup_index(TimeSeriesId id)
 bool
 IndexFile::get_out_of_order(TimeSeriesId id)
 {
+    std::lock_guard<std::mutex> guard(m_lock);
     void *pages = get_pages();
 
     size_t idx = (id+1) * TT_INDEX_SIZE;
@@ -530,6 +537,7 @@ IndexFile::get_out_of_order(TimeSeriesId id)
 void
 IndexFile::set_out_of_order(TimeSeriesId id, bool ooo)
 {
+    std::lock_guard<std::mutex> guard(m_lock);
     void *pages = get_pages();
     ASSERT(pages != nullptr);
     ASSERT(! is_read_only());
@@ -558,6 +566,7 @@ IndexFile::set_out_of_order(TimeSeriesId id, bool ooo)
 bool
 IndexFile::get_out_of_order2(TimeSeriesId id)
 {
+    std::lock_guard<std::mutex> guard(m_lock);
     void *pages = get_pages();
 
     size_t idx = (id+1) * TT_INDEX_SIZE;
@@ -579,6 +588,7 @@ IndexFile::get_out_of_order2(TimeSeriesId id)
 void
 IndexFile::set_out_of_order2(TimeSeriesId id, bool ooo)
 {
+    std::lock_guard<std::mutex> guard(m_lock);
     void *pages = get_pages();
     ASSERT(pages != nullptr);
     ASSERT(! is_read_only());
@@ -744,20 +754,6 @@ HeaderFile::get_page_index()
     return index;
 }
 
-int
-HeaderFile::get_compressor_version()
-{
-    int version;
-    struct tsdb_header *header = get_tsdb_header();
-
-    if (header != nullptr)
-        version = header->get_compressor_version();
-    else
-        version = Config::inst()->get_int(CFG_TSDB_COMPRESSOR_VERSION, CFG_TSDB_COMPRESSOR_VERSION_DEF);
-
-    return version;
-}
-
 HeaderIndex
 HeaderFile::new_header_index(Tsdb *tsdb)
 {
@@ -913,6 +909,7 @@ DataFile::open(bool for_read)
 
             m_file = fdopen(fd, "ab");
             ASSERT(m_file != nullptr);
+            ASSERT(m_page_index != TT_INVALID_PAGE_INDEX);
         }
     }
 }
@@ -1000,6 +997,7 @@ DataFile::append(const void *page, PageSize size)
 
     PageSize sum = m_offset + size;
     PageIndex idx = m_page_index;
+    ASSERT(idx != TT_INVALID_PAGE_INDEX);
 
     if ((sum < m_page_size) && ((m_page_size - sum) < 16))
     {

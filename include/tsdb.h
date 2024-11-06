@@ -198,11 +198,13 @@ public:
     std::string get_data_file_name(std::string& tsdb_dir, FileIndex idx);
     std::string get_header_file_name(std::string& tsdb_dir, FileIndex idx);
 
-    DataFile *get_last_data() { return m_data_files.back(); };  // call get_last_header() first
-    HeaderFile *get_last_header(std::string& tsdb_dir, PageCount page_cnt, PageSize page_size);
+    //DataFile *get_last_data() { return m_data_files.back(); };  // call get_last_header() first
+    //HeaderFile *get_last_header(std::string& tsdb_dir, PageCount page_cnt, PageSize page_size);
+    void get_last_files(std::string& tsdb_dir, PageCount page_cnt, PageSize page_size, HeaderFile* &header_file, DataFile* &data_file);
 
     DataFile *get_data_file(FileIndex file_idx);
     HeaderFile *get_header_file(FileIndex file_idx);
+    HeaderFile *get_header_file_no_lock(FileIndex file_idx);
     int get_data_file_cnt();
 
     //RollupDataFile *get_rollup_data_file() { return &m_rollup_data_file; }
@@ -218,6 +220,8 @@ public:
     int get_open_header_file_count(bool for_read);
 
     //std::mutex m_rollup_lock;
+
+    friend class Tsdb;
 
 private:
     void restore_header(const std::string& file);
@@ -260,9 +264,8 @@ public:
 
     static MetricId query_for_ts(const char *metric, Tag *tags, std::unordered_set<TimeSeries*>& ts, const char *key, bool explicit_tags);
 
-    void query_for_data_no_lock(MetricId mid, QueryTask *task);
+    void query_for_data(Metric *metric, QueryTask *task);
     void query_for_data(MetricId mid, TimeRange& range, std::vector<QueryTask*>& tasks, bool compact = false);
-    void query_for_data_no_lock(MetricId mid, TimeRange& range, std::vector<QueryTask*>& tasks, bool compact = false);
 
     void flush(bool sync);
     void flush_for_test();  // for testing only
@@ -296,6 +299,7 @@ public:
                          bool compact);
     DataFile *get_data_file(MetricId mid, FileIndex file_idx);
     HeaderFile *get_header_file(MetricId mid, FileIndex file_idx);
+    HeaderFile *get_header_file_no_lock(MetricId mid, FileIndex file_idx);
     int get_data_file_cnt();
 
     inline int get_rollup_entries() const

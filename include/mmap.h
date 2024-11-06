@@ -63,12 +63,12 @@ protected:
     void open(int64_t length, bool read_only, bool append_only, bool resize);
     void open_existing(bool read_only, bool append_only);
 
+    std::mutex m_lock;
     std::string m_name;
 
 private:
     int64_t m_length;
     void *m_pages;
-    std::mutex m_lock;
     int m_fd;
     bool m_read_only;
 };
@@ -128,7 +128,6 @@ public:
     HeaderIndex new_header_index(Tsdb *tsdb);
     struct tsdb_header *get_tsdb_header();
     struct page_info_on_disk *get_page_header(HeaderIndex header_idx);
-    int get_compressor_version();
     inline FileIndex get_id() const { return m_id; }
     bool is_full();
     void update_next(HeaderIndex prev_header_idx, FileIndex this_file_idx, HeaderIndex this_header_idx);
