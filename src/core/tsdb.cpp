@@ -916,7 +916,12 @@ DataFile *
 Metric::get_data_file(FileIndex file_idx)
 {
     std::lock_guard<std::mutex> guard(m_lock);
+    return get_data_file_no_lock(file_idx);
+}
 
+DataFile *
+Metric::get_data_file_no_lock(FileIndex file_idx)
+{
     if (file_idx < m_data_files.size())
     {
         DataFile *file = m_data_files[file_idx];
@@ -1606,7 +1611,8 @@ Tsdb::query_for_data(Metric *metric, QueryTask *task)
     ASSERT(file_idx != TT_INVALID_FILE_INDEX);
     ASSERT(header_idx != TT_INVALID_HEADER_INDEX);
 
-    HeaderFile *header_file = metric->get_header_file(file_idx);
+    std::lock_guard<std::mutex> guard(metric->m_lock);
+    HeaderFile *header_file = metric->get_header_file_no_lock(file_idx);
     header_file->ensure_open(true);
     struct tsdb_header *tsdb_header = header_file->get_tsdb_header();
     struct page_info_on_disk *page_header = header_file->get_page_header(header_idx);
@@ -1619,7 +1625,7 @@ Tsdb::query_for_data(Metric *metric, QueryTask *task)
 
     if (query_range.has_intersection(range))
     {
-        DataFile *data_file = metric->get_data_file(file_idx);
+        DataFile *data_file = metric->get_data_file_no_lock(file_idx);
         PThread_Lock lock(data_file->get_lock());
         lock.lock_for_read();
         data_file->ensure_open(true);
@@ -1833,29 +1839,6 @@ Tsdb::shutdown()
     MetaFile::instance()->close();
     TimeSeries::cleanup();
     Logger::info("Tsdb::shutdown complete");
-}
-
-void
-Tsdb::dec_ref_count()
-{
-    //std::lock_guard<std::mutex> guard(m_lock);
-    m_ref_count--;
-    ASSERT(m_ref_count >= 0);
-}
-
-void
-Tsdb::dec_ref_count_no_lock()
-{
-    m_ref_count--;
-    ASSERT(m_ref_count >= 0);
-}
-
-void
-Tsdb::inc_ref_count()
-{
-    //std::lock_guard<std::mutex> guard(m_lock);
-    m_ref_count++;
-    ASSERT(m_ref_count > 0);
 }
 
 // get timestamp of last data-point in this Tsdb, for the given TimeSeries
@@ -3122,7 +3105,7 @@ Tsdb::rotate(TaskData& data)
 
         if (! (tsdb->m_mode & TSDB_MODE_READ))
         {
-            tsdb->dec_ref_count_no_lock();
+            tsdb->dec_ref_count();
             continue;    // already archived
         }
 
@@ -3148,7 +3131,7 @@ Tsdb::rotate(TaskData& data)
             tsdb->unload_if_idle(thrashing_threshold, now_sec);
         }
 
-        tsdb->dec_ref_count_no_lock();
+        tsdb->dec_ref_count();
     }
 
     CheckPointManager::persist();
@@ -3614,7 +3597,7 @@ Tsdb::rollup(TaskData& data)
             tsdb->m_mode |= TSDB_MODE_ROLLED_UP;
             std::string dir = get_tsdb_dir_name(tsdb->m_time_range);
             tsdb->write_config(dir);    // persist the 'rolled_up' status
-            tsdb->dec_ref_count_no_lock();
+            tsdb->dec_ref_count();
         }
 
         Logger::info("[rollup] rolled up %d Tsdbs.", data.integer);

@@ -291,7 +291,6 @@ public:
     void query(std::unordered_map<TimeSeriesId,std::vector<struct rollup_entry_ext>>& data);
 
     void dec_ref_count();
-    void dec_ref_count_no_lock() { m_ref_count--; }
     void inc_ref_count();
 
     static std::string get_name_by_mid_1h(MetricId mid, int year, int month);

@@ -148,7 +148,6 @@ private:
     Measurement *get_measurement(char *raw_tags, TagOwner& owner, const char *measurement, std::vector<DataPoint>& dps);
     void init_measurement(Measurement *mm, const char *measurement, char *tags, TagOwner& owner, std::vector<DataPoint>& dps);
     void query_for_ts(Tag *tags, std::unordered_set<TimeSeries*>& tsv, const char *key, bool explicit_tags);
-    void query_for_ts_case_insensitive(Tag *tags, std::unordered_set<TimeSeries*>& tsv, bool explicit_tags);
     TimeSeries *restore_ts(std::string& metric, std::string& key, TimeSeriesId id);
     void restore_measurement(std::string& measurement, std::string& tags, std::vector<std::pair<std::string,TimeSeriesId>>& fields, std::vector<TimeSeries*>& tsv);
     void set_tag_count(int tag_count);
@@ -200,6 +199,7 @@ public:
     void get_last_files(std::string& tsdb_dir, PageCount page_cnt, PageSize page_size, HeaderFile* &header_file, DataFile* &data_file);
 
     DataFile *get_data_file(FileIndex file_idx);
+    DataFile *get_data_file_no_lock(FileIndex file_idx);
     HeaderFile *get_header_file(FileIndex file_idx);
     HeaderFile *get_header_file_no_lock(FileIndex file_idx);
     int get_data_file_cnt();
@@ -261,9 +261,8 @@ public:
 
     void flush(bool sync);
     void flush_for_test();  // for testing only
-    void dec_ref_count();
-    void dec_ref_count_no_lock();
-    void inc_ref_count();
+    inline void dec_ref_count() { m_ref_count--; ASSERT(m_ref_count >= 0); }
+    inline void inc_ref_count() { m_ref_count++; ASSERT(m_ref_count > 0); }
 
     inline PageSize get_page_size() const { return m_page_size; }
     inline PageCount get_page_count() const { return m_page_count; }

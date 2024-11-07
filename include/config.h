@@ -102,16 +102,8 @@
 #define CFG_TSDB_COMPRESSOR_VERSION             "tsdb.compressor.version"
 #define CFG_TSDB_COMPRESSOR_VERSION_DEF         4
 #define CFG_TSDB_DATA_DIR                       "tsdb.data.dir"
-#define CFG_TSDB_OFF_HOUR_BEGIN                 "tsdb.off_hour.begin"
-#define CFG_TSDB_OFF_HOUR_BEGIN_DEF             0
-#define CFG_TSDB_OFF_HOUR_END                   "tsdb.off_hour.end"
-#define CFG_TSDB_OFF_HOUR_END_DEF               5
-#define CFG_TSDB_PAGE_COUNT                     "tsdb.page.count"
-#define CFG_TSDB_PAGE_COUNT_DEF                 0
-#define CFG_TSDB_PAGE_SIZE                      "tsdb.page.size"
-#define CFG_TSDB_PAGE_SIZE_DEF                  "256b"
 #define CFG_TSDB_FLUSH_FREQUENCY                "tsdb.flush.frequency"
-#define CFG_TSDB_FLUSH_FREQUENCY_DEF            "5min"
+#define CFG_TSDB_FLUSH_FREQUENCY_DEF            "10min"
 #define CFG_TSDB_GC_FREQUENCY                   "tsdb.gc.frequency"
 #define CFG_TSDB_GC_FREQUENCY_DEF               "1d"
 #define CFG_TSDB_MAX_DP_LINE                    "tsdb.max.dp.line"
@@ -124,6 +116,14 @@
 #endif
 #define CFG_TSDB_MIN_DISK_SPACE                 "tsdb.min.disk.space"
 #define CFG_TSDB_MIN_DISK_SPACE_DEF             4
+#define CFG_TSDB_OFF_HOUR_BEGIN                 "tsdb.off_hour.begin"
+#define CFG_TSDB_OFF_HOUR_BEGIN_DEF             0
+#define CFG_TSDB_OFF_HOUR_END                   "tsdb.off_hour.end"
+#define CFG_TSDB_OFF_HOUR_END_DEF               5
+#define CFG_TSDB_PAGE_COUNT                     "tsdb.page.count"
+#define CFG_TSDB_PAGE_COUNT_DEF                 0
+#define CFG_TSDB_PAGE_SIZE                      "tsdb.page.size"
+#define CFG_TSDB_PAGE_SIZE_DEF                  "256b"
 #define CFG_TSDB_READ_ONLY_THRESHOLD            "tsdb.read_only.threshold"
 #define CFG_TSDB_READ_ONLY_THRESHOLD_DEF        "1h"
 #define CFG_TSDB_RETENTION_THRESHOLD            "tsdb.retention.threshold"
@@ -154,7 +154,7 @@
 #define CFG_TSDB_SELF_METER_ENABLED             "tsdb.self_meter.enabled"
 #define CFG_TSDB_SELF_METER_ENABLED_DEF         false
 #define CFG_TSDB_THRASHING_THRESHOLD            "tsdb.thrashing.threshold"
-#define CFG_TSDB_THRASHING_THRESHOLD_DEF        "10min"
+#define CFG_TSDB_THRASHING_THRESHOLD_DEF        "15min"
 #define CFG_TSDB_TIMESTAMP_RESOLUTION           "tsdb.timestamp.resolution"
 #define CFG_TSDB_TIMESTAMP_RESOLUTION_DEF       "second"
 #define CFG_TSDB_TIMEZONE                       "tsdb.timezone"
