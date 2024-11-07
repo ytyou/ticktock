@@ -70,9 +70,12 @@ private:
 
     int m_granularity_sec;
     TaskScheduler m_scheduler;
-    std::mutex m_lock;  // lock for m_tasks
     std::vector<TimedTask> m_tasks;
     std::thread m_thread;
+
+    bool m_has_new;     // true if m_new_tasks not empty
+    std::mutex m_lock;  // lock for m_new_tasks
+    std::vector<TimedTask> m_new_tasks; // new tasks are added here
 
     static Timer *m_instance;
 };
