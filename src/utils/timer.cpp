@@ -31,6 +31,7 @@ Timer *Timer::m_instance = nullptr;
 
 
 Timer::Timer() :
+    m_has_new(false),
     m_granularity_sec(Config::inst()->get_time(CFG_TIMER_GRANULARITY, TimeUnit::SEC, CFG_TIMER_GRANULARITY_DEF)),
     m_scheduler("timer", Config::inst()->get_int(CFG_TIMER_THREAD_COUNT,CFG_TIMER_THREAD_COUNT_DEF), Config::inst()->get_int(CFG_TIMER_QUEUE_SIZE,CFG_TIMER_QUEUE_SIZE_DEF))
 {
@@ -67,16 +68,22 @@ Timer::run()
     while (! is_shutdown_requested())
     {
         long now = ts_now_sec();
-        std::vector<TimedTask> tasks;
 
-        // collect all tasks to be performed
+        // check for new tasks
+        if (m_has_new)
         {
             std::lock_guard<std::mutex> guard(m_lock);
-            tasks.assign(m_tasks.begin(), m_tasks.end());
-            ASSERT(m_tasks.size() == tasks.size());
+
+            if (! m_new_tasks.empty())
+            {
+                m_tasks.insert(m_tasks.end(), m_new_tasks.begin(), m_new_tasks.end());
+                m_new_tasks.clear();
+            }
+
+            m_has_new = false;
         }
 
-        for (TimedTask& task: tasks)
+        for (TimedTask& task: m_tasks)
         {
             if (task.m_next_run <= now)
             {
@@ -99,7 +106,8 @@ Timer::add_task(Task& task, int freq_sec, const char *name)
 {
     TimedTask timed(task, freq_sec, name);
     std::lock_guard<std::mutex> guard(m_lock);
-    m_tasks.push_back(timed);
+    m_new_tasks.push_back(timed);
+    m_has_new = true;
 }
 
 
