@@ -244,10 +244,26 @@ Measurement::get_ts_no_lock(bool add, Mapping *mapping)
     return ts;
 }
 
+TimeSeries *
+Measurement::get_or_add_ts(int idx, const char *field, Mapping *mapping)
+{
+    ASSERT(field != nullptr);
+    ASSERT(mapping != nullptr);
+
+    std::lock_guard<std::mutex> guard(m_lock);
+    TimeSeries *ts = get_ts_no_lock(idx, field, true);
+
+    if (ts == nullptr)
+        ts = add_ts(field, mapping);
+
+    return ts;
+}
+
 bool
 Measurement::get_ts(std::vector<DataPoint>& dps, std::vector<TimeSeries*>& tsv)
 {
     //ReadLock guard(m_lock);
+    std::lock_guard<std::mutex> guard(m_lock);
 
     if (dps.size() != m_ts_count) return false;
 
@@ -281,7 +297,6 @@ Measurement::add_data_points(std::vector<DataPoint>& dps, Timestamp tstamp, Mapp
     std::vector<TimeSeries*> tsv;
 
     tsv.reserve(dps.size());
-    std::lock_guard<std::mutex> guard(m_lock);
     success = get_ts(dps, tsv);
 
     if (LIKELY(success))
@@ -303,10 +318,8 @@ Measurement::add_data_points(std::vector<DataPoint>& dps, Timestamp tstamp, Mapp
 
         for (DataPoint& dp: dps)
         {
-            TimeSeries *ts = get_ts_no_lock(i++, dp.get_raw_tags(), true);
-
-            if (ts == nullptr)
-                ts = add_ts(dp.get_raw_tags(), mapping);
+            TimeSeries *ts = get_or_add_ts(i++, dp.get_raw_tags(), mapping);
+            ASSERT(ts != nullptr);
 
             dp.set_timestamp(tstamp);
             success = ts->add_data_point(mapping->get_id(), dp) && success;
