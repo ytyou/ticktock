@@ -340,7 +340,7 @@ IndexFile::open(bool for_read)
 bool
 IndexFile::close_if_idle(Timestamp threshold_sec, Timestamp now_sec)
 {
-    if (threshold_sec < (now_sec - m_last_access))
+    if ((threshold_sec + m_last_access) < now_sec)
     {
         close();
         return true;
@@ -736,7 +736,7 @@ HeaderFile::open(bool for_read)
 bool
 HeaderFile::close_if_idle(Timestamp threshold_sec, Timestamp now_sec)
 {
-    if (threshold_sec < (now_sec - m_last_access))
+    if ((threshold_sec + m_last_access) < now_sec)
     {
         close();
         return true;
@@ -982,7 +982,7 @@ DataFile::close_if_idle(Timestamp threshold_sec, Timestamp now_sec)
 
     if (is_open(true))  // open for read?
     {
-        if (threshold_sec < (now_sec - m_last_read))
+        if ((threshold_sec + m_last_read) < now_sec)
             close(1);   // close for read
         else
         {
@@ -994,7 +994,7 @@ DataFile::close_if_idle(Timestamp threshold_sec, Timestamp now_sec)
 
     if (is_open(false)) // open for write?
     {
-        if (threshold_sec < (now_sec - m_last_write))
+        if ((threshold_sec + m_last_write) < now_sec)
             close(2);   // close for write
         else
         {
@@ -1257,7 +1257,7 @@ RollupDataFile::close_if_idle(Timestamp threshold_sec, Timestamp now_sec)
 {
     std::lock_guard<std::mutex> guard(m_lock);
 
-    if ((m_ref_count <= 0) && (threshold_sec < (now_sec - m_last_access)))
+    if ((m_ref_count <= 0) && ((threshold_sec + m_last_access) < now_sec))
     {
         close();
         return true;
