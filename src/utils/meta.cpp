@@ -81,7 +81,7 @@ MetaFile::restore_metrics(void (*restore_metrics)(MetricId, std::string& name))
         {
             std::vector<TimeSeries*> tsv2;
             std::vector<std::string> tokens;
-            tokenize(line, tokens, ' ');
+            tokenize(trim(line), tokens, ' ');
 
             if (tokens.size() != 2)
             {
@@ -122,7 +122,7 @@ MetaFile::restore_ts(TimeSeries* (*restore_ts)(std::string& metric, std::string&
         {
             std::vector<TimeSeries*> tsv2;
             std::vector<std::string> tokens;
-            tokenize(line, tokens, ' ');
+            tokenize(trim(line), tokens, ' ');
 
             if (tokens.size() < 3)
             {

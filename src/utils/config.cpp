@@ -129,6 +129,7 @@ Config::load(bool override)
 
         while (std::getline(file, line))
         {
+            trim(line);
             if (starts_with(line, ';')) continue;   // comments
             if (starts_with(line, '#')) continue;   // comments
 
