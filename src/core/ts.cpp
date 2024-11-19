@@ -16,6 +16,8 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+#pragma GCC optimize("no-fast-math")
+
 #include <algorithm>
 #include <cassert>
 #include <cstdint>
@@ -281,12 +283,16 @@ TimeSeries::append(MetricId mid, FILE *file)
     if (m_ooo_buff != nullptr) m_ooo_buff->append(mid, m_id, file);
 }
 
+/* The special values of 'NaN' and 'Inf' should be treated as out-of-order,
+ * because our compression algorithms (except v0) can't handle them.
+ */
 bool
 TimeSeries::add_data_point(MetricId mid, DataPoint& dp)
 {
     int in_range;
-    bool is_ooo = false;
+    const double value = dp.get_value();
     const Timestamp tstamp = dp.get_timestamp();
+    bool is_ooo = std::isnan(value) || std::isinf(value);
     //std::lock_guard<std::mutex> guard(m_lock);
 
     // timestamp can't be 14 digits or more
@@ -302,13 +308,13 @@ TimeSeries::add_data_point(MetricId mid, DataPoint& dp)
         Tsdb *tsdb = Tsdb::inst(tstamp, true);
         ASSERT(tsdb != nullptr);
         Timestamp last_tstamp = tsdb->get_last_tstamp(mid, m_id);
-        is_ooo = (tstamp <= last_tstamp);
+        is_ooo = is_ooo || (tstamp <= last_tstamp);
         if (! is_ooo)
             m_buff = new PageInMemory(mid, m_id, tsdb, false);
     }
     else if ((in_range = m_buff->in_range(tstamp)) != 0)
     {
-        is_ooo = (in_range <= 0);
+        is_ooo = is_ooo || (in_range <= 0);
 
         if (! is_ooo)
         {
@@ -326,7 +332,7 @@ TimeSeries::add_data_point(MetricId mid, DataPoint& dp)
     {
         //Timestamp last_tstamp = m_buff->get_last_tstamp(mid, m_id);
         //is_ooo = (tstamp <= last_tstamp);
-        is_ooo = m_buff->is_out_of_order(mid, m_id, tstamp);
+        is_ooo = is_ooo || m_buff->is_out_of_order(mid, m_id, tstamp);
     }
 
     if (is_ooo)
@@ -335,7 +341,7 @@ TimeSeries::add_data_point(MetricId mid, DataPoint& dp)
     ASSERT(m_buff != nullptr);
     //ASSERT(m_buff->in_range(tstamp) == 0);
 
-    bool ok = m_buff->add_data_point(tstamp, dp.get_value());
+    bool ok = m_buff->add_data_point(tstamp, value);
 
     if (! ok)
     {
@@ -350,7 +356,7 @@ TimeSeries::add_data_point(MetricId mid, DataPoint& dp)
         ASSERT(m_buff->is_empty());
 
         // try again
-        ok = m_buff->add_data_point(tstamp, dp.get_value());
+        ok = m_buff->add_data_point(tstamp, value);
         ASSERT(ok);
     }
 

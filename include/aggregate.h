@@ -126,8 +126,7 @@ public:
 
 protected:
     void init() override { m_values.clear(); m_has_data = false; }
-    void add_data_point(DataPointPair& dp) override
-    { if (!std::isnan(dp.second)) m_values.push_back(dp.second); m_has_data = true; }
+    void add_data_point(DataPointPair& dp) override;
     bool has_data() override { return m_has_data; }
     void add_aggregated(Timestamp ts, DataPointVector& dps) override
     { dps.emplace_back(ts, stddev(m_values)); }
@@ -142,8 +141,7 @@ class AggregatorMax : public Aggregator
 {
 protected:
     void init() override { m_max = std::numeric_limits<double>::lowest(); m_has_data = false; }
-    void add_data_point(DataPointPair& dp) override
-    { m_max = std::max(m_max, dp.second); m_has_data = true; }
+    void add_data_point(DataPointPair& dp) override;
     bool has_data() override { return m_has_data; }
     void add_aggregated(Timestamp ts, DataPointVector& dps) override
     { dps.emplace_back(ts, m_max); }
@@ -158,8 +156,7 @@ class AggregatorMin : public Aggregator
 {
 protected:
     void init() override { m_min = std::numeric_limits<double>::max(); m_has_data = false; }
-    void add_data_point(DataPointPair& dp) override
-    { m_min = std::min(m_min, dp.second); m_has_data = true; }
+    void add_data_point(DataPointPair& dp) override;
     bool has_data() override { return m_has_data; }
     void add_aggregated(Timestamp ts, DataPointVector& dps) override
     { dps.emplace_back(ts, m_min); }
@@ -178,8 +175,7 @@ public:
 
 protected:
     void init() override { m_values.clear(); m_has_data = false; }
-    void add_data_point(DataPointPair& dp) override
-    { if (!std::isnan(dp.second)) m_values.push_back(dp.second); m_has_data = true; }
+    void add_data_point(DataPointPair& dp) override;
     bool has_data() override { return m_has_data; }
     void add_aggregated(Timestamp ts, DataPointVector& dps) override
     { dps.emplace_back(ts, percentile(m_values)); }

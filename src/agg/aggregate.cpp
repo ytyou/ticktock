@@ -16,6 +16,8 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+#pragma GCC optimize("no-fast-math")
+
 #include <cstdlib>
 #include <cstring>
 #include <limits>
@@ -260,6 +262,14 @@ AggregatorBottom::aggregate(const char *metric, std::vector<QueryTask*>& qtv, st
 }
 
 
+void
+AggregatorDev::add_data_point(DataPointPair& dp)
+{
+    if (!std::isnan(dp.second) && !std::isinf(dp.second))
+        m_values.push_back(dp.second);
+    m_has_data = true;
+}
+
 double
 AggregatorDev::stddev(const std::vector<double>& values)
 {
@@ -285,6 +295,40 @@ AggregatorDev::stddev(const std::vector<double>& values)
     return std::sqrt(m2 / (double)n);
 }
 
+
+void
+AggregatorMax::add_data_point(DataPointPair& dp)
+{
+    if (! m_has_data)
+    {
+        m_max = dp.second;
+        m_has_data = true;
+    }
+    else
+        m_max = std::max(m_max, dp.second);
+}
+
+
+void
+AggregatorMin::add_data_point(DataPointPair& dp)
+{
+    if (! m_has_data)
+    {
+        m_min = dp.second;
+        m_has_data = true;
+    }
+    else
+        m_min = std::min(m_min, dp.second);
+}
+
+
+void
+AggregatorPercentile::add_data_point(DataPointPair& dp)
+{
+    if (!std::isnan(dp.second) && !std::isinf(dp.second))
+        m_values.push_back(dp.second);
+    m_has_data = true;
+}
 
 void
 AggregatorPercentile::set_quantile(double quantile)

@@ -70,6 +70,7 @@ DataPoint::from_http(char *http)
     m_timestamp = std::stoull(curr1);
     ASSERT(g_tstamp_resolution_ms ? is_ms(m_timestamp) : is_sec(m_timestamp));
     curr1 = curr2 + 1;
+    if (*curr1 == '"') curr1++;
     if (*curr1 == 0) return nullptr;
 
     // value
@@ -176,7 +177,9 @@ DataPoint::from_plain(char* &text)
     m_timestamp = (Timestamp)std::atoll(text);
     //ASSERT(g_tstamp_resolution_ms ? is_ms(m_timestamp) : is_sec(m_timestamp));
     text = (char*)rawmemchr((void*)text, ' ');
-    m_value = std::atof(++text);
+    text++;
+    if (*text == '"') text++;
+    m_value = std::atof(text);
     while ((*text != ' ') && (*text != '\n')) text++;
     if (*text == '\n') { text++; return true; }
     m_raw_tags = ++text;
@@ -261,10 +264,14 @@ DataPoint::next_long(char* json, Timestamp &number)
 char *
 DataPoint::next_double(char* json, double &number)
 {
-    while (! std::isdigit(*json) && (*json != '.') && (*json != '+') && (*json != '-') && (*json != '\n')) json++;
+    //while (! std::isdigit(*json) && (*json != '.') && (*json != '+') && (*json != '-') && (*json != '\n')) json++;
+    while ((*json != ':') && (*json != '\n')) json++;
+    if (*json == ':') json++;
+    while ((*json == '"') || std::isspace(*json)) json++;
     number = std::atof(json);
-    while (std::isdigit(*json) || (*json == '.') || (*json == '+') || (*json == '-') || (*json == 'e')) json++;
-    if (*json == '"') json++;   // in case the number is quoted
+    //while (std::isdigit(*json) || (*json == '.') || (*json == '+') || (*json == '-') || (*json == 'e') || (*json == 'n') || (*json == 'a') || (*json == 'N') || (*json == 'A')) json++;
+    while ((*json != ',') && (*json != '}')) json++;
+    //if (*json == '"') json++;   // in case the number is quoted
     return json;
 }
 
