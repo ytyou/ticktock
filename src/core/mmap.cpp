@@ -1617,6 +1617,8 @@ RollupDataFile::query(std::unordered_map<TimeSeriesId,std::vector<struct rollup_
     RollupDataFileCursor cursor;
     std::lock_guard<std::mutex> guard(m_lock);
 
+    flush();
+
     for (struct rollup_entry *entry = first_entry(cursor); entry != nullptr; entry = next_entry(cursor))
     {
         auto search = data.find(entry->tid);

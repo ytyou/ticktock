@@ -518,6 +518,8 @@ class Test(object):
         else:
             self._failed = self._failed + 1
             print("[FAIL] query: " + str(query.to_json()))
+            print "[FAIL] expected: " + str(expected2)
+            print "[FAIL] actual: " + str(actual)
 
     def verify_json(self, expected, actual):
         if isinstance(expected, list):
@@ -2086,7 +2088,7 @@ class TestRunner(object):
         sys.stdout.write("PASSED: %d;  FAILED: %d;  TOTAL: %d\n" % (passed, failed, failed+passed))
 
         if failures:
-            print("FAILUED TESTS:")
+            print("FAILED TESTS:")
             print(failures)
 
 

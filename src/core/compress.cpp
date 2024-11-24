@@ -2172,6 +2172,12 @@ RollupCompressor_v1::uncompress(uint8_t *buff, int size, struct rollup_entry *en
             len += 8;
         }
     }
+    else
+    {
+        entry->min = std::numeric_limits<double>::max();
+        entry->max = std::numeric_limits<double>::lowest();
+        entry->sum = 0.0;
+    }
 
     return len;
 }

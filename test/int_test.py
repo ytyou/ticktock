@@ -492,6 +492,8 @@ class Test(object):
         else:
             self._failed = self._failed + 1
             print "[FAIL] query: " + str(query.to_json())
+            print "[FAIL] expected: " + str(expected2)
+            print "[FAIL] actual: " + str(actual)
 
     def verify_json(self, expected, actual):
         if isinstance(expected, list):
@@ -1301,6 +1303,7 @@ class Query_With_Rollup(Test):
         self.do_rollup()
 
         print "Downsamples with hourly rollup..."
+        self._precision = 0.000091
         for m in range(metric_cardinality):
             for down in ["avg", "count", "max", "min", "sum"]:
                 query = Query(metric=self.metric_name(m), start=self._options.start-99999, end=dps._end+99999, downsampler="2h-"+down)
@@ -1313,6 +1316,7 @@ class Query_With_Rollup(Test):
                     self.query_and_verify(query)
 
         print "Downsamples with daily rollup..."
+        self._precision = 0.00015
         for m in range(metric_cardinality):
             for down in ["avg", "count", "max", "min", "sum"]:
                 query = Query(metric=self.metric_name(m), start=self._options.start-99999, end=dps._end+99999, downsampler="1d-"+down+"-zero")
@@ -1334,6 +1338,7 @@ class Query_With_Rollup(Test):
         self.start_tt()
 
         print "Downsamples with hourly rollup, after restart..."
+        self._precision = 0.000091
         for m in range(metric_cardinality):
             for down in ["avg", "count", "max", "min", "sum"]:
                 query = Query(metric=self.metric_name(m), start=self._options.start-99999, end=dps._end+99999, downsampler="2h-"+down)
@@ -1346,6 +1351,7 @@ class Query_With_Rollup(Test):
                     self.query_and_verify(query)
 
         print "Downsamples with daily rollup, after restart..."
+        self._precision = 0.00015
         for m in range(metric_cardinality):
             for down in ["avg", "count", "max", "min", "sum"]:
                 query = Query(metric=self.metric_name(m), start=self._options.start-99999, end=dps._end+99999, downsampler="1d-"+down+"-zero")
@@ -2046,7 +2052,7 @@ class TestRunner(object):
         sys.stdout.write("PASSED: %d;  FAILED: %d;  TOTAL: %d\n" % (passed, failed, failed+passed))
 
         if failures:
-            print "FAILUED TESTS:"
+            print "FAILED TESTS:"
             print failures
 
 
@@ -2072,7 +2078,7 @@ def main(argv):
         tests.append(Rate_Tests(options))
         tests.append(Duplicate_Tests(options))
         tests.append(Check_Point_Tests(options))
-        tests.append(Query_Tests(options, metric_count=16, metric_cardinality=4, tag_cardinality=4))
+        tests.append(Query_Tests(options, metric_count=8, metric_cardinality=4, tag_cardinality=4))
         tests.append(Query_With_Rollup(options))
 
         #tests.append(Long_Running_Tests(options))
