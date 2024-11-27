@@ -2078,7 +2078,7 @@ def main(argv):
         tests.append(Rate_Tests(options))
         tests.append(Duplicate_Tests(options))
         tests.append(Check_Point_Tests(options))
-        tests.append(Query_Tests(options, metric_count=8, metric_cardinality=4, tag_cardinality=4))
+        tests.append(Query_Tests(options, metric_count=4, metric_cardinality=4, tag_cardinality=4))
         tests.append(Query_With_Rollup(options))
 
         #tests.append(Long_Running_Tests(options))

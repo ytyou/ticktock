@@ -518,8 +518,8 @@ class Test(object):
         else:
             self._failed = self._failed + 1
             print("[FAIL] query: " + str(query.to_json()))
-            print "[FAIL] expected: " + str(expected2)
-            print "[FAIL] actual: " + str(actual)
+            print("[FAIL] expected: " + str(expected2))
+            print("[FAIL] actual: " + str(actual))
 
     def verify_json(self, expected, actual):
         if isinstance(expected, list):
