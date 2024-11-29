@@ -7,8 +7,8 @@ TAGL="latest"
 DOCKERFILE="../Dockerfile"
 _TEST=0
 _GRAFANA=0
-_UID=1000
-_GID=1000
+_UID=6182
+_GID=6182
 
 # process command line arguments
 while [[ $# -gt 0 ]]
