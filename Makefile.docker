@@ -5,6 +5,11 @@ CPP = g++
 LINK = $(CPP)
 RM = /bin/rm -f
 
+# add -flto=auto flag on non-arm platforms
+ifneq ($(findstring arm,$(uname_m)),arm)
+LINKOPT += -flto=auto
+endif
+
 #DEBUG_FLAGS = -g3 -rdynamic -ggdb -D_DEBUG -D_TEST -D_GLIBCXX_DEBUG -O0
 #DEBUG_LIBS = /usr/lib/debug/lib/x86_64-linux-gnu/libSegFault.so
 PROD_FLAGS = -O3 -march=native -ffast-math
@@ -12,8 +17,8 @@ PROD_FLAGS = -O3 -march=native -ffast-math
 #PROF_FLAGS = -pg -D_GLIBCXX_DEBUG
 #PROF_FLAGS = -fno-omit-frame-pointer
 
-CFLAGS = -I include -std=c++11 -Wno-unused-result -Wno-format-truncation -Wno-psabi $(DEBUG_FLAGS) $(PROF_FLAGS) $(LEAK_FLAGS) $(PROD_FLAGS)
-LFLAGS = -pthread $(DEBUG_FLAGS) $(PROF_FLAGS)
+CFLAGS = -I include -std=c++11 -Wno-unused-result -Wno-format-truncation -Wno-psabi -Wno-deprecated-declarations $(LINKOPT) $(DEBUG_FLAGS) $(PROF_FLAGS) $(LEAK_FLAGS) $(PROD_FLAGS)
+LFLAGS = -pthread $(LINKOPT) $(DEBUG_FLAGS) $(PROF_FLAGS)
 LIBS = $(DEBUG_LIBS) -lz -latomic
 
 INCS = $(wildcard include/*.h)
