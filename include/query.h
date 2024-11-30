@@ -394,6 +394,7 @@ class QueryExecutor
 public:
     static bool http_get_api_config_filters_handler(HttpRequest& request, HttpResponse& response);
     static bool http_get_api_query_handler(HttpRequest& request, HttpResponse& response);
+    static bool http_get_api_search_lookup_handler(HttpRequest& request, HttpResponse& response);
     static bool http_post_api_query_handler(HttpRequest& request, HttpResponse& response);
 
 private:

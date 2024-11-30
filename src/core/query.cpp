@@ -217,7 +217,7 @@ Query::Query(JsonMap& map, StringBuffer& strbuf) :
     if (search == map.end())
         throw std::runtime_error("Must specify m parameter when query.");
 
-    char buff[1024];
+    char buff[MAX_URL_LENGTH];
     bool decode_ok = url_unescape(search->second->to_string(), buff, sizeof(buff));
     if (! decode_ok)
         throw std::runtime_error("Failed to URL decode query.");
@@ -1375,6 +1375,127 @@ QueryExecutor::http_get_api_config_filters_handler(HttpRequest& request, HttpRes
 
     // right now we do not support any filters
     response.init(200, HttpContentType::JSON, std::strlen(filters), filters);
+    return true;
+}
+
+bool
+QueryExecutor::http_get_api_search_lookup_handler(HttpRequest& request, HttpResponse& response)
+{
+    Logger::debug("Handling get request: %T", &request);
+
+    // parse request
+    JsonMap params;
+    request.parse_params(params);
+
+    int limit = 25;
+    auto search = params.find("limit");
+    if (search != params.end())
+        limit = (int)search->second->to_double();
+
+    int index = 0;
+    search = params.find("startIndex");
+    if (search != params.end())
+        index = (int)search->second->to_double();
+
+    search = params.find("m");
+    if (search == params.end())
+        throw std::runtime_error("Must specify m parameter when performing search/lookup.");
+
+    char buff[MAX_URL_LENGTH];
+    bool decode_ok = url_unescape(search->second->to_string(), buff, sizeof(buff));
+    if (! decode_ok)
+        throw std::runtime_error("Failed to URL decode search/lookup.");
+
+    Logger::debug("after-decoding of search/lookup: %s; limit=%d", buff, limit);
+
+    TagOwner tags(false);   // we do not own memory for those tags
+    char *metric = &buff[0];
+    char *kvs = std::strchr(metric, '{');
+    StringBuffer strbuf;
+
+    if (kvs != nullptr)
+    {
+        JsonMap m;
+
+        if (std::strchr(kvs+1, '"') == nullptr)
+            JsonParser::parse_map_unquoted(kvs, m, '=');
+        else
+            JsonParser::parse_map(kvs, m, '=');
+
+        for (auto it = m.begin(); it != m.end(); it++)
+        {
+            char *key = strbuf.strdup((const char*)it->first);
+            char *value = strbuf.strdup(it->second->to_string());
+            tags.add_tag(key, value);
+        }
+
+        JsonParser::free_map(m);
+        *kvs = 0;
+    }
+
+    JsonParser::free_map(params);
+
+    // perform lookup
+    std::unordered_set<TimeSeries*> tsv;
+
+    if (*metric == '*')     // apply to ALL metrics
+        Tsdb::query_for_ts(tags.get_tags(), tsv);
+    else
+        Tsdb::query_for_ts(metric, tags.get_tags(), tsv, nullptr, false);
+
+    char *resp_buff = response.get_buffer();
+    int size = response.get_buffer_size();
+
+    if (tsv.empty())
+    {
+        char msg[1024];
+        snprintf(msg, sizeof(msg), "ERROR: metric name \"%s\" not found.", metric);
+        response.init(400, HttpContentType::PLAIN, std::strlen(msg), msg);
+    }
+    else
+    {
+        ASSERT(tsv.size() > 0);
+        int n = 0;  // resp_buff position
+        int i = 0;  // starting index tracker
+        int l = 0;  // limit tracker
+
+        // meta
+        n += snprintf(resp_buff+n, size-n,
+            "{\"type\":\"LOOKUP\",\"limit\":%d,\"startIndex\":%d,\"totalResults\":%u,\"metric\":\"%s\",\"tags\":[",
+            limit, index, (unsigned int)tsv.size(), metric);
+
+        // tags
+        for (auto tag = tags.get_tags(); tag != nullptr; tag = tag->next())
+            n += snprintf(resp_buff+n, size-n, "{\"key\":\"%s\",\"value\":\"%s\"},", tag->m_key, tag->m_value);
+
+        // remove last comma
+        if (tags.get_tags() != nullptr) n--;
+        n += snprintf(resp_buff+n, size-n, "],\"results\":[");
+
+        // results
+        for (auto ts: tsv)
+        {
+            if (i++ < index) continue;
+            if (l++ >= limit) break;
+
+            n += snprintf(resp_buff+n, size-n, "{\"tsuid\":\"%09X\",\"metric\":\"%s\",\"tags\":{",
+                ts->get_id(), metric);
+
+            for (auto tag = ts->get_tags(); tag != nullptr; tag = tag->next())
+                n += snprintf(resp_buff+n, size-n, "\"%s\":\"%s\",", tag->m_key, tag->m_value);
+
+            if (ts->get_tags() != nullptr) n--;
+            n += snprintf(resp_buff+n, size-n, "}},");
+        }
+
+        // remove last comma
+        if (! tsv.empty()) n--;
+        n += snprintf(resp_buff+n, size-n, "]}");
+        ASSERT((n+1) < size);
+
+        response.init(200, HttpContentType::JSON, n);
+    }
+
     return true;
 }
 

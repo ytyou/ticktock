@@ -60,6 +60,7 @@ const char *HTTP_API_CONFIG = "/api/config";
 const char *HTTP_API_CONFIG_FILTERS = "/api/config/filters";
 const char *HTTP_API_PUT = "/api/put";
 const char *HTTP_API_QUERY = "/api/query";
+const char *HTTP_API_SEARCH_LOOKUP = "/api/search/lookup";
 const char *HTTP_API_STATS = "/api/stats";
 const char *HTTP_API_SUGGEST = "/api/suggest";
 const char *HTTP_API_VERSION = "/api/version";
@@ -96,6 +97,7 @@ HttpServer::init()
     add_get_handler(HTTP_API_CONFIG, &HttpServer::http_get_api_config_handler);
     add_get_handler(HTTP_API_CONFIG_FILTERS, &QueryExecutor::http_get_api_config_filters_handler);
     add_get_handler(HTTP_API_QUERY, &QueryExecutor::http_get_api_query_handler);
+    add_get_handler(HTTP_API_SEARCH_LOOKUP, &QueryExecutor::http_get_api_search_lookup_handler);
     add_get_handler(HTTP_API_STATS, &HttpServer::http_get_api_stats_handler);
     add_get_handler(HTTP_API_SUGGEST, &Tsdb::http_get_api_suggest_handler);
     add_get_handler(HTTP_API_VERSION, &HttpServer::http_get_api_version_handler);

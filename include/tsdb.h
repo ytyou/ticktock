@@ -255,7 +255,8 @@ public:
 
     bool add(DataPoint& dp);
 
-    static MetricId query_for_ts(const char *metric, Tag *tags, std::unordered_set<TimeSeries*>& ts, const char *key, bool explicit_tags);
+    static void query_for_ts(Tag *tags, std::unordered_set<TimeSeries*>& tsv);   // query for ALL metrics
+    static MetricId query_for_ts(const char *metric, Tag *tags, std::unordered_set<TimeSeries*>& tsv, const char *key, bool explicit_tags);
 
     void query_for_data(Metric *metric, QueryTask *task);
     void query_for_data(MetricId mid, TimeRange& range, std::vector<QueryTask*>& tasks, bool compact = false);

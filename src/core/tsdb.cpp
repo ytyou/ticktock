@@ -1576,10 +1576,21 @@ Tsdb::restore_measurement(std::string& measurement, std::string& tags, std::vect
         Logger::warn("restore failed for: %s,%s", measurement.c_str(), tags.c_str());
 }
 
+void
+Tsdb::query_for_ts(Tag *tags, std::unordered_set<TimeSeries*>& tsv)
+{
+    std::vector<Mapping*> mappings;
+
+    get_all_mappings(mappings);
+
+    for (auto mapping: mappings)
+        query_for_ts(mapping->get_metric(), tags, tsv, nullptr, false);
+}
+
 /* The 'key' should not include the special '_field' tag.
  */
 MetricId
-Tsdb::query_for_ts(const char *metric, Tag *tags, std::unordered_set<TimeSeries*>& ts, const char *key, bool explicit_tags)
+Tsdb::query_for_ts(const char *metric, Tag *tags, std::unordered_set<TimeSeries*>& tsv, const char *key, bool explicit_tags)
 {
     Mapping *mapping = nullptr;
     MetricId id = TT_INVALID_METRIC_ID;
@@ -1597,7 +1608,7 @@ Tsdb::query_for_ts(const char *metric, Tag *tags, std::unordered_set<TimeSeries*
     if (mapping != nullptr)
     {
         id = mapping->get_id();
-        mapping->query_for_ts(tags, ts, key, explicit_tags);
+        mapping->query_for_ts(tags, tsv, key, explicit_tags);
     }
 
     return id;
