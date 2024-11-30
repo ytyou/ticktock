@@ -805,9 +805,11 @@ HttpServer::http_get_api_stats_handler(HttpRequest& request, HttpResponse& respo
 bool
 HttpServer::http_get_api_version_handler(HttpRequest& request, HttpResponse& response)
 {
-    char buff[32];
-    sprintf(buff, "TickTockDB version: %d.%d.%d", TT_MAJOR_VERSION, TT_MINOR_VERSION, TT_PATCH_VERSION);
-    response.init(200, HttpContentType::PLAIN, std::strlen(buff), buff);
+    char buff[256];
+    sprintf(buff, "{\"repo\":\"github.com/ytyou/ticktock.git\",\"version\":\"%d.%d.%d\",\"branch\":\"main\",\"timestamp\":\"%" PRIu64 "\"}",
+        TT_MAJOR_VERSION, TT_MINOR_VERSION, TT_PATCH_VERSION, (Timestamp)(COMPILE_TIME));
+    ASSERT(std::strlen(buff) < (sizeof(buff)-1));
+    response.init(200, HttpContentType::JSON, std::strlen(buff), buff);
     return true;
 }
 

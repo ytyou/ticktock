@@ -4,6 +4,7 @@ CC = gcc
 CPP = g++
 LINK = $(CPP)
 RM = /usr/bin/rm -f
+CTIME := $(shell date +%s)
 
 #DEBUG_FLAGS = -g3 -rdynamic -ggdb -D_DEBUG -D_TEST -D_GLIBCXX_DEBUG -O0
 PROD_FLAGS = -O3 -march=native -ffast-math
@@ -11,7 +12,7 @@ PROD_FLAGS = -O3 -march=native -ffast-math
 #PROF_FLAGS = -pg -D_GLIBCXX_DEBUG
 LIBS = /usr/lib64/libz.so
 
-CFLAGS = -I include -std=c++11 $(DEBUG_FLAGS) $(PROF_FLAGS) $(LEAK_FLAGS) $(PROD_FLAGS)
+CFLAGS = -I include -std=c++11 -DCOMPILE_TIME=$(CTIME) $(DEBUG_FLAGS) $(PROF_FLAGS) $(LEAK_FLAGS) $(PROD_FLAGS)
 LFLAGS = -lpthread $(PROF_FLAGS) $(DEBUG_FLAGS)
 
 INCS = $(wildcard include/*.h)
