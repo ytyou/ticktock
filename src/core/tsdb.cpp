@@ -2578,6 +2578,7 @@ Tsdb::http_get_api_suggest_handler(HttpRequest& request, HttpResponse& response)
 
     if (std::strcmp(type, "metrics") == 0)
     {
+        bool is_star = (prefix[0] == '*') && (prefix[1] == 0);
         //ReadLock guard(m_tsdb_lock);
         std::lock_guard<std::mutex> guard(g_metric_lock);
 
@@ -2585,7 +2586,7 @@ Tsdb::http_get_api_suggest_handler(HttpRequest& request, HttpResponse& response)
         {
             const char *metric = it->first;
 
-            if (starts_with(metric, prefix))
+            if (is_star || starts_with(metric, prefix))
             {
                 suggestions.insert(std::string(metric));
                 if (suggestions.size() >= max) break;
