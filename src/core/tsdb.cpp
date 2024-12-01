@@ -681,10 +681,12 @@ Mapping::init_measurement(Measurement *mm, const char *measurement, char *tags, 
     MetaFile::instance()->add_measurement(measurement, tags, fields);
 }
 
+// 'tsv' does NOT have to be empty when calling this function
 void
 Mapping::query_for_ts(Tag *tags, std::unordered_set<TimeSeries*>& tsv, const char *key, bool explicit_tags)
 {
     int tag_count = TagOwner::get_tag_count(tags, true);
+    auto original_size = tsv.size();
 
     if ((key != nullptr) && (tag_count == m_tag_count.load()))
     {
@@ -719,7 +721,7 @@ Mapping::query_for_ts(Tag *tags, std::unordered_set<TimeSeries*>& tsv, const cha
         }
     }
 
-    if (tsv.empty())
+    if (tsv.size() == original_size)
     {
         if (tags == nullptr)
         {
@@ -1584,7 +1586,7 @@ Tsdb::query_for_ts(Tag *tags, std::unordered_set<TimeSeries*>& tsv)
     get_all_mappings(mappings);
 
     for (auto mapping: mappings)
-        query_for_ts(mapping->get_metric(), tags, tsv, nullptr, false);
+        mapping->query_for_ts(tags, tsv, nullptr, false);
 }
 
 /* The 'key' should not include the special '_field' tag.

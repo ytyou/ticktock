@@ -1481,10 +1481,16 @@ QueryExecutor::http_get_api_search_lookup_handler(HttpRequest& request, HttpResp
             n += snprintf(resp_buff+n, size-n, "{\"tsuid\":\"%09X\",\"metric\":\"%s\",\"tags\":{",
                 ts->get_id(), metric);
 
-            for (auto tag = ts->get_tags(); tag != nullptr; tag = tag->next())
+            Tag *tags = ts->get_tags();
+            for (auto tag = tags; tag != nullptr; tag = tag->next())
                 n += snprintf(resp_buff+n, size-n, "\"%s\":\"%s\",", tag->m_key, tag->m_value);
 
-            if (ts->get_tags() != nullptr) n--;
+            if (tags != nullptr)
+            {
+                n--;
+                Tag::free_list(tags, false);
+            }
+
             n += snprintf(resp_buff+n, size-n, "}},");
         }
 
