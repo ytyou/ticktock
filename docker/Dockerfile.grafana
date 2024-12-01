@@ -44,14 +44,15 @@ HEALTHCHECK --interval=5m --timeout=5s \
   CMD /opt/ticktock/scripts/healthcheck.sh
 STOPSIGNAL SIGINT
 
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y tzdata && apt-get install -y \
   curl \
   logrotate \
   nano \
-  python2
+  python3 \
+  sysstat
 
 RUN useradd -M -U ticktock
-RUN ln -s /usr/bin/python2 /usr/bin/python
+RUN ln -s /usr/bin/python3 /usr/bin/python
 
 RUN mkdir -p /var/lib/ticktock && \
   chown ticktock:ticktock /var/lib/ticktock

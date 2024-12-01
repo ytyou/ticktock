@@ -110,9 +110,10 @@ if [ $_GRAFANA -ne 0 ]; then
     DOCKERFILE=${DOCKERFILE}.grafana
     cp docker/tcollector docker/$TT_VERSION/
     cp -r /opt/tcollector.docker docker/$TT_VERSION/opt/tcollector
-    cp -r /opt/grafana-9.3.2.docker docker/$TT_VERSION/opt/grafana-9.3.2
+    sudo cp -r /opt/grafana-v11.3.1.docker docker/$TT_VERSION/opt/grafana-v11.3.1
+    sudo chown -R $USER:$USER docker/$TT_VERSION/opt/grafana-v11.3.1
     pushd docker/$TT_VERSION/opt
-    ln -s grafana-9.3.2 grafana
+    ln -s grafana-v11.3.1 grafana
     popd
 fi
 
