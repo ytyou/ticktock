@@ -1576,10 +1576,21 @@ Tsdb::restore_measurement(std::string& measurement, std::string& tags, std::vect
         Logger::warn("restore failed for: %s,%s", measurement.c_str(), tags.c_str());
 }
 
+void
+Tsdb::query_for_ts(Tag *tags, std::unordered_set<TimeSeries*>& tsv)
+{
+    std::vector<Mapping*> mappings;
+
+    get_all_mappings(mappings);
+
+    for (auto mapping: mappings)
+        query_for_ts(mapping->get_metric(), tags, tsv, nullptr, false);
+}
+
 /* The 'key' should not include the special '_field' tag.
  */
 MetricId
-Tsdb::query_for_ts(const char *metric, Tag *tags, std::unordered_set<TimeSeries*>& ts, const char *key, bool explicit_tags)
+Tsdb::query_for_ts(const char *metric, Tag *tags, std::unordered_set<TimeSeries*>& tsv, const char *key, bool explicit_tags)
 {
     Mapping *mapping = nullptr;
     MetricId id = TT_INVALID_METRIC_ID;
@@ -1597,7 +1608,7 @@ Tsdb::query_for_ts(const char *metric, Tag *tags, std::unordered_set<TimeSeries*
     if (mapping != nullptr)
     {
         id = mapping->get_id();
-        mapping->query_for_ts(tags, ts, key, explicit_tags);
+        mapping->query_for_ts(tags, tsv, key, explicit_tags);
     }
 
     return id;
@@ -2567,6 +2578,7 @@ Tsdb::http_get_api_suggest_handler(HttpRequest& request, HttpResponse& response)
 
     if (std::strcmp(type, "metrics") == 0)
     {
+        bool is_star = (prefix[0] == '*') && (prefix[1] == 0);
         //ReadLock guard(m_tsdb_lock);
         std::lock_guard<std::mutex> guard(g_metric_lock);
 
@@ -2574,7 +2586,7 @@ Tsdb::http_get_api_suggest_handler(HttpRequest& request, HttpResponse& response)
         {
             const char *metric = it->first;
 
-            if (starts_with(metric, prefix))
+            if (is_star || starts_with(metric, prefix))
             {
                 suggestions.insert(std::string(metric));
                 if (suggestions.size() >= max) break;

@@ -10,12 +10,12 @@ fi
 
 # start tcollector, if present
 if test -x "/opt/tcollector/tcollector"; then
-    /opt/tcollector/tcollector start
+    /opt/tcollector/tcollector start --port 6181 --pidfile /opt/tcollector/run/tcollector.pid --logfile /opt/tcollector/log/tcollector.log
 fi
 
 # start grafana, if present
 if test -x "/opt/grafana/bin/grafana-server"; then
-    nohup /opt/grafana/bin/grafana-server -homepath /opt/grafana web &
+    nohup /opt/grafana/bin/grafana-server -homepath /opt/grafana server &
 fi
 
 # start TickTock

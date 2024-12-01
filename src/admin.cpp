@@ -293,7 +293,7 @@ Admin::cmd_stop(KeyValuePair *params, HttpResponse& response)
     task.doit = &Admin::shutdown;
     Timer::inst()->add_task(task, 1, "admin_stop");
 
-    const char *msg = "Exiting now.";
+    const char *msg = "TickTockDB exiting now.";
     response.init(200, HttpContentType::PLAIN, std::strlen(msg), msg);
     return true;
 }
