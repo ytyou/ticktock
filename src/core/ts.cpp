@@ -16,8 +16,6 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-#pragma GCC optimize("no-fast-math")
-
 #include <algorithm>
 #include <cassert>
 #include <cstdint>
@@ -292,7 +290,7 @@ TimeSeries::add_data_point(MetricId mid, DataPoint& dp)
     int in_range;
     const double value = dp.get_value();
     const Timestamp tstamp = dp.get_timestamp();
-    bool is_ooo = std::isnan(value) || std::isinf(value);
+    bool is_ooo = isnan(value) || isinf(value);
     //std::lock_guard<std::mutex> guard(m_lock);
 
     // timestamp can't be 14 digits or more

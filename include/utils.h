@@ -26,6 +26,7 @@
 #include <functional>
 #include <cstring>
 #include "global.h"
+#include "infnan.h"
 #include "type.h"
 
 

@@ -16,8 +16,6 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-#pragma GCC optimize("no-fast-math")
-
 #include <cstdlib>
 #include <cstring>
 #include <limits>
@@ -265,7 +263,7 @@ AggregatorBottom::aggregate(const char *metric, std::vector<QueryTask*>& qtv, st
 void
 AggregatorDev::add_data_point(DataPointPair& dp)
 {
-    if (!std::isnan(dp.second) && !std::isinf(dp.second))
+    if (!isnan(dp.second) && !isinf(dp.second))
         m_values.push_back(dp.second);
     m_has_data = true;
 }
@@ -325,7 +323,7 @@ AggregatorMin::add_data_point(DataPointPair& dp)
 void
 AggregatorPercentile::add_data_point(DataPointPair& dp)
 {
-    if (!std::isnan(dp.second) && !std::isinf(dp.second))
+    if (!isnan(dp.second) && !isinf(dp.second))
         m_values.push_back(dp.second);
     m_has_data = true;
 }
