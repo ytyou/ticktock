@@ -99,59 +99,11 @@ public:
         return m_dps.empty();
     }
 
-    char *to_json_aggregate_tags(char *buff, int size) const
-    {
-        int n = snprintf(buff, size, "\"aggregateTags\":[");
-
-        for (const char *name: m_aggregate_tags)
-        {
-            if ((n+3) >= size) break;
-            if (buff[n-1] != '[')
-            {
-                n += snprintf(buff+n, size-n, ",");
-            }
-            n += snprintf(buff+n, size-n, "\"%s\"", name);
-        }
-
-        if (size > n)
-            snprintf(buff+n, size-n, "]");
-
-        return buff;
-    }
-
-    int to_json(char *buff, int size) const
-    {
-        char buf1[1024];    // TODO: no magic numbers
-        char buf2[1024];    // TODO: no magic numbers
-
-        int n = snprintf(buff, size, "{\"metric\":\"%s\",%s,%s,\"dps\":{",
-            m_metric, to_json_tags(buf1, sizeof(buf1)),
-            to_json_aggregate_tags(buf2, sizeof(buf2)));
-
-        for (const DataPointPair& dp: m_dps)
-        {
-            if ((n+8) >= size) break;
-            if (buff[n-1] != '{')
-                n += snprintf(buff+n, size-n, ",");
-            n += snprintf(buff+n, size-n, "\"%" PRIu64 "\":%.16lf", dp.first, dp.second);
-            if (n > size) n = size;
-            while ((buff[n-1] == '0') && (buff[n-2] != '.') && (buff[n-2] != ':')) buff[--n] = 0;
-        }
-
-        if (size > n)
-            n += snprintf(buff+n, size-n, "}}");
-
-        return (n <= size) ? n : size;
-    }
+    char *to_json_aggregate_tags(char *buff, int size) const;
+    int to_json(char *buff, int size) const;
 
 private:
-    char *to_json_tags(char *buff, int size) const
-    {
-        int n = snprintf(buff, size, "\"tags\":");
-        ASSERT(size > n);
-        KeyValuePair::to_json(m_tags, buff+n, size-n);
-        return buff;
-    }
+    char *to_json_tags(char *buff, int size) const;
 
     std::vector<char*> m_aggregate_tags;
 };

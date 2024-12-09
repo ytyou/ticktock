@@ -1641,6 +1641,67 @@ QueryResults::add_query_task(QueryTask *qtask, Tag *grouping_tags, Tag *non_grou
     m_qtv.push_back(qtask);
 }
 
+char *
+QueryResults::to_json_aggregate_tags(char *buff, int size) const
+{
+    int n = snprintf(buff, size, "\"aggregateTags\":[");
+
+    for (const char *name: m_aggregate_tags)
+    {
+        if ((n+3) >= size) break;
+        if (buff[n-1] != '[')
+        {
+            n += snprintf(buff+n, size-n, ",");
+        }
+        n += snprintf(buff+n, size-n, "\"%s\"", name);
+    }
+
+    if (size > n)
+        snprintf(buff+n, size-n, "]");
+
+    return buff;
+}
+
+int
+QueryResults::to_json(char *buff, int size) const
+{
+    char buf1[1024];    // TODO: no magic numbers
+    char buf2[1024];    // TODO: no magic numbers
+
+    int n = snprintf(buff, size, "{\"metric\":\"%s\",%s,%s,\"dps\":{",
+        m_metric, to_json_tags(buf1, sizeof(buf1)),
+        to_json_aggregate_tags(buf2, sizeof(buf2)));
+
+    for (const DataPointPair& dp: m_dps)
+    {
+        if ((n+8) >= size) break;
+        if (buff[n-1] != '{')
+            n += snprintf(buff+n, size-n, ",");
+        if (UNLIKELY(isinf(dp.second)))
+            n += snprintf(buff+n, size-n, "\"%" PRIu64 "\":\"Inf\"", dp.first);
+        else if (UNLIKELY(isnan(dp.second)))
+            n += snprintf(buff+n, size-n, "\"%" PRIu64 "\":\"NaN\"", dp.first);
+        else
+            n += snprintf(buff+n, size-n, "\"%" PRIu64 "\":%.16lf", dp.first, dp.second);
+        if (n > size) n = size;
+        while ((buff[n-1] == '0') && (buff[n-2] != '.') && (buff[n-2] != ':')) buff[--n] = 0;
+    }
+
+    if (size > n)
+        n += snprintf(buff+n, size-n, "}}");
+
+    return (n <= size) ? n : size;
+}
+
+char *
+QueryResults::to_json_tags(char *buff, int size) const
+{
+    int n = snprintf(buff, size, "\"tags\":");
+    ASSERT(size > n);
+    KeyValuePair::to_json(m_tags, buff+n, size-n);
+    return buff;
+}
+
 
 void
 DataPointContainer::collect_data(PageInMemory *page)
