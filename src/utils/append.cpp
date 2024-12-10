@@ -184,14 +184,14 @@ AppendLog::restore(std::vector<TimeSeries*>& tsv)
 
         Tsdb *tsdb = Tsdb::inst(tstamp, false);
 
-        if ((oldest_tsdb == nullptr) || (tsdb->get_time_range().older_than_sec(oldest_tsdb->get_time_range().get_from_sec())))
-            oldest_tsdb = tsdb;
-
         if (tsdb == nullptr)
         {
             Logger::error("Can't recover time series %u, tstamp %" PRIu64 " not exist", tid, tstamp);
             continue;
         }
+
+        if ((oldest_tsdb == nullptr) || (tsdb->get_time_range().older_than_sec(oldest_tsdb->get_time_range().get_from_sec())))
+            oldest_tsdb = tsdb;
 
         ts->restore(tsdb, mid, tstamp, offset, start, (uint8_t*)buff, bytes, is_ooo, file_idx, header_idx);
     }

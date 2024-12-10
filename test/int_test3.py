@@ -2047,6 +2047,63 @@ class Long_Running_Tests(Test):
         self.wait_for_tt(self._options.timeout)
 
 
+class Bucket_Tests(Test):
+
+    def __init__(self, options, prefix: str = "buck"):
+        super(Bucket_Tests, self).__init__(options, prefix)
+
+    def __call__(self):
+
+        config = TickTockConfig(self._options)
+        config.add_entry("tsdb.timestamp.resolution", "second");
+        config.add_entry("tsdb.metric.buckets", 10);
+        config.add_entry("tsdb.page.size", "128b");
+        config.add_entry("tsdb.page.count", 4096);
+        config.add_entry("tsdb.compressor.version", 0);
+        config()
+
+        self.start_tt()
+
+        start = 1577836800
+        prob = (15, 90, 10, 25, 5, 80, 20, 70, 100, 30)
+
+        tags = {}
+        tags["t1"] = "v1"
+
+        for m in range(100):
+            dps = DataPoints(self._prefix, self._options.start, metric_count=0, metric_cardinality=0, tag_cardinality=0)
+            dp = DataPoint("bucket.metric."+str(m), start, random.uniform(0,1000), tags)
+            dps.add_dp(dp)
+            self.send_data_to_ticktock(dps)
+
+        start = start + 2
+
+        for i in range(250000):
+
+            R = random.randint(0, 100)
+            dps = DataPoints(self._prefix, self._options.start, metric_count=0, metric_cardinality=0, tag_cardinality=0)
+
+            for m in range(100):
+                B = m % 10
+                if i > 100000 and m > 40 and B > 7:
+                    continue    # dropping a few to make buckets imbalanced again
+                if R < prob[B]:
+                    V = random.randint(0, 1000)
+                    dp = DataPoint("bucket.metric."+str(m), start, random.uniform(0,100), tags)
+                    dps.add_dp(dp)
+            self.send_data_to_ticktock(dps)
+
+            start = start + 2
+
+            if ((i % 10000) == 0) and (i != 0):
+                print(str(i) + " dps inserted")
+
+        # stop tt
+        self.stop_tt()
+        # make sure tt stopped
+        self.wait_for_tt(self._options.timeout)
+
+
 class TestRunner(object):
 
     def __init__(self, options):
@@ -2118,6 +2175,7 @@ def main(argv):
         tests.append(Query_With_Rollup(options))
         tests.append(Long_Running_Tests(options))
 
+        #tests.append(Bucket_Tests(options))
         #tests.append(Backfill_Tests(options))
         #tests.append(Replication_Tests(options))
         #tests.append(Partition_Tests(options))

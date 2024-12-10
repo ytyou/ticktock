@@ -181,6 +181,7 @@ private:
 };
 
 
+// This really should be called Bucket
 class Metric
 {
 public:
@@ -193,7 +194,7 @@ public:
     //bool rollup(IndexFile *idx_file, int no_entries);
 
     MetricId get_id() const { return m_id; }
-    std::string get_metric_dir(std::string& tsdb_dir);
+    std::string get_metric_dir(const std::string& tsdb_dir);
     static std::string get_metric_dir(const std::string& tsdb_dir, MetricId id);
     std::string get_data_file_name(std::string& tsdb_dir, FileIndex idx);
     std::string get_header_file_name(std::string& tsdb_dir, FileIndex idx);
@@ -220,7 +221,7 @@ private:
     void restore_header(const std::string& file);
     void restore_data(const std::string& file, PageSize page_size, PageCount page_cnt);
 
-    MetricId m_id;
+    MetricId m_id;          // Bucket ID
     std::mutex m_lock;
     std::vector<HeaderFile*> m_header_files;
     std::vector<DataFile*> m_data_files;
@@ -266,6 +267,7 @@ public:
     inline void dec_ref_count() { m_ref_count--; ASSERT(m_ref_count >= 0); }
     inline void inc_ref_count() { m_ref_count++; ASSERT(m_ref_count > 0); }
 
+    inline BucketId get_bucket_id(MetricId mid) { return m_bucket_balancer.get_bucket_id(mid, this); }
     inline PageSize get_page_size() const { return m_page_size; }
     inline PageCount get_page_count() const { return m_page_count; }
     inline int get_compressor_version() const { return m_compressor_version; }
@@ -376,7 +378,28 @@ public:
 private:
     friend class tsdb_less;
 
-    //Tsdb(Timestamp start, Timestamp end);
+    class BucketBalancer
+    {
+    public:
+        void init(Tsdb *tsdb, std::string& dir);    // init for an existing Tsdb
+        BucketId get_bucket_id(MetricId mid, Tsdb *tsdb);
+        void do_balance(Tsdb *prev, Tsdb *curr);
+
+        static void update_page_count(MetricId mid, uint32_t cnt);
+        // save content of m_page_counts for restore(), under WAL
+        static void save_page_counts();
+        // called after restart of TickTockDB to restore the current (latest) Tsdb
+        static void restore();
+
+    private:
+        void write_bucket_map();
+        static void update_page_count_no_lock(MetricId mid, uint32_t cnt);
+
+        std::unordered_map<MetricId,BucketId> m_bucket_map;
+        static std::mutex m_lock;       // lock for the following m_page counts
+        static std::vector<uint32_t> m_page_counts; // indexed by MetricId
+    };
+
     Tsdb(TimeRange& range, bool existing, const char *suffix = nullptr);
     virtual ~Tsdb();
     void unload();
@@ -385,7 +408,7 @@ private:
     uint32_t mode_of() const;
 
     Metric *get_metric(MetricId mid);
-    Metric *get_or_create_metric(MetricId mid);
+    Metric *get_or_create_metric(BucketId bid);
     struct page_info_on_disk *get_page_header(FileIndex file_idx, PageIndex page_idx);
 
     static Mapping *get_or_add_mapping(const char *metric);
@@ -422,6 +445,8 @@ private:
     std::mutex m_metrics_lock;
     uint32_t m_mbucket_count;   // max size of m_metrics[]
     std::vector<Metric*> m_metrics; // indexed by MetricId
+
+    BucketBalancer m_bucket_balancer;
 
     // this is true if, 1. m_map is populated; 2. m_page_mgr is open; 3. m_meta_file is open;
     // this is false if all the above are not true;

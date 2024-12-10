@@ -65,6 +65,9 @@ std::mutex g_metric_lock;
 tsl::robin_map<const char*,Mapping*,hash_func,eq_func> g_metric_map;
 thread_local tsl::robin_map<const char*, Mapping*, hash_func, eq_func> thread_local_cache;
 
+std::mutex Tsdb::BucketBalancer::m_lock;
+std::vector<uint32_t> Tsdb::BucketBalancer::m_page_counts;  // indexed by MetricId
+
 
 Measurement::Measurement() :
     m_ts_count(0),
@@ -898,7 +901,7 @@ Metric::flush(bool sync)
 }
 
 std::string
-Metric::get_metric_dir(std::string& tsdb_dir)
+Metric::get_metric_dir(const std::string& tsdb_dir)
 {
     return get_metric_dir(tsdb_dir, m_id);
 }
@@ -1163,16 +1166,23 @@ Tsdb::create(TimeRange& range, bool existing, const char *suffix)
 {
     ASSERT(! ((suffix != nullptr) && existing));
 
+    Tsdb *last_tsdb = nullptr;
     Tsdb *tsdb = new Tsdb(range, existing, suffix);
     std::string dir = get_tsdb_dir_name(range, suffix);
 
     if (suffix == nullptr)
+    {
+        if (! m_tsdbs.empty())
+            last_tsdb = m_tsdbs.back();
         m_tsdbs.push_back(tsdb);
+    }
 
     if (existing)
     {
         tsdb->restore_config(dir);
         tsdb->reload_header_data_files(dir);
+        if (suffix == nullptr)
+            tsdb->m_bucket_balancer.init(tsdb, dir);
     }
     else    // new one
     {
@@ -1183,7 +1193,15 @@ Tsdb::create(TimeRange& range, bool existing, const char *suffix)
         tsdb->write_config(dir);
 
         if (suffix == nullptr)
-            std::sort(m_tsdbs.begin(), m_tsdbs.end(), tsdb_less());
+        {
+            if ((last_tsdb != nullptr) && (last_tsdb->m_time_range.get_to() <= tsdb->m_time_range.get_from()))
+            {
+                // balance buckets, if necessary
+                tsdb->m_bucket_balancer.do_balance(last_tsdb, tsdb);
+            }
+            else
+                std::sort(m_tsdbs.begin(), m_tsdbs.end(), tsdb_less());
+        }
     }
 
     return tsdb;
@@ -1483,7 +1501,7 @@ Metric *
 Tsdb::get_metric(MetricId mid)
 {
     std::lock_guard<std::mutex> guard(m_metrics_lock);
-    uint32_t bucket = mid % m_mbucket_count;
+    BucketId bucket = get_bucket_id(mid);
 
     if (bucket < m_metrics.size())
         return m_metrics[bucket];
@@ -1492,40 +1510,39 @@ Tsdb::get_metric(MetricId mid)
 }
 
 Metric *
-Tsdb::get_or_create_metric(MetricId mid)
+Tsdb::get_or_create_metric(BucketId bid)
 {
     std::lock_guard<std::mutex> guard(m_metrics_lock);
-    uint32_t bucket = mid % m_mbucket_count;
 
     // create Metric if necessary
-    if (bucket >= m_metrics.size())
+    if (bid >= m_metrics.size())
     {
         if (m_metrics.empty())
             m_metrics.reserve(Mapping::get_metric_count());
 
         std::string tsdb_dir = get_tsdb_dir_name(m_time_range); // TODO: tsdb may have a suffix?
-        std::string metric_dir = Metric::get_metric_dir(tsdb_dir, bucket);
+        std::string metric_dir = Metric::get_metric_dir(tsdb_dir, bid);
         Metric *metric = new Metric(metric_dir, m_page_size, m_page_count);
 
-        if (bucket == m_metrics.size())
+        if (bid == m_metrics.size())
             m_metrics.push_back(metric);
         else
         {
-            while (bucket > m_metrics.size())
+            while (bid > m_metrics.size())
                 m_metrics.push_back(nullptr);
             m_metrics.push_back(metric);
         }
     }
-    else if (m_metrics[bucket] == nullptr)
+    else if (m_metrics[bid] == nullptr)
     {
         std::string tsdb_dir = get_tsdb_dir_name(m_time_range); // TODO: tsdb may have a suffix?
-        std::string metric_dir = Metric::get_metric_dir(tsdb_dir, bucket);
-        m_metrics[bucket] = new Metric(metric_dir, m_page_size, m_page_count);
+        std::string metric_dir = Metric::get_metric_dir(tsdb_dir, bid);
+        m_metrics[bid] = new Metric(metric_dir, m_page_size, m_page_count);
     }
 
-    ASSERT(bucket < m_metrics.size());
-    ASSERT(m_metrics[bucket] != nullptr);
-    return m_metrics[bucket];
+    ASSERT(bid < m_metrics.size());
+    ASSERT(m_metrics[bid] != nullptr);
+    return m_metrics[bid];
 }
 
 bool
@@ -1864,6 +1881,7 @@ Tsdb::shutdown()
     CheckPointManager::close();
     MetaFile::instance()->close();
     TimeSeries::cleanup();
+    BucketBalancer::save_page_counts();
     Logger::info("Tsdb::shutdown complete");
 }
 
@@ -2092,7 +2110,7 @@ Tsdb::set_indices(MetricId mid, TimeSeriesId tid, FileIndex prev_file_idx, Heade
 DataFile *
 Tsdb::get_data_file(MetricId mid, FileIndex file_idx)
 {
-    uint32_t bucket = mid % m_mbucket_count;
+    BucketId bucket = get_bucket_id(mid);
     if (bucket < m_metrics.size())
     {
         Metric *metric = m_metrics[bucket];
@@ -2105,7 +2123,7 @@ Tsdb::get_data_file(MetricId mid, FileIndex file_idx)
 HeaderFile *
 Tsdb::get_header_file(MetricId mid, FileIndex file_idx)
 {
-    uint32_t bucket = mid % m_mbucket_count;
+    BucketId bucket = get_bucket_id(mid);
     if (bucket < m_metrics.size())
     {
         Metric *metric = m_metrics[bucket];
@@ -2118,7 +2136,7 @@ Tsdb::get_header_file(MetricId mid, FileIndex file_idx)
 HeaderFile *
 Tsdb::get_header_file_no_lock(MetricId mid, FileIndex file_idx)
 {
-    uint32_t bucket = mid % m_mbucket_count;
+    BucketId bucket = get_bucket_id(mid);
     if (bucket < m_metrics.size())
     {
         Metric *metric = m_metrics[bucket];
@@ -2151,7 +2169,8 @@ Tsdb::append_page(MetricId mid, TimeSeriesId tid, FileIndex prev_file_idx, Heade
     ASSERT(header != nullptr);
     //std::lock_guard<std::mutex> guard(m_lock);
     //WriteLock guard(m_lock);
-    Metric *metric = get_or_create_metric(mid);
+    BucketId bid = get_bucket_id(mid);
+    Metric *metric = get_or_create_metric(bid);
     ASSERT(metric != nullptr);
     std::lock_guard<std::mutex> guard(metric->m_lock);
 
@@ -2166,6 +2185,7 @@ Tsdb::append_page(MetricId mid, TimeSeriesId tid, FileIndex prev_file_idx, Heade
 
     //m_load_time = ts_now_sec();
     m_mode |= TSDB_MODE_READ_WRITE;     // not thread-safe?
+    m_bucket_balancer.update_page_count(mid, 1);
 
     //ASSERT(m_metrics[bucket] != nullptr);
     //DataFile *data_file = metric->get_last_data();
@@ -2835,6 +2855,7 @@ Tsdb::init()
     Logger::debug("%d Tsdbs restored", m_tsdbs.size());
 
     MetaFile::init(Tsdb::restore_metrics, Tsdb::restore_ts, Tsdb::restore_measurement);
+    BucketBalancer::restore();
 
     //compact2();
 
@@ -3151,6 +3172,7 @@ Tsdb::rotate(TaskData& data)
         }
 
         tsdb->flush(true);
+        Tsdb::BucketBalancer::save_page_counts();
 
         if (all_closed)
         {
@@ -3671,6 +3693,323 @@ Tsdb::c_str(char *buff) const
     strcpy(buff, "tsdb");
     m_time_range.c_str(&buff[4]);
     return buff;
+}
+
+
+// init m_bucket_map for an existing Tsdb
+void
+Tsdb::BucketBalancer::init(Tsdb *tsdb, std::string& dir)
+{
+    ASSERT(tsdb != nullptr);
+    ASSERT(dir == Tsdb::get_tsdb_dir_name(tsdb->get_time_range()));
+
+    std::string bucket_file_name = dir + "/bucket_map";
+
+    if (! file_exists(bucket_file_name))
+        return;     // nothing to do
+
+    std::ifstream is(bucket_file_name);
+
+    if (is)
+    {
+        std::string line;
+        MetricId mid;
+        BucketId bid;
+
+        // skip 1st line: ticktockdb.version
+        std::getline(is, line);
+
+        // format: mid bucket_id
+        while (std::getline(is, line))
+        {
+            std::vector<std::string> tokens;
+            tokenize(line, tokens, ' ');
+
+            if (tokens.size() != 2)
+            {
+                Logger::error("Bad line in %s: %s", bucket_file_name.c_str(), line.c_str());
+                continue;
+            }
+
+            m_bucket_map[std::stoul(tokens[0])] = std::stoul(tokens[1]);
+        }
+    }
+
+    is.close();
+}
+
+void
+Tsdb::BucketBalancer::update_page_count(MetricId mid, uint32_t cnt)
+{
+    std::lock_guard<std::mutex> guard(m_lock);
+    update_page_count_no_lock(mid, cnt);
+}
+
+void
+Tsdb::BucketBalancer::update_page_count_no_lock(MetricId mid, uint32_t cnt)
+{
+    ASSERT(mid != TT_INVALID_METRIC_ID);
+    ASSERT(cnt > 0);
+
+    // update metric page count
+    for (auto i = m_page_counts.size(); i <= mid; i++)
+        m_page_counts.push_back(0);
+    ASSERT(mid < m_page_counts.size());
+    m_page_counts[mid] += cnt;
+}
+
+BucketId
+Tsdb::BucketBalancer::get_bucket_id(MetricId mid, Tsdb *tsdb)
+{
+    ASSERT(mid != TT_INVALID_METRIC_ID);
+    ASSERT(tsdb != nullptr);
+    auto search = m_bucket_map.find(mid);
+
+    if (search != m_bucket_map.end())
+        return search->second;
+    else
+        return mid % tsdb->m_mbucket_count;
+}
+
+// called when a new Tsdb (curr_tsdb) is created
+void
+Tsdb::BucketBalancer::do_balance(Tsdb *prev_tsdb, Tsdb *curr_tsdb)
+{
+    // inherit, then update, m_bucket_map from prev_tsdb to curr_tsdb;
+    // trying to make bucket size as even as possible among all buckets;
+    // also save it to disk, to be restored by init();
+    ASSERT(prev_tsdb != nullptr);
+    ASSERT(curr_tsdb != nullptr);
+    ASSERT(this == &(curr_tsdb->m_bucket_balancer));
+    ASSERT(m_bucket_map.empty());
+
+    // pick a bucket with too much data; pick a bucket with too little data;
+    // and try to move some metrics between them;
+    uint32_t bucket_cnt = prev_tsdb->m_mbucket_count;
+    uint32_t avg_page_count = 0;
+
+    if ((bucket_cnt > 1) && (bucket_cnt == curr_tsdb->m_mbucket_count))
+    {
+        struct bucket
+        {
+            BucketId bid;
+            uint32_t page_count;
+            std::vector<std::pair<MetricId,uint32_t>> metrics;
+
+            void swap(struct bucket& other)
+            {
+                BucketId bid_tmp = bid;
+                bid = other.bid;
+                other.bid = bid_tmp;
+
+                uint32_t page_count_tmp = page_count;
+                page_count = other.page_count;
+                other.page_count = page_count_tmp;
+
+                metrics.swap(other.metrics);
+            }
+        } buckets[bucket_cnt];
+
+        // inherit
+        if (! prev_tsdb->m_bucket_balancer.m_bucket_map.empty())
+            m_bucket_map = prev_tsdb->m_bucket_balancer.m_bucket_map;
+
+        // initialize
+        for (auto i = 0; i < bucket_cnt; i++)
+        {
+            buckets[i].bid = i;
+            buckets[i].page_count = 0;
+        }
+
+        {
+            std::lock_guard<std::mutex> guard(m_lock);
+            for (auto i = 0; i < m_page_counts.size(); i++)
+            {
+                if (m_page_counts[i] == 0)
+                {
+                    // drop it from map, if there
+                    auto it = m_bucket_map.find(i);
+                    if (it != m_bucket_map.end()) m_bucket_map.erase(it);
+                    Logger::debug("BB: dropping metric %u altogether", i);
+                }
+                else
+                {
+                    BucketId bid = prev_tsdb->get_bucket_id(i);
+                    ASSERT(bid < bucket_cnt);
+                    buckets[bid].page_count += m_page_counts[i];
+                    buckets[bid].metrics.emplace_back(std::make_pair(i,m_page_counts[i]));
+                    avg_page_count += m_page_counts[i];
+                }
+            }
+        }
+
+        avg_page_count /= bucket_cnt;
+
+        // sort buckets[] (bubble sort)
+        for (auto i = bucket_cnt-1; i > 0; i--)
+        {
+            bool changed = false;
+
+            for (auto j = 0; j < i; j++)
+            {
+                if (buckets[j].page_count > buckets[j+1].page_count)
+                {
+                    buckets[j].swap(buckets[j+1]);
+                    changed = true;
+                }
+            }
+
+            if (! changed)
+                break;
+        }
+
+        // start moving metrics
+        //while ((2 * avg_page_count) < buckets[bucket_cnt-1].page_count)
+        while (buckets[0].page_count < buckets[bucket_cnt-1].page_count)
+        {
+            // move 1 metric from last bucket to first
+            MetricId target_mid = TT_INVALID_METRIC_ID;
+            uint32_t target_cnt = 0;
+            size_t target_idx;
+            uint32_t p1 = buckets[0].page_count;
+            uint32_t p2 = buckets[bucket_cnt-1].page_count;
+
+            for (int i = 0; i < buckets[bucket_cnt-1].metrics.size(); i++)
+            {
+                auto& m = buckets[bucket_cnt-1].metrics[i];
+
+                //if ((target_cnt < m.second) && (m.second <= avg_page_count))
+                if ((target_cnt < m.second) && ((buckets[0].page_count + m.second) <= avg_page_count))
+                {
+                    target_mid = m.first;
+                    target_cnt = m.second;
+                    target_idx = i;
+                }
+            }
+
+            if (target_mid != TT_INVALID_METRIC_ID)
+            {
+                buckets[0].page_count += target_cnt;
+                buckets[0].metrics.emplace_back(std::make_pair(target_mid, target_cnt));
+
+                buckets[bucket_cnt-1].page_count -= target_cnt;
+                //buckets[bucket_cnt-1].metrics.erase(buckets[bucket_cnt-1].metrics.begin()+target_idx);
+                buckets[bucket_cnt-1].metrics[target_idx].second = 0;   // essentially removed
+
+                Logger::debug("BB: moving metric %u of size %u from bucket %u to %u, avg=%u",
+                    target_mid, target_cnt, buckets[bucket_cnt-1].bid, buckets[0].bid, avg_page_count);
+
+                if ((target_mid % bucket_cnt) == buckets[0].bid)
+                {
+                    auto it = m_bucket_map.find(target_mid);
+                    if (it != m_bucket_map.end()) m_bucket_map.erase(it);
+                }
+                else
+                    m_bucket_map[target_mid] = buckets[0].bid;
+            }
+            else
+                break;
+
+            // sort again
+            for (auto i = 0; i < bucket_cnt-2; i++)
+            {
+                if (buckets[i].page_count > buckets[i+1].page_count)
+                    buckets[i].swap(buckets[i+1]);
+            }
+
+            for (auto i = bucket_cnt-1; i > 0; i--)
+            {
+                if (buckets[i].page_count < buckets[i-1].page_count)
+                    buckets[i].swap(buckets[i-1]);
+            }
+        }
+    }
+
+    // write out m_bucket_map
+    if (! m_bucket_map.empty())
+    {
+        std::string file_name =
+            Tsdb::get_tsdb_dir_name(curr_tsdb->get_time_range()) + "/bucket_map";
+        std::ofstream os(file_name, std::ios::trunc);
+
+        os << "ticktockdb.version = " << TT_MAJOR_VERSION << "."
+                                      << TT_MINOR_VERSION << "."
+                                      << TT_PATCH_VERSION << std::endl;
+
+        for (auto const& entry: m_bucket_map)
+            os << entry.first << " " << entry.second << std::endl;
+
+        os.close();
+    }
+
+    // clean page counts
+    {
+        std::lock_guard<std::mutex> guard(m_lock);
+        for (auto i = 0; i < m_page_counts.size(); i++)
+            m_page_counts[i] = 0;
+    }
+
+    // remove page_counts archive
+    std::string file_name = Config::get_wal_dir() + "/page_counts";
+    rm_file(file_name);
+}
+
+void
+Tsdb::BucketBalancer::save_page_counts()
+{
+    // save m_page_counts[] under WAL directory
+    if (m_page_counts.empty()) return;  // nothing to do
+
+    std::string file_name = Config::get_wal_dir() + "/page_counts";
+    std::ofstream os(file_name, std::ios::trunc);
+
+    os << "ticktockdb.version = " << TT_MAJOR_VERSION << "."
+                                  << TT_MINOR_VERSION << "."
+                                  << TT_PATCH_VERSION << std::endl;
+
+    for (auto cnt: m_page_counts)
+        os << cnt << std::endl;
+
+    os.close();
+}
+
+/* @param tsdb Latest tsdb
+ * @param dir Directory of the 'tsdb'
+ *
+ * This is called during start-up, so no locks are needed.
+ */
+void
+Tsdb::BucketBalancer::restore()
+{
+    // restore m_page_counts[] from WAL directory;
+    // also restore m_page_cnt for each Bucket of tsdb
+    ASSERT(m_page_counts.empty());
+
+    std::string file_name = Config::get_wal_dir() + "/page_counts";
+
+    if (! file_exists(file_name))
+        return;     // nothing to restore from
+
+    std::ifstream is(file_name);
+
+    if (is)
+    {
+        std::string line;
+        MetricId mid = 0;
+
+        // skip 1st line: ticktockdb.version
+        std::getline(is, line);
+
+        // just a number on each line
+        while (std::getline(is, line))
+        {
+            uint32_t page_cnt = (uint32_t)std::stoul(line);
+            update_page_count_no_lock(mid, page_cnt);
+            mid++;
+        }
+    }
+
+    is.close();
 }
 
 
