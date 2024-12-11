@@ -67,6 +67,7 @@ thread_local tsl::robin_map<const char*, Mapping*, hash_func, eq_func> thread_lo
 
 std::mutex Tsdb::BucketBalancer::m_lock;
 std::vector<uint32_t> Tsdb::BucketBalancer::m_page_counts;  // indexed by MetricId
+bool Tsdb::BucketBalancer::m_page_counts_valid = false;
 
 
 Measurement::Measurement() :
@@ -1142,7 +1143,7 @@ Tsdb::Tsdb(TimeRange& range, bool existing, const char *suffix) :
     }
 
     m_mode = mode_of();
-    Logger::debug("tsdb %T created (mode=%d)", &range, m_mode);
+    Logger::debug("tsdb %T created (mode=%d)", &range, m_mode.load());
 }
 
 Tsdb::~Tsdb()
@@ -1302,13 +1303,16 @@ Tsdb::restore_config(const std::string& dir)
         //m_mode |= TSDB_MODE_COMPACTED;
 
     if (cfg.exists("rolled_up") && cfg.get_bool("rolled_up", false))
-        m_mode |= TSDB_MODE_ROLLED_UP;
+        //m_mode |= TSDB_MODE_ROLLED_UP;
+        m_mode = m_mode.load() | TSDB_MODE_ROLLED_UP;
 
     if (cfg.exists("out_of_order") && cfg.get_bool("out_of_order", false))
-        m_mode |= TSDB_MODE_OUT_OF_ORDER;
+        //m_mode |= TSDB_MODE_OUT_OF_ORDER;
+        m_mode = m_mode.load() | TSDB_MODE_OUT_OF_ORDER;
 
     if (cfg.exists("crashed") && cfg.get_bool("crashed", false))
-        m_mode |= TSDB_MODE_CRASHED;
+        //m_mode |= TSDB_MODE_CRASHED;
+        m_mode = m_mode.load() | TSDB_MODE_CRASHED;
 
     if (cfg.exists(CFG_TSDB_TIMESTAMP_RESOLUTION))
         m_tstamp_ms = starts_with(cfg.get_str(CFG_TSDB_TIMESTAMP_RESOLUTION), 'm');
@@ -1333,13 +1337,13 @@ Tsdb::write_config(const std::string& dir)
     //if (m_mode & TSDB_MODE_COMPACTED)
         //cfg.set_value("compacted", "true");
 
-    if (m_mode & TSDB_MODE_ROLLED_UP)
+    if (m_mode.load() & TSDB_MODE_ROLLED_UP)
         cfg.set_value("rolled_up", "true");
 
-    if (m_mode & TSDB_MODE_OUT_OF_ORDER)
+    if (m_mode.load() & TSDB_MODE_OUT_OF_ORDER)
         cfg.set_value("out_of_order", "true");
 
-    if (m_mode & TSDB_MODE_CRASHED)
+    if (m_mode.load() & TSDB_MODE_CRASHED)
         cfg.set_value("crashed", "true");
 
     cfg.persist();
@@ -1738,7 +1742,8 @@ Tsdb::query_for_data(MetricId mid, TimeRange& range, std::vector<QueryTask*>& ta
     };
     std::priority_queue<QueryTask*, std::vector<QueryTask*>, decltype(query_task_cmp)> pq(query_task_cmp);
 
-    m_mode |= TSDB_MODE_READ;
+    //m_mode |= TSDB_MODE_READ;
+    m_mode = m_mode.load() | TSDB_MODE_READ;
     m_index_file.ensure_open(true);
     Timestamp middle = m_time_range.get_middle();
     Metric *metric = get_metric(mid);
@@ -1881,7 +1886,7 @@ Tsdb::shutdown()
     CheckPointManager::close();
     MetaFile::instance()->close();
     TimeSeries::cleanup();
-    BucketBalancer::save_page_counts();
+    //BucketBalancer::save_page_counts();
     Logger::info("Tsdb::shutdown complete");
 }
 
@@ -1975,7 +1980,7 @@ bool
 Tsdb::has_daily_rollup()
 {
     std::lock_guard<std::mutex> guard(m_lock);
-    return ((m_mode & TSDB_MODE_ROLLED_UP) != 0);
+    return ((m_mode.load() & TSDB_MODE_ROLLED_UP) != 0);
 }
 
 // If this returns true, rollup data is definitely usable;
@@ -1987,10 +1992,10 @@ Tsdb::can_use_rollup(bool level2)
     std::lock_guard<std::mutex> guard(m_lock);
 
     if (level2)
-        return ((m_mode & TSDB_MODE_ROLLED_UP) != 0) &&
-               ((m_mode & TSDB_MODE_OUT_OF_ORDER) == 0);
+        return ((m_mode.load() & TSDB_MODE_ROLLED_UP) != 0) &&
+               ((m_mode.load() & TSDB_MODE_OUT_OF_ORDER) == 0);
     else
-        return ((m_mode & TSDB_MODE_OUT_OF_ORDER) == 0);
+        return ((m_mode.load() & TSDB_MODE_OUT_OF_ORDER) == 0);
 }
 
 bool
@@ -2032,9 +2037,11 @@ Tsdb::set_out_of_order2(TimeSeriesId tid, bool ooo)
     m_index_file.set_out_of_order2(tid, ooo);
 
     if (ooo)
-        m_mode |= TSDB_MODE_OUT_OF_ORDER;
+        //m_mode |= TSDB_MODE_OUT_OF_ORDER;
+        m_mode = m_mode.load() | TSDB_MODE_OUT_OF_ORDER;
     else
-        m_mode &= ~TSDB_MODE_OUT_OF_ORDER;
+        //m_mode &= ~TSDB_MODE_OUT_OF_ORDER;
+        m_mode = m_mode.load() & ~TSDB_MODE_OUT_OF_ORDER;
 }
 
 // this is only called when writing data points
@@ -2050,9 +2057,11 @@ Tsdb::get_last_header_indices(MetricId mid, TimeSeriesId tid, FileIndex& file_id
     //ReadLock guard(m_lock);
     std::lock_guard<std::mutex> guard(m_lock);
 
-    m_mode |= TSDB_MODE_READ;
+    //m_mode |= TSDB_MODE_READ;
+    m_mode = m_mode.load() | TSDB_MODE_READ;
     if (is_rolled_up()) add_config("rolled_up", "false");
-    m_mode &= ~(TSDB_MODE_COMPACTED|TSDB_MODE_ROLLED_UP);
+    //m_mode &= ~(TSDB_MODE_COMPACTED|TSDB_MODE_ROLLED_UP);
+    m_mode = m_mode.load() & ~(TSDB_MODE_COMPACTED|TSDB_MODE_ROLLED_UP);
     m_index_file.ensure_open(false);
     m_index_file.get_indices2(tid, fidx, hidx);
     if (fidx == TT_INVALID_FILE_INDEX)
@@ -2184,7 +2193,8 @@ Tsdb::append_page(MetricId mid, TimeSeriesId tid, FileIndex prev_file_idx, Heade
     ASSERT(data_file != nullptr);
 
     //m_load_time = ts_now_sec();
-    m_mode |= TSDB_MODE_READ_WRITE;     // not thread-safe?
+    //m_mode |= TSDB_MODE_READ_WRITE;     // not thread-safe?
+    m_mode = m_mode.load() | TSDB_MODE_READ_WRITE;
     m_bucket_balancer.update_page_count(mid, 1);
 
     //ASSERT(m_metrics[bucket] != nullptr);
@@ -2855,7 +2865,7 @@ Tsdb::init()
     Logger::debug("%d Tsdbs restored", m_tsdbs.size());
 
     MetaFile::init(Tsdb::restore_metrics, Tsdb::restore_ts, Tsdb::restore_measurement);
-    BucketBalancer::restore();
+    //BucketBalancer::restore();
 
     //compact2();
 
@@ -3086,7 +3096,8 @@ Tsdb::unload_no_lock()
             metric->close();
     }
     m_index_file.close();
-    m_mode &= ~TSDB_MODE_READ_WRITE;
+    //m_mode &= ~TSDB_MODE_READ_WRITE;
+    m_mode = m_mode.load() & ~TSDB_MODE_READ_WRITE;
 }
 
 void
@@ -3094,7 +3105,8 @@ Tsdb::unload_if_idle(Timestamp threshold_sec, Timestamp now_sec)
 {
     if (m_index_file.close_if_idle(threshold_sec, now_sec))
     {
-        m_mode &= ~TSDB_MODE_READ_WRITE;
+        //m_mode &= ~TSDB_MODE_READ_WRITE;
+        m_mode = m_mode.load() & ~TSDB_MODE_READ_WRITE;
 
         for (auto metric: m_metrics)
         {
@@ -3151,7 +3163,7 @@ Tsdb::rotate(TaskData& data)
         std::lock_guard<std::mutex> guard(tsdb->m_lock);
         //WriteLock guard(tsdb->m_lock);
 
-        if (! (tsdb->m_mode & TSDB_MODE_READ))
+        if (! (tsdb->m_mode.load() & TSDB_MODE_READ))
         {
             tsdb->dec_ref_count();
             continue;    // already archived
@@ -3172,7 +3184,7 @@ Tsdb::rotate(TaskData& data)
         }
 
         tsdb->flush(true);
-        Tsdb::BucketBalancer::save_page_counts();
+        //Tsdb::BucketBalancer::save_page_counts();
 
         if (all_closed)
         {
@@ -3316,12 +3328,12 @@ Tsdb::compact(TaskData& data)
 
             // also make sure it's not readable nor writable while we are compacting
             //if ((*it)->m_mode & (TSDB_MODE_COMPACTED | TSDB_MODE_READ_WRITE))
-            if ((*it)->m_mode & TSDB_MODE_COMPACTED)
+            if ((*it)->m_mode.load() & TSDB_MODE_COMPACTED)
             {
                 Logger::debug("[compact] %T is already compacted, ref-count = %d", (*it), (*it)->m_ref_count.load());
                 continue;
             }
-            else if (((*it)->m_mode & TSDB_MODE_READ_WRITE) && (data.integer == 0))
+            else if (((*it)->m_mode.load() & TSDB_MODE_READ_WRITE) && (data.integer == 0))
             {
                 Logger::debug("[compact] %T is still being accessed, ref-count = %d", (*it), (*it)->m_ref_count.load());
                 continue;
@@ -3408,7 +3420,8 @@ Tsdb::compact(TaskData& data)
                 compact2();
 
                 // mark it as compacted
-                tsdb->m_mode |= TSDB_MODE_COMPACTED;
+                //tsdb->m_mode |= TSDB_MODE_COMPACTED;
+                tsdb->m_mode = tsdb->m_mode.load() | TSDB_MODE_COMPACTED;
                 dir = get_tsdb_dir_name(range);
                 tsdb->reload_header_data_files(dir);
                 Logger::info("[compact] 1 Tsdb compacted");
@@ -3544,7 +3557,7 @@ Tsdb::rollup(TaskData& data)
                 Logger::info("[rollup] %T is already rolled up, ref-count = %d", (*it), (*it)->m_ref_count.load());
                 continue;
             }
-            else if (((*it)->m_mode & TSDB_MODE_READ_WRITE) && (data.integer == 0))
+            else if (((*it)->m_mode.load() & TSDB_MODE_READ_WRITE) && (data.integer == 0))
             {
                 Logger::info("[rollup] %T is still being accessed, ref-count = %d", (*it), (*it)->m_ref_count.load());
                 break;
@@ -3643,7 +3656,8 @@ Tsdb::rollup(TaskData& data)
         for (auto tsdb: tsdbs)
         {
             std::lock_guard<std::mutex> guard(tsdb->m_lock);
-            tsdb->m_mode |= TSDB_MODE_ROLLED_UP;
+            //tsdb->m_mode |= TSDB_MODE_ROLLED_UP;
+            tsdb->m_mode = tsdb->m_mode.load() | TSDB_MODE_ROLLED_UP;
             std::string dir = get_tsdb_dir_name(tsdb->m_time_range);
             tsdb->write_config(dir);    // persist the 'rolled_up' status
             tsdb->dec_ref_count();
@@ -3682,7 +3696,8 @@ Tsdb::set_crashes(Tsdb *oldest_tsdb)
     for (auto it = m_tsdbs.rbegin(); it != m_tsdbs.rend(); it++)
     {
         Tsdb *tsdb = *it;
-        tsdb->m_mode |= TSDB_MODE_CRASHED;
+        //tsdb->m_mode |= TSDB_MODE_CRASHED;
+        tsdb->m_mode = tsdb->m_mode.load() | TSDB_MODE_CRASHED;
         if (tsdb == oldest_tsdb) break;
     }
 }
@@ -3782,6 +3797,13 @@ Tsdb::BucketBalancer::do_balance(Tsdb *prev_tsdb, Tsdb *curr_tsdb)
     ASSERT(curr_tsdb != nullptr);
     ASSERT(this == &(curr_tsdb->m_bucket_balancer));
     ASSERT(m_bucket_map.empty());
+
+    if (! m_page_counts_valid)
+    {
+        m_page_counts_valid = true;
+        clear_page_count();
+        return;
+    }
 
     // pick a bucket with too much data; pick a bucket with too little data;
     // and try to move some metrics between them;
@@ -3942,21 +3964,28 @@ Tsdb::BucketBalancer::do_balance(Tsdb *prev_tsdb, Tsdb *curr_tsdb)
         os.close();
     }
 
-    // clean page counts
-    {
-        std::lock_guard<std::mutex> guard(m_lock);
-        for (auto i = 0; i < m_page_counts.size(); i++)
-            m_page_counts[i] = 0;
-    }
+    clear_page_count();
 
     // remove page_counts archive
-    std::string file_name = Config::get_wal_dir() + "/page_counts";
-    rm_file(file_name);
+    //std::string file_name = Config::get_wal_dir() + "/page_counts";
+    //rm_file(file_name);
 }
 
 void
+Tsdb::BucketBalancer::clear_page_count()
+{
+    // clear page counts
+    std::lock_guard<std::mutex> guard(m_lock);
+    for (auto i = 0; i < m_page_counts.size(); i++)
+        m_page_counts[i] = 0;
+}
+
+#if 0
+void
 Tsdb::BucketBalancer::save_page_counts()
 {
+    std::lock_guard<std::mutex> guard(m_lock);
+
     // save m_page_counts[] under WAL directory
     if (m_page_counts.empty()) return;  // nothing to do
 
@@ -4011,6 +4040,7 @@ Tsdb::BucketBalancer::restore()
 
     is.close();
 }
+#endif
 
 
 }

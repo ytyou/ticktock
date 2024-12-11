@@ -282,11 +282,10 @@ MmapFile::flush(bool sync)
 void
 MmapFile::ensure_open(bool for_read)
 {
+    std::lock_guard<std::mutex> guard(m_lock);
+
     if (! is_open(for_read))
-    {
-        std::lock_guard<std::mutex> guard(m_lock);
-        if (! is_open(for_read)) open(for_read);
-    }
+        open(for_read);
 
     // open() could fail if we are trying to open a non-existing file for read
     ASSERT(is_open(for_read) || (for_read && !exists()));
@@ -340,7 +339,7 @@ IndexFile::open(bool for_read)
 bool
 IndexFile::close_if_idle(Timestamp threshold_sec, Timestamp now_sec)
 {
-    if ((threshold_sec + m_last_access) < now_sec)
+    if ((threshold_sec + m_last_access.load()) < now_sec)
     {
         close();
         return true;
@@ -348,7 +347,7 @@ IndexFile::close_if_idle(Timestamp threshold_sec, Timestamp now_sec)
     else
     {
         Logger::debug("index file %s last access at %" PRIu64 "; now is %" PRIu64,
-            m_name.c_str(), m_last_access, now_sec);
+            m_name.c_str(), m_last_access.load(), now_sec);
     }
 
     return false;

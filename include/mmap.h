@@ -112,7 +112,7 @@ public:
 private:
     bool expand(int64_t new_len);
 
-    Timestamp m_last_access;
+    std::atomic<Timestamp> m_last_access;
 };
 
 

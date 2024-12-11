@@ -319,32 +319,33 @@ public:
 
     inline bool is_read_only() const
     {
-        return ((m_mode & TSDB_MODE_WRITE) == 0);
+        return ((m_mode.load() & TSDB_MODE_WRITE) == 0);
     }
 
     inline bool is_archived() const
     {
-        return ((m_mode & TSDB_MODE_READ_WRITE) == 0);
+        return ((m_mode.load() & TSDB_MODE_READ_WRITE) == 0);
     }
 
     inline bool is_compacted() const
     {
-        return ((m_mode & TSDB_MODE_COMPACTED));
+        return ((m_mode.load() & TSDB_MODE_COMPACTED));
     }
 
     inline bool is_rolled_up() const
     {
-        return ((m_mode & TSDB_MODE_ROLLED_UP));
+        return ((m_mode.load() & TSDB_MODE_ROLLED_UP));
     }
 
     inline bool is_crashed() const
     {
-        return ((m_mode & TSDB_MODE_CRASHED));
+        return ((m_mode.load() & TSDB_MODE_CRASHED));
     }
 
     inline void set_crashed()
     {
-        m_mode |= TSDB_MODE_CRASHED;
+        //m_mode |= TSDB_MODE_CRASHED;
+        m_mode = m_mode.load() | TSDB_MODE_CRASHED;
     }
 
     static void set_crashes(Tsdb *oldest_tsdb);
@@ -386,10 +387,11 @@ private:
         void do_balance(Tsdb *prev, Tsdb *curr);
 
         static void update_page_count(MetricId mid, uint32_t cnt);
+        static void clear_page_count();
         // save content of m_page_counts for restore(), under WAL
-        static void save_page_counts();
+        //static void save_page_counts();
         // called after restart of TickTockDB to restore the current (latest) Tsdb
-        static void restore();
+        //static void restore();
 
     private:
         void write_bucket_map();
@@ -398,6 +400,7 @@ private:
         std::unordered_map<MetricId,BucketId> m_bucket_map;
         static std::mutex m_lock;       // lock for the following m_page counts
         static std::vector<uint32_t> m_page_counts; // indexed by MetricId
+        static bool m_page_counts_valid;
     };
 
     Tsdb(TimeRange& range, bool existing, const char *suffix = nullptr);
@@ -450,7 +453,7 @@ private:
 
     // this is true if, 1. m_map is populated; 2. m_page_mgr is open; 3. m_meta_file is open;
     // this is false if all the above are not true;
-    uint32_t m_mode;
+    std::atomic<uint32_t> m_mode;
     //std::atomic<Timestamp> m_load_time; // epoch time in sec
     //Timestamp m_load_time; // epoch time in sec
     //default_contention_free_shared_mutex m_load_lock;
