@@ -2119,26 +2119,36 @@ Tsdb::set_indices(MetricId mid, TimeSeriesId tid, FileIndex prev_file_idx, Heade
 DataFile *
 Tsdb::get_data_file(MetricId mid, FileIndex file_idx)
 {
+    Metric *metric = nullptr;
     BucketId bucket = get_bucket_id(mid);
-    if (bucket < m_metrics.size())
+
     {
-        Metric *metric = m_metrics[bucket];
-        if (metric != nullptr)
-            return metric->get_data_file(file_idx);
+        std::lock_guard<std::mutex> guard(m_metrics_lock);
+        if (bucket < m_metrics.size())
+            metric = m_metrics[bucket];
     }
+
+    if (metric != nullptr)
+        return metric->get_data_file(file_idx);
+
     return nullptr;
 }
 
 HeaderFile *
 Tsdb::get_header_file(MetricId mid, FileIndex file_idx)
 {
+    Metric *metric = nullptr;
     BucketId bucket = get_bucket_id(mid);
-    if (bucket < m_metrics.size())
+
     {
-        Metric *metric = m_metrics[bucket];
-        if (metric != nullptr)
-            return metric->get_header_file(file_idx);
+        std::lock_guard<std::mutex> guard(m_metrics_lock);
+        if (bucket < m_metrics.size())
+            metric = m_metrics[bucket];
     }
+
+    if (metric != nullptr)
+        return metric->get_header_file(file_idx);
+
     return nullptr;
 }
 
