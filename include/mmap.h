@@ -112,7 +112,11 @@ public:
 private:
     bool expand(int64_t new_len);
 
+#if (__x86_64__ == 1) || (__ARM_64BIT_STATE == 1)
     std::atomic<Timestamp> m_last_access;
+#else
+    std::atomic<uint32_t> m_last_access;    // should be good for the next 80 years
+#endif
 };
 
 
