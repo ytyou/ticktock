@@ -19,6 +19,7 @@
 #include <atomic>
 #include <iostream>
 #include <csignal>
+#include <fstream>
 #include <memory>
 #include <random>
 #include <limits.h>
@@ -272,8 +273,20 @@ initialize()
     create_dir(log_dir);
 
     Logger::init();
+    auto pid = getpid();
     Logger::info("TickTockDB version: %d.%d.%d, on %s, pid: %d",
-        TT_MAJOR_VERSION, TT_MINOR_VERSION, TT_PATCH_VERSION, g_host_name.c_str(), getpid());
+        TT_MAJOR_VERSION, TT_MINOR_VERSION, TT_PATCH_VERSION, g_host_name.c_str(), pid);
+    try
+    {
+        // write to pid file
+        std::ofstream pidfile(g_pid_file);
+        pidfile << pid << std::endl;
+        pidfile.close();
+    }
+    catch (...)
+    {
+        Logger::warn("Failed to write own pid to file %s", g_pid_file.c_str());
+    }
 #ifdef __GLIBC__
     Logger::info("GNU libc compile-time version: %u.%u", __GLIBC__, __GLIBC_MINOR__);
     Logger::info("GNU libc runtime version: %s", gnu_get_libc_version());
