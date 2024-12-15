@@ -1989,18 +1989,20 @@ Tsdb::has_daily_rollup()
 bool
 Tsdb::can_use_rollup(bool level2)
 {
-    std::lock_guard<std::mutex> guard(m_lock);
+    //std::lock_guard<std::mutex> guard(m_lock);
+    uint32_t mode = m_mode.load();
 
     if (level2)
-        return ((m_mode.load() & TSDB_MODE_ROLLED_UP) != 0) &&
-               ((m_mode.load() & TSDB_MODE_OUT_OF_ORDER) == 0);
+        return ((mode & TSDB_MODE_ROLLED_UP) != 0) &&
+               ((mode & (TSDB_MODE_OUT_OF_ORDER | TSDB_MODE_CRASHED)) == 0);
     else
-        return ((m_mode.load() & TSDB_MODE_OUT_OF_ORDER) == 0);
+        return ((mode & (TSDB_MODE_OUT_OF_ORDER | TSDB_MODE_CRASHED)) == 0);
 }
 
 bool
 Tsdb::can_use_rollup(TimeSeriesId tid)
 {
+    if (is_crashed()) return false;
     std::lock_guard<std::mutex> guard(m_lock);
     m_index_file.ensure_open(true);
     return m_index_file.get_out_of_order2(tid);

@@ -156,6 +156,7 @@ RollupManager::shutdown()
 
     if (m_wal_data_file != nullptr)
     {
+        m_wal_data_file->close();
         delete m_wal_data_file;
         m_wal_data_file = nullptr;
     }

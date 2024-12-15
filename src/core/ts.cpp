@@ -161,6 +161,7 @@ TimeSeries::cleanup()
 #endif
 }
 
+// restore from WAL
 void
 TimeSeries::restore(Tsdb *tsdb, MetricId mid, Timestamp tstamp, PageSize offset, uint8_t start, uint8_t *buff, int size, bool is_ooo, FileIndex file_idx, HeaderIndex header_idx)
 {
@@ -187,9 +188,6 @@ TimeSeries::restore(Tsdb *tsdb, MetricId mid, Timestamp tstamp, PageSize offset,
             delete m_buff;
             m_buff = nullptr;
         }
-
-        ASSERT(sizeof(struct rollup_append_entry) <= size);
-        m_rollup.restore((struct rollup_append_entry*)&buff[size-sizeof(struct rollup_append_entry)]);
     }
 }
 
@@ -267,17 +265,14 @@ TimeSeries::flush_no_lock(MetricId mid, bool close)
     //m_rollup.flush(mid, m_id);
 }
 
+// write to WAL
 void
 TimeSeries::append(MetricId mid, FILE *file)
 {
     ASSERT(file != nullptr);
     //std::lock_guard<std::mutex> guard(m_lock);
     std::lock_guard<std::mutex> guard(m_locks[m_id % m_lock_count]);
-    if (m_buff != nullptr)
-    {
-        m_buff->append(mid, m_id, file);
-        m_rollup.append(file);
-    }
+    if (m_buff != nullptr) m_buff->append(mid, m_id, file);
     if (m_ooo_buff != nullptr) m_ooo_buff->append(mid, m_id, file);
 }
 
