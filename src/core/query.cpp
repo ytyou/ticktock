@@ -999,7 +999,11 @@ QuerySuperTask::use_rollup() const
             {
                 rollup_interval *= 1000;
                 rollup_interval2 *= 1000;
+
+                if (! m_ms) downsample_interval *= 1000;
             }
+            else if (m_ms)
+                downsample_interval /= 1000;
 
             // TODO: config
             if (rollup_interval2 <= downsample_interval)

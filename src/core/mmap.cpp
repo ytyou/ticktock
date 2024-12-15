@@ -1344,7 +1344,7 @@ RollupDataFile::add_data_point(TimeSeriesId tid, Timestamp tstamp, uint32_t cnt,
     }
     ASSERT(m_file != nullptr);
     std::fwrite(&entry, sizeof(entry), 1, m_file);
-    std::fflush(m_file);
+    //std::fflush(m_file);
     //m_index += sizeof(entry);
     //m_size += sizeof(entry);
 }
