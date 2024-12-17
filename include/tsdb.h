@@ -359,6 +359,7 @@ public:
 
     // parse 1-line of the InfluxDB line protocol
     static bool parse_line(char* &line, const char* &measurement, char* &tags, Timestamp& ts, std::vector<DataPoint>& dps);
+    static bool parse_line_safe(char* &line, const char* &measurement, char* &tags, Timestamp& ts, std::vector<DataPoint>& dps);
     static bool add_data_points(const char *measurement, char *tags, Timestamp ts, std::vector<DataPoint>& dps);
 
     static int get_metrics_count();

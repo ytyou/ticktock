@@ -1989,18 +1989,20 @@ Tsdb::has_daily_rollup()
 bool
 Tsdb::can_use_rollup(bool level2)
 {
-    std::lock_guard<std::mutex> guard(m_lock);
+    //std::lock_guard<std::mutex> guard(m_lock);
+    uint32_t mode = m_mode.load();
 
     if (level2)
-        return ((m_mode.load() & TSDB_MODE_ROLLED_UP) != 0) &&
-               ((m_mode.load() & TSDB_MODE_OUT_OF_ORDER) == 0);
+        return ((mode & TSDB_MODE_ROLLED_UP) != 0) &&
+               ((mode & (TSDB_MODE_OUT_OF_ORDER | TSDB_MODE_CRASHED)) == 0);
     else
-        return ((m_mode.load() & TSDB_MODE_OUT_OF_ORDER) == 0);
+        return ((mode & (TSDB_MODE_OUT_OF_ORDER | TSDB_MODE_CRASHED)) == 0);
 }
 
 bool
 Tsdb::can_use_rollup(TimeSeriesId tid)
 {
+    if (is_crashed()) return false;
     std::lock_guard<std::mutex> guard(m_lock);
     m_index_file.ensure_open(true);
     return m_index_file.get_out_of_order2(tid);
@@ -2556,7 +2558,31 @@ Tsdb::http_api_write_handler(HttpRequest& request, HttpResponse& response)
     curr[request.length+3] = '\n';
     curr[request.length+4] = '0';
 
-    while ((curr != nullptr) && (*curr != 0))
+    // parse 1st line with more checks
+    while (*curr == '#')
+    {
+        while ((*(++curr) != '\n') && (*curr != 0))
+            curr++;
+        if (*curr == 0)
+            break;
+        curr++;
+    }
+
+    if (*curr == 0)
+        success = false;
+
+    const char *measurement;
+    char *tags = nullptr;
+    Timestamp ts = 0;
+
+    success = success && parse_line_safe(curr, measurement, tags, ts, dps);
+
+    if (ts == 0) ts = now;
+    success = success && add_data_points(measurement, tags, ts, dps);
+    dps.clear();
+
+    // parse the rest of the lines
+    while ((curr != nullptr) && (*curr != 0) && success)
     {
         if (UNLIKELY(*curr == '#'))
         {
@@ -2565,9 +2591,8 @@ Tsdb::http_api_write_handler(HttpRequest& request, HttpResponse& response)
             continue;
         }
 
-        const char *measurement;
-        char *tags = nullptr;
-        Timestamp ts = 0;
+        tags = nullptr;
+        ts = 0;
 
         bool ok = parse_line(curr, measurement, tags, ts, dps);
         if (! ok) { success = false; break; }
@@ -2575,6 +2600,7 @@ Tsdb::http_api_write_handler(HttpRequest& request, HttpResponse& response)
         if (ts == 0) ts = now;
         success = add_data_points(measurement, tags, ts, dps) && success;
 
+        //if (! success) break;
         dps.clear();
     }
 
@@ -2807,6 +2833,136 @@ Tsdb::parse_line(char* &line, const char* &measurement, char* &tags, Timestamp& 
         line++;
     else if (*line != 0)
     {
+        ts = std::atoll(line);
+        while (*line != '\n' && *line != 0) line++;
+        if (*line == '\n') line++;
+
+        // convert ts to desired unit
+        ts = validate_resolution(ts);
+    }
+
+    return true;
+}
+
+bool
+Tsdb::parse_line_safe(char* &line, const char* &measurement, char* &tags, Timestamp& ts, std::vector<DataPoint>& dps)
+{
+    // find first non-space
+    while (std::isspace(*line) && (*line != '\n') && (*line != 0))
+        line++;
+    if (! std::isalnum(*line))
+        return false;
+    measurement = line;
+
+    // find first comma or white space
+    for ( ; ; )
+    {
+        if (*line == '\\')
+        {
+            *line++ = '_';
+            switch (*line)
+            {
+                case ',':   *line = 'C'; break;
+                case '=':   *line = 'E'; break;
+                case ' ':   *line = 'S'; break;
+                default:    *line = '_'; break;
+            }
+            line++;
+        }
+        else if ((*line == ',') || (*line == ' ') || (*line == '\n') || (*line == 0))
+            break;
+        else
+            line++;
+    }
+
+    if ((*line != ',') && (*line != ' '))
+        return false;
+
+    // find the next space
+    if (*line == ',')
+    {
+        *line = 0;  // end of measurement
+        tags = ++line;
+
+        for ( ; ; )
+        {
+            if (*line == '\\')
+            {
+                *line++ = '_';
+                switch (*line)
+                {
+                    case ',':   *line = 'C'; break;
+                    case '=':   *line = 'E'; break;
+                    case ' ':   *line = 'S'; break;
+                    default:    *line = '_'; break;
+                }
+                line++;
+            }
+            else if ((*line == ' ') || (*line == '\n') || (*line == 0))
+                break;
+            else
+                line++;
+        }
+    }
+
+    if (*line != ' ')
+        return false;
+
+    *line = 0;
+
+    // ' <field_key>=<field_value>[,<field_key>=<field_value>] [<timestamp>]'
+    do
+    {
+        dps.emplace_back();
+
+        DataPoint& dp = dps.back();
+        char *field = ++line;
+
+        // look for first equal sign
+        for ( ; ; )
+        {
+            if (*line == '\\')
+            {
+                *line++ = '_';
+                switch (*line)
+                {
+                    case ',':   *line = 'C'; break;
+                    case '=':   *line = 'E'; break;
+                    case ' ':   *line = 'S'; break;
+                    default:    *line = '_'; break;
+                }
+                line++;
+            }
+            else if ((*line == '=') || (*line == '\n') || (*line == 0))
+                break;
+            else
+                line++;
+        }
+
+        if (*line != '=')
+            return false;
+
+        *line++ = 0;  // end of field name
+
+        // the next one has to be a number
+        if ((!std::isdigit(*line)) && (*line != '+') && (*line != '-') && (*line != '.') &&
+            !((std::strlen(line) >= 3) && (std::strncmp(line, "inf", 3) == 0 || std::strncmp(line, "nan", 3) == 0)))
+            return false;
+
+        dp.set_raw_tags(field);    // use raw_tags to remember field name
+        dp.set_value(std::atof(line));
+
+        while ((*line != ',' || *line == '\\') && (*line != ' ' || *(line-1) == '\\') && (*line != '\n') && (*line != 0))
+            line++;
+    } while (*line == ',');
+
+    if (*line == ' ') line++;
+    if (*line == '\n')
+        line++;
+    else if (*line != 0)
+    {
+        if (! std::isdigit(*line))
+            return false;
         ts = std::atoll(line);
         while (*line != '\n' && *line != 0) line++;
         if (*line == '\n') line++;
