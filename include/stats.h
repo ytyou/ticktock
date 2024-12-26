@@ -63,6 +63,7 @@ class Stats
 {
 public:
     static void init();
+    static void cleanup();
     static uint64_t get_rss_mb();
     static uint64_t get_disk_avail();
 
@@ -79,6 +80,7 @@ public:
     static int collect_stats(char *buff, int size);
 
 private:
+    static void send_to_dst(const char *buff, int len);
     static bool inject_metrics(TaskData& data);
     static void inject_internal_metrics(Timestamp ts, Tsdb *tsdb);
     static void collect_proc_io(Timestamp tstamp, Tsdb *tsdb);

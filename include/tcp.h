@@ -71,6 +71,7 @@ public:
     TcpServer *server;
     TcpListener *listener;
     bool forward;
+    Timestamp received;                 // time last request was received
 
     int32_t worker_id;
     std::atomic<int32_t> pending_tasks; // # pending tasks working on this conn
@@ -104,6 +105,7 @@ protected:
         offset = 0;
         forward = g_cluster_enabled;
         last_contact = std::chrono::steady_clock::now();
+        received = 0;
     }
 
     inline bool recycle() override

@@ -103,7 +103,7 @@
 #define CFG_TSDB_COMPRESSOR_VERSION_DEF         4
 #define CFG_TSDB_DATA_DIR                       "tsdb.data.dir"
 #define CFG_TSDB_FLUSH_FREQUENCY                "tsdb.flush.frequency"
-#define CFG_TSDB_FLUSH_FREQUENCY_DEF            "10min"
+#define CFG_TSDB_FLUSH_FREQUENCY_DEF            "5min"
 #define CFG_TSDB_GC_FREQUENCY                   "tsdb.gc.frequency"
 #define CFG_TSDB_GC_FREQUENCY_DEF               "1d"
 #define CFG_TSDB_MAX_DP_LINE                    "tsdb.max.dp.line"
@@ -147,10 +147,11 @@
 #define CFG_TSDB_ROLLUP_THRESHOLD_DEF           "2d"
 #define CFG_TSDB_ROTATION_FREQUENCY             "tsdb.rotation.frequency"
 #define CFG_TSDB_ROTATION_FREQUENCY_DEF         "1d"
+#define CFG_TSDB_SELF_METER_DESTINATION         "tsdb.self_meter.destination"
 #define CFG_TSDB_SELF_METER_ENABLED             "tsdb.self_meter.enabled"
 #define CFG_TSDB_SELF_METER_ENABLED_DEF         false
 #define CFG_TSDB_THRASHING_THRESHOLD            "tsdb.thrashing.threshold"
-#define CFG_TSDB_THRASHING_THRESHOLD_DEF        "15min"
+#define CFG_TSDB_THRASHING_THRESHOLD_DEF        "30min"
 #define CFG_TSDB_TIMESTAMP_RESOLUTION           "tsdb.timestamp.resolution"
 #define CFG_TSDB_TIMESTAMP_RESOLUTION_DEF       "second"
 #define CFG_TSDB_TIMEZONE                       "tsdb.timezone"

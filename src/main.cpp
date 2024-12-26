@@ -331,6 +331,7 @@ shutdown()
         // MM are thread-local singletons, and can't be cleaned up from another thread
         //MemoryManager::cleanup();
         AppendLog::shutdown();  // normal shutdown
+        Stats::cleanup();
     }
     catch (std::exception& ex)
     {

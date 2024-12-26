@@ -21,6 +21,9 @@
 #include <fcntl.h>
 #include <fstream>
 #include <unistd.h>
+#include <netinet/ip.h>
+#include <arpa/inet.h>
+#include <sys/socket.h>
 #include <sys/statvfs.h>
 #include "config.h"
 #include "global.h"
@@ -39,6 +42,7 @@ namespace tt
 
 
 static struct proc_stats g_proc_stats;
+static int dst_fd = -1;
 
 std::mutex Stats::m_lock;
 DataPoint *Stats::m_dps_head = nullptr;
@@ -50,13 +54,46 @@ Stats::init()
 {
     memset(&g_proc_stats, 0, sizeof(g_proc_stats));
 
-    if (Config::inst()->get_bool(CFG_TSDB_SELF_METER_ENABLED, CFG_TSDB_SELF_METER_ENABLED_DEF))
+    g_self_meter_enabled =
+        Config::inst()->get_bool(CFG_TSDB_SELF_METER_ENABLED, CFG_TSDB_SELF_METER_ENABLED_DEF);
+
+    if (g_self_meter_enabled)
     {
         Task task;
         task.doit = &Stats::inject_metrics;
         int freq_sec = Config::inst()->get_time(CFG_STATS_FREQUENCY, TimeUnit::SEC, CFG_STATS_FREQUENCY_DEF);
         Timer::inst()->add_task(task, freq_sec, "stats_inject");
         Logger::info("using stats.frequency.sec of %d", freq_sec);
+
+        if (Config::inst()->exists(CFG_TSDB_SELF_METER_DESTINATION))
+        {
+            std::string dst = Config::inst()->get_str(CFG_TSDB_SELF_METER_DESTINATION);
+
+            try
+            {
+                struct sockaddr_in addr;
+
+                dst_fd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+
+                if (dst_fd >= 0)
+                {
+                    memset(&addr, 0, sizeof(addr));
+                    addr.sin_family = AF_INET;
+                    addr.sin_port = htons(6181);
+                    inet_pton(AF_INET, dst.c_str(), &addr.sin_addr.s_addr);
+
+                    if (connect(dst_fd, (struct sockaddr*)&addr, sizeof(addr)) < 0)
+                        Logger::warn("Failed to connect to %s at port 6181, errno=%d",
+                            dst.c_str(), errno);
+                    else
+                        Logger::info("Connected to %s:6181 for self-meter", dst.c_str());
+                }
+            }
+            catch(const std::exception& e)
+            {
+                Logger::warn("Failed to connect to %s:6181, caught exception", dst.c_str());
+            }
+        }
     }
     else
     {
@@ -64,10 +101,124 @@ Stats::init()
     }
 }
 
+void
+Stats::cleanup()
+{
+    if (dst_fd >= 0)
+    {
+        close(dst_fd);
+        dst_fd = -1;
+    }
+
+    std::lock_guard<std::mutex> guard(m_lock);
+
+    if (m_dps_head != nullptr)
+    {
+        MemoryManager::free_recyclables(m_dps_head);
+        m_dps_head = m_dps_tail = nullptr;
+    }
+}
+
+void
+Stats::send_to_dst(const char *buff, int len)
+{
+    ASSERT(dst_fd >= 0);
+    ASSERT(buff != nullptr)
+    int sent_total = 0;
+
+    while (len > 0)
+    {
+        int sent = send(dst_fd, buff+sent_total, len, 0);
+        if (sent == -1) break;
+        len -= sent;
+        sent_total += sent;
+    }
+}
+
 bool
 Stats::inject_metrics(TaskData& data)
 {
     Logger::trace("Enter Stats::inject_metrics");
+
+    DataPoint *dps = nullptr;
+
+    // remove from list
+    {
+        std::lock_guard<std::mutex> guard(m_lock);
+        dps = m_dps_head;
+        m_dps_head = m_dps_tail = nullptr;
+    }
+
+    if (dps == nullptr)
+        return false;
+
+    try
+    {
+        if (dst_fd < 0)
+        {
+            // send to local TT
+            Tsdb *tsdb = Tsdb::inst(dps[0].get_timestamp(), true);
+
+            if (tsdb != nullptr)
+            {
+                for (DataPoint *dp = dps; dp != nullptr; dp = (DataPoint*)dp->next())
+                {
+                    if (! tsdb->in_range(dp->get_timestamp()))
+                    {
+                        tsdb->dec_ref_count();
+                        tsdb = Tsdb::inst(dp->get_timestamp(), true);
+                    }
+
+                    if (tsdb == nullptr) break;
+
+                    dp->add_tag("thread", dp->get_raw_tags());
+                    dp->add_tag("host", g_host_name.c_str());
+
+                    tsdb->add(*dp);
+                }
+            }
+
+            if (tsdb != nullptr)
+                tsdb->dec_ref_count();
+        }
+        else
+        {
+            // send to remote TT
+            char *buff = MemoryManager::alloc_network_buffer();
+            uint64_t size = MemoryManager::get_network_buffer_size();
+            size_t idx = 0;
+
+            for (DataPoint *dp = dps; dp != nullptr; dp = (DataPoint*)dp->next())
+            {
+                int n = snprintf(buff+idx, size-idx, "put %s %" PRIu64 " %f thread=%s host=%s\n",
+                    dp->get_metric(), dp->get_timestamp(), dp->get_value(), dp->get_raw_tags(), g_host_name.c_str());
+
+                if (size <= (idx + n - 2))
+                {
+                    send_to_dst(buff, idx);
+                    idx = 0;
+
+                    idx = snprintf(buff, size, "put %s %" PRIu64 " %f thread=%s host=%s\n",
+                        dp->get_metric(), dp->get_timestamp(), dp->get_value(), dp->get_raw_tags(), g_host_name.c_str());
+                }
+                else
+                    idx += n;
+            }
+
+            if (idx > 0)
+                send_to_dst(buff, idx);
+
+            MemoryManager::free_network_buffer(buff);
+        }
+
+        MemoryManager::free_recyclables(dps);
+    }
+    catch(const std::exception& e)
+    {
+        Logger::warn("Failed to send self-metrics to remote TT");
+    }
+
+#if 0
 /*
     // ticktock.metrics.count
     {
@@ -245,6 +396,7 @@ Stats::inject_metrics(TaskData& data)
 
         tsdb->dec_ref_count();
     }
+#endif
 
     return false;
 }

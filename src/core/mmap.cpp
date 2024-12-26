@@ -253,7 +253,7 @@ MmapFile::close()
         if (! m_read_only) flush(true);
         munmap(m_pages, m_length);
         m_pages = nullptr;
-        Logger::info("closing %s", m_name.c_str());
+        Logger::debug("closing %s", m_name.c_str());
     }
 
     if (m_fd > 0)
@@ -333,7 +333,7 @@ IndexFile::open(bool for_read)
     }
 
     Logger::debug("index file %s length: %" PRIu64, m_name.c_str(), get_length());
-    Logger::info("opening %s for %s", m_name.c_str(), for_read?"read":"write");
+    Logger::debug("opening %s for %s", m_name.c_str(), for_read?"read":"write");
 }
 
 bool
@@ -707,8 +707,6 @@ HeaderFile::open(bool for_read)
     bool is_new = ! exists();
     if (is_new && for_read) return;
 
-    m_last_access = ts_now_sec();   // to prevent it from being closed
-
     if (is_new)
     {
         ASSERT(m_page_count > 0);
@@ -727,9 +725,16 @@ HeaderFile::open(bool for_read)
     }
 
     if (is_new)
-        Logger::info("opening new %s for %s, page-count=%u", m_name.c_str(), for_read?"read":"write", m_page_count);
+        Logger::debug("opening new %s for %s, page-count=%u", m_name.c_str(), for_read?"read":"write", m_page_count);
     else
-        Logger::info("opening %s for %s", m_name.c_str(), for_read?"read":"write");
+        Logger::debug("opening %s for %s", m_name.c_str(), for_read?"read":"write");
+}
+
+void
+HeaderFile::ensure_open(bool for_read)
+{
+    m_last_access = ts_now_sec();   // to prevent it from being closed
+    MmapFile::ensure_open(for_read);
 }
 
 bool
@@ -896,7 +901,7 @@ DataFile::open(bool for_read)
         }
 
         m_last_read = ts_now_sec();
-        Logger::info("opening %s for read", m_name.c_str());
+        Logger::debug("opening %s for read", m_name.c_str());
     }
     else
     {
@@ -930,7 +935,7 @@ DataFile::open(bool for_read)
 **/
 
             m_page_index = length / m_page_size;
-            Logger::info("opening %s for write", m_name.c_str());
+            Logger::debug("opening %s for write", m_name.c_str());
 
             m_file = fdopen(fd, "ab");
             ASSERT(m_file != nullptr);
@@ -941,13 +946,25 @@ DataFile::open(bool for_read)
 }
 
 void
+DataFile::ensure_open(bool for_read)
+{
+    // to prevent it from being closed
+    if (for_read)
+        m_last_read = ts_now_sec();
+    else
+        m_last_write = ts_now_sec();
+
+    MmapFile::ensure_open(for_read);
+}
+
+void
 DataFile::close()
 {
     if (m_file != nullptr)
     {
         std::fclose(m_file);
         m_file = nullptr;
-        Logger::info("closing data file %s (for both read & write), length = %lu", m_name.c_str(), get_length());
+        Logger::debug("closing data file %s (for both read & write), length = %lu", m_name.c_str(), get_length());
     }
 
     MmapFile::close();
@@ -964,13 +981,13 @@ DataFile::close(int rw)
     {
         // close read only
         MmapFile::close();
-        Logger::info("closing %s for read", m_name.c_str());
+        Logger::debug("closing %s for read", m_name.c_str());
     }
     else if (m_file != nullptr)
     {
         std::fclose(m_file);
         m_file = nullptr;
-        Logger::info("closing %s for write", m_name.c_str());
+        Logger::debug("closing %s for write", m_name.c_str());
     }
 }
 
@@ -1216,7 +1233,7 @@ RollupDataFile::open(bool for_read)
         m_for_read = for_read;
         m_file = fdopen(fd, for_read?"r+":"a+b");
         ASSERT(m_file != nullptr);
-        Logger::info("opening %s for read/write", m_name.c_str());
+        Logger::debug("opening %s for read/write", m_name.c_str());
     }
 }
 
@@ -1247,7 +1264,7 @@ RollupDataFile::close()
         std::fflush(m_file);
         std::fclose(m_file);
         m_file = nullptr;
-        Logger::info("closing rollup data file %s (for both read & write)", m_name.c_str());
+        Logger::debug("closing rollup data file %s (for both read & write)", m_name.c_str());
     }
 }
 

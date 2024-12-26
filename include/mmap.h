@@ -128,6 +128,7 @@ public:
 
     void init_tsdb_header(PageSize page_size);
     void open(bool for_read) override;
+    void ensure_open(bool for_read) override;
     bool close_if_idle(Timestamp threshold_sec, Timestamp now_sec);
 
     PageSize get_page_size();
@@ -161,6 +162,7 @@ public:
     ~DataFile();
 
     void open(bool read_only) override;
+    void ensure_open(bool for_read) override;
     void close() override;
     void close(int rw);
     bool close_if_idle(Timestamp threshold_sec, Timestamp now_sec);

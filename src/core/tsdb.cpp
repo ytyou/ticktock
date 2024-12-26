@@ -3326,10 +3326,10 @@ Tsdb::rotate(TaskData& data)
 
         //WriteLock unload_guard(tsdb->m_load_lock);
         //std::lock_guard<std::mutex> unload_guard(tsdb->m_load_lock);
-        std::lock_guard<std::mutex> guard(tsdb->m_lock);
+        //std::lock_guard<std::mutex> guard(tsdb->m_lock);
         //WriteLock guard(tsdb->m_lock);
 
-        if (! (tsdb->m_mode.load() & TSDB_MODE_READ))
+        if (tsdb->is_archived())
         {
             tsdb->dec_ref_count();
             continue;    // already archived
@@ -3342,14 +3342,22 @@ Tsdb::rotate(TaskData& data)
 //            mode &= ~TSDB_MODE_WRITE;
 
         bool all_closed = true;
+        std::vector<Metric*> metrics;
 
-        for (auto metric: tsdb->m_metrics)
+        {
+            std::lock_guard<std::mutex> guard(tsdb->m_metrics_lock);
+            metrics = tsdb->m_metrics;
+        }
+
+        for (auto metric: metrics)
         {
             if (metric == nullptr) continue;
             all_closed = metric->rotate(now_sec, thrashing_threshold) && all_closed;
+            metric->flush(true);
         }
 
-        tsdb->flush(true);
+        //tsdb->flush(true);
+        tsdb->m_index_file.flush(sync);
         //Tsdb::BucketBalancer::save_page_counts();
 
         if (all_closed)

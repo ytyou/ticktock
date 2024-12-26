@@ -297,6 +297,30 @@ HttpServer::recv_http_data(TaskData& data)
     if ((n <= 0) && (conn->state & TCS_CLOSED))
         conn->close();
 
+    if (g_self_meter_enabled && free_buff)
+    {
+        Timestamp now = ts_now_ms();
+
+        // only report those that took more than a second
+        if ((conn->received > 0) && ((conn->received + 1000) <= now))
+        {
+            DataPoint *dp =
+                (DataPoint*)MemoryManager::alloc_recyclable(RecyclableType::RT_DATA_POINT);
+
+            if (dp != nullptr)
+            {
+                dp->set_timestamp(to_sec(now));
+                dp->set_value(now - conn->received);
+                dp->set_raw_tags((char*)g_thread_id.c_str());
+                dp->set_metric("ticktock.http.request.time");
+
+                Stats::add_data_point(dp);
+            }
+        }
+
+        conn->received = 0;     // reset it
+    }
+
     return false;
 }
 
