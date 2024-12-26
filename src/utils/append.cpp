@@ -162,8 +162,8 @@ AppendLog::restore(std::vector<TimeSeries*>& tsv)
             bytes++;
 
         // RollupManager's data always follows those of non-ooo PageInMemory
-        if (! is_ooo)
-            bytes += sizeof(struct rollup_append_entry);
+        //if (! is_ooo)
+            //bytes += sizeof(struct rollup_append_entry);
 
         if (tsv.size() <= tid)
         {

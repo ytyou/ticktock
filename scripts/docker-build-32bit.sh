@@ -3,7 +3,7 @@
 MAKE="/usr/bin/make -f Makefile.docker"
 STAGE="beta"
 TARGET_BRANCH="main"
-TAGL="latest"
+TAGL="latest-32bit"
 DOCKERFILE="../Dockerfile.32bit"
 _TEST=0
 _GRAFANA=0
