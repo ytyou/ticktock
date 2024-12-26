@@ -76,7 +76,7 @@ public:
     inline void set_raw_tags(char *tags) { m_raw_tags = tags; }
     inline void set_metric(const char *metric) { m_metric = metric; }
 
-    inline size_t c_size() const override { return 512; }
+    inline size_t c_size() const override { return MAX_TOTAL_TAG_LENGTH; }
     const char* c_str(char* buff) const override;
 
 private:

@@ -40,6 +40,7 @@ extern const char* const EMPTY_STRING;
 extern const std::string EMPTY_STD_STRING;
 extern const char* const METRIC_TAG_NAME;
 extern const char* const HOST_TAG_NAME;
+extern const char* const THREAD_TAG_NAME;
 extern const char* const TYPE_TAG_NAME;
 extern const std::string WHITE_SPACES;
 extern std::string g_config_file;

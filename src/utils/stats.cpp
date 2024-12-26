@@ -190,16 +190,15 @@ Stats::inject_metrics(TaskData& data)
 
             for (DataPoint *dp = dps; dp != nullptr; dp = (DataPoint*)dp->next())
             {
-                int n = snprintf(buff+idx, size-idx, "put %s %" PRIu64 " %f thread=%s host=%s\n",
-                    dp->get_metric(), dp->get_timestamp(), dp->get_value(), dp->get_raw_tags(), g_host_name.c_str());
+                dp->add_tag(HOST_TAG_NAME, g_host_name.c_str());
+
+                char tmp[dp->c_size()];
+                int n = snprintf(buff+idx, size-idx, "put %s\n", dp->c_str(tmp));
 
                 if (size <= (idx + n - 2))
                 {
                     send_to_dst(buff, idx);
-                    idx = 0;
-
-                    idx = snprintf(buff, size, "put %s %" PRIu64 " %f thread=%s host=%s\n",
-                        dp->get_metric(), dp->get_timestamp(), dp->get_value(), dp->get_raw_tags(), g_host_name.c_str());
+                    idx = snprintf(buff, size, "put %s\n", tmp);
                 }
                 else
                     idx += n;

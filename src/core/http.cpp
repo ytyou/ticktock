@@ -311,7 +311,7 @@ HttpServer::recv_http_data(TaskData& data)
             {
                 dp->set_timestamp(to_sec(now));
                 dp->set_value(now - conn->received);
-                dp->set_raw_tags((char*)g_thread_id.c_str());
+                dp->add_tag(THREAD_TAG_NAME, (char*)g_thread_id.c_str());
                 dp->set_metric("ticktock.http.request.time");
 
                 Stats::add_data_point(dp);

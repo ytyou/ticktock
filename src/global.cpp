@@ -33,6 +33,7 @@ const std::string WHITE_SPACES = " \n\r\t\f\v";
 // These are used to generate TT's own metrics
 const char* const METRIC_TAG_NAME = "metric";
 const char* const HOST_TAG_NAME = "host";
+const char* const THREAD_TAG_NAME = "thread";
 const char* const TYPE_TAG_NAME = "type";
 
 // Name of the host on which TT is running
