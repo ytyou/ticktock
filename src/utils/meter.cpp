@@ -74,6 +74,8 @@ Meter::~Meter()
     }
 
     dp->set_metric(m_metric);
+    dp->add_tag(THREAD_TAG_NAME, (char*)g_thread_id.c_str());
+
     Stats::add_data_point(dp);
 }
 

@@ -109,10 +109,10 @@
 #define CFG_TSDB_MAX_DP_LINE                    "tsdb.max.dp.line"
 #define CFG_TSDB_MAX_DP_LINE_DEF                256
 #define CFG_TSDB_METRIC_BUCKETS                 "tsdb.metric.buckets"
-#if (__x86_64__ == 1) || (__ARM_64BIT_STATE == 1)
-#define CFG_TSDB_METRIC_BUCKETS_DEF             100
+#if (__ARM_32BIT_STATE == 1) || (__ARM_64BIT_STATE == 1)
+#define CFG_TSDB_METRIC_BUCKETS_DEF             20
 #else
-#define CFG_TSDB_METRIC_BUCKETS_DEF             16
+#define CFG_TSDB_METRIC_BUCKETS_DEF             100
 #endif
 #define CFG_TSDB_MIN_DISK_SPACE                 "tsdb.min.disk.space"
 #define CFG_TSDB_MIN_DISK_SPACE_DEF             4
