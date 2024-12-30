@@ -318,7 +318,7 @@ Config::get_time(const std::string& name, TimeUnit unit)
 {
     std::lock_guard<std::mutex> guard(m_lock);
     std::shared_ptr<Property> property = get_property(name);
-    if (property == nullptr) throw std::exception();
+    if (property == nullptr) return TT_INVALID_TIMESTAMP;
     return property->as_time(unit);
 }
 
@@ -327,10 +327,20 @@ Config::get_time(const std::string& name, TimeUnit unit, const std::string& def_
 {
     std::lock_guard<std::mutex> guard(m_lock);
     std::shared_ptr<Property> property = get_property(name);
+    Timestamp tstamp;
     if (property == nullptr)
-        return Property::as_time(def_value, unit);
+        tstamp = Property::as_time(def_value, unit);
     else
-        return property->as_time(unit);
+    {
+        tstamp = property->as_time(unit);
+        if (tstamp == TT_INVALID_TIMESTAMP)
+        {
+            tstamp = Property::as_time(def_value, unit);
+            Logger::warn("Invalid config %s ignored, using default", name.c_str());
+        }
+    }
+    ASSERT(tstamp != TT_INVALID_TIMESTAMP);
+    return tstamp;
 }
 
 std::shared_ptr<Property>
