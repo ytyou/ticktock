@@ -41,6 +41,7 @@ Config::init()
 {
     m_instance = new Config(g_config_file);
     m_instance->load(true);
+    m_instance->verify();
 
     // timezone
     if (m_instance->exists(CFG_TSDB_TIMEZONE))
@@ -159,6 +160,149 @@ Config::~Config()
     for (auto& prop: m_properties)
         prop.second.reset();
     m_properties.clear();
+}
+
+void
+Config::verify()
+{
+    std::unordered_set<std::string> bools;  // configs of bool value
+    std::unordered_set<std::string> bytes;  // configs of byte value
+    std::unordered_set<std::string> ints;   // configs of int value
+    std::unordered_set<std::string> times;  // configs of timestamp value
+
+    // the following configs expect 'bool' value
+    bools.emplace(CFG_APPEND_LOG_ENABLED);
+    bools.emplace(CFG_CONFIG_RELOAD_ENABLED);
+    bools.emplace(CFG_TCP_SERVER_ENABLED);
+    bools.emplace(CFG_TSDB_ROLLUP_ENABLED);
+    bools.emplace(CFG_TSDB_SELF_METER_ENABLED);
+    bools.emplace(CFG_UDP_SERVER_ENABLED);
+
+    // the following configs expect 'byte' value
+    bytes.emplace(CFG_CLUSTER_BACKLOG_ROTATION_SIZE);
+    bytes.emplace(CFG_LOG_ROTATION_SIZE);
+    bytes.emplace(CFG_TCP_BUFFER_SIZE);
+    bytes.emplace(CFG_TCP_SOCKET_RCVBUF_SIZE);
+    bytes.emplace(CFG_TCP_SOCKET_SNDBUF_SIZE);
+    bytes.emplace(CFG_TSDB_PAGE_SIZE);
+
+    // the following configs expect 'int' value
+    ints.emplace(CFG_HTTP_LISTENER_COUNT);
+    ints.emplace(CFG_HTTP_RESPONDERS_PER_LISTENER);
+    ints.emplace(CFG_LOG_RETENTION_COUNT);
+    ints.emplace(CFG_TCP_LISTENER_COUNT);
+    ints.emplace(CFG_TCP_MAX_EPOLL_EVENTS);
+    ints.emplace(CFG_TCP_MIN_FILE_DESCRIPTOR);
+    ints.emplace(CFG_TCP_MIN_HTTP_STEP);
+    ints.emplace(CFG_TCP_RESPONDERS_PER_LISTENER);
+    ints.emplace(CFG_TCP_RESPONDERS_QUEUE_SIZE);
+    ints.emplace(CFG_TIMER_QUEUE_SIZE);
+    ints.emplace(CFG_TIMER_THREAD_COUNT);
+    ints.emplace(CFG_TS_LOCK_PROBABILITY);
+    ints.emplace(CFG_TSDB_COMPACT_BATCH_SIZE);
+    ints.emplace(CFG_TSDB_COMPRESSOR_PRECISION);
+    ints.emplace(CFG_TSDB_COMPRESSOR_VERSION);
+    ints.emplace(CFG_TSDB_MAX_DP_LINE);
+    ints.emplace(CFG_TSDB_METRIC_BUCKETS);
+    ints.emplace(CFG_TSDB_MIN_DISK_SPACE);
+    ints.emplace(CFG_TSDB_OFF_HOUR_BEGIN);
+    ints.emplace(CFG_TSDB_OFF_HOUR_END);
+    ints.emplace(CFG_TSDB_PAGE_COUNT);
+    ints.emplace(CFG_TSDB_RETENTION_THRESHOLD);
+    ints.emplace(CFG_TSDB_ROLLUP_BUCKETS);
+    ints.emplace(CFG_TSDB_ROLLUP_COMPRESSOR_PRECISION);
+    ints.emplace(CFG_TSDB_ROLLUP_COMPRESSOR_VERSION);
+    ints.emplace(CFG_UDP_LISTENER_COUNT);
+    ints.emplace(CFG_UDP_BATCH_SIZE);
+    ints.emplace(CFG_UDP_SERVER_PORT);
+
+    // the following configs expect 'time' value
+    times.emplace(CFG_APPEND_LOG_FLUSH_FREQUENCY);
+    times.emplace(CFG_CONFIG_RELOAD_FREQUENCY);
+    times.emplace(CFG_STATS_FREQUENCY);
+    times.emplace(CFG_TCP_CONNECTION_IDLE_TIMEOUT);
+    times.emplace(CFG_TIMER_GRANULARITY);
+    times.emplace(CFG_TS_ARCHIVE_THRESHOLD);
+    times.emplace(CFG_TSDB_ARCHIVE_THRESHOLD);
+    times.emplace(CFG_TSDB_COMPACT_FREQUENCY);
+    times.emplace(CFG_TSDB_COMPACT_THRESHOLD);
+    times.emplace(CFG_TSDB_FLUSH_FREQUENCY);
+    times.emplace(CFG_TSDB_GC_FREQUENCY);
+    times.emplace(CFG_TSDB_READ_ONLY_THRESHOLD);
+    times.emplace(CFG_TSDB_ROLLUP_FREQUENCY);
+    times.emplace(CFG_TSDB_ROLLUP_PAUSE);
+    times.emplace(CFG_TSDB_ROLLUP_THRESHOLD);
+    times.emplace(CFG_TSDB_ROTATION_FREQUENCY);
+    times.emplace(CFG_TSDB_THRASHING_THRESHOLD);
+
+    verify(m_properties, bools, bytes, ints, times);
+    verify(m_overrides, bools, bytes, ints, times);
+}
+
+void
+Config::verify(std::map<std::string, std::shared_ptr<Property>>& props,
+    std::unordered_set<std::string>& bools,
+    std::unordered_set<std::string>& bytes,
+    std::unordered_set<std::string>& ints,
+    std::unordered_set<std::string>& times)
+{
+
+    for (const auto& prop: props)
+    {
+        const std::string& name = prop.second->get_name();
+
+        if (bools.find(name) != bools.end())
+        {
+            const std::string& s = prop.second->as_str();
+            if (strcasecmp(s.c_str(), "true") != 0 && strcasecmp(s.c_str(), "false") != 0)
+                throw std::runtime_error("Invalid boolean config: " + name);
+            continue;
+        }
+
+        if (bytes.find(name) != bytes.end())
+        {
+            const std::string& s = prop.second->as_str();
+            for (auto c: s)
+            {
+                if (std::isdigit(c)) continue;
+                auto ch = std::tolower(c);
+                if (ch != 'b' && ch != 'k' && ch != 'm' && ch != 'g' && ch != 't')
+                    throw std::runtime_error("Invalid byte config: " + name);
+            }
+            continue;
+        }
+
+        if (ints.find(name) != ints.end())
+        {
+            const std::string& s = prop.second->as_str();
+            for (auto c: s)
+            {
+                if (!std::isdigit(c) && (c != '.') && (c != '-') && (c != '+'))
+                    throw std::runtime_error("Invalid number config: " + name);
+            }
+            continue;
+        }
+
+        if (times.find(name) != times.end())
+        {
+            Timestamp ts = prop.second->as_time(TimeUnit::SEC);
+            if (ts == TT_INVALID_TIMESTAMP)
+                throw std::runtime_error("Invalid time config: " + name);
+            continue;
+        }
+
+        // special configs
+        if (name.compare(CFG_TSDB_TIMESTAMP_RESOLUTION) == 0)
+        {
+            const std::string& s = prop.second->as_str();
+            if (s.empty())
+                throw std::runtime_error("Invalid " + name + " value");
+            auto ch = tolower(s[0]);
+            if (ch != 's' && ch != 'm')
+                throw std::runtime_error("Invalid " + name + " value");
+            continue;
+        }
+    }
 }
 
 void
@@ -336,7 +480,8 @@ Config::get_time(const std::string& name, TimeUnit unit, const std::string& def_
         if (tstamp == TT_INVALID_TIMESTAMP)
         {
             tstamp = Property::as_time(def_value, unit);
-            Logger::warn("Invalid config %s ignored, using default", name.c_str());
+            Logger::warn("Invalid time config %s ignored, using default %s",
+                name.c_str(), def_value.c_str());
         }
     }
     ASSERT(tstamp != TT_INVALID_TIMESTAMP);

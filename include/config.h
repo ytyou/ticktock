@@ -20,6 +20,7 @@
 
 #include <map>
 #include <memory>
+#include <unordered_set>
 #include "task.h"
 
 
@@ -215,7 +216,7 @@ public:
     {
         Timestamp time = std::stoull(val);
         TimeUnit u = to_time_unit(val.c_str(), val.size());
-        if (u == TimeUnit::UNKNOWN) throw std::exception();
+        if (u == TimeUnit::UNKNOWN) return TT_INVALID_TIMESTAMP;
         return convert_time(time, u, unit);
     }
 
@@ -269,6 +270,7 @@ public:
     void load(bool override);   // read
     void persist();             // write
     void append(const std::string& name, const std::string& value);
+    void verify();              // make sure all configs are valid
 
     static std::string get_data_dir();
     static std::string get_wal_dir();
@@ -284,6 +286,11 @@ public:
     const char *c_str(char *buff, size_t size);
 
 private:
+    void verify(std::map<std::string, std::shared_ptr<Property>>& props,
+        std::unordered_set<std::string>& bools,
+        std::unordered_set<std::string>& bytes,
+        std::unordered_set<std::string>& ints,
+        std::unordered_set<std::string>& times);
     void set_value_no_lock(const std::string& name, const std::string& value);
 
     std::shared_ptr<Property> get_property(const std::string& name);

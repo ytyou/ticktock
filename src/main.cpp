@@ -17,7 +17,6 @@
  */
 
 #include <atomic>
-#include <iostream>
 #include <csignal>
 #include <fstream>
 #include <memory>
