@@ -123,7 +123,7 @@ void
 Stats::send_to_dst(const char *buff, int len)
 {
     ASSERT(dst_fd >= 0);
-    ASSERT(buff != nullptr)
+    ASSERT(buff != nullptr);
     int sent_total = 0;
 
     while (len > 0)
