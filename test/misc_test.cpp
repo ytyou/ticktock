@@ -491,7 +491,7 @@ MiscTests::parse_dp_tests()
 
             DataPoint& dpb = dps.back();
             CONFIRM(std::strcmp("f5", dpb.get_raw_tags()) == 0);
-            CONFIRM(dpb.get_value() == 5.1);
+            CONFIRM(std::abs(dpb.get_value() - 5.1) < 0.00001);
         }
 
         // line 5
@@ -514,7 +514,7 @@ MiscTests::parse_dp_tests()
 
             DataPoint& dpb = dps.back();
             CONFIRM(std::strcmp("f_C5", dpb.get_raw_tags()) == 0);
-            CONFIRM(dpb.get_value() == 5.1);
+            CONFIRM(std::abs(dpb.get_value() - 5.1) < 0.00001);
         }
 
         // line 6

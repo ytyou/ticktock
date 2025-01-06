@@ -913,7 +913,7 @@ HttpResponse::init(uint16_t code, HttpContentType type, size_t length)
     // prepend the HTTP headers
     char *body = get_buffer(length);
     char first = *body; // save
-    size_t size = buffer - body;
+    size_t size = body - buffer;
     size_t digits = std::to_string(length).size();
     const char *reason = status_code_to_reason(code);
 
