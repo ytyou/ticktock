@@ -1761,7 +1761,7 @@ Compressor_v0::init(Timestamp start, uint8_t *base, size_t size)
     Compressor::init(start, base, size);
 
     // 'base' needs to be aligned
-#if (__ARM_32BIT_STATE == 1)
+#if (__ARM_32BIT_STATE == 1) || (TT_32BIT == 1)
     unsigned int r = (unsigned int)base % 4;
     if (r != 0)
     {
@@ -1792,7 +1792,7 @@ Compressor_v0::restore(DataPointVector& dpv, CompressorPosition& position, uint8
     ASSERT(position.m_start == 0);
     //ASSERT(position.m_offset <= m_size);
 
-#if (__ARM_32BIT_STATE == 1)
+#if (__ARM_32BIT_STATE == 1) || (TT_32BIT == 1)
     unsigned int r = (unsigned int)base % 4;
     if (r != 0)
         base += 4 - r;
@@ -1822,7 +1822,7 @@ Compressor_v0::save(uint8_t *base)
     ASSERT(base != nullptr);
 
     // 'base' needs to be aligned
-#if (__ARM_32BIT_STATE == 1)
+#if (__ARM_32BIT_STATE == 1) || (TT_32BIT == 1)
     unsigned int r = (unsigned int)base % 4;
     if (r != 0)
         base += 4 - r;
