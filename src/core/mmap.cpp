@@ -950,11 +950,17 @@ DataFile::ensure_open(bool for_read)
 {
     // to prevent it from being closed
     if (for_read)
+    {
         m_last_read = ts_now_sec();
+        MmapFile::ensure_open(for_read);
+    }
     else
+    {
         m_last_write = ts_now_sec();
-
-    MmapFile::ensure_open(for_read);
+        PThread_WriteLock(get_lock());
+        if (m_file == nullptr)
+            open(false);    // open for write
+    }
 }
 
 void
