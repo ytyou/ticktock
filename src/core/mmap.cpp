@@ -957,7 +957,7 @@ DataFile::ensure_open(bool for_read)
     else
     {
         m_last_write = ts_now_sec();
-        PThread_WriteLock(get_lock());
+        //PThread_WriteLock(get_lock());
         if (m_file == nullptr)
             open(false);    // open for write
     }
