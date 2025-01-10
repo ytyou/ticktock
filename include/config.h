@@ -46,7 +46,7 @@
 #define CFG_HTTP_RESPONDERS_PER_LISTENER        "http.responders.per.listener"
 #define CFG_HTTP_RESPONDERS_PER_LISTENER_DEF    2
 #define CFG_HTTP_SERVER_PORT                    "http.server.port"
-#define CFG_HTTP_SERVER_PORT_DEF                "6182"
+#define CFG_HTTP_SERVER_PORT_DEF                "6182,6183"
 #define CFG_LOG_FILE                            "log.file"
 #define CFG_LOG_LEVEL                           "log.level"
 #define CFG_LOG_LEVEL_DEF                       "INFO"
