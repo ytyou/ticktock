@@ -5,6 +5,7 @@ LOG=/var/share/tt
 RUN="pmubihtHTsS"
 TS=`date +%s`
 SELF_LOG=$LOG/logs/run-release-tests-$TS.log
+HOSTS=()
 
 while [[ $# -gt 0 ]]
 do
@@ -27,18 +28,11 @@ do
         ;;
 
         *)
-        break
+        HOSTS+=("$1")
         ;;
     esac
     shift
 done
-
-# decide list of hosts to run tests against
-if [ $# -gt 0 ]; then
-    HOSTS=($@)
-else
-    HOSTS=("ami")
-fi
 
 
 log() {
@@ -277,7 +271,25 @@ EOF
 
 # Beginning of testing scripts
 
-log $HOSTNAME "Running pre-release tests on ${#HOSTS[@]} hosts: ${HOSTS[@]}"
+if [ ${#HOSTS[@]} -eq 0 ]; then
+    # default set of hosts to run tests against
+    HOSTS=("ami" "cent" "deb" "deb32" "dev" "dora" "kali" "kali32" "suse" "suse32")
+fi
+
+MSG="Running pre-release tests on ${#HOSTS[@]} hosts: ${HOSTS[@]}"
+log $HOSTNAME "$MSG"
+
+# confirm
+read -p "Continue? [y/n] " -n 1 -r
+echo
+
+if [[ ! $REPLY =~ ^[Yy]$ ]]
+then
+    echo "Aborted!"
+    rm -f $SELF_LOG
+    exit 0
+fi
+
 
 #start_host "dock"
 #if [[ $? -ne 0 ]]; then
