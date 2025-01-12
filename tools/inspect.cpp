@@ -50,6 +50,7 @@ std::atomic<unsigned long> g_total_dps_cnt{0};
 std::atomic<unsigned long long> g_total_dps_cnt{0};
 #endif
 std::atomic<long> g_total_page_cnt{0};
+bool g_batch_mode = false;
 bool g_quick_mode = false;
 bool g_restore_mode = false;
 bool g_verbose = false;
@@ -130,10 +131,14 @@ process_cmdline_opts(int argc, char *argv[])
 {
     int c;
 
-    while ((c = getopt(argc, argv, "?d:qrt:v")) != -1)
+    while ((c = getopt(argc, argv, "?bd:qrt:v")) != -1)
     {
         switch (c)
         {
+            case 'b':
+                g_batch_mode = true;
+                break;
+
             case 'd':
                 g_data_dir.assign(optarg);
                 break;
@@ -726,8 +731,11 @@ main(int argc, char *argv[])
 
     try
     {
-        std::locale loc("");
-        std::cerr.imbue(loc);
+        if (! g_batch_mode)
+        {
+            std::locale loc("");
+            std::cerr.imbue(loc);
+        }
     }
     catch (...)
     {
@@ -771,9 +779,12 @@ main(int argc, char *argv[])
         total_cnt = g_total_dps_cnt.load();
         counts.clear();
         std::this_thread::sleep_for(std::chrono::seconds(5));
-        std::lock_guard<std::mutex> guard(g_mutex);
-        g_new_line = true;
-        std::cerr << "\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\bTotal dps = " << g_total_dps_cnt.load();
+        if (! g_batch_mode)
+        {
+            std::lock_guard<std::mutex> guard(g_mutex);
+            g_new_line = true;
+            std::cerr << "\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\bTotal dps = " << g_total_dps_cnt.load();
+        }
     }
 
     std::lock_guard<std::mutex> guard(g_mutex);
