@@ -2,6 +2,7 @@
 
 BRANCH=rc
 LOG=/var/share/tt
+QUICK=5
 RUN="pmubihtHTsS"
 TS=`date +%s`
 SELF_LOG=$LOG/logs/run-release-tests-$TS.log
@@ -12,6 +13,11 @@ do
     key=$1
 
     case $key in
+        -q)
+        shift
+        QUICK=$1
+        ;;
+
         -r)
         shift
         RUN=$1
@@ -239,9 +245,9 @@ run_bm() {
         return 1
     fi
 
+    echo "[BM] run-bm.sh -b -d $H -q $QUICK $2" >> $LOG/$H/run-bm.log
     ssh bench << EOF
-    echo "[BM] run-bm.sh -b -d $H -q 5 $2" >> $LOG/$H/run-bm.log
-    run-bm.sh -b -d $H -q 5 $2 >> $LOG/$H/run-bm.log
+    run-bm.sh -b -d $H -q $QUICK $2 >> $LOG/$H/run-bm.log
 EOF
 
     stop_tt $H
