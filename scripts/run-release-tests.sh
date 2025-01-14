@@ -1,11 +1,14 @@
 #!/bin/bash
 
 BRANCH=rc
+CLEAN=0
 LOG=/var/share/tt
 QUICK=5
 RUN="pmubihtHTsS"
 TS=`date +%s`
+SCALE=s
 SELF_LOG=$LOG/logs/run-release-tests-$TS.log
+SHELL=/bin/bash
 HOSTS=()
 
 while [[ $# -gt 0 ]]
@@ -18,6 +21,10 @@ do
         BRANCH=$1
         ;;
 
+        -c)
+        CLEAN=1
+        ;;
+
         -q)
         shift
         QUICK=$1
@@ -28,13 +35,18 @@ do
         RUN=$1
         ;;
 
+        -t)
+        shift
+        SCALE=$1
+        ;;
+
         -h)
-        echo "Usage: $0 [-r <pmubihtHTsS>] [-b <branch>] [-q #] [-h] [<vms>]"
+        echo "Usage: $0 [-r <pmubihtHTsS>] [-b <branch>] [-q #] [-t [l|m|s|t]] [-h] [<vms>]"
         exit 0
         ;;
 
         -?)
-        echo "Usage: $0 [-r <pmubihtHTsS>] [-b <branch>] [-q #] [-h] [<vms>]"
+        echo "Usage: $0 [-r <pmubihtHTsS>] [-b <branch>] [-q #] [-t [l|m|s|t]] [-h] [<vms>]"
         exit 0
         ;;
 
@@ -80,7 +92,7 @@ pass() {
 
 build_pull() {
     H=$1
-    ssh $H << EOF
+    ssh $H $SHELL << EOF
     cd /home/yongtao/src/tt/$BRANCH;
     git pull;
 EOF
@@ -89,7 +101,7 @@ EOF
 
 build_make() {
     H=$1
-    ssh $H << EOF
+    ssh $H $SHELL << EOF
     cd /home/yongtao/src/tt/$BRANCH;
     make clean all;
 EOF
@@ -134,7 +146,7 @@ start_host() {
         log $1 "VM $1 is available"
     fi
 
-    echo 0
+    return 0
 }
 
 stop_host() {
@@ -147,7 +159,7 @@ start_tt() {
 
     H=$1
     log $H "Starting TickTockDB on $H"
-    ssh $H << EOF
+    ssh $H $SHELL << EOF
     cd /home/yongtao/src/tt/$BRANCH;
     ./run-tt-release.sh -r -d
 EOF
@@ -158,7 +170,7 @@ stop_tt() {
 
     H=$1
     log $H "Stopping TickTockDB on $H"
-    ssh $H << EOF
+    ssh $H $SHELL << EOF
     cd /home/yongtao/src/tt/$BRANCH;
     ./admin/stop.sh;
     for ((i=0; i<30; i++)); do
@@ -178,7 +190,7 @@ run_ut() {
     echo "[UT] Running unit-tests on $H" > $LOG/$H/ut.log
     log $H "[UT] Running unit-tests on $H"
 
-    ssh $H << EOF
+    ssh $H $SHELL << EOF
     cd /home/yongtao/src/tt/$BRANCH;
     rm -rf /tmp/tt_u;
     ./bin/all_tests >> $LOG/$H/ut.log
@@ -199,19 +211,20 @@ run_it() {
     log $H "Running integration-tests on $H"
 
     # start openTSDB
-    ssh dock << EOF
-    run-opentsdb.sh
+    ssh dock $SHELL << EOF
+    /home/yongtao/bin/run-opentsdb.sh
 EOF
 
-    ssh $H << EOF
+    echo > $LOG/$H/it.log
+    ssh $H $SHELL << EOF
     cd /home/yongtao/src/tt/$BRANCH;
     rm -rf /tmp/tt_i;
     ./run-it.sh >> $LOG/$H/it.log
 EOF
 
     # stop openTSDB
-    ssh dock << EOF
-    stop-opentsdb.sh
+    ssh dock $SHELL << EOF
+    /home/yongtao/bin/stop-opentsdb.sh
 EOF
 
     tail $LOG/$H/it.log | grep ' FAILED: 0; '
@@ -228,7 +241,7 @@ run_bats() {
     echo "[BATS] Running bats-tests on $H" > $LOG/$H/bats.log
     log $H "[BATS] Running bats-tests on $H"
 
-    ssh $H << EOF
+    ssh $H $SHELL << EOF
     cd /home/yongtao/src/tt/bats;
     rm -rf /tmp/tt_bats;
     export TT_SRC=../$BRANCH
@@ -238,7 +251,7 @@ EOF
     grep '^not ok ' $LOG/$H/bats.log > /dev/null
     if [[ $? -eq 0 ]]; then
         fail $H "[BATS] Bats test failed!"
-        ssh $H << EOF
+        ssh $H $SHELL << EOF
     cd /home/yongtao/src/tt/bats;
     ./kill.sh
 EOF
@@ -251,7 +264,18 @@ EOF
 run_iotdb_bm() {
 
     H=$1
-    log $H "[BM] Running IotDB BM $2 on $H"
+    PROTO=$2
+    if [[ $# -gt 2 ]]; then
+        OPT="-p $PROTO $3"
+        BM_LOG=$LOG/$H/bm_${PROTO}_l.log
+        INSPECT_LOG=$LOG/$H/inspect_${PROTO}_l.log
+    else
+        OPT="-p $PROTO"
+        BM_LOG=$LOG/$H/bm_${PROTO}.log
+        INSPECT_LOG=$LOG/$H/inspect_${PROTO}.log
+    fi
+
+    log $H "[BM] Running IotDB BM $OPT on $H"
 
     start_tt $H
     if [[ $? -ne 0 ]]; then
@@ -259,33 +283,35 @@ run_iotdb_bm() {
         return 1
     fi
 
-    log $H "[BM] run-bm.sh -b -d $H -q $QUICK $2"
-    echo "[BM] run-bm.sh -b -d $H -q $QUICK $2" > $LOG/$H/bm.log
+    log $H "[BM] run-bm.sh -b -d $H -q $QUICK $OPT"
+    echo "[BM] run-bm.sh -b -d $H -q $QUICK $OPT" > $BM_LOG
 
-    ssh bench << EOF
-    run-bm.sh -b -d $H -q $QUICK $2 >> $LOG/$H/bm.log
+    ssh bench $SHELL << EOF
+    /home/yongtao/bin/run-bm.sh -b -d $H -q $QUICK $OPT &>> $BM_LOG
 EOF
 
+    sleep 10
     stop_tt $H
     if [[ $? -ne 0 ]]; then
         error $H "Failed to stop TickTockDB on $H."
     fi
 
-    EXPECTED=`tail -30 $LOG/$H/bm.log | grep 'INGESTION           ' | head -n 1 | awk '{print $3}'`
+    EXPECTED=`tail -30 $BM_LOG | grep 'INGESTION           ' | head -n 1 | awk '{print $3}'`
 
     # count results
-    ssh $H << EOF
+    echo > $INSPECT_LOG
+    ssh $H $SHELL << EOF
     cd /home/yongtao/src/tt/main;
     make tools;
-    ./bin/inspect -q -b -d /tmp/tt/data &> $LOG/$H/inspect.log
+    ./bin/inspect -q -b -d /tmp/tt/data &> $INSPECT_LOG
 EOF
 
-    ACTUAL=`grep '^Grand Total = ' $LOG/$H/inspect.log | awk '{print $4}'`
+    ACTUAL=`grep '^Grand Total = ' $INSPECT_LOG | awk '{print $4}'`
 
     if [[ "$ACTUAL" == "$EXPECTED" ]]; then
-        pass $H "[BM] Benchmark tests '$2' passed on $H"
+        pass $H "[BM] Benchmark tests '$OPT' passed on $H"
     else
-        fail $H "[BM] Benchmark tests '$2' failed on $H"
+        fail $H "[BM] Benchmark tests '$OPT' failed on $H; expected: $EXPECTED, actual: $ACTUAL"
     fi
 }
 
@@ -301,33 +327,35 @@ run_timescale_bm() {
         return 1
     fi
 
-    log $H "[BM] run-bm.sh -b -d $H -q $QUICK $2"
-    echo "[BM] run-bm.sh -b -d $H -q $QUICK $2" > $LOG/$H/bm.log
+    log $H "[BM] run-bm.sh -b -d $H $2"
+    echo "[BM] run-bm.sh -b -d $H $2" > $LOG/$H/bm_ts.log
 
-    ssh bench << EOF
-    run-bm.sh -b -d $H -q $QUICK $2 >> $LOG/$H/bm.log
+    ssh bench $SHELL << EOF
+    /home/yongtao/bin/run-bm.sh -b -d $H $2 &>> $LOG/$H/bm_ts.log
 EOF
 
+    sleep 10
     stop_tt $H
     if [[ $? -ne 0 ]]; then
         error $H "Failed to stop TickTockDB on $H."
     fi
 
-    EXPECTED=`tail $LOG/$H/bm.log | grep ' values, took ' | awk '{print $6 }'`
+    EXPECTED=`tail $LOG/$H/bm_ts.log | grep ' values, took ' | awk '{print $6 }'`
 
     # count results
-    ssh $H << EOF
+    echo > $LOG/$H/inspect_ts.log
+    ssh $H $SHELL << EOF
     cd /home/yongtao/src/tt/main;
     make tools;
-    ./bin/inspect -q -b -d /tmp/tt/data &> $LOG/$H/inspect.log
+    ./bin/inspect -q -b -d /tmp/tt/data &> $LOG/$H/inspect_ts.log
 EOF
 
-    ACTUAL=`grep '^Grand Total = ' $LOG/$H/inspect.log | awk '{print $4}'`
+    ACTUAL=`grep '^Grand Total = ' $LOG/$H/inspect_ts.log | awk '{print $4}'`
 
     if [[ "$ACTUAL" == "$EXPECTED" ]]; then
         pass $H "[BM] Benchmark tests '$2' passed on $H"
     else
-        fail $H "[BM] Benchmark tests '$2' failed on $H"
+        fail $H "[BM] Benchmark tests '$2' failed on $H; expected: $EXPECTED, actual: $ACTUAL"
     fi
 }
 
@@ -340,7 +368,7 @@ if [ ${#HOSTS[@]} -eq 0 ]; then
     HOSTS=("ami" "cent" "deb" "deb32" "dev" "dora" "kali" "kali32" "suse" "suse32")
 fi
 
-MSG="Running pre-release tests ($RUN -q $QUICK) on ${#HOSTS[@]} hosts: ${HOSTS[@]}"
+MSG="Running pre-release tests ($RUN -q $QUICK -t $SCALE, branch=$BRANCH) on ${#HOSTS[@]} hosts: ${HOSTS[@]}"
 log $HOSTNAME "$MSG"
 
 # confirm
@@ -355,16 +383,25 @@ then
 fi
 
 
-#start_host "dock"
-#if [[ $? -ne 0 ]]; then
-#    error "dock" "Failed to start VM dock. Abort!"
-#    exit 1
-#fi
+if [[ $CLEAN -eq 1 ]]; then
+    rm -f $LOG/logs/*
+fi
 
-start_host "bench"
-if [[ $? -ne 0 ]]; then
-    error "bench" "Failed to start VM bench. Abort!"
-    exit 1
+
+if [[ "$RUN" == *i* ]]; then
+    start_host "dock"
+    if [[ $? -ne 0 ]]; then
+        error "dock" "Failed to start VM dock. Abort!"
+        exit 1
+    fi
+fi
+
+if [[ "$RUN" == *h* ]] || [[ "$RUN" == *H* ]] || [[ "$RUN" == *s* ]] || [[ "$RUN" == *t* ]] || [[ "$RUN" == *T* ]]; then
+    start_host "bench"
+    if [[ $? -ne 0 ]]; then
+        error "bench" "Failed to start VM bench. Abort!"
+        exit 1
+    fi
 fi
 
 
@@ -372,6 +409,10 @@ fi
 for HOST in "${HOSTS[@]}"; do
 
     log $HOST "Running pre-release tests ($RUN) against $HOST"
+
+    if [[ $CLEAN -eq 1 ]]; then
+        rm -f $LOG/$HOST/*
+    fi
 
     start_host $HOST
     if [[ $? -ne 0 ]]; then
@@ -413,23 +454,23 @@ for HOST in "${HOSTS[@]}"; do
     fi
 
     if [[ "$RUN" == *h* ]]; then
-        run_iotdb_bm $HOST "-p http"
+        run_iotdb_bm $HOST "http"
     fi
 
     if [[ "$RUN" == *t* ]]; then
-        run_iotdb_bm $HOST "-p tcp"
+        run_iotdb_bm $HOST "tcp"
     fi
 
     if [[ "$RUN" == *H* ]]; then
-        run_iotdb_bm $HOST "-p http -l"
+        run_iotdb_bm $HOST "http" "-l"
     fi
 
     if [[ "$RUN" == *T* ]]; then
-        run_iotdb_bm $HOST "-p tcp -l"
+        run_iotdb_bm $HOST "tcp" "-l"
     fi
 
     if [[ "$RUN" == *s* ]]; then
-        run_timescale_bm $HOST "-t s"
+        run_timescale_bm $HOST "-t $SCALE"
     fi
 
     if [[ "$RUN" == *S* ]]; then
@@ -440,6 +481,11 @@ for HOST in "${HOSTS[@]}"; do
         fi
     fi
 done
+
+if [[ "$RUN" == *S* ]]; then
+    stop_host "dock"
+    stop_host "bench"
+fi
 
 log $HOSTNAME "Finished pre-release tests on ${#HOSTS[@]} hosts: ${HOSTS[@]}"
 
