@@ -534,8 +534,9 @@ if [[ "$RUN" == *S* ]]; then
 fi
 
 END=$(date +%s)
+ELAPSED=$((END - BEGIN))
 
 log $HOSTNAME "Finished pre-release tests on ${#HOSTS[@]} hosts: ${HOSTS[@]}"
-log $HOSTNAME "Elapsed time: $((END - BEGIN)) seconds."
+printf 'Elapsed Time: %02d:%02d:%02d\n' $((ELAPSED/3600)) $((ELAPSED%3600/60)) $((ELAPSED%60))
 
 exit 0
