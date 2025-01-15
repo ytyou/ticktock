@@ -3,10 +3,9 @@
 BRANCH=rc
 CLEAN=0
 LOG=/var/share/tt
-QUICK=5
+QUICK=1
 RUN="pmubihtHTsS"
 TS=`date +%s`
-SCALE=s
 SELF_LOG=$LOG/logs/run-release-tests-$TS.log
 SHELL=/bin/bash
 HOSTS=()
@@ -35,18 +34,13 @@ do
         RUN=$1
         ;;
 
-        -t)
-        shift
-        SCALE=$1
-        ;;
-
         -h)
-        echo "Usage: $0 [-r <pmubihtHTsS>] [-b <branch>] [-q #] [-t [l|m|s|t]] [-h] [<vms>]"
+        echo "Usage: $0 [-r <pmubihtHTsS>] [-b <branch>] [-q <1-5>] [-h] [<vms>]"
         exit 0
         ;;
 
         -?)
-        echo "Usage: $0 [-r <pmubihtHTsS>] [-b <branch>] [-q #] [-t [l|m|s|t]] [-h] [<vms>]"
+        echo "Usage: $0 [-r <pmubihtHTsS>] [-b <branch>] [-q <1-5>] [-h] [<vms>]"
         exit 0
         ;;
 
@@ -113,6 +107,17 @@ ping_host() {
     return $?
 }
 
+wait_for_opentsdb() {
+    while : ; do
+        curl http://dock:4242/api/stats >/dev/null 2>&1
+        if [ $? -eq 0 ]; then
+            break
+        fi
+        echo "Waiting for OpenTSDB..."
+        sleep 5
+    done
+}
+
 start_host() {
 
     log $1 "Starting VM $1"
@@ -158,10 +163,14 @@ stop_host() {
 start_tt() {
 
     H=$1
+    TT_HOME=/tmp/tt
     log $H "Starting TickTockDB on $H"
     ssh $H $SHELL << EOF
+    rm -rf /tt/*;
+    rm -rf $TT_HOME;
+    if [[ -d "/tt" ]]; then ln -s /tt /tmp/tt; else mkdir -p /tmp/tt/data; mkdir /tmp/tt/log; fi;
     cd /home/yongtao/src/tt/$BRANCH;
-    ./run-tt-release.sh -r -d
+    bin/tt -c conf/tt.conf -r -d -p $TT_HOME/tt.pid --ticktock.home=$TT_HOME --tsdb.timestamp.resolution=millisecond --tsdb.flush.frequency=3min --tsdb.thrashing.threshold=5min
 EOF
     return $?
 }
@@ -207,19 +216,36 @@ EOF
 run_it() {
 
     H=$1
-    echo "[IT] Running integration-tests on $H" > $LOG/$H/it.log
-    log $H "Running integration-tests on $H"
+
+    log $H "[IT] Running integration tests on $H"
 
     # start openTSDB
     ssh dock $SHELL << EOF
     /home/yongtao/bin/run-opentsdb.sh
 EOF
 
+    wait_for_opentsdb
+
+    if [[ $QUICK -ge 5 ]]; then
+        M=2
+    elif [[ $QUICK -eq 4 ]]; then
+        M=4
+    elif [[ $QUICK -eq 3 ]]; then
+        M=8
+    else
+        M=16
+    fi
+
     echo > $LOG/$H/it.log
     ssh $H $SHELL << EOF
-    cd /home/yongtao/src/tt/$BRANCH;
     rm -rf /tmp/tt_i;
-    ./run-it.sh >> $LOG/$H/it.log
+    cd /home/yongtao/src/tt/$BRANCH;
+    echo "$(python --version)" | grep "Python 3";
+    if [[ $? -eq 0 ]]; then
+        ./test/int_test3.py -o dock -n $M >> $LOG/$H/it.log
+    else
+        ./test/int_test.py -o dock -n $M >> $LOG/$H/it.log
+    fi
 EOF
 
     # stop openTSDB
@@ -283,11 +309,23 @@ run_iotdb_bm() {
         return 1
     fi
 
-    log $H "[BM] run-bm.sh -b -d $H -q $QUICK $OPT"
-    echo "[BM] run-bm.sh -b -d $H -q $QUICK $OPT" > $BM_LOG
+    Q=5
+
+    if [[ $QUICK -ge 5 ]]; then
+        Q=1000
+    elif [[ $QUICK -eq 4 ]]; then
+        Q=200
+    elif [[ $QUICK -eq 3 ]]; then
+        Q=50
+    elif [[ $QUICK -eq 2 ]]; then
+        Q=10
+    fi
+
+    log $H "[BM] run-bm.sh -b -d $H -q $Q $OPT"
+    echo "[BM] run-bm.sh -b -d $H -q $Q $OPT" > $BM_LOG
 
     ssh bench $SHELL << EOF
-    /home/yongtao/bin/run-bm.sh -b -d $H -q $QUICK $OPT &>> $BM_LOG
+    /home/yongtao/bin/run-bm.sh -b -d $H -q $Q $OPT &>> $BM_LOG
 EOF
 
     sleep 10
@@ -319,7 +357,13 @@ EOF
 run_timescale_bm() {
 
     H=$1
-    log $H "[BM] Running TimeScale BM $2 on $H"
+    SCALE=s
+
+    if [[ $QUICK -gt 2 ]]; then
+        SCALE=t
+    fi
+
+    log $H "[BM] Running TimeScale BM -t $SCALE on $H"
 
     start_tt $H
     if [[ $? -ne 0 ]]; then
@@ -327,11 +371,11 @@ run_timescale_bm() {
         return 1
     fi
 
-    log $H "[BM] run-bm.sh -b -d $H $2"
-    echo "[BM] run-bm.sh -b -d $H $2" > $LOG/$H/bm_ts.log
+    log $H "[BM] run-bm.sh -b -d $H -t $SCALE"
+    echo "[BM] run-bm.sh -b -d $H -t $SCALE" > $LOG/$H/bm_ts.log
 
     ssh bench $SHELL << EOF
-    /home/yongtao/bin/run-bm.sh -b -d $H $2 &>> $LOG/$H/bm_ts.log
+    /home/yongtao/bin/run-bm.sh -b -d $H -t $SCALE &>> $LOG/$H/bm_ts.log
 EOF
 
     sleep 10
@@ -368,7 +412,7 @@ if [ ${#HOSTS[@]} -eq 0 ]; then
     HOSTS=("ami" "cent" "deb" "deb32" "dev" "dora" "kali" "kali32" "suse" "suse32")
 fi
 
-MSG="Running pre-release tests ($RUN -q $QUICK -t $SCALE, branch=$BRANCH) on ${#HOSTS[@]} hosts: ${HOSTS[@]}"
+MSG="Running pre-release tests ($RUN -q $QUICK branch=$BRANCH) on ${#HOSTS[@]} hosts: ${HOSTS[@]}"
 log $HOSTNAME "$MSG"
 
 # confirm
@@ -382,6 +426,8 @@ then
     exit 0
 fi
 
+
+BEGIN=$(date +%s)
 
 if [[ $CLEAN -eq 1 ]]; then
     rm -f $LOG/logs/*
@@ -470,7 +516,7 @@ for HOST in "${HOSTS[@]}"; do
     fi
 
     if [[ "$RUN" == *s* ]]; then
-        run_timescale_bm $HOST "-t $SCALE"
+        run_timescale_bm $HOST
     fi
 
     if [[ "$RUN" == *S* ]]; then
@@ -487,6 +533,9 @@ if [[ "$RUN" == *S* ]]; then
     stop_host "bench"
 fi
 
+END=$(date +%s)
+
 log $HOSTNAME "Finished pre-release tests on ${#HOSTS[@]} hosts: ${HOSTS[@]}"
+log $HOSTNAME "Elapsed time: $((END - BEGIN)) seconds."
 
 exit 0

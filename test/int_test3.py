@@ -2017,8 +2017,9 @@ class Long_Running_Tests(Test):
 
         self.start_tt()
         start = round(time.time() * 1000) - 1000000
+        iteration = int(self._options.metric)
 
-        for i in range(10):
+        for i in range(iteration):
             for j in range(10000):
 
                 dps = DataPoints(self._prefix, start, interval_ms=1, metric_count=1, metric_cardinality=1, tag_cardinality=1)
@@ -2171,7 +2172,7 @@ def main(argv):
         tests.append(Rate_Tests(options))
         tests.append(Duplicate_Tests(options))
         tests.append(Check_Point_Tests(options))
-        tests.append(Query_Tests(options, metric_count=16, metric_cardinality=4, tag_cardinality=4))
+        tests.append(Query_Tests(options, metric_count=int(options.metric), metric_cardinality=4, tag_cardinality=4))
         tests.append(Query_With_Rollup(options))
         tests.append(Long_Running_Tests(options))
 
@@ -2227,6 +2228,9 @@ def get_options(argv):
     parser.add_option('-m', '--method', dest='method',
                       default=defaults['method'],
                       help='HTTP method to use when querying TickTock.')
+    parser.add_option('-n', '--metric', dest='metric',
+                      default=defaults['metric'],
+                      help='The number of metrics in query tests.')
     parser.add_option('-o', '--opentsdb', dest='opentsdbip',
                       default=defaults['opentsdbip'],
                       help='IP of the host on which OpenTSDB runs.')
@@ -2268,6 +2272,7 @@ def get_defaults():
         'ip': '127.0.0.1',
         'leak': False,
         'method': 'post',
+        'metric': 16,
         'port': 7182,
         'dataport': 7181,
         'opentsdbip': '127.0.0.1',
