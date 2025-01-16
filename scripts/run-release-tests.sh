@@ -9,6 +9,7 @@ TS=`date +%s`
 SELF_LOG=$LOG/logs/run-release-tests-$TS.log
 SHELL=/bin/bash
 HOSTS=()
+FAILED=0
 
 while [[ $# -gt 0 ]]
 do
@@ -35,12 +36,12 @@ do
         ;;
 
         -h)
-        echo "Usage: $0 [-r <pmubihtHTsS>] [-b <branch>] [-q <1-5>] [-h] [<vms>]"
+        echo "Usage: $0 [-r <pmubihtHTsS>] [-b <branch>] [-q <1-5>] [-c] [-h] [<vms>]"
         exit 0
         ;;
 
         -?)
-        echo "Usage: $0 [-r <pmubihtHTsS>] [-b <branch>] [-q <1-5>] [-h] [<vms>]"
+        echo "Usage: $0 [-r <pmubihtHTsS>] [-b <branch>] [-q <1-5>] [-c] [-h] [<vms>]"
         exit 0
         ;;
 
@@ -74,6 +75,7 @@ fail() {
     TS=$(date +"%Y-%m-%d %H:%M:%S")
     echo "[$TS] [$H] [STAT] [FAIL] $M"
     echo "[$TS] [$H] [STAT] [FAIL] $M" >> $SELF_LOG
+    FAILED=$((FAILED + 1))
 }
 
 pass() {
@@ -489,9 +491,8 @@ for HOST in "${HOSTS[@]}"; do
         run_ut $HOST
     fi
 
-    # integration test
-    if [[ "$RUN" == *i* ]]; then
-        run_it $HOST
+    if [[ $FAILED -gt 0 ]]; then
+        break
     fi
 
     # bats test
@@ -499,20 +500,49 @@ for HOST in "${HOSTS[@]}"; do
         run_bats $HOST
     fi
 
+    if [[ $FAILED -gt 0 ]]; then
+        break
+    fi
+
+    # integration test
+    if [[ "$RUN" == *i* ]]; then
+        run_it $HOST
+    fi
+
+    if [[ $FAILED -gt 0 ]]; then
+        break
+    fi
+
     if [[ "$RUN" == *h* ]]; then
         run_iotdb_bm $HOST "http"
+    fi
+
+    if [[ $FAILED -gt 0 ]]; then
+        break
     fi
 
     if [[ "$RUN" == *t* ]]; then
         run_iotdb_bm $HOST "tcp"
     fi
 
+    if [[ $FAILED -gt 0 ]]; then
+        break
+    fi
+
     if [[ "$RUN" == *H* ]]; then
         run_iotdb_bm $HOST "http" "-l"
     fi
 
+    if [[ $FAILED -gt 0 ]]; then
+        break
+    fi
+
     if [[ "$RUN" == *T* ]]; then
         run_iotdb_bm $HOST "tcp" "-l"
+    fi
+
+    if [[ $FAILED -gt 0 ]]; then
+        break
     fi
 
     if [[ "$RUN" == *s* ]]; then
@@ -537,6 +567,11 @@ END=$(date +%s)
 ELAPSED=$((END - BEGIN))
 
 log $HOSTNAME "Finished pre-release tests on ${#HOSTS[@]} hosts: ${HOSTS[@]}"
+if [[ $FAILED -gt 0 ]]; then
+log $HOSTNAME "$FAILED tests FAILED!!!"
+else
+log $HOSTNAME "ALL TESTS PASSED!!!"
+fi
 printf 'Elapsed Time: %02d:%02d:%02d\n' $((ELAPSED/3600)) $((ELAPSED%3600/60)) $((ELAPSED%60))
 
 exit 0

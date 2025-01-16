@@ -111,8 +111,10 @@ void
 RollupManager::init()
 {
     std::string wal_dir = Config::get_wal_dir();
+    std::string wal_file_name = wal_dir + "/rollup.data";
+
     create_dir(wal_dir);
-    m_wal_data_file = new RollupDataFile(wal_dir + "/rollup.data", 0);
+    m_wal_data_file = new RollupDataFile(wal_file_name, 0);
 
     // restore if necessary
     if (! m_wal_data_file->empty())
@@ -124,6 +126,7 @@ RollupManager::init()
 
         Tsdb::restore_rollup_mgr(map);
         m_wal_data_file->close();
+        rm_file(wal_file_name);
     }
 }
 
