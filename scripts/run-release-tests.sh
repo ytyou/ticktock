@@ -239,16 +239,23 @@ EOF
     fi
 
     echo > $LOG/$H/it.log
-    ssh $H $SHELL << EOF
-    rm -rf /tmp/tt_i;
-    cd /home/yongtao/src/tt/$BRANCH;
-    echo "$(python --version)" | grep "Python 3";
+
+    # find out python version on host
+    ssh $H 'python --version' 2>&1 | grep "Python 3"
+
     if [[ $? -eq 0 ]]; then
-        ./test/int_test3.py -o dock -n $M >> $LOG/$H/it.log
-    else
-        ./test/int_test.py -o dock -n $M >> $LOG/$H/it.log
-    fi
+        ssh $H $SHELL << EOF
+        rm -rf /tmp/tt_i;
+        cd /home/yongtao/src/tt/$BRANCH;
+        ./test/int_test3.py -o dock -n $M &>> $LOG/$H/it.log
 EOF
+    else
+        ssh $H $SHELL << EOF
+        rm -rf /tmp/tt_i;
+        cd /home/yongtao/src/tt/$BRANCH;
+        ./test/int_test.py -o dock &>> $LOG/$H/it.log
+EOF
+    fi
 
     # stop openTSDB
     ssh dock $SHELL << EOF
@@ -343,7 +350,8 @@ EOF
     ssh $H $SHELL << EOF
     cd /home/yongtao/src/tt/main;
     make tools;
-    ./bin/inspect -q -b -d /tmp/tt/data &> $INSPECT_LOG
+    cd /tmp;
+    /home/yongtao/src/tt/main/bin/inspect -q -b -d /tmp/tt/data &> $INSPECT_LOG
 EOF
 
     ACTUAL=`grep '^Grand Total = ' $INSPECT_LOG | awk '{print $4}'`
@@ -393,7 +401,8 @@ EOF
     ssh $H $SHELL << EOF
     cd /home/yongtao/src/tt/main;
     make tools;
-    ./bin/inspect -q -b -d /tmp/tt/data &> $LOG/$H/inspect_ts.log
+    cd /tmp;
+    /home/yongtao/src/tt/main/bin/inspect -q -b -d /tmp/tt/data &> $LOG/$H/inspect_ts.log
 EOF
 
     ACTUAL=`grep '^Grand Total = ' $LOG/$H/inspect_ts.log | awk '{print $4}'`
