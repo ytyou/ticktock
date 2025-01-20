@@ -104,8 +104,8 @@ EOF
     return $?
 }
 
-ping_host() {
-    ping -c 1 -W 3 $1
+ping_tt() {
+    curl -XPOST "http://$1:6182/api/admin?cmd=ping" >/dev/null 2>&1
     return $?
 }
 
@@ -150,6 +150,7 @@ start_host() {
     if [[ $? -ne 0 ]]; then
         return 1
     else
+        sleep 5
         log $1 "VM $1 is available"
     fi
 
@@ -170,11 +171,20 @@ start_tt() {
     ssh $H $SHELL << EOF
     rm -rf /tt/*;
     rm -rf $TT_HOME;
-    if [[ -d "/tt" ]]; then ln -s /tt /tmp/tt; else mkdir -p /tmp/tt/data; mkdir /tmp/tt/log; fi;
+    if [[ -d "/tt" ]]; then ln -s /tt /tmp/tt; fi
+    mkdir -p /tmp/tt/data;
+    mkdir /tmp/tt/log;
     cd /home/yongtao/src/tt/$BRANCH;
     bin/tt -c conf/tt.conf -r -d -p $TT_HOME/tt.pid --ticktock.home=$TT_HOME --tsdb.timestamp.resolution=millisecond --tsdb.flush.frequency=3min --tsdb.thrashing.threshold=5min
 EOF
-    return $?
+    while : ; do
+        ping_tt $H
+        if [[ $? -eq 0 ]]; then
+            break
+        fi
+        sleep 2
+    done
+    return 0
 }
 
 stop_tt() {
@@ -264,9 +274,9 @@ EOF
 
     tail $LOG/$H/it.log | grep ' FAILED: 0; '
     if [[ $? -eq 0 ]]; then
-        pass $H "[IT] Unit test passed!"
+        pass $H "[IT] Integration test passed!"
     else
-        fail $H "[IT] Unit test failed!"
+        fail $H "[IT] Integration test failed!"
     fi
 }
 
@@ -408,9 +418,9 @@ EOF
     ACTUAL=`grep '^Grand Total = ' $LOG/$H/inspect_ts.log | awk '{print $4}'`
 
     if [[ "$ACTUAL" == "$EXPECTED" ]]; then
-        pass $H "[BM] Benchmark tests '$2' passed on $H"
+        pass $H "[BM] Benchmark tests '-t $SCALE' passed on $H"
     else
-        fail $H "[BM] Benchmark tests '$2' failed on $H; expected: $EXPECTED, actual: $ACTUAL"
+        fail $H "[BM] Benchmark tests '-t $SCALE' failed on $H; expected: $EXPECTED, actual: $ACTUAL"
     fi
 }
 

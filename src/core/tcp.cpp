@@ -400,7 +400,7 @@ TcpServer::start(const std::string& ports)
 bool
 TcpServer::recv_tcp_data(TaskData& data)
 {
-    size_t buff_size = MemoryManager::get_network_buffer_size() - 4;
+    size_t buff_size = MemoryManager::get_network_buffer_size() - 6;
     TcpConnection *conn = static_cast<TcpConnection*>(data.pointer);
 
     Logger::trace("recv_tcp_data: conn=%p, fd=%d", conn, conn->fd);
