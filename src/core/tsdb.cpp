@@ -810,7 +810,7 @@ Mapping::restore_measurement(std::string& measurement, std::string& tags, std::v
     for (auto field: fields)
     {
         builder.update_last(TT_FIELD_TAG_ID, field.first.c_str());
-        TimeSeries *ts = new TimeSeries(builder);
+        TimeSeries *ts = new TimeSeries(builder, field.second);
         add_ts(ts);
         mm->add_ts(i++, ts);
         tsv.push_back(ts);
@@ -1935,6 +1935,8 @@ Tsdb::get_last_tstamp(MetricId mid, TimeSeriesId tid)
             tsdb_header = header_file->get_tsdb_header();
         }
 
+        ASSERT((fidx < header->m_next_file) || (fidx == header->m_next_file && hidx < header->m_next_header));
+
         fidx = header->m_next_file;
         hidx = header->m_next_header;
     }
@@ -1956,6 +1958,8 @@ Tsdb::get_last_tstamp(MetricId mid, TimeSeriesId tid)
             lock.lock_for_read();
             page = data_file->get_page(page_header->m_page_index);
         }
+
+        ASSERT(page != nullptr);
 
         if (page == nullptr)
         {

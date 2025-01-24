@@ -815,6 +815,9 @@ struct page_info_on_disk *
 HeaderFile::get_page_header(HeaderIndex header_idx)
 {
     ASSERT(is_open(true));
+    ASSERT(get_tsdb_header() != nullptr);
+    ASSERT(header_idx < get_tsdb_header()->m_header_index);
+
     struct page_info_on_disk *headers =
         reinterpret_cast<struct page_info_on_disk*>(static_cast<char*>(get_pages())+(sizeof(struct tsdb_header)));
     return &headers[header_idx];

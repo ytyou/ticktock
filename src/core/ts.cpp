@@ -75,6 +75,18 @@ TimeSeries::TimeSeries(TagBuilder& builder) :
 }
 
 // called during restart/restore
+TimeSeries::TimeSeries(TagBuilder& builder, TimeSeriesId id) :
+    m_id(id),
+    m_next(nullptr),
+    m_tags(builder),
+    m_buff(nullptr),
+    m_ooo_buff(nullptr)
+{
+    if (m_next_id.load() <= id)
+        m_next_id = id + 1;
+}
+
+// called during restart/restore
 TimeSeries::TimeSeries(TimeSeriesId id, const char *metric, const char *key, Tag *tags) :
     m_next(nullptr),
     m_tags(tags)

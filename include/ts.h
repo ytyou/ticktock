@@ -44,6 +44,7 @@ class __attribute__ ((__packed__)) TimeSeries : public BaseType
 {
 public:
     TimeSeries(TagBuilder& builder);
+    TimeSeries(TagBuilder& builder, TimeSeriesId id);
     TimeSeries(const char *metric, TagBuilder& builder);
     TimeSeries(const char *metric, const char *key, Tag *tags);
     TimeSeries(TimeSeriesId id, const char *metric, const char *key, Tag *tags);

@@ -564,9 +564,10 @@ inspect_tsdb_for_restore(const std::string& dir)
 
     int mbucket = Config::inst()->get_int(CFG_TSDB_METRIC_BUCKETS, CFG_TSDB_METRIC_BUCKETS_DEF);
     std::string cfg_file = dir + "/config";
+
     if (file_exists(cfg_file))
     {
-        Config cfg(dir + "/config");
+        Config cfg(cfg_file);
         mbucket = cfg.get_int(CFG_TSDB_METRIC_BUCKETS, CFG_TSDB_METRIC_BUCKETS_DEF);
     }
 
@@ -599,14 +600,15 @@ inspect_tsdb_for_restore(const std::string& dir)
             TimeSeriesId tid = ts->get_id();
 
             tag_buff[0] = 0;
-            while (tags != nullptr)
+            for (auto tag = tags; tag != nullptr; tag = tag->next())
             {
                 std::strcat(tag_buff, " ");
-                std::strcat(tag_buff, tags->m_key);
+                std::strcat(tag_buff, tag->m_key);
                 std::strcat(tag_buff, "=");
-                std::strcat(tag_buff, tags->m_value);
-                tags = tags->next();
+                std::strcat(tag_buff, tag->m_value);
             }
+
+            Tag::free_list(tags);
 
             if (((tid+1) * sizeof(struct index_entry)) >= index_file_size) continue;
             if (index_entries[tid].file_index == TT_INVALID_FILE_INDEX) continue;
@@ -641,8 +643,10 @@ inspect_tsdb_for_restore(const std::string& dir)
 
                 if ((header_base == nullptr) || (data_base == nullptr) || (header_file_fd < 0))
                 {
-                    std::cerr << "[ERROR] failed to open header or data file" << std::endl;
-                    continue;
+                    //ASSERT(false);
+                    //std::cerr << "[ERROR] failed to open header or data file: " << std::endl;
+                    //continue;
+                    break;
                 }
 
                 struct page_info_on_disk *page_header = (struct page_info_on_disk *)
@@ -756,6 +760,7 @@ main(int argc, char *argv[])
         Config::inst()->set_value(CFG_TSDB_DATA_DIR, g_data_dir);
         MetaFile::init(Tsdb::restore_metrics, Tsdb::restore_ts, Tsdb::restore_measurement);
         Tsdb::get_all_ts(g_time_series);
+        std::cerr << "Total number of metrics: " << get_max_mid()+1 << std::endl;
         std::cerr << "Total number of time series: " << g_time_series.size() << std::endl;
     }
 

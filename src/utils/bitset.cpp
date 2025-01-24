@@ -82,7 +82,11 @@ BitSet::capacity_in_bytes() const
     if ((m_bits == nullptr) || (m_end == nullptr))
         return 0;
     else
+    {
+        ASSERT(m_bits <= m_end);
+        ASSERT(m_cursor <= m_end);
         return m_end - m_bits;
+    }
 }
 
 void
@@ -101,6 +105,9 @@ BitSet::reset()
     size_t size_in_bytes = capacity_in_bytes();
     if ((size_in_bytes > 0) && (m_bits != nullptr))
         std::memset(m_bits, 0, size_in_bytes);
+    ASSERT(m_bits <= m_end);
+    ASSERT(m_bits <= m_cursor);
+    ASSERT(m_cursor <= m_end);
 }
 
 void
@@ -117,6 +124,9 @@ BitSet::rebase(uint8_t *base)
     }
 
     m_bits = base;
+    ASSERT(m_bits <= m_end);
+    ASSERT(m_bits <= m_cursor);
+    ASSERT(m_cursor <= m_end);
 }
 
 BitSetCursor *
@@ -178,6 +188,8 @@ BitSet::append(uint8_t *bits, uint8_t len, uint8_t start)
         if (start == 0) bits++;
     }
 
+    ASSERT(m_bits <= m_end);
+    ASSERT(m_bits <= m_cursor);
     ASSERT(m_cursor <= m_end);
 }
 
@@ -252,6 +264,10 @@ BitSet::append(uint8_t bits, uint8_t& len, uint8_t& start)
             len = 0;
         }
     }
+
+    ASSERT(m_bits <= m_end);
+    ASSERT(m_bits <= m_cursor);
+    ASSERT(m_cursor <= m_end);
 }
 
 int
@@ -285,6 +301,10 @@ BitSet::copy_from(uint8_t *base, int bytes, uint8_t start)
     }
 }
 
+/* @param bits  buffer where retrieved bits will be returned;
+ * @param len   number of bits to retrieve;
+ * @param start starting position in 'bits' to store retrieved bits;
+ */
 void
 BitSet::retrieve(BitSetCursor *cursor, uint8_t *bits, uint8_t len, uint8_t start)
 {
@@ -309,15 +329,20 @@ BitSet::retrieve(BitSetCursor *cursor, uint8_t *bits, uint8_t len, uint8_t start
 
     while (len > 0)
     {
-        if (cursor->m_cursor == m_end)
-        {
-            throw std::out_of_range("end of bitset reached");
-        }
+        ASSERT(m_cursor <= m_end);
 
+        if (bits_left(cursor) < len)
+            throw std::out_of_range("end of bitset reached");
+
+        ASSERT(cursor->m_cursor <= m_cursor);
         retrieve(cursor, *bits, len, start);
         if (start == 0) bits++;
+        ASSERT(cursor->m_cursor <= m_cursor);
     }
 
+    ASSERT(m_bits <= m_end);
+    ASSERT(m_bits <= m_cursor);
+    ASSERT(m_cursor <= m_end);
     ASSERT(cursor->m_cursor <= m_cursor);
 }
 
@@ -343,6 +368,7 @@ BitSet::retrieve(BitSetCursor *cursor, uint8_t& bits, uint8_t& len, uint8_t& sta
             len -= l;
             cursor->m_start = 0;
             cursor->m_cursor++;
+            ASSERT(cursor->m_cursor <= m_cursor);
         }
         else
         {
@@ -387,6 +413,7 @@ BitSet::retrieve(BitSetCursor *cursor, uint8_t& bits, uint8_t& len, uint8_t& sta
             start = 0;
             cursor->m_start = 0;
             cursor->m_cursor++;
+            ASSERT(cursor->m_cursor <= m_cursor);
         }
         else
         {
@@ -394,6 +421,10 @@ BitSet::retrieve(BitSetCursor *cursor, uint8_t& bits, uint8_t& len, uint8_t& sta
             len = 0;
         }
     }
+
+    ASSERT(m_bits <= m_end);
+    ASSERT(m_bits <= m_cursor);
+    ASSERT(m_cursor <= m_end);
 }
 
 /*

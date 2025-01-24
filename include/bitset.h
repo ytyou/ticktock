@@ -20,6 +20,7 @@
 
 #include "recycle.h"
 #include "serial.h"
+#include "utils.h"
 
 
 namespace tt
@@ -98,7 +99,15 @@ public:
 
     inline size_t size_in_bits() const
     {
+        ASSERT(m_bits <= m_cursor);
         return 8 * (m_cursor - m_bits) + m_start;
+    }
+
+    inline size_t bits_left(BitSetCursor *cursor)
+    {
+        ASSERT(cursor != nullptr);
+        ASSERT(cursor->m_cursor <= m_cursor);
+        return 8 * (m_cursor - cursor->m_cursor) + m_start;
     }
 
     inline size_t size_in_bytes() const
