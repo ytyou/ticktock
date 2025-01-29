@@ -171,8 +171,8 @@ Stats::inject_metrics(TaskData& data)
 
                     if (tsdb == nullptr) break;
 
-                    dp->add_tag("thread", dp->get_raw_tags());
-                    dp->add_tag("host", g_host_name.c_str());
+                    //dp->add_tag(THREAD_TAG_NAME, dp->get_raw_tags());
+                    dp->add_tag(HOST_TAG_NAME, g_host_name.c_str());
 
                     tsdb->add(*dp);
                 }

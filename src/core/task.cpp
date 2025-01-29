@@ -201,6 +201,13 @@ TaskScheduler::wait(size_t timeout_secs)
 }
 
 size_t
+TaskScheduler::get_pending_task_count(int id) const
+{
+    ASSERT(0 <= id && id < m_thread_count);
+    return m_workers[id]->m_tasks.size();
+}
+
+size_t
 TaskScheduler::get_pending_task_count(std::vector<size_t> &counts) const
 {
     ASSERT(counts.empty());

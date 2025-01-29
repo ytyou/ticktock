@@ -157,6 +157,11 @@ HttpServer::recv_http_data(TaskData& data)
 
     Logger::http("recv_http_data: conn=%p", conn->fd, conn);
 
+#ifdef TT_STATS
+    if (conn->processed == 0)
+        conn->processed = ts_now_ms();
+#endif
+
     char* buff;
 
     if (conn->buff != nullptr)
@@ -297,6 +302,7 @@ HttpServer::recv_http_data(TaskData& data)
     if ((n <= 0) && (conn->state & TCS_CLOSED))
         conn->close();
 
+#ifdef TT_STATS
     if (g_self_meter_enabled && free_buff)
     {
         Timestamp now = ts_now_ms();
@@ -312,14 +318,58 @@ HttpServer::recv_http_data(TaskData& data)
                 dp->set_timestamp(to_sec(now));
                 dp->set_value(now - conn->received);
                 dp->add_tag(THREAD_TAG_NAME, (char*)g_thread_id.c_str());
-                dp->set_metric("ticktock.http.request.time");
+                dp->add_tag(TYPE_TAG_NAME, "total");
+                dp->set_metric("ticktock.http.latency");
+
+                Stats::add_data_point(dp);
+            }
+
+            dp = (DataPoint*)MemoryManager::alloc_recyclable(RecyclableType::RT_DATA_POINT);
+
+            if (dp != nullptr)
+            {
+                dp->set_timestamp(to_sec(now));
+                dp->set_value(conn->processed - conn->received);
+                dp->add_tag(THREAD_TAG_NAME, (char*)g_thread_id.c_str());
+                dp->add_tag(TYPE_TAG_NAME, "queue");
+                dp->set_metric("ticktock.http.latency");
+
+                Stats::add_data_point(dp);
+            }
+
+            dp = (DataPoint*)MemoryManager::alloc_recyclable(RecyclableType::RT_DATA_POINT);
+
+            if (dp != nullptr)
+            {
+                dp->set_timestamp(to_sec(now));
+                dp->set_value(now - conn->processed);
+                dp->add_tag(THREAD_TAG_NAME, (char*)g_thread_id.c_str());
+                dp->add_tag(TYPE_TAG_NAME, "process");
+                dp->set_metric("ticktock.http.latency");
+
+                Stats::add_data_point(dp);
+            }
+
+            dp = (DataPoint*)MemoryManager::alloc_recyclable(RecyclableType::RT_DATA_POINT);
+
+            if (dp != nullptr)
+            {
+                dp->set_timestamp(to_sec(now));
+                dp->set_value(conn->task_cnt);
+                dp->add_tag(THREAD_TAG_NAME, (char*)g_thread_id.c_str());
+                dp->add_tag(TYPE_TAG_NAME, "task_cnt");
+                dp->set_metric("ticktock.http.latency");
 
                 Stats::add_data_point(dp);
             }
         }
 
-        conn->received = 0;     // reset it
+        // clear stats
+        conn->received = 0;
+        conn->processed = 0;
+        conn->task_cnt = 0;
     }
+#endif
 
     return false;
 }

@@ -109,6 +109,11 @@ ping_tt() {
     return $?
 }
 
+display_tt_version() {
+    curl "http://$1:6182/api/version"
+    return $?
+}
+
 wait_for_opentsdb() {
     while : ; do
         curl http://dock:4242/api/stats >/dev/null 2>&1
@@ -184,6 +189,14 @@ EOF
         fi
         sleep 2
     done
+
+    display_tt_version $H
+    if [[ $? -ne 0 ]]; then
+        echo
+        error $H "Failed to get TickTockDB version on $H."
+    fi
+    echo
+
     return 0
 }
 

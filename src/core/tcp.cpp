@@ -1213,11 +1213,21 @@ TcpListener::listener1()
                     // request, we want to assign this one to the same worker.
                     if (1 == conn->pending_tasks)
                     {
+#ifdef TT_STATS
                         conn->received = ts_now_ms();
+#endif
                         conn->worker_id = m_responders.submit_task(task);
+#ifdef TT_STATS
+                        conn->task_cnt = m_responders.get_pending_task_count(conn->worker_id);
+#endif
                     }
                     else
+                    {
                         m_responders.submit_task(task, conn->worker_id);
+#ifdef TT_STATS
+                        conn->task_cnt += m_responders.get_pending_task_count(conn->worker_id);
+#endif
+                    }
                 }
             }
         }
