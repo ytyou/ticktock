@@ -188,6 +188,10 @@ protected:
     int get_responders_per_listener(int which) const override;
     int get_listener_count(int which) const override;
 
+#ifdef TT_STATS
+    static void collect_self_stats(HttpConnection *conn);
+#endif
+
     // task func
     static bool recv_http_data(TaskData& data);
     static bool recv_http_data_cont(HttpConnection *conn);

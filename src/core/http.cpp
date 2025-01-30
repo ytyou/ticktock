@@ -148,6 +148,78 @@ HttpServer::get_recv_data_task(TcpConnection *conn) const
     return task;
 }
 
+#ifdef TT_STATS
+void
+HttpServer::collect_self_stats(HttpConnection *conn)
+{
+    ASSERT(conn != nullptr);
+    Timestamp now = ts_now_ms();
+
+    // only report those that took more than a second
+    if ((conn->received > 0) && ((conn->received + 1000) <= now))
+    {
+        DataPoint *dp =
+            (DataPoint*)MemoryManager::alloc_recyclable(RecyclableType::RT_DATA_POINT);
+        Timestamp now_sec = to_sec(now);
+
+        if (dp != nullptr)
+        {
+            dp->set_timestamp(now_sec);
+            dp->set_value(now - conn->received);
+            dp->add_tag(THREAD_TAG_NAME, (char*)g_thread_id.c_str());
+            dp->add_tag(TYPE_TAG_NAME, "total");
+            dp->set_metric("ticktock.http.latency");
+
+            Stats::add_data_point(dp);
+        }
+
+        dp = (DataPoint*)MemoryManager::alloc_recyclable(RecyclableType::RT_DATA_POINT);
+
+        if (dp != nullptr)
+        {
+            dp->set_timestamp(now_sec);
+            dp->set_value(conn->processed - conn->received);
+            dp->add_tag(THREAD_TAG_NAME, (char*)g_thread_id.c_str());
+            dp->add_tag(TYPE_TAG_NAME, "queue");
+            dp->set_metric("ticktock.http.latency");
+
+            Stats::add_data_point(dp);
+        }
+
+        dp = (DataPoint*)MemoryManager::alloc_recyclable(RecyclableType::RT_DATA_POINT);
+
+        if (dp != nullptr)
+        {
+            dp->set_timestamp(now_sec);
+            dp->set_value(now - conn->processed);
+            dp->add_tag(THREAD_TAG_NAME, (char*)g_thread_id.c_str());
+            dp->add_tag(TYPE_TAG_NAME, "process");
+            dp->set_metric("ticktock.http.latency");
+
+            Stats::add_data_point(dp);
+        }
+
+        dp = (DataPoint*)MemoryManager::alloc_recyclable(RecyclableType::RT_DATA_POINT);
+
+        if (dp != nullptr)
+        {
+            dp->set_timestamp(now_sec);
+            dp->set_value(conn->task_cnt);
+            dp->add_tag(THREAD_TAG_NAME, (char*)g_thread_id.c_str());
+            dp->add_tag(TYPE_TAG_NAME, "task_cnt");
+            dp->set_metric("ticktock.http.latency");
+
+            Stats::add_data_point(dp);
+        }
+    }
+
+    // clear stats
+    conn->received = 0;
+    conn->processed = 0;
+    conn->task_cnt = 0;
+}
+#endif
+
 // we are in edge-triggered mode, must read all data
 bool
 HttpServer::recv_http_data(TaskData& data)
@@ -304,71 +376,7 @@ HttpServer::recv_http_data(TaskData& data)
 
 #ifdef TT_STATS
     if (g_self_meter_enabled && free_buff)
-    {
-        Timestamp now = ts_now_ms();
-
-        // only report those that took more than a second
-        if ((conn->received > 0) && ((conn->received + 1000) <= now))
-        {
-            DataPoint *dp =
-                (DataPoint*)MemoryManager::alloc_recyclable(RecyclableType::RT_DATA_POINT);
-
-            if (dp != nullptr)
-            {
-                dp->set_timestamp(to_sec(now));
-                dp->set_value(now - conn->received);
-                dp->add_tag(THREAD_TAG_NAME, (char*)g_thread_id.c_str());
-                dp->add_tag(TYPE_TAG_NAME, "total");
-                dp->set_metric("ticktock.http.latency");
-
-                Stats::add_data_point(dp);
-            }
-
-            dp = (DataPoint*)MemoryManager::alloc_recyclable(RecyclableType::RT_DATA_POINT);
-
-            if (dp != nullptr)
-            {
-                dp->set_timestamp(to_sec(now));
-                dp->set_value(conn->processed - conn->received);
-                dp->add_tag(THREAD_TAG_NAME, (char*)g_thread_id.c_str());
-                dp->add_tag(TYPE_TAG_NAME, "queue");
-                dp->set_metric("ticktock.http.latency");
-
-                Stats::add_data_point(dp);
-            }
-
-            dp = (DataPoint*)MemoryManager::alloc_recyclable(RecyclableType::RT_DATA_POINT);
-
-            if (dp != nullptr)
-            {
-                dp->set_timestamp(to_sec(now));
-                dp->set_value(now - conn->processed);
-                dp->add_tag(THREAD_TAG_NAME, (char*)g_thread_id.c_str());
-                dp->add_tag(TYPE_TAG_NAME, "process");
-                dp->set_metric("ticktock.http.latency");
-
-                Stats::add_data_point(dp);
-            }
-
-            dp = (DataPoint*)MemoryManager::alloc_recyclable(RecyclableType::RT_DATA_POINT);
-
-            if (dp != nullptr)
-            {
-                dp->set_timestamp(to_sec(now));
-                dp->set_value(conn->task_cnt);
-                dp->add_tag(THREAD_TAG_NAME, (char*)g_thread_id.c_str());
-                dp->add_tag(TYPE_TAG_NAME, "task_cnt");
-                dp->set_metric("ticktock.http.latency");
-
-                Stats::add_data_point(dp);
-            }
-        }
-
-        // clear stats
-        conn->received = 0;
-        conn->processed = 0;
-        conn->task_cnt = 0;
-    }
+        collect_self_stats(conn);
 #endif
 
     return false;
@@ -512,6 +520,11 @@ HttpServer::recv_http_data_cont(HttpConnection *conn)
 
     if ((n <= 0) && (conn->state & TCS_CLOSED))
         conn->close();
+
+#ifdef TT_STATS
+    if (g_self_meter_enabled && free_buff)
+        collect_self_stats(conn);
+#endif
 
     return false;
 }
