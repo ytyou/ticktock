@@ -18,6 +18,7 @@
 
 #pragma once
 
+#include <atomic>
 #include "dp.h"
 #include "task.h"
 #include "http.h"
@@ -28,6 +29,10 @@
 namespace tt
 {
 
+
+#ifdef TT_STATS
+extern std::atomic<long> g_http_request_count;
+#endif
 
 struct proc_stats
 {
@@ -85,6 +90,9 @@ private:
     static void inject_internal_metrics(Timestamp ts, Tsdb *tsdb);
     static void collect_proc_io(Timestamp tstamp, Tsdb *tsdb);
     static void collect_proc_stat(Timestamp tstamp);
+#ifdef TT_STATS
+    static bool collect_http_stat(TaskData& data);
+#endif
     static void write_proc_stat(Timestamp tstamp, Tsdb *tsdb);
     static void write_leak_stat(Timestamp tstamp, Tsdb *tsdb);
 

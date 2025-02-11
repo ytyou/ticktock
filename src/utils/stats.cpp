@@ -44,6 +44,10 @@ namespace tt
 static struct proc_stats g_proc_stats;
 static int dst_fd = -1;
 
+#ifdef TT_STATS
+std::atomic<long> g_http_request_count{0};
+#endif
+
 std::mutex Stats::m_lock;
 DataPoint *Stats::m_dps_head = nullptr;
 DataPoint *Stats::m_dps_tail = nullptr;
@@ -64,6 +68,11 @@ Stats::init()
         int freq_sec = Config::inst()->get_time(CFG_STATS_FREQUENCY, TimeUnit::SEC, CFG_STATS_FREQUENCY_DEF);
         Timer::inst()->add_task(task, freq_sec, "stats_inject");
         Logger::info("using stats.frequency.sec of %d", freq_sec);
+
+#ifdef TT_STATS
+        task.doit = &Stats::collect_http_stat;
+        Timer::inst()->add_task(task, 5, "stats_http");
+#endif
 
         if (Config::inst()->exists(CFG_TSDB_SELF_METER_DESTINATION))
         {
@@ -399,6 +408,31 @@ Stats::inject_metrics(TaskData& data)
 
     return false;
 }
+
+#ifdef TT_STATS
+bool
+Stats::collect_http_stat(TaskData& data)
+{
+    int cnt = g_http_request_count.exchange(0, std::memory_order_relaxed);
+
+    if (cnt > 0)
+    {
+        DataPoint *dp =
+            (DataPoint*)MemoryManager::alloc_recyclable(RecyclableType::RT_DATA_POINT);
+        Timestamp now_sec = ts_now_sec();
+
+        if (dp != nullptr)
+        {
+            dp->set_timestamp(now_sec);
+            dp->set_value(cnt);
+            dp->set_metric("ticktock.http.request.count");
+            Stats::add_data_point(dp);
+        }
+    }
+
+    return false;
+}
+#endif
 
 void
 Stats::add_data_point(DataPoint *dp)

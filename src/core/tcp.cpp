@@ -30,6 +30,7 @@
 #include "memmgr.h"
 #include "logger.h"
 #include "leak.h"
+#include "stats.h"
 #include "tsdb.h"
 
 
@@ -1214,6 +1215,7 @@ TcpListener::listener1()
                     if (1 == conn->pending_tasks)
                     {
 #ifdef TT_STATS
+                        g_http_request_count.fetch_add(1, std::memory_order_relaxed);
                         conn->received = ts_now_ms();
 #endif
                         conn->worker_id = m_responders.submit_task(task);

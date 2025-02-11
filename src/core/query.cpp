@@ -1224,8 +1224,8 @@ QueryExecutor::http_get_api_query_handler(HttpRequest& request, HttpResponse& re
 {
 #ifdef TT_STATS
     Timestamp ts_start = ts_now_ms();
-#endif
     Meter meter(METRIC_TICKTOCK_QUERY_LATENCY_MS);
+#endif
     Logger::debug("Handling get request: %T", &request);
 
     JsonMap params;
@@ -1262,8 +1262,8 @@ QueryExecutor::http_post_api_query_handler(HttpRequest& request, HttpResponse& r
 {
 #ifdef TT_STATS
     Timestamp ts_start = ts_now_ms();
-#endif
     Meter meter(METRIC_TICKTOCK_QUERY_LATENCY_MS);
+#endif
     bool ms = false;
     JsonMap map;
 
