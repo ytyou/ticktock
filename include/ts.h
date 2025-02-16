@@ -54,7 +54,7 @@ public:
     static void cleanup();  // called by Tsdb::shutdown()
     void init(TimeSeriesId id, const char *metric, const char *key, Tag *tags);
     void restore(Tsdb *tsdb, MetricId mid, Timestamp tstamp, PageSize offset, uint8_t start, uint8_t *buff, int size, bool is_ooo, FileIndex file_idx, HeaderIndex header_idx);
-    void restore_rollup_mgr(const struct rollup_entry_ext& mgr);
+    void restore_rollup_mgr(const struct rollup_entry_ext2& mgr);
 
     inline TimeSeriesId get_id() const { return m_id; }
     static inline TimeSeriesId get_next_id() { return m_next_id.load(std::memory_order_relaxed); }

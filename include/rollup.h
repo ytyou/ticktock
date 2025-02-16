@@ -42,7 +42,7 @@ public:
     RollupManager(Timestamp tstmap, uint32_t cnt, double min, double max, double sum);
     ~RollupManager();
 
-    void copy_from(const struct rollup_entry_ext& entry);
+    void copy_from(const struct rollup_entry_ext2& entry);
     void copy_from(const RollupManager& other);
     RollupManager& operator=(const RollupManager& other);
 
@@ -92,7 +92,17 @@ private:
     double m_sum;
     Timestamp m_tstamp;
 
-    RollupDataFile * m_data_file;       // currently being written
+    // for compression
+    int64_t m_prev_cnt;
+    int64_t m_prev_cnt_delta;
+    double m_prev_min;
+    double m_prev_min_delta;
+    double m_prev_max;
+    double m_prev_max_delta;
+    double m_prev_sum;
+    double m_prev_sum_delta;
+
+    RollupDataFile *m_data_file;    // currently being written
 
     // used during shutdown/restart of TT
     static RollupDataFile *m_wal_data_file;

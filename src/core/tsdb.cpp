@@ -3852,7 +3852,7 @@ Tsdb::rollup(TaskData& data)
 }
 
 void
-Tsdb::restore_rollup_mgr(std::unordered_map<TimeSeriesId,struct rollup_entry_ext>& map)
+Tsdb::restore_rollup_mgr(std::unordered_map<TimeSeriesId,struct rollup_entry_ext2>& map)
 {
     std::vector<TimeSeries*> tsv;
 

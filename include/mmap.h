@@ -238,6 +238,25 @@ struct __attribute__ ((__packed__)) rollup_entry_ext
 };
 
 
+struct __attribute__ ((__packed__)) rollup_entry_ext2
+{
+    TimeSeriesId tid;
+    uint32_t cnt;
+    double min;
+    double max;
+    double sum;
+    Timestamp tstamp;   // this must be the last entry
+    int64_t prev_cnt;
+    int64_t prev_cnt_delta;
+    double prev_min;
+    double prev_min_delta;
+    double prev_max;
+    double prev_max_delta;
+    double prev_sum;
+    double prev_sum_delta;
+};
+
+
 struct __attribute__ ((__packed__)) rollup_append_entry
 {
     uint32_t cnt;
@@ -276,23 +295,28 @@ public:
     bool is_open(bool for_read) const;
     inline int64_t size() const { return m_size; }
     inline Timestamp get_begin_timestamp() const { return m_begin; }
+    inline short get_compressor_version() const { return m_compressor_version; }
 
     inline bool empty() const { return (m_index == 0) && !file_exists(m_name); }
     inline void remove() { rm_file(m_name); }
 
     // iterate through the file, forward only
     // returns nullptr when no more entry left
-    struct rollup_entry *first_entry(RollupDataFileCursor& cursor);
-    struct rollup_entry *next_entry(RollupDataFileCursor& cursor);
+    struct rollup_entry *first_entry(RollupDataFileCursor& cursor, struct rollup_compression_data &data);
+    struct rollup_entry *next_entry(RollupDataFileCursor& cursor, struct rollup_compression_data &data);
 
     void add_data_point(TimeSeriesId tid, uint32_t cnt, double min, double max, double sum);
-    void add_data_point(TimeSeriesId tid, Timestamp tstamp, uint32_t cnt, double min, double max, double sum);  // called during shutdown
+    void add_data_point2(TimeSeriesId tid, int64_t cnt_dod, double min_dod, double max_dod, double sum_dod, bool cnt_is_zero);
+    void add_data_point(TimeSeriesId tid, Timestamp tstamp, uint32_t cnt, double min, double max, double sum);
+    void add_data_point_to_wal(TimeSeriesId tid, Timestamp tstamp, uint32_t cnt, double min, double max, double sum,
+        int64_t prev_cnt, int64_t prev_cnt_delta, double prev_min, double prev_min_delta,
+        double prev_max, double prev_max_delta, double prev_sum, double prev_sum_delta);  // called during shutdown
     void add_data_points(std::unordered_map<TimeSeriesId,std::vector<struct rollup_entry_ext>>& data);
     void query(const TimeRange& range, std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupType rollup);  // query hourly rollup
     void query2(const TimeRange& range, std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupType rollup); // query daily rollup
     // used by Tsdb::rollup() for offline processing
     void query(const TimeRange& range, std::unordered_map<TimeSeriesId,struct rollup_entry_ext>& map);
-    void query_ext(const TimeRange& range, std::unordered_map<TimeSeriesId,struct rollup_entry_ext>& map);
+    void query_ext2(const TimeRange& range, std::unordered_map<TimeSeriesId,struct rollup_entry_ext2>& map);
     // used by Tsdb::rollup()
     void query(std::unordered_map<TimeSeriesId,std::vector<struct rollup_entry_ext>>& data);
 

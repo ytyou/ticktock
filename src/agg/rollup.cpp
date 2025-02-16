@@ -50,7 +50,15 @@ RollupManager::RollupManager() :
     m_max(std::numeric_limits<double>::lowest()),
     m_sum(0.0),
     m_tstamp(TT_INVALID_TIMESTAMP),
-    m_data_file(nullptr)
+    m_data_file(nullptr),
+    m_prev_cnt(0),
+    m_prev_cnt_delta(0),
+    m_prev_max(0.0),
+    m_prev_max_delta(0.0),
+    m_prev_min(0.0),
+    m_prev_min_delta(0.0),
+    m_prev_sum(0.0),
+    m_prev_sum_delta(0.0)
 {
 }
 
@@ -66,7 +74,15 @@ RollupManager::RollupManager(Timestamp tstamp, uint32_t cnt, double min, double 
     m_max(max),
     m_sum(sum),
     m_tstamp(tstamp),
-    m_data_file(nullptr)
+    m_data_file(nullptr),
+    m_prev_cnt(0),
+    m_prev_cnt_delta(0),
+    m_prev_max(0.0),
+    m_prev_max_delta(0.0),
+    m_prev_min(0.0),
+    m_prev_min_delta(0.0),
+    m_prev_sum(0.0),
+    m_prev_sum_delta(0.0)
 {
     ASSERT(cnt != 0);
     ASSERT(tstamp != TT_INVALID_TIMESTAMP);
@@ -85,16 +101,33 @@ RollupManager::copy_from(const RollupManager& other)
     m_sum = other.m_sum;
     m_tstamp = other.m_tstamp;
     m_data_file = other.m_data_file;
+    m_prev_cnt = other.m_prev_cnt;
+    m_prev_max = other.m_prev_max;
+    m_prev_min = other.m_prev_min;
+    m_prev_sum = other.m_prev_sum;
+    m_prev_cnt_delta = other.m_prev_cnt_delta;
+    m_prev_max_delta = other.m_prev_max_delta;
+    m_prev_min_delta = other.m_prev_min_delta;
+    m_prev_sum_delta = other.m_prev_sum_delta;
 }
 
 void
-RollupManager::copy_from(const struct rollup_entry_ext& entry)
+RollupManager::copy_from(const struct rollup_entry_ext2& entry)
 {
     m_cnt = entry.cnt;
     m_min = entry.min;
     m_max = entry.max;
     m_sum = entry.sum;
     m_tstamp = to_sec(entry.tstamp);
+
+    m_prev_cnt = entry.prev_cnt;
+    m_prev_cnt_delta = entry.prev_cnt_delta;
+    m_prev_min = entry.prev_min;
+    m_prev_min_delta = entry.prev_min_delta;
+    m_prev_max = entry.prev_max;
+    m_prev_max_delta = entry.prev_max_delta;
+    m_prev_sum = entry.prev_sum;
+    m_prev_sum_delta = entry.prev_sum_delta;
 }
 
 RollupManager&
@@ -119,10 +152,10 @@ RollupManager::init()
     // restore if necessary
     if (! m_wal_data_file->empty())
     {
-        std::unordered_map<TimeSeriesId,struct rollup_entry_ext> map;
+        std::unordered_map<TimeSeriesId,struct rollup_entry_ext2> map;
 
         m_wal_data_file->open(true);
-        m_wal_data_file->query_ext(TimeRange::MAX, map);
+        m_wal_data_file->query_ext2(TimeRange::MAX, map);
 
         Tsdb::restore_rollup_mgr(map);
         m_wal_data_file->close();
@@ -238,7 +271,36 @@ RollupManager::flush(MetricId mid, TimeSeriesId tid)
 
     ASSERT(m_data_file != nullptr);
     ASSERT(m_data_file->get_begin_timestamp() == begin_month(m_tstamp));
-    m_data_file->add_data_point(tid, m_cnt, m_min, m_max, m_sum);
+
+    if (m_data_file->get_compressor_version() == 1)
+    {
+        m_data_file->add_data_point(tid, m_cnt, m_min, m_max, m_sum);
+    }
+    else
+    {
+        int64_t cnt_delta = (int64_t)m_cnt - (int64_t)m_prev_cnt;
+        double min_delta = m_min - m_prev_min;
+        double max_delta = m_max - m_prev_max;
+        double sum_delta = m_sum - m_prev_sum;
+
+        int64_t cnt_dod = cnt_delta - (int64_t)m_prev_cnt_delta;
+        double min_dod = min_delta - m_prev_min_delta;
+        double max_dod = max_delta - m_prev_max_delta;
+        double sum_dod = sum_delta - m_prev_sum_delta;
+
+        m_data_file->add_data_point2(tid, cnt_dod, min_dod, max_dod, sum_dod, (m_cnt==0));
+
+        // reset
+        m_prev_cnt = m_cnt;
+        m_prev_min = m_min;
+        m_prev_max = m_max;
+        m_prev_sum = m_sum;
+
+        m_prev_cnt_delta = cnt_delta;
+        m_prev_min_delta = min_delta;
+        m_prev_max_delta = max_delta;
+        m_prev_sum_delta = sum_delta;
+    }
 
     // reset
     m_cnt = 0;
@@ -254,7 +316,11 @@ RollupManager::close(TimeSeriesId tid)
         return;
 
     if (m_wal_data_file != nullptr)
-        m_wal_data_file->add_data_point(tid, m_tstamp, m_cnt, m_min, m_max, m_sum);
+    {
+        m_wal_data_file->add_data_point_to_wal(tid, m_tstamp, m_cnt, m_min, m_max, m_sum,
+            m_prev_cnt, m_prev_cnt_delta, m_prev_min, m_prev_min_delta,
+            m_prev_max, m_prev_max_delta, m_prev_sum, m_prev_sum_delta);
+    }
 }
 
 double

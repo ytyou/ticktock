@@ -1333,9 +1333,41 @@ RollupDataFile::add_data_point(TimeSeriesId tid, uint32_t cnt, double min, doubl
     m_last_access = ts_now_sec();
 }
 
-// This is for daily rollup as well as backup file.
 void
-RollupDataFile::add_data_point(TimeSeriesId tid, Timestamp tstamp, uint32_t cnt, double min, double max, double sum)
+RollupDataFile::add_data_point2(TimeSeriesId tid, int64_t cnt_dod, double min_dod, double max_dod, double sum_dod, bool cnt_is_zero)
+{
+    int size;
+    uint8_t buff[128];
+
+    size = RollupCompressor_v1::compress_v2(buff, tid, cnt_dod, min_dod, max_dod, sum_dod, m_compressor_precision, cnt_is_zero);
+
+    std::lock_guard<std::mutex> guard(m_lock);
+
+    if (sizeof(m_buff) < (m_index + size))
+    {
+        // write the m_buff[] out
+        if (! is_open(false))
+        {
+            if (is_open(true)) close();
+            open(false);
+        }
+        ASSERT(m_file != nullptr);
+        std::fwrite(m_buff, m_index, 1, m_file);
+        std::fflush(m_file);
+        m_index = 0;
+        m_size = 0;
+    }
+
+    std::memcpy(m_buff+m_index, buff, size);
+    m_index += size;
+    m_size += size;
+    m_last_access = ts_now_sec();
+}
+
+// This is for daily rollup.
+void
+RollupDataFile::add_data_point(
+    TimeSeriesId tid, Timestamp tstamp, uint32_t cnt, double min, double max, double sum)
 {
     struct rollup_entry_ext entry;
 
@@ -1353,9 +1385,39 @@ RollupDataFile::add_data_point(TimeSeriesId tid, Timestamp tstamp, uint32_t cnt,
     }
     ASSERT(m_file != nullptr);
     std::fwrite(&entry, sizeof(entry), 1, m_file);
-    //std::fflush(m_file);
-    //m_index += sizeof(entry);
-    //m_size += sizeof(entry);
+}
+
+// This is for backup WAL file.
+void
+RollupDataFile::add_data_point_to_wal(
+    TimeSeriesId tid, Timestamp tstamp, uint32_t cnt, double min, double max, double sum,
+    int64_t prev_cnt, int64_t prev_cnt_delta, double prev_min, double prev_min_delta,
+    double prev_max, double prev_max_delta, double prev_sum, double prev_sum_delta)
+{
+    struct rollup_entry_ext2 entry;
+
+    entry.tid = tid;
+    entry.cnt = cnt;
+    entry.min = min;
+    entry.max = max;
+    entry.sum = sum;
+    entry.tstamp = tstamp;
+    entry.prev_cnt = prev_cnt;
+    entry.prev_cnt_delta = prev_cnt_delta;
+    entry.prev_min = prev_min;
+    entry.prev_min_delta = prev_min_delta;
+    entry.prev_max = prev_max;
+    entry.prev_max_delta = prev_max_delta;
+    entry.prev_sum = prev_sum;
+    entry.prev_sum_delta = prev_sum_delta;
+
+    if (! is_open(false))
+    {
+        if (is_open(true)) close();
+        open(false);
+    }
+    ASSERT(m_file != nullptr);
+    std::fwrite(&entry, sizeof(entry), 1, m_file);
 }
 
 void
@@ -1391,7 +1453,7 @@ RollupDataFile::add_data_points(std::unordered_map<TimeSeriesId,std::vector<stru
 }
 
 struct rollup_entry *
-RollupDataFile::first_entry(RollupDataFileCursor& cursor)
+RollupDataFile::first_entry(RollupDataFileCursor& cursor, struct rollup_compression_data &prev)
 {
     // make sure we are open for read
     m_last_access = ts_now_sec();
@@ -1403,10 +1465,24 @@ RollupDataFile::first_entry(RollupDataFileCursor& cursor)
     cursor.m_size = std::fread(&cursor.m_buff[0], 1, sizeof(cursor.m_buff), m_file);
     if (cursor.m_size <= 0) return nullptr;
 
-    cursor.m_index = RollupCompressor_v1::uncompress(cursor.m_buff,
-                                                     cursor.m_size,
-                                                     &cursor.m_entry,
-                                                     m_compressor_precision);
+    if (m_compressor_version == 1)
+    {
+        cursor.m_index = RollupCompressor_v1::uncompress(cursor.m_buff,
+                                                         cursor.m_size,
+                                                         &cursor.m_entry,
+                                                         m_compressor_precision);
+    }
+    else
+    {
+        memset(&prev, 0, sizeof(struct rollup_compression_data));
+
+        cursor.m_index = RollupCompressor_v1::uncompress_v2(cursor.m_buff,
+                                                            cursor.m_size,
+                                                            &cursor.m_entry,
+                                                            m_compressor_precision,
+                                                            prev);
+    }
+
     if (cursor.m_index == 0)
         return nullptr;
     else
@@ -1414,16 +1490,27 @@ RollupDataFile::first_entry(RollupDataFileCursor& cursor)
 }
 
 struct rollup_entry *
-RollupDataFile::next_entry(RollupDataFileCursor& cursor)
+RollupDataFile::next_entry(RollupDataFileCursor& cursor, struct rollup_compression_data &prev)
 {
     int len = 0;
 
     if (cursor.m_index < cursor.m_size)
     {
-        len = RollupCompressor_v1::uncompress(cursor.m_buff+cursor.m_index,
-                                              cursor.m_size-cursor.m_index,
-                                              &cursor.m_entry,
-                                              m_compressor_precision);
+        if (m_compressor_version == 1)
+        {
+            len = RollupCompressor_v1::uncompress(cursor.m_buff+cursor.m_index,
+                                                  cursor.m_size-cursor.m_index,
+                                                  &cursor.m_entry,
+                                                  m_compressor_precision);
+        }
+        else
+        {
+            len = RollupCompressor_v1::uncompress_v2(cursor.m_buff+cursor.m_index,
+                                                     cursor.m_size-cursor.m_index,
+                                                     &cursor.m_entry,
+                                                     m_compressor_precision,
+                                                     prev);
+        }
     }
 
     if (len == 0)
@@ -1441,7 +1528,7 @@ RollupDataFile::next_entry(RollupDataFileCursor& cursor)
         cursor.m_size = std::fread(&cursor.m_buff[offset], 1, sizeof(cursor.m_buff)-offset, m_file);
         if (cursor.m_size <= 0) return nullptr;
         cursor.m_size += offset;
-        return next_entry(cursor);
+        return next_entry(cursor, prev);
     }
     else
     {
@@ -1492,9 +1579,10 @@ void
 RollupDataFile::query(const TimeRange& range, std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupType rollup)
 {
     RollupDataFileCursor cursor;
+    struct rollup_compression_data prev;
     std::lock_guard<std::mutex> guard(m_lock);
 
-    for (struct rollup_entry *entry = first_entry(cursor); entry != nullptr; entry = next_entry(cursor))
+    for (struct rollup_entry *entry = first_entry(cursor, prev); entry != nullptr; entry = next_entry(cursor, prev))
     {
         if (query_entry(range, entry, map, rollup) > 0)
             return;
@@ -1506,7 +1594,10 @@ RollupDataFile::query(const TimeRange& range, std::unordered_map<TimeSeriesId,Qu
     for (int i = 0; i < m_index; i += len)
     {
         struct rollup_entry entry;
-        len = RollupCompressor_v1::uncompress((uint8_t*)(m_buff+i), m_index-i, &entry, m_compressor_precision);
+        if (m_compressor_version == 1)
+            len = RollupCompressor_v1::uncompress((uint8_t*)(m_buff+i), m_index-i, &entry, m_compressor_precision);
+        else
+            len = RollupCompressor_v1::uncompress_v2((uint8_t*)(m_buff+i), m_index-i, &entry, m_compressor_precision, prev);
         if (len <= 0) break;
         if (query_entry(range, &entry, map, rollup) > 0) break;
     }
@@ -1566,9 +1657,10 @@ void
 RollupDataFile::query(const TimeRange& range, std::unordered_map<TimeSeriesId,struct rollup_entry_ext>& outputs)
 {
     RollupDataFileCursor cursor;
+    struct rollup_compression_data prev;
     std::lock_guard<std::mutex> guard(m_lock);
 
-    for (struct rollup_entry *entry = first_entry(cursor); entry != nullptr; entry = next_entry(cursor))
+    for (struct rollup_entry *entry = first_entry(cursor, prev); entry != nullptr; entry = next_entry(cursor, prev))
     {
         auto search = outputs.find(entry->tid);
 
@@ -1592,10 +1684,10 @@ RollupDataFile::query(const TimeRange& range, std::unordered_map<TimeSeriesId,st
 
 // used to restore RollupManager from WAL
 void
-RollupDataFile::query_ext(const TimeRange& range, std::unordered_map<TimeSeriesId,struct rollup_entry_ext>& outputs)
+RollupDataFile::query_ext2(const TimeRange& range, std::unordered_map<TimeSeriesId,struct rollup_entry_ext2>& outputs)
 {
     std::lock_guard<std::mutex> guard(m_lock);
-    uint8_t buff[1024*sizeof(struct rollup_entry_ext)];
+    uint8_t buff[512*sizeof(struct rollup_entry_ext2)];
     std::size_t n;
 
     m_last_access = ts_now_sec();
@@ -1605,11 +1697,11 @@ RollupDataFile::query_ext(const TimeRange& range, std::unordered_map<TimeSeriesI
 
     while ((n = std::fread(&buff[0], 1, sizeof(buff), m_file)) > 0)
     {
-        ASSERT((n % sizeof(struct rollup_entry_ext)) == 0);
+        ASSERT((n % sizeof(struct rollup_entry_ext2)) == 0);
 
-        for (std::size_t i = 0; i < n; i += sizeof(struct rollup_entry_ext))
+        for (std::size_t i = 0; i < n; i += sizeof(struct rollup_entry_ext2))
         {
-            struct rollup_entry_ext *entry = (struct rollup_entry_ext*)&buff[i];
+            struct rollup_entry_ext2 *entry = (struct rollup_entry_ext2*)&buff[i];
             auto search = outputs.find(entry->tid);
 
             if (search != outputs.end())
@@ -1640,11 +1732,12 @@ void
 RollupDataFile::query(std::unordered_map<TimeSeriesId,std::vector<struct rollup_entry_ext>>& data)
 {
     RollupDataFileCursor cursor;
+    struct rollup_compression_data comp;
     std::lock_guard<std::mutex> guard(m_lock);
 
     flush();
 
-    for (struct rollup_entry *entry = first_entry(cursor); entry != nullptr; entry = next_entry(cursor))
+    for (struct rollup_entry *entry = first_entry(cursor, comp); entry != nullptr; entry = next_entry(cursor, comp))
     {
         auto search = data.find(entry->tid);
 

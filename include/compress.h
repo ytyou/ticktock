@@ -536,20 +536,38 @@ private:
 };
 
 
+// used for RollupCompressor_v1::compress_v2()
+struct rollup_compression_data
+{
+    int32_t m_prev_cnt;
+    int32_t m_prev_cnt_delta;
+    double m_prev_min;
+    double m_prev_min_delta;
+    double m_prev_max;
+    double m_prev_max_delta;
+    double m_prev_sum;
+    double m_prev_sum_delta;
+};
+
+
 class RollupCompressor_v1
 {
 public:
     static void init();
     static int compress(uint8_t *buff, TimeSeriesId tid, uint32_t cnt, double min, double max, double sum, double precision);
+    static int compress_v2(uint8_t *buff, TimeSeriesId tid, int64_t cnt_dod, double min_dod, double max_dod, double sum_dod, double precision, bool cnt_is_zero);
     static int uncompress(uint8_t *buff, int size, struct rollup_entry *entry, double precision);
+    static int uncompress_v2(uint8_t *buff, int size, struct rollup_entry *entry, double precision, rollup_compression_data& prev);
 
 private:
+    static void compress_int8(int64_t n, uint8_t *buff);
     static void compress_int16(int64_t n, uint8_t *buff);
     static void compress_int24(int64_t n, uint8_t *buff);
     static void compress_int32(int64_t n, uint8_t *buff);
     static void compress_int40(int64_t n, uint8_t *buff);
     static void compress_int64(int64_t n, uint8_t *buff);
 
+    static int8_t uncompress_int8(uint8_t *buff);
     static int16_t uncompress_int16(uint8_t *buff);
     static int32_t uncompress_int24(uint8_t *buff);
     static int32_t uncompress_int32(uint8_t *buff);
