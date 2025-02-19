@@ -536,30 +536,38 @@ private:
 };
 
 
-// used for RollupCompressor_v1::compress_v2()
-struct rollup_compression_data
-{
-    int32_t m_prev_cnt;
-    int32_t m_prev_cnt_delta;
-    double m_prev_min;
-    double m_prev_min_delta;
-    double m_prev_max;
-    double m_prev_max_delta;
-    double m_prev_sum;
-    double m_prev_sum_delta;
-};
-
-
 class RollupCompressor_v1
 {
 public:
     static void init();
     static int compress(uint8_t *buff, TimeSeriesId tid, uint32_t cnt, double min, double max, double sum, double precision);
-    static int compress_v2(uint8_t *buff, TimeSeriesId tid, int64_t cnt_dod, double min_dod, double max_dod, double sum_dod, double precision, bool cnt_is_zero);
     static int uncompress(uint8_t *buff, int size, struct rollup_entry *entry, double precision);
-    static int uncompress_v2(uint8_t *buff, int size, struct rollup_entry *entry, double precision, rollup_compression_data& prev);
+
+    static double m_precision;
+};
+
+
+class RollupManager;
+
+
+class RollupCompressor_v2
+{
+public:
+    RollupCompressor_v2(double precision);
+    RollupCompressor_v2(double precision, std::vector<QueryTask*>& tasks);
+    ~RollupCompressor_v2();
+
+    void init(uint8_t buff, int size);
+
+    inline std::unordered_map<TimeSeriesId,QueryTask*>& get_map() { return m_tasks; }
+    QueryTask *get_task(TimeSeriesId tid);
+
+    static int compress(uint8_t *buff, TimeSeriesId tid, uint32_t cnt, double min, double max, double sum, double precision, RollupManager *rollup_mgr);
+    QueryTask *uncompress(RollupDataFileCursor& cursor);
 
 private:
+    friend class RollupCompressor_v1;
+
     static void compress_int8(int64_t n, uint8_t *buff);
     static void compress_int16(int64_t n, uint8_t *buff);
     static void compress_int24(int64_t n, uint8_t *buff);
@@ -578,7 +586,10 @@ private:
     static uint32_t uncompress_uint24(uint8_t *buff);
     static uint32_t uncompress_uint32(uint8_t *buff);
 
-    static double m_precision;
+    bool m_all;     // query for ALL entries?
+    std::unordered_map<TimeSeriesId,QueryTask*> m_tasks;
+    short m_version;    // rollup compressor version
+    double m_precision;
 };
 
 

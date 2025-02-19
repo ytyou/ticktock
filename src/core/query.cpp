@@ -892,7 +892,14 @@ QueryTask::init()
     m_downsampler = nullptr;
     m_tstamp_from = 0;
     m_last_tstamp = TT_INVALID_TIMESTAMP;
+    memset(&m_prev, 0, sizeof(m_prev));
     ASSERT(m_data.empty());
+}
+
+void
+QueryTask::init_prev()
+{
+    memset(&m_prev, 0, sizeof(m_prev));
 }
 
 bool
@@ -1094,6 +1101,7 @@ QuerySuperTask::query_rollup_daily(RollupType rollup)
     ASSERT(is_rollup_level2(rollup));
     ASSERT(rollup != RollupType::RU_NONE);
 
+    bool query_ts = true;   // need to call query_ts_data()?
     RollupManager::query(m_metric_id, m_time_range, m_tasks, rollup);
 
     // for those with invalid rollup, we'll query hourly/raw instead
@@ -1135,6 +1143,10 @@ QuerySuperTask::query_rollup_daily(RollupType rollup)
             ASSERT(rollup != RollupType::RU_NONE);
             query_rollup_hourly(range, tsdbs, rollup);
 
+            // query_ts_data() is already called in the above query_rollup_hourly()
+            // mark it as "no need to call query_ts_data()"
+            query_ts = false;
+
             // cleanup
             for (auto tsdb: tsdbs)
                 tsdb->dec_ref_count();
@@ -1169,6 +1181,12 @@ QuerySuperTask::query_rollup_daily(RollupType rollup)
             query_raw(tsdb, tasks);
 
         tsdb->dec_ref_count();
+    }
+
+    if (query_ts)
+    {
+        for (QueryTask *task : m_tasks)
+            task->query_ts_data(m_time_range, rollup, m_ms);
     }
 }
 

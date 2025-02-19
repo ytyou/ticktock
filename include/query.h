@@ -186,6 +186,7 @@ public:
     void add_data_point(struct rollup_entry_ext *entry, RollupType rollup);
     void remove_dps(const TimeRange& range);
     void sort_if_needed();
+    void init_prev();
 
     // return max/min value of the last n dps in m_dps[]
     double get_max(int n) const;
@@ -257,6 +258,11 @@ public:
         m_sort_needed = true;
     }
 
+    inline struct rollup_entry_ext2& get_prev()
+    {
+        return m_prev;
+    }
+
     struct compare_less
     {
         bool operator()(const QueryTask *t1, const QueryTask *t2)
@@ -298,6 +304,7 @@ private:
     uint32_t m_tstamp_from;
     bool m_has_ooo;
     bool m_sort_needed;
+    struct rollup_entry_ext2 m_prev;    // for uncompress of rollup data (monthly)
 };
 
 

@@ -33,6 +33,7 @@ namespace tt
 
 class Tsdb;
 class QueryTask;
+class RollupCompressor_v2;
 class RollupDataFile;
 
 
@@ -247,7 +248,6 @@ struct __attribute__ ((__packed__)) rollup_entry_ext2
     double sum;
     Timestamp tstamp;   // this must be the last entry
     int64_t prev_cnt;
-    int64_t prev_cnt_delta;
     double prev_min;
     double prev_min_delta;
     double prev_max;
@@ -269,13 +269,17 @@ struct __attribute__ ((__packed__)) rollup_append_entry
 
 class RollupDataFileCursor
 {
-    RollupDataFileCursor() : m_index(0), m_size(0) {}
+public:
+    RollupDataFileCursor();
 
-private:
-    friend class RollupDataFile;
+    void init(uint8_t *buff, int size);
+    struct rollup_entry *get_entry() { return &m_entry; }
+    bool is_done() const { return m_done; }
+    void set_done(bool done) { m_done = done; }
 
     int m_index;    // index to m_buff[]
     int m_size;     // number of bytes in m_buff[]
+    bool m_done;    // set when all entries are read
     uint8_t m_buff[4096];
     struct rollup_entry m_entry;
 };
@@ -296,29 +300,26 @@ public:
     inline int64_t size() const { return m_size; }
     inline Timestamp get_begin_timestamp() const { return m_begin; }
     inline short get_compressor_version() const { return m_compressor_version; }
+    inline double get_compressor_precision() const { return m_compressor_precision; }
 
     inline bool empty() const { return (m_index == 0) && !file_exists(m_name); }
     inline void remove() { rm_file(m_name); }
 
     // iterate through the file, forward only
     // returns nullptr when no more entry left
-    struct rollup_entry *first_entry(RollupDataFileCursor& cursor, struct rollup_compression_data &data);
-    struct rollup_entry *next_entry(RollupDataFileCursor& cursor, struct rollup_compression_data &data);
+    bool read_block(RollupDataFileCursor& cursor);
+    QueryTask *next_entry(RollupDataFileCursor& cursor, RollupCompressor_v2& compressor);
 
-    void add_data_point(TimeSeriesId tid, uint32_t cnt, double min, double max, double sum);
-    void add_data_point2(TimeSeriesId tid, int64_t cnt_dod, double min_dod, double max_dod, double sum_dod, bool cnt_is_zero);
+    void add_data_point(uint8_t *buff, int size);
     void add_data_point(TimeSeriesId tid, Timestamp tstamp, uint32_t cnt, double min, double max, double sum);
     void add_data_point_to_wal(TimeSeriesId tid, Timestamp tstamp, uint32_t cnt, double min, double max, double sum,
-        int64_t prev_cnt, int64_t prev_cnt_delta, double prev_min, double prev_min_delta,
+        int64_t prev_cnt, double prev_min, double prev_min_delta,
         double prev_max, double prev_max_delta, double prev_sum, double prev_sum_delta);  // called during shutdown
     void add_data_points(std::unordered_map<TimeSeriesId,std::vector<struct rollup_entry_ext>>& data);
-    void query(const TimeRange& range, std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupType rollup);  // query hourly rollup
+    void query(const TimeRange& range, std::vector<QueryTask*>& tasks, RollupType rollup);  // query hourly rollup
     void query2(const TimeRange& range, std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupType rollup); // query daily rollup
-    // used by Tsdb::rollup() for offline processing
-    void query(const TimeRange& range, std::unordered_map<TimeSeriesId,struct rollup_entry_ext>& map);
     void query_ext2(const TimeRange& range, std::unordered_map<TimeSeriesId,struct rollup_entry_ext2>& map);
-    // used by Tsdb::rollup()
-    void query(std::unordered_map<TimeSeriesId,std::vector<struct rollup_entry_ext>>& data);
+    void query(std::unordered_map<TimeSeriesId,std::vector<struct rollup_entry_ext>>& data);    // used by Tsdb::rollup()
 
     void dec_ref_count();
     void inc_ref_count();
@@ -330,13 +331,13 @@ public:
 
 private:
     void flush();
-    int query_entry(const TimeRange& range, struct rollup_entry *entry, std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupType rollup);
+    int query_entry(const TimeRange& range, struct rollup_entry *entry, QueryTask *task, RollupType rollup);
 
     std::string m_name;
     FILE *m_file;
     Timestamp m_begin;
     int m_index;    // index of m_buff[]
-    char m_buff[4096];
+    uint8_t m_buff[4096];
     Timestamp m_last_access;
     int64_t m_size;
     std::mutex m_lock;

@@ -3715,7 +3715,8 @@ Tsdb::rollup(TaskData& data)
     // called from scheduled task? if so, enforce off-hour rule;
     bool interactive = (data.integer != 0);
     if (! interactive && ! is_off_hour()) return false;
-    data.integer = 0;
+
+    data.integer = 0;   // this will be used to return #tsdbs been rolled up
 
     Tsdb *tsdb = nullptr;
     Logger::info("[rollup] Finding tsdbs to rollup...");
@@ -3735,7 +3736,7 @@ Tsdb::rollup(TaskData& data)
                 Logger::info("[rollup] %T is already rolled up, ref-count = %d", (*it), (*it)->m_ref_count.load());
                 continue;
             }
-            else if (((*it)->m_mode.load() & TSDB_MODE_READ_WRITE) && (data.integer == 0))
+            else if (((*it)->m_mode.load() & TSDB_MODE_READ_WRITE) && (! interactive))
             {
                 Logger::info("[rollup] %T is still being accessed, ref-count = %d", (*it), (*it)->m_ref_count.load());
                 break;
@@ -3777,7 +3778,7 @@ Tsdb::rollup(TaskData& data)
 
             for (auto tsdb: tsdbs)
             {
-                if (tsdb->m_ref_count > 1)
+                if (tsdb->m_ref_count.load(std::memory_order_relaxed) > 1)
                 {
                     in_use = true;
                     break;

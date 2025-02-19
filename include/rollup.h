@@ -34,6 +34,24 @@ class QueryTask;
 class Tsdb;
 
 
+// used for RollupCompressor_v2::compress()
+struct __attribute__ ((__packed__)) rollup_compression_data
+{
+    rollup_compression_data() :
+        m_prev_cnt(0), m_prev_min(0.0), m_prev_min_delta(0.0),
+        m_prev_max(0.0), m_prev_max_delta(0.0), m_prev_sum(0.0), m_prev_sum_delta(0.0)
+    {}
+
+    int64_t m_prev_cnt;
+    double m_prev_min;
+    double m_prev_min_delta;
+    double m_prev_max;
+    double m_prev_max_delta;
+    double m_prev_sum;
+    double m_prev_sum_delta;
+};
+
+
 class __attribute__ ((__packed__)) RollupManager
 {
 public:
@@ -64,6 +82,10 @@ public:
     bool get(struct rollup_entry_ext& entry);
     bool query(RollupType type, DataPointPair& dp);
 
+    void encode(uint32_t cnt, double min, double max, double sum, int64_t& cnt_delta, double& min_dod, double& max_dod, double& sum_dod);
+    uint32_t decode_cnt(int64_t cnt_delta);
+    void decode(int64_t cnt_delta, double min_dod, double max_dod, double sum_dod);
+
     static void add_data_file_size(int64_t size);
     static int64_t get_rollup_data_file_size(bool monthly);
     static int get_rollup_bucket(MetricId mid);
@@ -74,7 +96,6 @@ public:
     static void get_data_files_1h(MetricId mid, const TimeRange& range, std::vector<RollupDataFile*>& files);   // monthly
     static void get_data_files_1d(MetricId mid, const TimeRange& range, std::vector<RollupDataFile*>& files);   // annual
     static void query(MetricId mid, const TimeRange& range, std::vector<QueryTask*>& tasks, RollupType rollup);
-    static void query(MetricId mid, const TimeRange& range, std::unordered_map<TimeSeriesId,struct rollup_entry_ext>& output);
     static double query(struct rollup_entry *entry, RollupType type);
     static void rotate();
 
@@ -91,16 +112,7 @@ private:
     double m_max;
     double m_sum;
     Timestamp m_tstamp;
-
-    // for compression
-    int64_t m_prev_cnt;
-    int64_t m_prev_cnt_delta;
-    double m_prev_min;
-    double m_prev_min_delta;
-    double m_prev_max;
-    double m_prev_max_delta;
-    double m_prev_sum;
-    double m_prev_sum_delta;
+    struct rollup_compression_data m_prev;
 
     RollupDataFile *m_data_file;    // currently being written
 

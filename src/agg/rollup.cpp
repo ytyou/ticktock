@@ -20,6 +20,7 @@
 #include <limits.h>
 #include <unordered_map>
 #include "config.h"
+#include "compress.h"
 #include "limit.h"
 #include "logger.h"
 #include "query.h"
@@ -50,15 +51,7 @@ RollupManager::RollupManager() :
     m_max(std::numeric_limits<double>::lowest()),
     m_sum(0.0),
     m_tstamp(TT_INVALID_TIMESTAMP),
-    m_data_file(nullptr),
-    m_prev_cnt(0),
-    m_prev_cnt_delta(0),
-    m_prev_max(0.0),
-    m_prev_max_delta(0.0),
-    m_prev_min(0.0),
-    m_prev_min_delta(0.0),
-    m_prev_sum(0.0),
-    m_prev_sum_delta(0.0)
+    m_data_file(nullptr)
 {
 }
 
@@ -74,15 +67,7 @@ RollupManager::RollupManager(Timestamp tstamp, uint32_t cnt, double min, double 
     m_max(max),
     m_sum(sum),
     m_tstamp(tstamp),
-    m_data_file(nullptr),
-    m_prev_cnt(0),
-    m_prev_cnt_delta(0),
-    m_prev_max(0.0),
-    m_prev_max_delta(0.0),
-    m_prev_min(0.0),
-    m_prev_min_delta(0.0),
-    m_prev_sum(0.0),
-    m_prev_sum_delta(0.0)
+    m_data_file(nullptr)
 {
     ASSERT(cnt != 0);
     ASSERT(tstamp != TT_INVALID_TIMESTAMP);
@@ -101,14 +86,7 @@ RollupManager::copy_from(const RollupManager& other)
     m_sum = other.m_sum;
     m_tstamp = other.m_tstamp;
     m_data_file = other.m_data_file;
-    m_prev_cnt = other.m_prev_cnt;
-    m_prev_max = other.m_prev_max;
-    m_prev_min = other.m_prev_min;
-    m_prev_sum = other.m_prev_sum;
-    m_prev_cnt_delta = other.m_prev_cnt_delta;
-    m_prev_max_delta = other.m_prev_max_delta;
-    m_prev_min_delta = other.m_prev_min_delta;
-    m_prev_sum_delta = other.m_prev_sum_delta;
+    m_prev = other.m_prev;
 }
 
 void
@@ -120,14 +98,13 @@ RollupManager::copy_from(const struct rollup_entry_ext2& entry)
     m_sum = entry.sum;
     m_tstamp = to_sec(entry.tstamp);
 
-    m_prev_cnt = entry.prev_cnt;
-    m_prev_cnt_delta = entry.prev_cnt_delta;
-    m_prev_min = entry.prev_min;
-    m_prev_min_delta = entry.prev_min_delta;
-    m_prev_max = entry.prev_max;
-    m_prev_max_delta = entry.prev_max_delta;
-    m_prev_sum = entry.prev_sum;
-    m_prev_sum_delta = entry.prev_sum_delta;
+    m_prev.m_prev_cnt = entry.prev_cnt;
+    m_prev.m_prev_min = entry.prev_min;
+    m_prev.m_prev_min_delta = entry.prev_min_delta;
+    m_prev.m_prev_max = entry.prev_max;
+    m_prev.m_prev_max_delta = entry.prev_max_delta;
+    m_prev.m_prev_sum = entry.prev_sum;
+    m_prev.m_prev_sum_delta = entry.prev_sum_delta;
 }
 
 RollupManager&
@@ -272,35 +249,18 @@ RollupManager::flush(MetricId mid, TimeSeriesId tid)
     ASSERT(m_data_file != nullptr);
     ASSERT(m_data_file->get_begin_timestamp() == begin_month(m_tstamp));
 
-    if (m_data_file->get_compressor_version() == 1)
-    {
-        m_data_file->add_data_point(tid, m_cnt, m_min, m_max, m_sum);
-    }
+    int size;
+    uint8_t buff[128];
+
+    short version = m_data_file->get_compressor_version();
+    double precision = m_data_file->get_compressor_precision();
+
+    if (version == 1)
+        size = RollupCompressor_v1::compress(buff, tid, m_cnt, m_min, m_max, m_sum, precision);
     else
-    {
-        int64_t cnt_delta = (int64_t)m_cnt - (int64_t)m_prev_cnt;
-        double min_delta = m_min - m_prev_min;
-        double max_delta = m_max - m_prev_max;
-        double sum_delta = m_sum - m_prev_sum;
+        size = RollupCompressor_v2::compress(buff, tid, m_cnt, m_min, m_max, m_sum, precision, this);
 
-        int64_t cnt_dod = cnt_delta - (int64_t)m_prev_cnt_delta;
-        double min_dod = min_delta - m_prev_min_delta;
-        double max_dod = max_delta - m_prev_max_delta;
-        double sum_dod = sum_delta - m_prev_sum_delta;
-
-        m_data_file->add_data_point2(tid, cnt_dod, min_dod, max_dod, sum_dod, (m_cnt==0));
-
-        // reset
-        m_prev_cnt = m_cnt;
-        m_prev_min = m_min;
-        m_prev_max = m_max;
-        m_prev_sum = m_sum;
-
-        m_prev_cnt_delta = cnt_delta;
-        m_prev_min_delta = min_delta;
-        m_prev_max_delta = max_delta;
-        m_prev_sum_delta = sum_delta;
-    }
+    m_data_file->add_data_point(buff, size);
 
     // reset
     m_cnt = 0;
@@ -318,9 +278,42 @@ RollupManager::close(TimeSeriesId tid)
     if (m_wal_data_file != nullptr)
     {
         m_wal_data_file->add_data_point_to_wal(tid, m_tstamp, m_cnt, m_min, m_max, m_sum,
-            m_prev_cnt, m_prev_cnt_delta, m_prev_min, m_prev_min_delta,
-            m_prev_max, m_prev_max_delta, m_prev_sum, m_prev_sum_delta);
+            m_prev.m_prev_cnt, m_prev.m_prev_min, m_prev.m_prev_min_delta,
+            m_prev.m_prev_max, m_prev.m_prev_max_delta, m_prev.m_prev_sum, m_prev.m_prev_sum_delta);
     }
+}
+
+void
+RollupManager::encode(uint32_t cnt, double min, double max, double sum, int64_t& cnt_delta, double& min_dod, double& max_dod, double& sum_dod)
+{
+    cnt_delta = cnt - m_prev.m_prev_cnt;
+    m_prev.m_prev_cnt = cnt;
+
+    if (cnt == 0) return;
+
+    double min_delta = min - m_prev.m_prev_min;
+    min_dod = min_delta - m_prev.m_prev_min_delta;
+
+    double max_delta = max - m_prev.m_prev_max;
+    max_dod = max_delta - m_prev.m_prev_max_delta;
+
+    double sum_delta = sum - m_prev.m_prev_sum;
+    sum_dod = sum_delta - m_prev.m_prev_sum_delta;
+
+    m_prev.m_prev_min = min;
+    m_prev.m_prev_min_delta = min_delta;
+    m_prev.m_prev_max = max;
+    m_prev.m_prev_max_delta = max_delta;
+    m_prev.m_prev_sum = sum;
+    m_prev.m_prev_sum_delta = sum_delta;
+}
+
+uint32_t
+RollupManager::decode_cnt(int64_t cnt_delta)
+{
+    m_prev.m_prev_cnt += cnt_delta;
+    ASSERT(0 <= m_prev.m_prev_cnt && m_prev.m_prev_cnt <= UINT32_MAX);
+    return (uint32_t)m_prev.m_prev_cnt;
 }
 
 double
@@ -426,13 +419,6 @@ RollupManager::query(MetricId mid, const TimeRange& range, std::vector<QueryTask
     ASSERT(rollup != RollupType::RU_NONE);
 
     std::vector<RollupDataFile*> data_files;
-    std::unordered_map<TimeSeriesId,QueryTask*> map;
-
-    for (auto task: tasks)
-    {
-        ASSERT(map.find(task->get_ts_id()) == map.end());
-        map[task->get_ts_id()] = task;
-    }
 
     bool level2 = is_rollup_level2(rollup);
 
@@ -444,22 +430,13 @@ RollupManager::query(MetricId mid, const TimeRange& range, std::vector<QueryTask
     for (auto file: data_files)
     {
         if (level2)
+        {
+            std::unordered_map<TimeSeriesId,QueryTask*> map;
+            for (auto task: tasks) map[task->get_ts_id()] = task;
             file->query2(range, map, rollup);
+        }
         else
-            file->query(range, map, rollup);
-        file->dec_ref_count();
-    }
-}
-
-void
-RollupManager::query(MetricId mid, const TimeRange& range, std::unordered_map<TimeSeriesId,struct rollup_entry_ext>& outputs)
-{
-    std::vector<RollupDataFile*> data_files;
-    get_data_files_1h(mid, range, data_files);
-
-    for (auto file: data_files)
-    {
-        file->query(range, outputs);
+            file->query(range, tasks, rollup);
         file->dec_ref_count();
     }
 }
