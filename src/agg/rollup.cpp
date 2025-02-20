@@ -735,7 +735,7 @@ RollupManager::get_rollup_data_file_size(bool monthly)
     {
         // estimate rollup data file size
         monthly_size = TimeSeries::get_next_id();
-        monthly_size *= 24 * 30 * 10;
+        monthly_size *= 24 * 30 * 8;
         monthly_size /= Config::inst()->get_int(CFG_TSDB_ROLLUP_BUCKETS, CFG_TSDB_ROLLUP_BUCKETS_DEF);
     }
     else
