@@ -2616,8 +2616,8 @@ RollupCompressor_v2::uncompress(RollupDataFileCursor& cursor)
 
     if ((flag & 0x06) == 0x02)          // max
     {
-        n = uncompress_int8(buff+len);
-        len += 1;
+        n = uncompress_int16(buff+len);
+        len += 2;
     }
     else if ((flag & 0x06) == 0x04)
     {

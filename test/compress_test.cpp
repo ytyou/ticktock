@@ -48,6 +48,7 @@ CompressTests::run()
     rollup_compress1();
     for (int i = 0; i < 10000; i++) rollup_compress2();
     rollup_compress3();
+    rollup_compress4();
 }
 
 void
@@ -737,6 +738,68 @@ CompressTests::rollup_compress3()
     }
 
     m_stats.add_passed(1);
+}
+
+void
+CompressTests::rollup_compress4()
+{
+    log("testing rollup compressor v2...");
+
+    uint8_t buff[4096];
+    int size = 0;
+    double precision = 100000.0;
+    TimeSeriesId tid = 23;
+    RollupManager rollup_mgr;
+    const int dps_cnt = 200;    // this is going to fill up the 4K buffer!
+
+    uint32_t cnts[dps_cnt];
+    double mins[dps_cnt], maxs[dps_cnt], sums[dps_cnt];
+
+    // generate data
+    for (int i = 0; i < dps_cnt; i++)
+    {
+        cnts[i] = tt::random(110, 130);
+        mins[i] = tt::random(-2.0, 2.0);
+        maxs[i] = tt::random(100.0, 1000.0);
+        sums[i] = tt::random(100000, 200000);
+    }
+
+    // compress
+    for (int i = 0; i < dps_cnt; i++)
+    {
+        CONFIRM(size < (sizeof(buff)-10));
+        int s = RollupCompressor_v2::compress(buff+size, tid, cnts[i], mins[i], maxs[i], sums[i], precision, &rollup_mgr);
+        CONFIRM(4 <= s);
+        size += s;
+    }
+
+    log("%d/%lu of buffer used", size, sizeof(buff));
+    CONFIRM(size < sizeof(buff));
+
+    // uncompress
+    RollupDataFileCursor cursor;
+    RollupCompressor_v2 compressor(precision);
+
+    cursor.init(buff, size);
+
+    for (int i = 0; i < dps_cnt; i++)
+    {
+        CONFIRM(! cursor.is_done());
+        QueryTask *task = compressor.uncompress(cursor);
+        CONFIRM(task != nullptr);
+        struct rollup_entry *entry = cursor.get_entry();
+
+        log("expect: tid=%u, cnt=%u, min=%f, max=%f, sum=%f",
+            tid, cnts[i], mins[i], maxs[i], sums[i]);
+        log("actual: tid=%u, cnt=%u, min=%f, max=%f, sum=%f",
+            entry->tid, entry->cnt, entry->min, entry->max, entry->sum);
+
+        CONFIRM(entry->tid == tid);
+        CONFIRM(entry->cnt == cnts[i]);
+        CONFIRM(std::abs(entry->min - mins[i]) < 0.012);
+        CONFIRM(std::abs(entry->max - maxs[i]) < 0.01);
+        CONFIRM(std::abs(entry->sum - sums[i]) < 0.01);
+    }
 }
 
 // This simulates RollupDataFile::add_data_point()

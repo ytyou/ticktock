@@ -46,6 +46,7 @@ private:
     void rollup_compress1();
     void rollup_compress2();
     void rollup_compress3();
+    void rollup_compress4();
 
     void add_data_point(struct rollup_entry& entry);
     std::size_t read_disk(uint8_t *buff, std::size_t size);
