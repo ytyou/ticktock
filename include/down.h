@@ -70,6 +70,11 @@ public:
         m_interval = interval;
     }
 
+    inline const TimeRange& get_time_range() const
+    {
+        return m_time_range;
+    }
+
     inline Timestamp step_down(Timestamp tstamp) const
     {
         return m_all ? m_start : (tstamp - (tstamp % m_interval));

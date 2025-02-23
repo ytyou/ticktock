@@ -561,6 +561,7 @@ public:
 
     inline std::unordered_map<TimeSeriesId,QueryTask*>& get_map() { return m_tasks; }
     QueryTask *get_task(TimeSeriesId tid);
+    bool rm_task(QueryTask *task);
 
     static int compress(uint8_t *buff, TimeSeriesId tid, uint32_t cnt, double min, double max, double sum, double precision, RollupManager *rollup_mgr);
     QueryTask *uncompress(RollupDataFileCursor& cursor);

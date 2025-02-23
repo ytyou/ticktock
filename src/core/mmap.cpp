@@ -1438,12 +1438,15 @@ RollupDataFile::read_block(RollupDataFileCursor& cursor)
     else
     {
         // not enough data in m_buff for the next entry
-        ASSERT(cursor.m_index > 0);
+        ASSERT(0 <= cursor.m_index);
+        ASSERT(cursor.m_index <= cursor.m_size);
 
         // copy remaining unprocessed data to the beginning of m_buff
         for (int i = cursor.m_index, j = 0; (i+j) < cursor.m_size; j++)
             cursor.m_buff[j] = cursor.m_buff[i+j];
         int offset = cursor.m_size - cursor.m_index;
+
+        ASSERT(0 <= offset && offset < sizeof(cursor.m_buff));
 
         // read next buff
         cursor.m_index = 0;
@@ -1528,8 +1531,16 @@ RollupDataFile::query(const TimeRange& range, std::vector<QueryTask*>& tasks, Ro
     {
         for (QueryTask *task = next_entry(cursor, compressor); ! cursor.is_done(); task = next_entry(cursor, compressor))
         {
+            ASSERT(cursor.m_index <= cursor.m_size);
+
+            if (task == nullptr)
+                continue;   // skip it
+
             if (query_entry(range, cursor.get_entry(), task, rollup) > 0)
-                return;
+            {
+                bool empty = compressor.rm_task(task);
+                if (empty) cursor.set_done(true);
+            }
         }
     }
 
@@ -1541,8 +1552,14 @@ RollupDataFile::query(const TimeRange& range, std::vector<QueryTask*>& tasks, Ro
 
     for (QueryTask *task = next_entry(cursor, compressor); ! cursor.is_done(); task = next_entry(cursor, compressor))
     {
+        if (task == nullptr)
+            continue;   // skip it
+
         if (query_entry(range, cursor.get_entry(), task, rollup) > 0)
-            break;
+        {
+            bool empty = compressor.rm_task(task);
+            if (empty) cursor.set_done(true);
+        }
     }
 }
 
@@ -1656,6 +1673,7 @@ RollupDataFile::query(std::unordered_map<TimeSeriesId,std::vector<struct rollup_
     {
         for (QueryTask *task = next_entry(cursor, compressor); ! cursor.is_done(); task = next_entry(cursor, compressor))
         {
+            ASSERT(task != nullptr);
             struct rollup_entry *entry = cursor.get_entry();
             auto search = data.find(entry->tid);
 

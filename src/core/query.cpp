@@ -418,6 +418,8 @@ Query::get_query_tasks(QuerySuperTask& super_task)
 
     for (TimeSeries *ts: tsv)
         super_task.add_task(ts);
+    super_task.adjust_time_range(); // adjust range which may be modified by downsampler
+
     super_task.set_metric_id(mid);
 }
 
@@ -974,12 +976,29 @@ QuerySuperTask::add_task(TimeSeries *ts)
         (QueryTask*)MemoryManager::alloc_recyclable(RecyclableType::RT_QUERY_TASK);
 
     qt->m_ts = ts;
-    qt->m_time_range = m_time_range;
     qt->m_downsampler = (m_downsample == nullptr) ?
                         nullptr :
                         Downsampler::create(m_downsample, m_time_range, m_ms);
+    qt->m_time_range = (qt->m_downsampler == nullptr) ?
+        m_time_range : qt->m_downsampler->get_time_range();
 
     m_tasks.push_back(qt);
+}
+
+void
+QuerySuperTask::adjust_time_range()
+{
+    if (! m_tasks.empty())
+    {
+        auto task = m_tasks.front();
+
+        if (task->m_downsampler != nullptr)
+        {
+            TimeRange &range = task->get_query_range();
+            Logger::info("adjusting query range from %T to %T", &m_time_range, &range);
+            m_time_range = range;
+        }
+    }
 }
 
 RollupType

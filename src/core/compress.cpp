@@ -2560,109 +2560,150 @@ RollupCompressor_v2::uncompress(RollupDataFileCursor& cursor)
         m_tasks[entry->tid] = task;
     }
 
-    struct rollup_entry_ext2 &prev = task->get_prev();
+    if (task != nullptr)
+    {
+        struct rollup_entry_ext2 &prev = task->get_prev();
 
-    if ((flag & 0x60) == 0x20)  // cnt
-    {
-        n = uncompress_int8(buff+len);
-        len += 1;
-    }
-    else if ((flag & 0x60) == 0x40)
-    {
-        n = uncompress_int16(buff+len);
-        len += 2;
-    }
-    else if ((flag & 0x60) == 0x60)
-    {
-        if ((size - len) < 4) goto done;
-        n = uncompress_int32(buff+len);
-        len += 4;
-    }
+        if ((flag & 0x60) == 0x20)  // cnt
+        {
+            n = uncompress_int8(buff+len);
+            len += 1;
+        }
+        else if ((flag & 0x60) == 0x40)
+        {
+            n = uncompress_int16(buff+len);
+            len += 2;
+        }
+        else if ((flag & 0x60) == 0x60)
+        {
+            if ((size - len) < 4) return task;
+            n = uncompress_int32(buff+len);
+            len += 4;
+        }
 
-    entry->cnt = n + prev.prev_cnt;
+        entry->cnt = n + prev.prev_cnt;
 
-    if (entry->cnt == 0) goto not_done;
-    if ((size - len) < 4) goto done;    // not enough data in buffer
+        if (entry->cnt != 0)
+        {
+            if ((size - len) < 4) return task;  // not enough data in buffer
 
-    prev.prev_cnt = entry->cnt;
+            prev.prev_cnt = entry->cnt;
 
-    if ((flag & 0x18) == 0x08)          // min
-    {
-        n = uncompress_int16(buff+len);
-        len += 2;
-    }
-    else if ((flag & 0x18) == 0x10)
-    {
-        n = uncompress_int32(buff+len);
-        len += 4;
-    }
-    else if ((flag & 0x18) == 0x18)
-    {
-        if ((size - len) < 8) goto done;
-        n = uncompress_int64(buff+len);
-        len += 8;
+            if ((flag & 0x18) == 0x08)          // min
+            {
+                n = uncompress_int16(buff+len);
+                len += 2;
+            }
+            else if ((flag & 0x18) == 0x10)
+            {
+                n = uncompress_int32(buff+len);
+                len += 4;
+            }
+            else if ((flag & 0x18) == 0x18)
+            {
+                if ((size - len) < 8) return task;
+                n = uncompress_int64(buff+len);
+                len += 8;
+            }
+            else
+            {
+                n = 0;
+            }
+
+            if ((size - len) < 4) return task;
+
+            entry->min = (double)n / m_precision;
+            prev.prev_min_delta = entry->min + prev.prev_min_delta;
+            entry->min = prev.prev_min_delta + prev.prev_min;
+            prev.prev_min = entry->min;
+
+            if ((flag & 0x06) == 0x02)          // max
+            {
+                n = uncompress_int16(buff+len);
+                len += 2;
+            }
+            else if ((flag & 0x06) == 0x04)
+            {
+                n = uncompress_int32(buff+len);
+                len += 4;
+            }
+            else if ((flag & 0x06) == 0x06)
+            {
+                if ((size - len) < 8) return task;
+                n = uncompress_int64(buff+len);
+                len += 8;
+            }
+            else
+            {
+                n = 0;
+            }
+
+            entry->max = (double)n / m_precision;
+            prev.prev_max_delta = entry->max + prev.prev_max_delta;
+            entry->max = prev.prev_max_delta + prev.prev_max;
+            prev.prev_max = entry->max;
+
+            if ((flag & 0x01) == 0x00)          // sum
+            {
+                if ((size - len) < 4) return task;
+                n = uncompress_int32(buff+len);
+                len += 4;
+            }
+            else
+            {
+                if ((size - len) < 8) return task;
+                n = uncompress_int64(buff+len);
+                len += 8;
+            }
+
+            entry->sum = (double)n / m_precision;
+            prev.prev_sum_delta = entry->sum + prev.prev_sum_delta;
+            entry->sum = prev.prev_sum_delta + prev.prev_sum;
+            prev.prev_sum = entry->sum;
+        }
     }
     else
     {
-        n = 0;
+        // ignore the entry but update the cursor
+        bool cnt_is_zero = false;
+
+        if ((flag & 0x60) == 0x20)  // cnt
+            len += 1;
+        else if ((flag & 0x60) == 0x40)
+            len += 2;
+        else if ((flag & 0x60) == 0x60)
+            len += 4;
+        else
+            cnt_is_zero = true;
+
+        if (! cnt_is_zero)
+        {
+            if ((flag & 0x18) == 0x08)          // min
+                len += 2;
+            else if ((flag & 0x18) == 0x10)
+                len += 4;
+            else if ((flag & 0x18) == 0x18)
+                len += 8;
+
+            if ((flag & 0x06) == 0x02)          // max
+                len += 2;
+            else if ((flag & 0x06) == 0x04)
+                len += 4;
+            else if ((flag & 0x06) == 0x06)
+                len += 8;
+
+            if ((flag & 0x01) == 0x00)          // sum
+                len += 4;
+            else
+                len += 8;
+        }
     }
 
-    if ((size - len) < 4) goto done;
-
-    entry->min = (double)n / m_precision;
-    prev.prev_min_delta = entry->min + prev.prev_min_delta;
-    entry->min = prev.prev_min_delta + prev.prev_min;
-    prev.prev_min = entry->min;
-
-    if ((flag & 0x06) == 0x02)          // max
+    if ((cursor.m_index + len) <= cursor.m_size)
     {
-        n = uncompress_int16(buff+len);
-        len += 2;
+        cursor.m_index += len;
+        cursor.set_done(false);
     }
-    else if ((flag & 0x06) == 0x04)
-    {
-        n = uncompress_int32(buff+len);
-        len += 4;
-    }
-    else if ((flag & 0x06) == 0x06)
-    {
-        if ((size - len) < 8) goto done;
-        n = uncompress_int64(buff+len);
-        len += 8;
-    }
-    else
-    {
-        n = 0;
-    }
-
-    entry->max = (double)n / m_precision;
-    prev.prev_max_delta = entry->max + prev.prev_max_delta;
-    entry->max = prev.prev_max_delta + prev.prev_max;
-    prev.prev_max = entry->max;
-
-    if ((flag & 0x01) == 0x00)          // sum
-    {
-        if ((size - len) < 4) goto done;
-        n = uncompress_int32(buff+len);
-        len += 4;
-    }
-    else
-    {
-        if ((size - len) < 8) goto done;
-        n = uncompress_int64(buff+len);
-        len += 8;
-    }
-
-    entry->sum = (double)n / m_precision;
-    prev.prev_sum_delta = entry->sum + prev.prev_sum_delta;
-    entry->sum = prev.prev_sum_delta + prev.prev_sum;
-    prev.prev_sum = entry->sum;
-
-not_done:
-    cursor.set_done(false);
-
-done:
-    cursor.m_index += len;
 
     return task;
 }
@@ -2672,6 +2713,17 @@ RollupCompressor_v2::get_task(TimeSeriesId tid)
 {
     auto search = m_tasks.find(tid);
     return (search == m_tasks.end()) ? nullptr : search->second;
+}
+
+bool
+RollupCompressor_v2::rm_task(QueryTask *task)
+{
+    ASSERT(task != nullptr);
+    auto search = m_tasks.find(task->get_ts_id());
+    ASSERT(search != m_tasks.end());
+    ASSERT(search->second == task);
+    m_tasks.erase(search);
+    return m_tasks.empty();
 }
 
 

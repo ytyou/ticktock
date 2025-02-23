@@ -329,6 +329,7 @@ public:
     void empty_tasks();
     MetricId get_metric_id() const { return m_metric_id; }
     void set_metric_id(MetricId mid) { m_metric_id = mid; }
+    void adjust_time_range();
 
 private:
     void query_raw(Tsdb* tsdb, std::vector<QueryTask*>& tasks);
