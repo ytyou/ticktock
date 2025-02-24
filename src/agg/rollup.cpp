@@ -256,10 +256,37 @@ RollupManager::flush(MetricId mid, TimeSeriesId tid)
     short version = m_data_file->get_compressor_version();
     double precision = m_data_file->get_compressor_precision();
 
+    // this is for debugging purpose only
+    if (false)
+    {
+        char buff2[1024];
+
+        snprintf(buff2, sizeof(buff2),
+            "[ru-w] [tid=%u, cnt=%u(%d), min=%0.2f(%0.2f,%0.2f), max=%0.2f(%0.2f,%0.2f), sum=%0.2f(%0.2f,%0.2f), ts=%" PRIu64 ", file=%s",
+            tid, m_cnt, (int)m_prev.m_prev_cnt, m_min, m_prev.m_prev_min, m_prev.m_prev_min_delta, m_max,
+            m_prev.m_prev_max, m_prev.m_prev_max_delta, m_sum, m_prev.m_prev_sum, m_prev.m_prev_sum_delta,
+            m_tstamp, m_data_file->get_file_name().c_str());
+        buff2[sizeof(buff2)-1] = 0;
+
+        Logger::info("%s", buff2);
+    }
+
     if (version == 1)
         size = RollupCompressor_v1::compress(buff, tid, m_cnt, m_min, m_max, m_sum, precision);
     else
         size = RollupCompressor_v2::compress(buff, tid, m_cnt, m_min, m_max, m_sum, precision, this);
+
+    // this is for debugging purpose only
+    if (false)
+    {
+        char buff3[256];
+
+        for (int i = 0, j = 0; i < size; i++)
+            j += snprintf(buff3+j, sizeof(buff3)-j, "%02X", buff[i]);
+        buff3[sizeof(buff3)-1] = 0;
+
+        Logger::info("[ru-w] tid=%u, compressed: %s]", tid, buff3);
+    }
 
     m_data_file->add_data_point(buff, size);
 

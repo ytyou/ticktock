@@ -1245,7 +1245,8 @@ RollupDataFile::open(bool for_read)
         }
 
         m_for_read = for_read;
-        m_file = fdopen(fd, for_read?"r+":"a+b");
+        m_file = fdopen(fd, "a+b");     // read should be fine
+        //m_file = fdopen(fd, for_read?"r+":"a+b");
         ASSERT(m_file != nullptr);
         Logger::debug("opening %s for read/write", m_name.c_str());
     }
@@ -1528,7 +1529,12 @@ RollupDataFile::query(const TimeRange& range, std::vector<QueryTask*>& tasks, Ro
     std::lock_guard<std::mutex> guard(m_lock);
     bool first_time = true;
 
-    while (!cursor.is_done() && read_block(cursor, first_time))
+    m_last_access = ts_now_sec();
+    if (! is_open(true) && ! is_open(false))
+        open(true);
+    std::fseek(m_file, 0, SEEK_SET);    // seek to beginning of file
+
+    while (!compressor.is_done() && read_block(cursor, first_time))
     {
         first_time = false;
 
@@ -1537,7 +1543,7 @@ RollupDataFile::query(const TimeRange& range, std::vector<QueryTask*>& tasks, Ro
             ASSERT(cursor.m_index <= cursor.m_size);
             QueryTask *task = next_entry(cursor, compressor);
 
-            if (task == nullptr)
+            if (task == nullptr || cursor.is_done())
                 continue;   // skip it
 
             if (query_entry(range, cursor.get_entry(), task, rollup) > 0)
@@ -1545,7 +1551,7 @@ RollupDataFile::query(const TimeRange& range, std::vector<QueryTask*>& tasks, Ro
                 bool empty = compressor.rm_task(task);
                 if (empty) cursor.set_done(true);
             }
-        } while (! cursor.is_done());
+        } while (! cursor.is_done() && ! compressor.is_done());
     }
 
     if ((m_index <= 0) || cursor.is_done())
@@ -1817,7 +1823,6 @@ RollupDataFileCursor::init(uint8_t *buff, int size)
         size = sizeof(m_buff);
     memcpy(m_buff, buff, size);
     m_size = size;
-    memset(&m_entry, 0, sizeof(m_entry));
 }
 
 

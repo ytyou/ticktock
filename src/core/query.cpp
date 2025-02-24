@@ -995,7 +995,7 @@ QuerySuperTask::adjust_time_range()
         if (task->m_downsampler != nullptr)
         {
             TimeRange &range = task->get_query_range();
-            Logger::info("adjusting query range from %T to %T", &m_time_range, &range);
+            Logger::debug("adjusting query range from %T to %T", &m_time_range, &range);
             m_time_range = range;
         }
     }

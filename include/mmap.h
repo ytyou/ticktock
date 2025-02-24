@@ -301,6 +301,7 @@ public:
     inline Timestamp get_begin_timestamp() const { return m_begin; }
     inline short get_compressor_version() const { return m_compressor_version; }
     inline double get_compressor_precision() const { return m_compressor_precision; }
+    inline std::string& get_file_name() { return m_name; }
 
     inline bool empty() const { return (m_index == 0) && !file_exists(m_name); }
     inline void remove() { rm_file(m_name); }

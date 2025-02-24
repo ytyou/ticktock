@@ -558,6 +558,7 @@ public:
     ~RollupCompressor_v2();
 
     void init(uint8_t buff, int size);
+    inline bool is_done() const { return m_tasks.empty(); }
 
     inline std::unordered_map<TimeSeriesId,QueryTask*>& get_map() { return m_tasks; }
     QueryTask *get_task(TimeSeriesId tid);

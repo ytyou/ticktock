@@ -2565,6 +2565,22 @@ RollupCompressor_v2::uncompress(RollupDataFileCursor& cursor)
     {
         struct rollup_entry_ext2 &prev = task->get_prev();
 
+        // this is for debugging purpose only
+        if (false)
+        {
+            char buff2[1024];
+
+            snprintf(buff2, sizeof(buff2),
+                "[ru-r] [tid=%u, prev: cnt=%d, min=%0.2f(%0.2f), max=%0.2f(%0.2f), sum=%0.2f(%0.2f)",
+                entry->tid, (int)prev.prev_cnt, prev.prev_min, prev.prev_min_delta, prev.prev_max,
+                prev.prev_max_delta, prev.prev_sum, prev.prev_sum_delta);
+            buff2[sizeof(buff2)-1] = 0;
+
+            Logger::info("%s", buff2);
+        }
+
+        if (size <= len) return task;
+
         if ((flag & 0x60) == 0x20)  // cnt
         {
             n = uncompress_int8(buff+len);
@@ -2572,6 +2588,7 @@ RollupCompressor_v2::uncompress(RollupDataFileCursor& cursor)
         }
         else if ((flag & 0x60) == 0x40)
         {
+            if ((size - len) < 2) return task;
             n = uncompress_int16(buff+len);
             len += 2;
         }
@@ -2583,19 +2600,19 @@ RollupCompressor_v2::uncompress(RollupDataFileCursor& cursor)
         }
 
         entry->cnt = n + prev.prev_cnt;
-        prev.prev_cnt = entry->cnt;
 
         if (entry->cnt != 0)
         {
-            if ((size - len) < 4) return task;  // not enough data in buffer
 
             if ((flag & 0x18) == 0x08)          // min
             {
+                if ((size - len) < 2) return task;
                 n = uncompress_int16(buff+len);
                 len += 2;
             }
             else if ((flag & 0x18) == 0x10)
             {
+                if ((size - len) < 4) return task;
                 n = uncompress_int32(buff+len);
                 len += 4;
             }
@@ -2610,20 +2627,17 @@ RollupCompressor_v2::uncompress(RollupDataFileCursor& cursor)
                 n = 0;
             }
 
-            if ((size - len) < 4) return task;
-
             entry->min = (double)n / m_precision;
-            prev.prev_min_delta = entry->min + prev.prev_min_delta;
-            entry->min = prev.prev_min_delta + prev.prev_min;
-            prev.prev_min = entry->min;
 
             if ((flag & 0x06) == 0x02)          // max
             {
+                if ((size - len) < 2) return task;
                 n = uncompress_int16(buff+len);
                 len += 2;
             }
             else if ((flag & 0x06) == 0x04)
             {
+                if ((size - len) < 4) return task;
                 n = uncompress_int32(buff+len);
                 len += 4;
             }
@@ -2639,9 +2653,6 @@ RollupCompressor_v2::uncompress(RollupDataFileCursor& cursor)
             }
 
             entry->max = (double)n / m_precision;
-            prev.prev_max_delta = entry->max + prev.prev_max_delta;
-            entry->max = prev.prev_max_delta + prev.prev_max;
-            prev.prev_max = entry->max;
 
             if ((flag & 0x01) == 0x00)          // sum
             {
@@ -2657,9 +2668,37 @@ RollupCompressor_v2::uncompress(RollupDataFileCursor& cursor)
             }
 
             entry->sum = (double)n / m_precision;
+
+            prev.prev_min_delta = entry->min + prev.prev_min_delta;
+            entry->min = prev.prev_min_delta + prev.prev_min;
+            prev.prev_min = entry->min;
+
+            prev.prev_max_delta = entry->max + prev.prev_max_delta;
+            entry->max = prev.prev_max_delta + prev.prev_max;
+            prev.prev_max = entry->max;
+
             prev.prev_sum_delta = entry->sum + prev.prev_sum_delta;
             entry->sum = prev.prev_sum_delta + prev.prev_sum;
             prev.prev_sum = entry->sum;
+        }
+
+        prev.prev_cnt = entry->cnt;
+
+        // this is for debugging purpose only
+        if (false)
+        {
+            char buff3[1024];
+
+            snprintf(buff3, sizeof(buff3),
+                "[ru-r] tid=%u, cnt=%u, min=%0.2f, max=%0.2f, sum=%0.2f",
+                entry->tid, entry->cnt, entry->min, entry->max, entry->sum);
+            buff3[sizeof(buff3)-1] = 0;
+            Logger::info("%s", buff3);
+
+            for (int i = 0, j = 0; i < len; i++)
+                j += snprintf(buff3+j, sizeof(buff3)-j, "%02X", buff[i]);
+            buff3[sizeof(buff3)-1] = 0;
+            Logger::info("[ru-r] tid=%u, compressed: %s]", entry->tid, buff3);
         }
     }
     else
