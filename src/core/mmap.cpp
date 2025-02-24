@@ -1554,7 +1554,7 @@ RollupDataFile::query(const TimeRange& range, std::vector<QueryTask*>& tasks, Ro
         } while (! cursor.is_done() && ! compressor.is_done());
     }
 
-    if ((m_index <= 0) || cursor.is_done())
+    if ((m_index <= 0) || compressor.is_done())
         return;
 
     // look into m_buff...
