@@ -244,6 +244,7 @@ RollupManager::flush(MetricId mid, TimeSeriesId tid)
         if (m_data_file != nullptr)
             m_data_file->dec_ref_count();
         m_data_file = get_or_create_data_file(mid, m_tstamp);
+        m_prev.reset();
     }
 
     ASSERT(m_data_file != nullptr);

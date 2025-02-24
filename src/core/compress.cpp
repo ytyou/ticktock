@@ -2533,13 +2533,14 @@ RollupCompressor_v2::uncompress(RollupDataFileCursor& cursor)
 
     cursor.set_done(true);
 
-    if (size < 8) return task;
+    if (size < 4) return task;
 
     int len = 1;
     uint8_t flag = buff[0];
 
     if (flag & 0x80)            // tid
     {
+        if (size < 5) return task;
         entry->tid = uncompress_uint32(buff+len);
         len += 4;
         ASSERT(len == 5);
@@ -2582,12 +2583,11 @@ RollupCompressor_v2::uncompress(RollupDataFileCursor& cursor)
         }
 
         entry->cnt = n + prev.prev_cnt;
+        prev.prev_cnt = entry->cnt;
 
         if (entry->cnt != 0)
         {
             if ((size - len) < 4) return task;  // not enough data in buffer
-
-            prev.prev_cnt = entry->cnt;
 
             if ((flag & 0x18) == 0x08)          // min
             {

@@ -307,7 +307,7 @@ public:
 
     // iterate through the file, forward only
     // returns nullptr when no more entry left
-    bool read_block(RollupDataFileCursor& cursor);
+    bool read_block(RollupDataFileCursor& cursor, bool first_time);
     QueryTask *next_entry(RollupDataFileCursor& cursor, RollupCompressor_v2& compressor);
 
     void add_data_point(uint8_t *buff, int size);

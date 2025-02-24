@@ -1425,9 +1425,9 @@ RollupDataFile::add_data_points(std::unordered_map<TimeSeriesId,std::vector<stru
 /* @return Has more data to process
  */
 bool
-RollupDataFile::read_block(RollupDataFileCursor& cursor)
+RollupDataFile::read_block(RollupDataFileCursor& cursor, bool first_time)
 {
-    if (cursor.m_index == 0)    // first time
+    if (first_time)
     {
         m_last_access = ts_now_sec();
         if (! is_open(true) && ! is_open(false))
@@ -1468,7 +1468,7 @@ RollupDataFile::next_entry(RollupDataFileCursor& cursor, RollupCompressor_v2& co
     {
         if (m_compressor_version == 1)
         {
-            // for backward compatible...
+            // for backward compatibility...
             len = RollupCompressor_v1::uncompress(cursor.m_buff+cursor.m_index,
                                                   cursor.m_size-cursor.m_index,
                                                   &cursor.m_entry,
@@ -1526,12 +1526,16 @@ RollupDataFile::query(const TimeRange& range, std::vector<QueryTask*>& tasks, Ro
     RollupDataFileCursor cursor;
     RollupCompressor_v2 compressor(get_compressor_precision(), tasks);
     std::lock_guard<std::mutex> guard(m_lock);
+    bool first_time = true;
 
-    while (read_block(cursor))
+    while (!cursor.is_done() && read_block(cursor, first_time))
     {
-        for (QueryTask *task = next_entry(cursor, compressor); ! cursor.is_done(); task = next_entry(cursor, compressor))
+        first_time = false;
+
+        do
         {
             ASSERT(cursor.m_index <= cursor.m_size);
+            QueryTask *task = next_entry(cursor, compressor);
 
             if (task == nullptr)
                 continue;   // skip it
@@ -1541,17 +1545,19 @@ RollupDataFile::query(const TimeRange& range, std::vector<QueryTask*>& tasks, Ro
                 bool empty = compressor.rm_task(task);
                 if (empty) cursor.set_done(true);
             }
-        }
+        } while (! cursor.is_done());
     }
 
-    if (m_index <= 0)
+    if ((m_index <= 0) || cursor.is_done())
         return;
 
     // look into m_buff...
     cursor.init(m_buff, m_index);
 
-    for (QueryTask *task = next_entry(cursor, compressor); ! cursor.is_done(); task = next_entry(cursor, compressor))
+    while (! cursor.is_done())
     {
+        QueryTask *task = next_entry(cursor, compressor);
+
         if (task == nullptr)
             continue;   // skip it
 
@@ -1559,6 +1565,7 @@ RollupDataFile::query(const TimeRange& range, std::vector<QueryTask*>& tasks, Ro
         {
             bool empty = compressor.rm_task(task);
             if (empty) cursor.set_done(true);
+            ASSERT(!empty || cursor.is_done());
         }
     }
 }
@@ -1666,11 +1673,14 @@ RollupDataFile::query(std::unordered_map<TimeSeriesId,std::vector<struct rollup_
     RollupDataFileCursor cursor;
     RollupCompressor_v2 compressor(m_compressor_precision); // we need ALL the entries
     std::lock_guard<std::mutex> guard(m_lock);
+    bool first_time = true;
 
     flush();
 
-    while (read_block(cursor))
+    while (read_block(cursor, first_time))
     {
+        first_time = false;
+
         for (QueryTask *task = next_entry(cursor, compressor); ! cursor.is_done(); task = next_entry(cursor, compressor))
         {
             ASSERT(task != nullptr);

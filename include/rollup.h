@@ -42,6 +42,17 @@ struct __attribute__ ((__packed__)) rollup_compression_data
         m_prev_max(0.0), m_prev_max_delta(0.0), m_prev_sum(0.0), m_prev_sum_delta(0.0)
     {}
 
+    void reset()
+    {
+        m_prev_cnt = 0;
+        m_prev_min = 0.0;
+        m_prev_min_delta = 0.0;
+        m_prev_max = 0.0;
+        m_prev_max_delta = 0.0;
+        m_prev_sum = 0.0;
+        m_prev_sum_delta = 0.0;
+    }
+
     int64_t m_prev_cnt;
     double m_prev_min;
     double m_prev_min_delta;
