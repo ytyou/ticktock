@@ -52,6 +52,7 @@ public:
     virtual void add_data_point(DataPointPair& dp, DataPointVector& dps) = 0;
     virtual void add_data_point(struct rollup_entry_ext *entry, RollupType rollup, DataPointVector& dps) {};
     virtual void add_last_point(DataPointVector& dps) {};
+    virtual bool is_empty() const { return true; };
     void fill_if_needed(DataPointVector& dps);
 
     inline virtual bool recycle()
@@ -112,6 +113,7 @@ public:
     void add_data_point(struct rollup_entry_ext *entry, RollupType rollup, DataPointVector& dps) override;
     void add_last_point(DataPointVector& dps) override;
 
+    bool is_empty() const override { return m_count == 0; }
     RollupType get_rollup_type() const override { return RollupType::RU_AVG; }
 
     inline virtual void init()
@@ -141,6 +143,7 @@ public:
     RollupType get_rollup_type() const override { return RollupType::RU_NONE; }
     void add_data_point(DataPointPair& dp, DataPointVector& dps) override;
     void add_last_point(DataPointVector& dps) override;
+    bool is_empty() const override { return m_count == 0; }
 
     inline virtual void init()
     {
@@ -200,6 +203,7 @@ public:
     RollupType get_rollup_type() const override { return RollupType::RU_NONE; }
     void add_data_point(DataPointPair& dp, DataPointVector& dps) override;
     void add_last_point(DataPointVector& dps) override;
+    bool is_empty() const override { return m_values.empty(); }
 
     bool recycle();
     double calc_percentile();

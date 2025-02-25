@@ -682,6 +682,12 @@ QueryTask::remove_dps(const TimeRange& range)
     m_sort_needed = true;
 }
 
+bool
+QueryTask::is_empty() const
+{
+    return m_dps.empty() && (m_downsampler == nullptr || m_downsampler->is_empty());
+}
+
 void
 QueryTask::sort_if_needed()
 {

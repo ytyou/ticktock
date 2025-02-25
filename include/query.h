@@ -198,7 +198,7 @@ public:
 
     TimeSeriesId get_ts_id() const;
     inline Downsampler *get_downsampler() { return m_downsampler; }
-    inline bool is_empty() { return m_dps.empty(); }
+    inline bool is_empty() const;
 
     inline void set_ooo(bool ooo)
     {
