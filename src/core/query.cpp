@@ -1232,8 +1232,19 @@ QuerySuperTask::perform(bool lock)
             query_rollup_daily(rollup);
         }
 
-        for (auto task: m_tasks)
+        for (auto it = m_tasks.begin(); it != m_tasks.end(); )
         {
+            auto task = *it;
+
+            // if a TS has no dps in this range, delete it
+            if (task->is_empty())
+            {
+                it = m_tasks.erase(it);
+                MemoryManager::free_recyclable(task);
+            }
+            else
+                it++;
+
             task->sort_if_needed();
             task->fill();
 
