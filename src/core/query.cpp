@@ -418,6 +418,8 @@ Query::get_query_tasks(QuerySuperTask& super_task)
 
     for (TimeSeries *ts: tsv)
         super_task.add_task(ts);
+
+    super_task.adjust_time_range(); // adjust range according to downsampler, if any
     super_task.set_metric_id(mid);
 }
 
@@ -454,6 +456,23 @@ Query::calculate_rate(std::vector<QueryResults*>& results)
 {
     if (m_rate_calculator != nullptr)
     {
+        for (auto it = results.begin(); it != results.end(); )
+        {
+            auto result = *it;
+
+            if (result->empty()) continue;
+            m_rate_calculator->calculate(result->m_dps);
+
+            if (result->empty())
+                it = results.erase(it);
+            else
+                it++;
+        }
+    }
+
+#if 0
+    if (m_rate_calculator != nullptr)
+    {
         for (QueryResults *result: results)
         {
             m_rate_calculator->calculate(result->m_dps);
@@ -476,6 +495,7 @@ Query::calculate_rate(std::vector<QueryResults*>& results)
         }
     }
 */
+#endif
 }
 
 QueryResults *
@@ -594,8 +614,12 @@ void
 QueryTask::query_ts_data(Tsdb *tsdb)
 {
     ASSERT(m_ts != nullptr);
+    TimeRange range(m_time_range);
 
-    if (m_ts->query_for_data(tsdb, m_time_range, m_data))
+    // dps one hour before the query range may affects query result, so...
+    range.expand_an_hour(g_tstamp_resolution_ms);
+
+    if (m_ts->query_for_data(tsdb, range, m_data))
         m_has_ooo = true;
 }
 
@@ -680,6 +704,12 @@ QueryTask::remove_dps(const TimeRange& range)
     m_sort_needed = true;
 }
 
+bool
+QueryTask::is_empty() const
+{
+    return m_dps.empty() && (m_downsampler == nullptr || m_downsampler->is_empty());
+}
+
 void
 QueryTask::sort_if_needed()
 {
@@ -738,6 +768,8 @@ QueryTask::query_with_ooo()
     s_dp_count.fetch_add(dp_count, std::memory_order_relaxed);
 #endif
 
+    TimeRange range = (m_downsampler == nullptr) ? m_time_range : m_downsampler->get_expanded_range();
+
     while (! pq.empty())
     {
         auto top = pq.top();
@@ -746,7 +778,7 @@ QueryTask::query_with_ooo()
         DataPointContainer *container = top.first;
         int i = top.second;
         DataPointPair& dp = container->get_data_point(i);
-        int in_range = m_time_range.in_range(dp.first);
+        int in_range = range.in_range(dp.first);
 
         if (in_range == 0)
         {
@@ -769,9 +801,11 @@ QueryTask::query_with_ooo()
                 prev_dp = dp;
             }
         }
-        else if (in_range > 0)
+        else if (m_last_tstamp == TT_INVALID_TIMESTAMP || (m_last_tstamp < dp.first && dp.first < range.get_from()))
         {
-            break;
+            // remember last dp before query range;
+            // they may have impact on query result;
+            m_last_tstamp = dp.first;
         }
 
         if ((i+1) < container->size())
@@ -813,6 +847,12 @@ QueryTask::query_without_ooo()
             else if (in_range > 0)
             {
                 break;
+            }
+            else if (m_last_tstamp == TT_INVALID_TIMESTAMP || m_last_tstamp < dp.first)
+            {
+                // remember last dp before query range;
+                // they may have impact on query result;
+                m_last_tstamp = dp.first;
             }
         }
     }
@@ -967,12 +1007,30 @@ QuerySuperTask::add_task(TimeSeries *ts)
         (QueryTask*)MemoryManager::alloc_recyclable(RecyclableType::RT_QUERY_TASK);
 
     qt->m_ts = ts;
-    qt->m_time_range = m_time_range;
     qt->m_downsampler = (m_downsample == nullptr) ?
                         nullptr :
                         Downsampler::create(m_downsample, m_time_range, m_ms);
+    qt->m_time_range = (qt->m_downsampler == nullptr) ?
+        m_time_range : qt->m_downsampler->get_time_range();
 
     m_tasks.push_back(qt);
+}
+
+void
+QuerySuperTask::adjust_time_range()
+{
+    if (! m_tasks.empty())
+    {
+        auto task = m_tasks.front();
+
+        if (task->m_downsampler != nullptr)
+        {
+            TimeRange &range = task->get_query_range();
+            Logger::debug("adjusting query range from %T to %T", &m_time_range, &range);
+            //range.set_to(range.get_to() + task->m_downsampler->get_interval() - 1);
+            m_time_range = range;
+        }
+    }
 }
 
 RollupType
@@ -1000,10 +1058,10 @@ QuerySuperTask::use_rollup() const
                 rollup_interval *= 1000;
                 rollup_interval2 *= 1000;
 
-                if (! m_ms) downsample_interval *= 1000;
+                //if (! m_ms) downsample_interval *= 1000;
             }
-            else if (m_ms)
-                downsample_interval /= 1000;
+            //else if (m_ms)
+                //downsample_interval /= 1000;
 
             // TODO: config
             if (rollup_interval2 <= downsample_interval)
@@ -1044,8 +1102,12 @@ void
 QuerySuperTask::query_raw(Tsdb *tsdb, std::vector<QueryTask*>& tasks)
 {
     ASSERT(tsdb != nullptr);
+    TimeRange range(m_time_range);
 
-    tsdb->query_for_data(m_metric_id, m_time_range, tasks, m_compact);
+    // dps one hour before the query range may affects query result, so...
+    range.expand_an_hour(g_tstamp_resolution_ms);
+
+    tsdb->query_for_data(m_metric_id, range, tasks, m_compact);
 
     for (QueryTask *task : tasks)
     {
@@ -1094,6 +1156,7 @@ QuerySuperTask::query_rollup_daily(RollupType rollup)
     ASSERT(is_rollup_level2(rollup));
     ASSERT(rollup != RollupType::RU_NONE);
 
+    bool query_ts = true;   // need to call query_ts_data()?
     RollupManager::query(m_metric_id, m_time_range, m_tasks, rollup);
 
     // for those with invalid rollup, we'll query hourly/raw instead
@@ -1135,6 +1198,10 @@ QuerySuperTask::query_rollup_daily(RollupType rollup)
             ASSERT(rollup != RollupType::RU_NONE);
             query_rollup_hourly(range, tsdbs, rollup);
 
+            // query_ts_data() is already called in the above query_rollup_hourly()
+            // mark it as "no need to call query_ts_data()"
+            query_ts = false;
+
             // cleanup
             for (auto tsdb: tsdbs)
                 tsdb->dec_ref_count();
@@ -1170,6 +1237,12 @@ QuerySuperTask::query_rollup_daily(RollupType rollup)
 
         tsdb->dec_ref_count();
     }
+
+    if (query_ts)
+    {
+        for (QueryTask *task : m_tasks)
+            task->query_ts_data(m_time_range, rollup, m_ms);
+    }
 }
 
 void
@@ -1195,8 +1268,34 @@ QuerySuperTask::perform(bool lock)
             query_rollup_daily(rollup);
         }
 
-        for (auto task: m_tasks)
+        Timestamp hour = (g_tstamp_resolution_ms ? 3600000 : 3600);
+
+        for (auto it = m_tasks.begin(); it != m_tasks.end(); )
         {
+            auto task = *it;
+
+            if (! task->is_empty())
+                it++;
+            else
+            {
+                bool has_data_within_hour = false;
+                Timestamp last_tstamp = task->get_last_tstamp();
+
+                if (last_tstamp != TT_INVALID_TIMESTAMP)
+                {
+                    has_data_within_hour = m_time_range.get_from() <= (last_tstamp + hour);
+                }
+
+                if (has_data_within_hour)
+                    it++;
+                else
+                {
+                    it = m_tasks.erase(it);
+                    MemoryManager::free_recyclable(task);
+                    continue;
+                }
+            }
+
             task->sort_if_needed();
             task->fill();
 
@@ -1523,7 +1622,7 @@ QueryExecutor::prepare_response(std::vector<QueryResults*>& results, HttpRespons
 
     for (QueryResults *r: results)
     {
-        if (r->empty()) continue;
+        //if (r->empty()) continue;
         if (*(buff+n-1) != '[')
             n += snprintf(buff+n, size-n, ",");
         if (size > n)

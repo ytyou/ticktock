@@ -78,7 +78,7 @@ public:
     // return 0 if in range; -1 if on the left; +1 if on the right;
     inline int in_range(Timestamp tstamp) const
     {
-        return (tstamp < m_from) ? -1 : ((m_to <= tstamp) ? 1 : 0);
+        return (tstamp < m_from) ? -1 : ((m_to < tstamp) ? 1 : 0);
     }
 
     inline bool has_intersection(const TimeRange& range) const
@@ -145,6 +145,14 @@ public:
     inline void set_to(Timestamp to)
     {
         m_to = to;
+    }
+
+    // dps within an hour of query range may affects query results,
+    // so we need to expand the range to include them
+    inline void expand_an_hour(bool ms)
+    {
+        Timestamp hour = ms ? 3600000 : 3600;
+        m_from = (hour < m_from) ? (m_from - hour) : 0;
     }
 
     inline size_t c_size() const override { return 44; }

@@ -312,7 +312,7 @@ private:
     FILE *m_file;
     Timestamp m_begin;
     int m_index;    // index of m_buff[]
-    char m_buff[4096];
+    uint8_t m_buff[4096];
     Timestamp m_last_access;
     int64_t m_size;
     std::mutex m_lock;

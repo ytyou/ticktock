@@ -41,6 +41,8 @@ Downsampler::Downsampler() :
 {
 }
 
+/* @param range Query range
+ */
 void
 Downsampler::initialize(char *interval, char *fill, TimeRange& range, bool ms)
 {
@@ -55,7 +57,7 @@ Downsampler::initialize(char *interval, char *fill, TimeRange& range, bool ms)
 
     if (interval == nullptr)
     {
-        m_interval = (m_ms ? 60000 : 60); // default to 1 minute
+        m_interval = (g_tstamp_resolution_ms ? 60000 : 60); // default to 1 minute
         Logger::error("null interval passed into Downsampler::init()");
     }
     else
@@ -64,7 +66,7 @@ Downsampler::initialize(char *interval, char *fill, TimeRange& range, bool ms)
         double factor = 1;
 
         if (ends_with(interval, "ms"))
-            factor = m_ms ? 1 : 0.001;
+            factor = g_tstamp_resolution_ms ? 1 : 0.001;
         else
         {
             //char& unit = std::string(interval).back();
@@ -81,7 +83,8 @@ Downsampler::initialize(char *interval, char *fill, TimeRange& range, bool ms)
                 default:    throw std::runtime_error("unrecognized downsampler");
             };
 
-            if (m_ms) factor *= 1000;
+            if (g_tstamp_resolution_ms)
+                factor *= 1000;
         }
 
         m_interval = (Timestamp)((double)std::atoll(interval) * factor);
@@ -90,8 +93,16 @@ Downsampler::initialize(char *interval, char *fill, TimeRange& range, bool ms)
 
     ASSERT(m_interval > 0);
 
-    m_time_range.set_from(step_down(m_time_range.get_from()));
-    if (m_all) m_interval = m_time_range.get_duration() + 1;
+    m_time_range.set_from(step_up(m_time_range.get_from()));
+
+    if (m_all)
+        m_interval = m_time_range.get_duration() + 1;
+    else
+    {
+        Timestamp to = step_up(m_time_range.get_to());
+        if (to != m_time_range.get_to()) to--;
+        m_time_range.set_to(to);
+    }
 
     // fill policy
     if (fill != nullptr)
@@ -116,6 +127,8 @@ Downsampler::initialize(char *interval, char *fill, TimeRange& range, bool ms)
     init(); // initialize child downsamplers
 }
 
+/* @param range Query range
+ */
 Downsampler *
 Downsampler::create(const char *downsample, TimeRange& range, bool ms)
 {
@@ -232,6 +245,19 @@ Downsampler::is_downsampler(const char *str)
     }
 }
 
+Timestamp
+Downsampler::step_up(Timestamp tstamp) const
+{
+    tstamp--;
+    return m_all ? m_start : (tstamp - (tstamp % m_interval) + m_interval);
+}
+
+Timestamp
+Downsampler::step_down(Timestamp tstamp) const
+{
+    return m_all ? m_start : (tstamp - (tstamp % m_interval));
+}
+
 void
 Downsampler::fill_to(Timestamp to, DataPointVector& dps)
 {
@@ -262,22 +288,38 @@ Downsampler::fill_if_needed(DataPointVector& dps)
 
     if (m_fill != DownsampleFillPolicy::DFP_NONE)
     {
-        Timestamp last_tstamp;
+        DataPointVector dpv;
+        Timestamp ts = resolution(m_time_range.get_from());
+        Timestamp interval =
+            (m_ms == g_tstamp_resolution_ms) ? m_interval : (m_ms ? (m_interval * 1000) : m_interval / 1000);
 
-        if (dps.empty())
+        // scan dps, filling any gaps
+        for (auto dp: dps)
         {
-            last_tstamp = m_time_range.get_from();
-        }
-        else
-        {
-            DataPointPair& last_dp = dps.back();
-            last_tstamp = last_dp.first;
+            // fill
+            while (ts < dp.first)
+            {
+                dpv.emplace_back(resolution(ts), m_fill_value);
+                ts += interval;
+            }
+
+            if (dp.first == ts)
+            {
+                ts += interval;
+                dpv.emplace_back(dp.first, dp.second);
+            }
         }
 
-        for (Timestamp tstamp = last_tstamp + m_interval; tstamp <= m_time_range.get_to(); tstamp += m_interval)
+        // fill
+        Timestamp to = resolution(m_time_range.get_to());
+
+        while (ts <= to)
         {
-            dps.emplace_back(resolution(tstamp), m_fill_value);
+            dpv.emplace_back(resolution(ts), m_fill_value);
+            ts += interval;
         }
+
+        dps.swap(dpv);
     }
 }
 

@@ -1230,17 +1230,22 @@ RollupDataFile::open(bool for_read)
             if (sb.st_size == 0)
             {
                 int64_t length = RollupManager::get_rollup_data_file_size(m_monthly);
-                if (fallocate(fd, FALLOC_FL_KEEP_SIZE, 0, length) != 0)
-                    Logger::warn("fallocate(%d) failed, errno = %d", fd, errno);
-                else
-                    Logger::debug("fallocate(%s, %lu) called", m_name.c_str(), length);
+
+                if (g_sys_page_size < length)
+                {
+                    if (fallocate(fd, FALLOC_FL_KEEP_SIZE, 0, length) != 0)
+                        Logger::warn("fallocate(%d) failed, errno = %d", fd, errno);
+                    else
+                        Logger::debug("fallocate(%s, %lu) called", m_name.c_str(), length);
+                }
             }
             else
                 m_size = sb.st_size;
         }
 
         m_for_read = for_read;
-        m_file = fdopen(fd, for_read?"r+":"a+b");
+        m_file = fdopen(fd, "a+b");
+        //m_file = fdopen(fd, for_read?"r+":"a+b");
         ASSERT(m_file != nullptr);
         Logger::debug("opening %s for read/write", m_name.c_str());
     }
@@ -1251,7 +1256,6 @@ RollupDataFile::flush()
 {
     if ((m_file != nullptr) && (m_index > 0))
     {
-        ASSERT(! m_for_read);
         ASSERT(0 <= m_index && m_index <= sizeof(m_buff));
         std::fwrite(m_buff, m_index, 1, m_file);
         std::fflush(m_file);
@@ -1299,7 +1303,8 @@ RollupDataFile::close_if_idle(Timestamp threshold_sec, Timestamp now_sec)
 bool
 RollupDataFile::is_open(bool for_read) const
 {
-    return (m_file != nullptr) && (for_read == m_for_read);
+    return (m_file != nullptr);
+    //return (m_file != nullptr) && (for_read == m_for_read);
 }
 
 void
@@ -1353,9 +1358,6 @@ RollupDataFile::add_data_point(TimeSeriesId tid, Timestamp tstamp, uint32_t cnt,
     }
     ASSERT(m_file != nullptr);
     std::fwrite(&entry, sizeof(entry), 1, m_file);
-    //std::fflush(m_file);
-    //m_index += sizeof(entry);
-    //m_size += sizeof(entry);
 }
 
 void

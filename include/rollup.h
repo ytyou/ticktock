@@ -92,7 +92,7 @@ private:
     double m_sum;
     Timestamp m_tstamp;
 
-    RollupDataFile * m_data_file;       // currently being written
+    RollupDataFile *m_data_file;        // currently being written
 
     // used during shutdown/restart of TT
     static RollupDataFile *m_wal_data_file;

@@ -156,9 +156,9 @@ private:
     void aggregate(std::vector<QueryTask*>& qtv, std::vector<QueryResults*>& results, StringBuffer& strbuf);
     void calculate_rate(std::vector<QueryResults*>& results);
 
-    TimeRange m_time_range;
+    TimeRange m_time_range;     // unit consistent with g_tstamp_resolution_ms
 
-    bool m_ms;  // milli-second resolution?
+    bool m_ms;                  // milli-second resolution for query results?
     bool m_explicit_tags;
     RollupUsage m_rollup;
     int m_errno;
@@ -196,6 +196,7 @@ public:
     Tag *get_cloned_tags(StringBuffer& strbuf);
 
     TimeSeriesId get_ts_id() const;
+    bool is_empty() const;      // did query results in any data for this TS?
     inline Downsampler *get_downsampler() { return m_downsampler; }
 
     inline void set_ooo(bool ooo)
@@ -322,6 +323,8 @@ public:
     void empty_tasks();
     MetricId get_metric_id() const { return m_metric_id; }
     void set_metric_id(MetricId mid) { m_metric_id = mid; }
+    void adjust_time_range();   // with downsample, we need surounding dps
+                                // that should be included after stepping down
 
 private:
     void query_raw(Tsdb* tsdb, std::vector<QueryTask*>& tasks);

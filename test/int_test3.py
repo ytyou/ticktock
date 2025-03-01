@@ -335,7 +335,7 @@ class Test(object):
     def send_data_to_opentsdb(self, dps):
         payload = dps.to_json()
         if self._options.verbose:
-            print("send_data_to_opentsdb(): " + json.dumps(payload))
+            print("send_data_to_opentsdb():\n" + json.dumps(payload))
         # send to opentsdb
         start = time.time()
         response = requests.post("http://"+self._options.opentsdbip+":"+str(self._options.opentsdbport)+"/api/put?details", json=payload["metrics"], timeout=self._options.timeout)
@@ -348,7 +348,7 @@ class Test(object):
         if self._options.form == "json":
             payload = dps.to_json()
             if self._options.verbose:
-                print("send_data_to_ticktock(json): " + json.dumps(payload))
+                print("send_data_to_ticktock(json):\n" + json.dumps(payload))
             # send to ticktock
             start = time.time()
             response = requests.post("http://"+self._options.ip+":"+str(self._options.port)+"/api/put?details", json=payload, timeout=self._options.timeout)
@@ -359,7 +359,7 @@ class Test(object):
         else:
             payload = dps.to_plain()
             if self._options.verbose:
-                print("send_data_to_ticktock(plain): " + str(payload))
+                print("send_data_to_ticktock(plain):\n" + str(payload))
 
             # send a copy to another TT for debugging
             if self._options.debug:
@@ -416,7 +416,7 @@ class Test(object):
     def send_data_udp(self, dps):
         if self._options.verbose:
             payload = dps.to_json()
-            print("send_data_udp(): " + json.dumps(payload))
+            print("send_data_udp():\n" + json.dumps(payload))
         self.send_data_to_opentsdb(dps)
         self.send_data_to_ticktock_udp(dps)
 
@@ -425,7 +425,7 @@ class Test(object):
 
     def send_data_tcp(self, dps):
         if self._options.verbose:
-            print("send_data_tcp(): " + dps.to_plain())
+            print("send_data_tcp():\n" + dps.to_plain())
         self.send_data_to_opentsdb(dps)
         self.send_data_to_ticktock_tcp(dps)
 
@@ -1337,6 +1337,8 @@ class Query_With_Rollup(Test):
         self._precision = 0.000091
         for m in range(metric_cardinality):
             for down in ["avg", "count", "max", "min", "sum"]:
+                query = Query(metric=self.metric_name(m), start=self._options.start-99999, end=self._options.start+99999, downsampler="2h-"+down)
+                self.query_and_verify(query)
                 query = Query(metric=self.metric_name(m), start=self._options.start-99999, end=dps._end+99999, downsampler="2h-"+down)
                 self.query_and_verify(query)
 
@@ -1350,6 +1352,8 @@ class Query_With_Rollup(Test):
         self._precision = 0.00015
         for m in range(metric_cardinality):
             for down in ["avg", "count", "max", "min", "sum"]:
+                query = Query(metric=self.metric_name(m), start=self._options.start-99999, end=self._options.start+99999, downsampler="1d-"+down+"-zero")
+                self.query_and_verify(query)
                 query = Query(metric=self.metric_name(m), start=self._options.start-99999, end=dps._end+99999, downsampler="1d-"+down+"-zero")
                 self.query_and_verify(query)
 
