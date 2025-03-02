@@ -1495,7 +1495,7 @@ Tsdb::get_or_add_mapping(const char *metric)
 bool
 Tsdb::add(DataPoint& dp)
 {
-    ASSERT(m_time_range.in_range(dp.get_timestamp()) == 0);
+    ASSERT(m_time_range.in_range_strictly(dp.get_timestamp()) == 0);
     Mapping *mapping = get_or_add_mapping(dp.get_metric());
     if (mapping == nullptr) return false;
     return mapping->add(dp);
@@ -1646,7 +1646,7 @@ Tsdb::query_for_data(Metric *metric, QueryTask *task)
     uint32_t file_idx;
     HeaderIndex header_idx;
     Timestamp from = m_time_range.get_from();
-    TimeRange& query_range = task->get_query_range();
+    TimeRange query_range = task->get_query_range();
 
     if (metric == nullptr)
     {
@@ -2274,7 +2274,7 @@ Tsdb::search(Timestamp tstamp)
         for (int i = m_tsdbs.size() - 1; i >= 0; i--)
         {
             Tsdb *tsdb = m_tsdbs[i];
-            int n = tsdb->in_range(tstamp);
+            int n = tsdb->in_range_strictly(tstamp);
             if (n == 0) return tsdb;
             if (n > 0) break;
         }

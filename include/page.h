@@ -265,7 +265,7 @@ public:
 
     Timestamp get_last_tstamp(MetricId mid, TimeSeriesId tid) const;
     TimeRange get_time_range();
-    int in_range(Timestamp tstamp) const;
+    int in_range_strictly(Timestamp tstamp) const;
     inline Tsdb *get_tsdb() const { return m_tsdb; }
 
     int get_dp_count() const;

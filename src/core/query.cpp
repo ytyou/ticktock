@@ -464,7 +464,10 @@ Query::calculate_rate(std::vector<QueryResults*>& results)
             m_rate_calculator->calculate(result->m_dps);
 
             if (result->empty())
+            {
                 it = results.erase(it);
+                MemoryManager::free_recyclable(result);
+            }
             else
                 it++;
         }
@@ -614,10 +617,7 @@ void
 QueryTask::query_ts_data(Tsdb *tsdb)
 {
     ASSERT(m_ts != nullptr);
-    TimeRange range(m_time_range);
-
-    // dps one hour before the query range may affects query result, so...
-    range.expand_an_hour(g_tstamp_resolution_ms);
+    TimeRange range = (m_downsampler == nullptr) ? m_time_range : get_query_range();
 
     if (m_ts->query_for_data(tsdb, range, m_data))
         m_has_ooo = true;
@@ -801,12 +801,6 @@ QueryTask::query_with_ooo()
                 prev_dp = dp;
             }
         }
-        else if (m_last_tstamp == TT_INVALID_TIMESTAMP || (m_last_tstamp < dp.first && dp.first < range.get_from()))
-        {
-            // remember last dp before query range;
-            // they may have impact on query result;
-            m_last_tstamp = dp.first;
-        }
 
         if ((i+1) < container->size())
         {
@@ -860,6 +854,13 @@ QueryTask::query_without_ooo()
 #ifdef TT_STATS
     s_dp_count.fetch_add(dp_count, std::memory_order_relaxed);
 #endif
+}
+
+TimeRange
+QueryTask::get_query_range() const
+{
+    return (m_downsampler == nullptr) ?
+        m_time_range : m_downsampler->get_expanded_range();
 }
 
 TimeSeriesId
@@ -1024,12 +1025,7 @@ QuerySuperTask::adjust_time_range()
         auto task = m_tasks.front();
 
         if (task->m_downsampler != nullptr)
-        {
-            TimeRange &range = task->get_query_range();
-            Logger::debug("adjusting query range from %T to %T", &m_time_range, &range);
-            //range.set_to(range.get_to() + task->m_downsampler->get_interval() - 1);
-            m_time_range = range;
-        }
+            m_time_range = task->get_query_range();
     }
 }
 
@@ -1102,10 +1098,9 @@ void
 QuerySuperTask::query_raw(Tsdb *tsdb, std::vector<QueryTask*>& tasks)
 {
     ASSERT(tsdb != nullptr);
-    TimeRange range(m_time_range);
+    if (tasks.empty()) return;
 
-    // dps one hour before the query range may affects query result, so...
-    range.expand_an_hour(g_tstamp_resolution_ms);
+    TimeRange range = (m_downsample == nullptr) ? m_time_range : tasks.front()->get_query_range();
 
     tsdb->query_for_data(m_metric_id, range, tasks, m_compact);
 
@@ -1268,33 +1263,9 @@ QuerySuperTask::perform(bool lock)
             query_rollup_daily(rollup);
         }
 
-        Timestamp hour = (g_tstamp_resolution_ms ? 3600000 : 3600);
-
         for (auto it = m_tasks.begin(); it != m_tasks.end(); )
         {
             auto task = *it;
-
-            if (! task->is_empty())
-                it++;
-            else
-            {
-                bool has_data_within_hour = false;
-                Timestamp last_tstamp = task->get_last_tstamp();
-
-                if (last_tstamp != TT_INVALID_TIMESTAMP)
-                {
-                    has_data_within_hour = m_time_range.get_from() <= (last_tstamp + hour);
-                }
-
-                if (has_data_within_hour)
-                    it++;
-                else
-                {
-                    it = m_tasks.erase(it);
-                    MemoryManager::free_recyclable(task);
-                    continue;
-                }
-            }
 
             task->sort_if_needed();
             task->fill();
@@ -1303,6 +1274,14 @@ QuerySuperTask::perform(bool lock)
                 task->convert_to_ms();
             else
                 task->convert_to_sec();
+
+            if (task->is_empty())
+            {
+                it = m_tasks.erase(it);
+                MemoryManager::free_recyclable(task);
+            }
+            else
+                it++;
         }
     }
     catch (const std::exception& e)
@@ -1622,7 +1601,7 @@ QueryExecutor::prepare_response(std::vector<QueryResults*>& results, HttpRespons
 
     for (QueryResults *r: results)
     {
-        //if (r->empty()) continue;
+        if (r->empty()) continue;
         if (*(buff+n-1) != '[')
             n += snprintf(buff+n, size-n, ",");
         if (size > n)

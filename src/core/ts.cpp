@@ -317,7 +317,7 @@ TimeSeries::add_data_point(MetricId mid, DataPoint& dp)
         if (! is_ooo)
             m_buff = new PageInMemory(mid, m_id, tsdb, false);
     }
-    else if ((in_range = m_buff->in_range(tstamp)) != 0)
+    else if ((in_range = m_buff->in_range_strictly(tstamp)) != 0)
     {
         is_ooo = is_ooo || (in_range <= 0);
 
@@ -387,7 +387,7 @@ TimeSeries::add_ooo_data_point(MetricId mid, DataPoint& dp)
         m_ooo_buff = new PageInMemory(mid, m_id, tsdb, true);
         tsdb->set_out_of_order(m_id, true);
     }
-    else if (m_ooo_buff->in_range(tstamp) != 0)
+    else if (m_ooo_buff->in_range_strictly(tstamp) != 0)
     {
         m_ooo_buff->flush(mid, m_id);
 

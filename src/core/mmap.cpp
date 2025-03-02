@@ -1494,12 +1494,20 @@ void
 RollupDataFile::query(const TimeRange& range, std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupType rollup)
 {
     RollupDataFileCursor cursor;
+    int task_cnt = (int)map.size();
+    std::unordered_set<uint32_t> finished_tasks;
     std::lock_guard<std::mutex> guard(m_lock);
 
     for (struct rollup_entry *entry = first_entry(cursor); entry != nullptr; entry = next_entry(cursor))
     {
         if (query_entry(range, entry, map, rollup) > 0)
-            return;
+        {
+            auto search = finished_tasks.find(entry->tid);
+            if (search == finished_tasks.end())
+                finished_tasks.insert(entry->tid);
+            if (finished_tasks.size() >= task_cnt)
+                break;
+        }
     }
 
     // look into m_buff...

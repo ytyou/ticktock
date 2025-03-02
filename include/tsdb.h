@@ -307,9 +307,9 @@ public:
         return m_time_range;
     }
 
-    inline int in_range(Timestamp tstamp) const
+    inline int in_range_strictly(Timestamp tstamp) const
     {
-        return m_time_range.in_range(tstamp);
+        return m_time_range.in_range_strictly(tstamp);
     }
 
     inline bool in_range(const TimeRange& range) const

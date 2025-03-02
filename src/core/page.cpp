@@ -72,11 +72,11 @@ PageInMemory::get_time_range()
 }
 
 int
-PageInMemory::in_range(Timestamp tstamp) const
+PageInMemory::in_range_strictly(Timestamp tstamp) const
 {
     ASSERT(m_tsdb != nullptr);
     tstamp = validate_resolution(tstamp, m_tsdb->is_tstamp_ms());
-    return m_tsdb->in_range(tstamp);
+    return m_tsdb->in_range_strictly(tstamp);
 }
 
 /* 'range' should be the time range of the Tsdb.

@@ -172,7 +172,7 @@ Stats::inject_metrics(TaskData& data)
             {
                 for (DataPoint *dp = dps; dp != nullptr; dp = (DataPoint*)dp->next())
                 {
-                    if (! tsdb->in_range(dp->get_timestamp()))
+                    if (! tsdb->in_range_strictly(dp->get_timestamp()))
                     {
                         tsdb->dec_ref_count();
                         tsdb = Tsdb::inst(dp->get_timestamp(), true);

@@ -197,6 +197,7 @@ public:
 
     TimeSeriesId get_ts_id() const;
     bool is_empty() const;      // did query results in any data for this TS?
+    TimeRange get_query_range() const;
     inline Downsampler *get_downsampler() { return m_downsampler; }
 
     inline void set_ooo(bool ooo)
@@ -246,11 +247,6 @@ public:
     inline void set_last_tstamp(Timestamp ts)
     {
         m_last_tstamp = ts;
-    }
-
-    inline TimeRange& get_query_range()
-    {
-        return m_time_range;
     }
 
     inline void set_sort_needed()
