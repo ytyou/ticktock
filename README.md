@@ -62,4 +62,8 @@ We prepare a TickTockDB Demo in a docker image. With a single command to launch 
 
 ## Documentation
 
-For more information, please refer to TickTockDB [documentation](https://github.com/ytyou/ticktock/wiki/User-Guide).
+For more information, please refer to TickTockDB [documentation](https://github.com/ytyou/ticktock/wiki/User-Guide). Please join 
+<a href="mailto:ticktockdb+subscribe@googlegroups.com,ylin30@gmail.com?subject=Join TickTockDB&body=Join TickTockDB">
+    ticktockdb@googlegroups.com
+</a>
+for latest news and important notifications!
