@@ -34,6 +34,9 @@ class BitSet;
  */
 class BitSetCursor : public Recyclable
 {
+public:
+    void ignore_rest_of_byte();
+
 private:
     friend class BitSet;
 

@@ -124,6 +124,14 @@ public:
     Timestamp& get_start_tstamp();
     Timestamp get_start_tstamp_const() const;
 
+    // compression version 4
+    static void compress4(double v, double precision, BitSet& bitset);
+    static void compress4(int64_t n, BitSet& bitset);
+    static void compress4a(uint32_t n, BitSet& bitset);
+    static double uncompress_f4(BitSetCursor *cursor, double precision, BitSet& bitset);
+    static int64_t uncompress_i4(BitSetCursor *cursor, BitSet& bitset);
+    static uint32_t uncompress_i4a(BitSetCursor *cursor, BitSet& bitset);
+
 protected:
     Compressor();
 
@@ -200,11 +208,7 @@ private:
 
     Compressor_v4();
     void compress1(Timestamp timestamp, double value);
-    void compress(double v);
-    void compress(int64_t n);
     void uncompress(DataPointVector& dps, bool restore);
-    double uncompress_f(BitSetCursor *cursor);
-    int64_t uncompress_i(BitSetCursor *cursor);
 
     BitSet m_bitset;
     uint16_t m_dp_count;

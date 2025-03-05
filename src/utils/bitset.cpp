@@ -452,6 +452,16 @@ BitSetCursor::init(BitSet *bitset)
     m_start = 0;
 }
 
+void
+BitSetCursor::ignore_rest_of_byte()
+{
+    if (m_start != 0)
+    {
+        m_cursor++;
+        m_start = 0;
+    }
+}
+
 
 BitSet64::BitSet64(std::size_t size)
 {

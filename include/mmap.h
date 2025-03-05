@@ -295,6 +295,7 @@ public:
     void query_ext(const TimeRange& range, std::unordered_map<TimeSeriesId,struct rollup_entry_ext>& map);
     // used by Tsdb::rollup()
     void query(std::unordered_map<TimeSeriesId,std::vector<struct rollup_entry_ext>>& data);
+    void recompress(std::unordered_map<TimeSeriesId,std::vector<struct rollup_entry_ext>>& data);
 
     void dec_ref_count();
     void inc_ref_count();
@@ -306,6 +307,7 @@ public:
 
 private:
     void flush();
+    FILE *open_4_recompress();
     int query_entry(const TimeRange& range, struct rollup_entry *entry, std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupType rollup);
 
     std::string m_name;

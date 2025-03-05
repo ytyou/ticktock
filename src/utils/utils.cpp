@@ -798,6 +798,14 @@ tokenize(const std::string& str, std::vector<std::string>& tokens, char delim)
     return true;
 }
 
+void
+replace_last(std::string& str, const std::string& old_sub, const std::string& new_sub)
+{
+    auto pos = str.rfind(old_sub);
+    if (pos != std::string::npos)
+        str.replace(pos, old_sub.size(), new_sub, 0, new_sub.size());
+}
+
 int
 replace_all(std::string& str, const std::string& from, const std::string& to)
 {
@@ -1083,7 +1091,7 @@ get_all_files(const std::string& pattern, std::vector<std::string>& files)
 }
 
 int
-create_dir(const std::string& path)
+create_dir(const std::string& path, bool except_last)
 {
     if (path.length() >= PATH_MAX)
     {
@@ -1093,14 +1101,16 @@ create_dir(const std::string& path)
 
     std::vector<std::string> dirs;
     tokenize(path, dirs, '/');
-    if (dirs.size() <= 0) return -1;
+    size_t size = dirs.size();
+    if (except_last && (1 <= size)) size--;
+    if (size <= 0) return -1;
 
     char buff[PATH_MAX];
     mode_t mode = S_IRWXU|S_IRGRP|S_IROTH;
 
     buff[0] = 0;
 
-    for (int i = 0; i < dirs.size(); i++)
+    for (int i = 0; i < size; i++)
     {
         if (dirs[i].length() <= 0) continue;
         std::strcat(buff, "/");

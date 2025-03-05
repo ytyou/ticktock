@@ -1251,6 +1251,51 @@ RollupDataFile::open(bool for_read)
     }
 }
 
+FILE *
+RollupDataFile::open_4_recompress()
+{
+    ASSERT(m_file == nullptr);
+    FILE *fp = nullptr;
+    std::string name(m_name);
+    replace_last(name, "/rollup/", "/rollup2/");
+    create_dir(name, true);
+
+    int fd = ::open(name.c_str(), O_RDWR|O_CREAT|O_APPEND|O_NONBLOCK, S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH);
+    fd = FileDescriptorManager::dup_fd(fd, FileDescriptorType::FD_FILE);
+
+    if (fd == -1)
+    {
+        Logger::error("Failed to open rollup data file %s for write: %d", name.c_str(), errno);
+    }
+    else
+    {
+        struct stat sb;
+        std::memset(&sb, 0, sizeof(sb));
+
+        if (fstat(fd, &sb) == -1)
+            Logger::error("Failed to fstat file %s, errno = %d", name.c_str(), errno);
+
+        if (sb.st_size == 0)
+        {
+            int64_t length = RollupManager::get_rollup_data_file_size(m_monthly);
+
+            if (g_sys_page_size < length)
+            {
+                if (fallocate(fd, FALLOC_FL_KEEP_SIZE, 0, length) != 0)
+                    Logger::warn("fallocate(%d) failed, errno = %d", fd, errno);
+                else
+                    Logger::debug("fallocate(%s, %lu) called", name.c_str(), length);
+            }
+        }
+
+        fp = fdopen(fd, "a+b");
+        ASSERT(fp != nullptr);
+        Logger::debug("opening %s for write", name.c_str());
+    }
+
+    return fp;
+}
+
 void
 RollupDataFile::flush()
 {
@@ -1718,6 +1763,86 @@ RollupDataFile::query(std::unordered_map<TimeSeriesId,std::vector<struct rollup_
         auto& ext = it.second.back();
         ext.tstamp = step_down(ext.tstamp, g_rollup_interval_1d);
     }
+}
+
+// called by Tsdb::rollup() task to re-compress level 1 rollup data
+void
+RollupDataFile::recompress(std::unordered_map<TimeSeriesId,std::vector<struct rollup_entry_ext>>& data)
+{
+    bool success = true;
+    BitSet bitset;
+    FILE *fp = open_4_recompress();
+    size_t buff_size = MemoryManager::get_network_buffer_size();
+    uint8_t *buff = (uint8_t*)MemoryManager::alloc_network_buffer();
+
+    if (fp == nullptr)
+        return;
+
+    try
+    {
+        for (auto elem: data)
+        {
+            TimeSeriesId tid = elem.first;
+            std::vector<struct rollup_entry_ext>& entries = elem.second;
+            bitset.init(buff, buff_size);
+
+            // Write tid first
+            Compressor::compress4a(tid, bitset);
+            Compressor::compress4a(entries.size(), bitset);
+
+            uint32_t prev_cnt = 0;
+            double prev_min = 0.0, prev_min_delta = 0.0;
+            double prev_max = 0.0, prev_max_delta = 0.0;
+            double prev_sum = 0.0, prev_sum_delta = 0.0;
+
+            for (auto& entry: entries)
+            {
+                int64_t cnt_delta = (int64_t)entry.cnt - (int64_t)prev_cnt;
+                double min_delta = entry.min - prev_min;
+                double min_dod = min_delta - prev_min_delta;
+                double max_delta = entry.max - prev_max;
+                double max_dod = max_delta - prev_max_delta;
+                double sum_delta = entry.sum - prev_sum;
+                double sum_dod = sum_delta - prev_sum_delta;
+
+                prev_cnt = entry.cnt;
+                prev_min = entry.min; prev_min_delta = min_delta;
+                prev_max = entry.max; prev_max_delta = max_delta;
+                prev_sum = entry.sum; prev_sum_delta = sum_delta;
+
+                Compressor::compress4(cnt_delta, bitset);
+
+                if (entry.cnt != 0)
+                {
+                    Compressor::compress4(min_dod, m_compressor_precision, bitset);
+                    Compressor::compress4(max_dod, m_compressor_precision, bitset);
+                    Compressor::compress4(sum_dod, m_compressor_precision, bitset);
+                }
+            }
+
+            // write to file
+            std::fwrite(buff, bitset.size_in_bytes(), 1, fp);
+        }
+    }
+    catch(const std::out_of_range& e)
+    {
+        success = false;
+    }
+
+    MemoryManager::free_network_buffer((char*)buff);
+
+    if (fp != nullptr)
+    {
+        fflush(fp);
+        fclose(fp);
+    }
+
+    if (success)
+    {
+        // TODO: switch to recompressed version
+    }
+    else
+        Logger::warn("RollupDataFile::recompress() failed!");
 }
 
 std::string

@@ -3818,6 +3818,7 @@ Tsdb::rollup(TaskData& data)
 
             std::unordered_map<TimeSeriesId,std::vector<struct rollup_entry_ext>> data;
             data_file_1h->query(data);
+            data_file_1h->recompress(data);
             data_file_1h->dec_ref_count();
 
             RollupDataFile *data_file_1d =

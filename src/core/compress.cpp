@@ -115,6 +115,213 @@ Compressor::create(int version)
     return compressor;
 }
 
+void
+Compressor::compress4(double v, double precision, BitSet& bitset)
+{
+    double i, f;
+
+    f = std::modf(v, &i);
+
+    if (std::abs(f) < (1.0 / precision))
+    {
+        uint8_t one_zero = 0x00;
+        bitset.append(reinterpret_cast<uint8_t*>(&one_zero), 1, 0);
+        compress4((int64_t)v, bitset);
+    }
+    else
+    {
+        uint8_t one_zero = 0x80;
+        bitset.append(reinterpret_cast<uint8_t*>(&one_zero), 1, 0);
+        compress4((int64_t)std::llround(v * precision), bitset);
+    }
+}
+
+void
+Compressor::compress4a(uint32_t n, BitSet& bitset)
+{
+    uint8_t flag;
+    uint32_t be = htobe32(n);
+
+    if (n <= 255)
+    {
+        // store '00' followed by 1 byte
+        flag = 0x00;
+        bitset.append(reinterpret_cast<uint8_t*>(&flag), 2, 0);
+        bitset.append(reinterpret_cast<uint8_t*>(&be), 8, 32-8);
+    }
+    else if (n <= 65535)
+    {
+        // store '01' followed by 2 bytes
+        flag = 0x40;
+        bitset.append(reinterpret_cast<uint8_t*>(&flag), 2, 0);
+        bitset.append(reinterpret_cast<uint8_t*>(&be), 16, 32-16);
+    }
+    else if (n <= 16777215)
+    {
+        // store '10' followed by 3 bytes
+        flag = 0x80;
+        bitset.append(reinterpret_cast<uint8_t*>(&flag), 2, 0);
+        bitset.append(reinterpret_cast<uint8_t*>(&be), 24, 32-24);
+    }
+    else
+    {
+        // store '11' followed by 4 bytes
+        flag = 0xC0;
+        bitset.append(reinterpret_cast<uint8_t*>(&flag), 2, 0);
+        bitset.append(reinterpret_cast<uint8_t*>(&be), 32, 0);
+    }
+}
+
+void
+Compressor::compress4(int64_t n, BitSet& bitset)
+{
+    if (n == 0)
+    {
+        // store a single '0' bit
+        uint8_t zero = 0x00;
+        bitset.append(reinterpret_cast<uint8_t*>(&zero), 1, 0);
+    }
+    else if ((-2048 <= n) && (n <= 2047))
+    {
+        // store '10' followed by value in 12 bits
+        uint8_t one_zero = 0x80;
+        bitset.append(reinterpret_cast<uint8_t*>(&one_zero), 2, 0);
+        uint16_t dod_be = htobe16((uint16_t)n);
+        bitset.append(reinterpret_cast<uint8_t*>(&dod_be), 12, 16-12);
+    }
+    else if ((-65536 <= n) && (n <= 65535))
+    {
+        // store '110' followed by value in 17 bits
+        uint8_t one_one_zero = 0xC0;
+        bitset.append(reinterpret_cast<uint8_t*>(&one_one_zero), 3, 0);
+        uint32_t dod_be = htobe32((uint32_t)n);
+        bitset.append(reinterpret_cast<uint8_t*>(&dod_be), 17, 32-17);
+    }
+    else
+    {
+        // store '111' followed by value in 64 bits
+        uint8_t one_one_one = 0xE0;
+        bitset.append(reinterpret_cast<uint8_t*>(&one_one_one), 3, 0);
+        uint64_t dod_be = htobe64((uint64_t)n);
+        bitset.append(reinterpret_cast<uint8_t*>(&dod_be), 64, 0);
+    }
+}
+
+double
+Compressor::uncompress_f4(BitSetCursor *cursor, double precision, BitSet& bitset)
+{
+    uint8_t byte = 0;
+
+    bitset.retrieve(cursor, &byte, 1, 0);
+
+    if ((byte & 0x80) == 0)
+    {
+        return (double)uncompress_i4(cursor, bitset);
+    }
+    else
+    {
+        int64_t v = uncompress_i4(cursor, bitset);
+        return ((double)v) / precision;
+    }
+}
+
+int64_t
+Compressor::uncompress_i4(BitSetCursor *cursor, BitSet& bitset)
+{
+    uint8_t byte = 0;
+    int64_t result;
+
+    bitset.retrieve(cursor, &byte, 1, 0);
+
+    if ((byte & 0x80) == 0)
+    {
+        result = 0;
+    }
+    else
+    {
+        uint64_t delta_of_delta = 0;
+
+        bitset.retrieve(cursor, &byte, 1, 0);
+
+        if ((byte & 0x80) == 0)
+        {
+            // 12-bit
+            uint16_t dod_be = 0;
+            bitset.retrieve(cursor, reinterpret_cast<uint8_t*>(&dod_be), 12, 16-12);
+
+            if ((*reinterpret_cast<uint16_t*>(&dod_be) & 0x0008) != 0)
+            {
+                dod_be |= 0x00F0;
+            }
+            else
+            {
+                dod_be &= 0xFF07;
+            }
+
+            result = (int16_t)htobe16(dod_be);
+        }
+        else
+        {
+            bitset.retrieve(cursor, &byte, 1, 0);
+
+            if ((byte & 0x80) == 0)
+            {
+                // 17-bit
+                uint32_t dod_be = 0;
+                bitset.retrieve(cursor, reinterpret_cast<uint8_t*>(&dod_be), 17, 32-17);
+
+                if ((*reinterpret_cast<uint32_t*>(&dod_be) & 0x00000100) != 0)
+                {
+                    dod_be |= 0x0000FEFF;
+                }
+                else
+                {
+                    dod_be &= 0xFFFF0000;
+                }
+
+                result = (int32_t)htobe32(dod_be);
+            }
+            else
+            {
+                // 64-bit
+                uint64_t dod_be;
+                bitset.retrieve(cursor, reinterpret_cast<uint8_t*>(&dod_be), 64, 0);
+                result = (int64_t)htobe64(dod_be);
+            }
+        }
+    }
+
+    return result;
+}
+
+uint32_t
+Compressor::uncompress_i4a(BitSetCursor *cursor, BitSet& bitset)
+{
+    uint8_t byte = 0;
+    uint32_t be = 0;
+
+    bitset.retrieve(cursor, &byte, 2, 0);
+
+    if ((byte & 0xC0) == 0)
+    {
+        bitset.retrieve(cursor, reinterpret_cast<uint8_t*>(&be), 8, 32-8);
+    }
+    else if ((byte & 0xC0) == 0x40)
+    {
+        bitset.retrieve(cursor, reinterpret_cast<uint8_t*>(&be), 16, 32-16);
+    }
+    else if ((byte & 0xC0) == 0x80)
+    {
+        bitset.retrieve(cursor, reinterpret_cast<uint8_t*>(&be), 24, 32-24);
+    }
+    else
+    {
+        bitset.retrieve(cursor, reinterpret_cast<uint8_t*>(&be), 32, 0);
+    }
+
+    return be32toh(be);
+}
+
 Timestamp &
 Compressor::get_start_tstamp()
 {
@@ -322,14 +529,14 @@ Compressor_v4::compress(Timestamp timestamp, double value)
         if (UNLIKELY(m_dp_count == 1))
         {
             m_bitset.save_check_point();
-            compress(delta_of_delta);
-            compress(delta_v);
+            compress4(delta_of_delta, m_bitset);
+            compress4(delta_v, m_precision, m_bitset);
         }
         else if (UNLIKELY(m_dp_count == 2))
         {
             m_bitset.save_check_point();
-            compress(delta_of_delta);
-            compress(delta_of_delta_v);
+            compress4(delta_of_delta, m_bitset);
+            compress4(delta_of_delta_v, m_precision, m_bitset);
         }
         else if (((std::abs(delta_v - m_prev_value_delta) < (1.0 / m_precision)) && (delta == m_prev_tstamp_delta) && (m_repeat < m_max_repetition)) && !m_padded)
         {
@@ -342,8 +549,8 @@ Compressor_v4::compress(Timestamp timestamp, double value)
         {
             pad();
             m_bitset.save_check_point();
-            compress(delta_of_delta);
-            compress(delta_of_delta_v);
+            compress4(delta_of_delta, m_bitset);
+            compress4(delta_of_delta_v, m_precision, m_bitset);
 
             if (m_bitset.avail_capacity_in_bits() < 1)
                 throw std::out_of_range("bitset is full");
@@ -369,88 +576,6 @@ Compressor_v4::compress(Timestamp timestamp, double value)
 
     ASSERT(m_bitset.avail_capacity_in_bits() >= 1);
     return true;
-}
-
-void
-Compressor_v4::compress(double v)
-{
-    double i, f;
-
-    f = std::modf(v, &i);
-
-    if (std::abs(f) < (1.0 / m_precision))
-    {
-        uint8_t one_zero = 0x00;
-        m_bitset.append(reinterpret_cast<uint8_t*>(&one_zero), 1, 0);
-        compress((int64_t)v);
-    }
-    else
-    {
-        uint8_t one_zero = 0x80;
-        m_bitset.append(reinterpret_cast<uint8_t*>(&one_zero), 1, 0);
-        compress((int64_t)std::llround(v * m_precision));
-    }
-}
-
-void
-Compressor_v4::compress(int64_t n)
-{
-    if (n == 0)
-    {
-        // store a single '0' bit
-        uint8_t zero = 0x00;
-        m_bitset.append(reinterpret_cast<uint8_t*>(&zero), 1, 0);
-    }
-/*
-    else if ((-32 <= n) && (n <= 31))
-    {
-        // store '10' followed by value in 6 bits
-        uint8_t one_zero = 0x80;
-        m_bitset.append(reinterpret_cast<uint8_t*>(&one_zero), 2, 0);
-        uint8_t dod_be = htobe16((uint8_t)n);
-        m_bitset.append(&dod_be, 6, 8-6);
-    }
-    else if ((-8192 <= n) && (n <= 8191))
-    {
-        // store '10' followed by value in 14 bits
-        uint8_t one_zero = 0x80;
-        m_bitset.append(reinterpret_cast<uint8_t*>(&one_zero), 2, 0);
-        uint16_t dod_be = htobe16((uint16_t)n);
-        m_bitset.append(reinterpret_cast<uint8_t*>(&dod_be), 14, 16-14);
-    }
-    else if ((-4096 <= n) && (n <= 4095))
-    {
-        // store '10' followed by value in 13 bits
-        uint8_t one_zero = 0x80;
-        m_bitset.append(reinterpret_cast<uint8_t*>(&one_zero), 2, 0);
-        uint16_t dod_be = htobe16((uint16_t)n);
-        m_bitset.append(reinterpret_cast<uint8_t*>(&dod_be), 13, 16-13);
-    }
-*/
-    else if ((-2048 <= n) && (n <= 2047))
-    {
-        // store '10' followed by value in 12 bits
-        uint8_t one_zero = 0x80;
-        m_bitset.append(reinterpret_cast<uint8_t*>(&one_zero), 2, 0);
-        uint16_t dod_be = htobe16((uint16_t)n);
-        m_bitset.append(reinterpret_cast<uint8_t*>(&dod_be), 12, 16-12);
-    }
-    else if ((-65536 <= n) && (n <= 65535))
-    {
-        // store '110' followed by value in 17 bits
-        uint8_t one_one_zero = 0xC0;
-        m_bitset.append(reinterpret_cast<uint8_t*>(&one_one_zero), 3, 0);
-        uint32_t dod_be = htobe32((uint32_t)n);
-        m_bitset.append(reinterpret_cast<uint8_t*>(&dod_be), 17, 32-17);
-    }
-    else
-    {
-        // store '111' followed by value in 64 bits
-        uint8_t one_one_one = 0xE0;
-        m_bitset.append(reinterpret_cast<uint8_t*>(&one_one_one), 3, 0);
-        uint64_t dod_be = htobe64((uint64_t)n);
-        m_bitset.append(reinterpret_cast<uint8_t*>(&dod_be), 64, 0);
-    }
 }
 
 void
@@ -480,13 +605,13 @@ Compressor_v4::uncompress(DataPointVector& dps, bool restore)
     // 2nd data-point
     try
     {
-        delta_of_delta = uncompress_i(cursor);
+        delta_of_delta = uncompress_i4(cursor, m_bitset);
         delta += delta_of_delta;
         ASSERT(timestamp < (timestamp + delta));
         timestamp += delta;
         ASSERT(timestamp < MAX_MS_SINCE_EPOCH);
 
-        delta_v = uncompress_f(cursor);
+        delta_v = uncompress_f4(cursor, m_precision, m_bitset);
         value += delta_v;
         dps.emplace_back(timestamp, value);
     }
@@ -499,7 +624,7 @@ Compressor_v4::uncompress(DataPointVector& dps, bool restore)
         try
         {
             // timestamp
-            delta_of_delta = uncompress_i(cursor);
+            delta_of_delta = uncompress_i4(cursor, m_bitset);
             ASSERT(delta_of_delta < (int64_t)MAX_MS_SINCE_EPOCH);
             ASSERT((delta + delta_of_delta) < MAX_MS_SINCE_EPOCH);
             delta += delta_of_delta;
@@ -508,7 +633,7 @@ Compressor_v4::uncompress(DataPointVector& dps, bool restore)
             ASSERT(timestamp < MAX_MS_SINCE_EPOCH);
 
             // value
-            double delta_of_delta_v = uncompress_f(cursor);
+            double delta_of_delta_v = uncompress_f4(cursor, m_precision, m_bitset);
             delta_v += delta_of_delta_v;
             value += delta_v;
             dps.emplace_back(timestamp, value);
@@ -565,93 +690,6 @@ Compressor_v4::uncompress(DataPointVector& dps, bool restore)
     }
 
     ASSERT(get_start_tstamp() <= m_prev_tstamp);
-}
-
-double
-Compressor_v4::uncompress_f(BitSetCursor *cursor)
-{
-    uint8_t byte = 0;
-
-    m_bitset.retrieve(cursor, &byte, 1, 0);
-
-    if ((byte & 0x80) == 0)
-    {
-        return (double)uncompress_i(cursor);
-    }
-    else
-    {
-        int64_t v = uncompress_i(cursor);
-        return ((double)v) / m_precision;
-    }
-}
-
-int64_t
-Compressor_v4::uncompress_i(BitSetCursor *cursor)
-{
-    uint8_t byte = 0;
-    int64_t result;
-
-    m_bitset.retrieve(cursor, &byte, 1, 0);
-
-    if ((byte & 0x80) == 0)
-    {
-        result = 0;
-    }
-    else
-    {
-        uint64_t delta_of_delta = 0;
-
-        m_bitset.retrieve(cursor, &byte, 1, 0);
-
-        if ((byte & 0x80) == 0)
-        {
-            // 12-bit
-            uint16_t dod_be = 0;
-            m_bitset.retrieve(cursor, reinterpret_cast<uint8_t*>(&dod_be), 12, 16-12);
-
-            if ((*reinterpret_cast<uint16_t*>(&dod_be) & 0x0008) != 0)
-            {
-                dod_be |= 0x00F0;
-            }
-            else
-            {
-                dod_be &= 0xFF07;
-            }
-
-            result = (int16_t)htobe16(dod_be);
-        }
-        else
-        {
-            m_bitset.retrieve(cursor, &byte, 1, 0);
-
-            if ((byte & 0x80) == 0)
-            {
-                // 17-bit
-                uint32_t dod_be = 0;
-                m_bitset.retrieve(cursor, reinterpret_cast<uint8_t*>(&dod_be), 17, 32-17);
-
-                if ((*reinterpret_cast<uint32_t*>(&dod_be) & 0x00000100) != 0)
-                {
-                    dod_be |= 0x0000FEFF;
-                }
-                else
-                {
-                    dod_be &= 0xFFFF0000;
-                }
-
-                result = (int32_t)htobe32(dod_be);
-            }
-            else
-            {
-                // 64-bit
-                uint64_t dod_be;
-                m_bitset.retrieve(cursor, reinterpret_cast<uint8_t*>(&dod_be), 64, 0);
-                result = (int64_t)htobe64(dod_be);
-            }
-        }
-    }
-
-    return result;
 }
 
 bool
