@@ -1219,15 +1219,16 @@ Tsdb::restore_tsdb(const std::string& dir)
     tokens.clear();
     tokenize(last, tokens, '.');
 
-    if (tokens.size() != 2)
+    if ((tokens.size() != 2) || (! is_timestamp(tokens[0])) || (! is_timestamp(tokens[1])))
     {
         // not necessarily an error; could be artifacts of compaction
         Logger::info("tsdb dir %s ignored during restore_tsdb()", dir.c_str());
         return;
     }
 
-    Timestamp start = std::stoull(tokens[0].c_str());
-    Timestamp end = std::stoull(tokens[1].c_str());
+    std::size_t pos;
+    Timestamp start = std::stoull(tokens[0], &pos, 10);
+    Timestamp end = std::stoull(tokens[1], &pos, 10);
 
     if (g_tstamp_resolution_ms)
     {
@@ -2238,7 +2239,6 @@ Tsdb::append_page(MetricId mid, TimeSeriesId tid, FileIndex prev_file_idx, Heade
     // adjust range in tsdb_header
     Timestamp from = m_time_range.get_from() + tstamp_from;
     Timestamp to = m_time_range.get_from() + header->m_tstamp_to;
-
     ASSERT(to <= m_time_range.get_to());
 
     Timestamp middle = m_time_range.get_middle();
@@ -3807,6 +3807,8 @@ Tsdb::rollup(TaskData& data)
             Config::inst()->get_int(CFG_TSDB_ROLLUP_BUCKETS,CFG_TSDB_ROLLUP_BUCKETS_DEF);
         int pause = interactive ? 0 :
             Config::inst()->get_time(CFG_TSDB_ROLLUP_PAUSE,TimeUnit::SEC,CFG_TSDB_ROLLUP_PAUSE_DEF);
+        bool recompress_success = true;
+        std::vector<RollupDataFile*> data_files_1h;
 
         for (int bucket = 0; bucket < bucket_count; bucket++)
         {
@@ -3818,8 +3820,9 @@ Tsdb::rollup(TaskData& data)
 
             std::unordered_map<TimeSeriesId,std::vector<struct rollup_entry_ext>> data;
             data_file_1h->query(data);
-            data_file_1h->recompress(data);
+            recompress_success = recompress_success && data_file_1h->recompress(data);
             data_file_1h->dec_ref_count();
+            data_files_1h.push_back(data_file_1h);
 
             RollupDataFile *data_file_1d =
                 RollupManager::get_or_create_data_file_by_bucket_1d(bucket, month_range.get_from());
@@ -3831,16 +3834,25 @@ Tsdb::rollup(TaskData& data)
                 std::this_thread::sleep_for(std::chrono::seconds(pause));
         }
 
+        if (recompress_success)
+        {
+            // switch to newly compressed rollup files
+            recompress_success = RollupManager::swap_recompressed_files(data_files_1h);
+        }
+
         data.integer = tsdbs.size();
 
-        for (auto tsdb: tsdbs)
+        if (recompress_success)
         {
-            std::lock_guard<std::mutex> guard(tsdb->m_lock);
-            //tsdb->m_mode |= TSDB_MODE_ROLLED_UP;
-            tsdb->m_mode = tsdb->m_mode.load() | TSDB_MODE_ROLLED_UP;
-            std::string dir = get_tsdb_dir_name(tsdb->m_time_range);
-            tsdb->write_config(dir);    // persist the 'rolled_up' status
-            tsdb->dec_ref_count();
+            for (auto tsdb: tsdbs)
+            {
+                std::lock_guard<std::mutex> guard(tsdb->m_lock);
+                //tsdb->m_mode |= TSDB_MODE_ROLLED_UP;
+                tsdb->m_mode = tsdb->m_mode.load() | TSDB_MODE_ROLLED_UP;
+                std::string dir = get_tsdb_dir_name(tsdb->m_time_range);
+                tsdb->write_config(dir);    // persist the 'rolled_up' status
+                tsdb->dec_ref_count();
+            }
         }
 
         Logger::info("[rollup] rolled up %d Tsdbs.", data.integer);

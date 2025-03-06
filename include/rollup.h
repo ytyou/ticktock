@@ -77,6 +77,7 @@ public:
     static void query(MetricId mid, const TimeRange& range, std::unordered_map<TimeSeriesId,struct rollup_entry_ext>& output);
     static double query(struct rollup_entry *entry, RollupType type);
     static void rotate();
+    static bool swap_recompressed_files(std::vector<RollupDataFile*>& data_files);
 
     static Config *get_rollup_config(int year, bool create);
     static Config *get_rollup_config(int year, int month, bool create);

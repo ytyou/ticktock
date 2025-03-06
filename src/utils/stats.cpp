@@ -529,11 +529,15 @@ Stats::collect_proc_io(Timestamp tstamp, Tsdb *tsdb)
         {
             if (starts_with(line.c_str(), "read"))
             {
-                read_bytes = std::stoull(line.c_str() + 12);
+                char *end;
+                read_bytes = std::strtoull(line.c_str() + 12, &end, 10);
+                //read_bytes = std::stoull(line.c_str() + 12);
             }
             else if (starts_with(line.c_str(), "write"))
             {
-                write_bytes = std::stoull(line.c_str() + 13);
+                char *end;
+                write_bytes = std::strtoull(line.c_str() + 13, &end, 10);
+                //write_bytes = std::stoull(line.c_str() + 13);
             }
         }
 

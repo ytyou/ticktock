@@ -478,6 +478,12 @@ parse_ts(const JsonValue *value, Timestamp now, const char *tz)
     return ts;
 }
 
+bool
+is_timestamp(std::string& str)
+{
+    return !str.empty() && (str.find_first_not_of("0123456789") == std::string::npos);
+}
+
 long
 get_tz_diff(const char *tz)
 {
@@ -867,6 +873,14 @@ file_exists(const std::string& full_path)
     return (stat(full_path.c_str(), &buff) == 0);
 }
 
+void
+copy_file(const std::string& src_file, const std::string& dst_file)
+{
+    std::ifstream src(src_file, std::ios::binary);
+    std::ofstream dst(dst_file, std::ios::binary);
+    dst << src.rdbuf();
+}
+
 int
 rm_file(const std::string& full_path)
 {
@@ -1133,6 +1147,13 @@ create_dir(const std::string& path, bool except_last)
     }
 
     return 0;
+}
+
+std::string
+get_dir_of(std::string& file_name)
+{
+    auto pos = file_name.rfind('/');
+    return (pos == std::string::npos) ? "" : file_name.substr(0, pos);
 }
 
 FileIndex

@@ -84,6 +84,7 @@ extern Timestamp to_ns(Timestamp tstamp);
 extern Timestamp to_sec(Timestamp tstamp);
 extern Timestamp to_us(Timestamp tstamp);
 extern Timestamp parse_ts(const JsonValue *value, Timestamp now, const char *tz);
+extern bool is_timestamp(std::string& str);
 extern long get_tz_diff(const char *tz);
 extern TimeUnit to_time_unit(const char *str, size_t len);
 extern Timestamp convert_time(Timestamp time, TimeUnit from_unit, TimeUnit to_unit);
@@ -116,6 +117,7 @@ extern Timestamp step_down(Timestamp ts, Timestamp interval);
 
 extern bool file_exists(const std::string& full_path);
 extern void get_all_files(const std::string& pattern, std::vector<std::string>& file_names);
+extern void copy_file(const std::string& src_file, const std::string& dst_file);
 extern int rm_file(const std::string& full_path);
 extern int rm_all_files(const std::string& pattern);
 extern void rm_dir(const std::string& full_path);   // rm all files one-level down as well
@@ -126,6 +128,7 @@ extern uint64_t get_disk_available_blocks(const std::string& full_path);
 extern uint64_t get_ram_total();
 extern void for_all_dirs(const std::string& root, void (*func)(const std::string& dir), int level);
 extern int create_dir(const std::string& path, bool except_last = false);
+extern std::string get_dir_of(std::string& file_name);
 extern FileIndex get_file_suffix(const std::string& file_name);
 extern bool is_dir_empty(const std::string& path);
 extern void set_hostname_working_dir();

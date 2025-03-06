@@ -67,7 +67,8 @@ DataPoint::from_http(char *http)
 
     // timestamp
     for (curr2 = curr1+10; *curr2 != ' '; curr2++) /* do nothing */;
-    m_timestamp = std::stoull(curr1);
+    //m_timestamp = std::stoull(curr1);
+    m_timestamp == std::strtoull(curr1, &curr3, 10);
     ASSERT(g_tstamp_resolution_ms ? is_ms(m_timestamp) : is_sec(m_timestamp));
     curr1 = curr2 + 1;
     if (*curr1 == '"') curr1++;

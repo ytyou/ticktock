@@ -276,6 +276,8 @@ public:
     bool is_open(bool for_read) const;
     inline int64_t size() const { return m_size; }
     inline Timestamp get_begin_timestamp() const { return m_begin; }
+    std::string get_rollup_dir() { return get_dir_of(m_name); }
+    std::string get_rollup_dir2();  // this is a tmp dir used during recompress
 
     inline bool empty() const { return (m_index == 0) && !file_exists(m_name); }
     inline void remove() { rm_file(m_name); }
@@ -295,10 +297,11 @@ public:
     void query_ext(const TimeRange& range, std::unordered_map<TimeSeriesId,struct rollup_entry_ext>& map);
     // used by Tsdb::rollup()
     void query(std::unordered_map<TimeSeriesId,std::vector<struct rollup_entry_ext>>& data);
-    void recompress(std::unordered_map<TimeSeriesId,std::vector<struct rollup_entry_ext>>& data);
+    bool recompress(std::unordered_map<TimeSeriesId,std::vector<struct rollup_entry_ext>>& data);
 
     void dec_ref_count();
     void inc_ref_count();
+    int get_ref_count() const { return m_ref_count; }
 
     static std::string get_name_by_mid_1h(MetricId mid, int year, int month);
     static std::string get_name_by_bucket_1h(int bucket, int year, int month);

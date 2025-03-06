@@ -668,6 +668,74 @@ RollupManager::rotate()
     }
 }
 
+/* @return true if swap was successful
+ */
+bool
+RollupManager::swap_recompressed_files(std::vector<RollupDataFile*>& data_files)
+{
+    bool success = false;
+
+    if (data_files.empty())
+        return success;
+
+    for (int i = 0; i < 10 && !success; i++)
+    {
+        bool in_use = false;
+        std::lock_guard<std::mutex> guard(m_lock);
+
+        for (auto file: data_files)
+        {
+            if (file->get_ref_count() != 0)
+            {
+                in_use = true;
+                break;
+            }
+        }
+
+        if (! in_use)
+        {
+            RollupDataFile *file = data_files.front();
+            ASSERT(file != nullptr);
+
+            std::string old_dir = file->get_rollup_dir();
+            std::string new_dir = file->get_rollup_dir2();
+            std::string bak_dir(old_dir);
+
+            // copy over the config file
+            std::string old_cfg(old_dir);
+            std::string new_cfg(new_dir);
+            old_cfg.append("/config");
+            new_cfg.append("/config");
+            copy_file(old_cfg, new_cfg);
+
+            bak_dir.append(".bak", 4);
+            rm_dir(bak_dir);    // make sure it does not exist
+            std::rename(old_dir.c_str(), bak_dir.c_str());
+            std::rename(new_dir.c_str(), old_dir.c_str());
+
+            // update config
+            int year, month;
+            get_year_month(file->get_begin_timestamp(), year, month);
+            Config *cfg = get_rollup_config(year, month, false);
+            if (cfg == nullptr)
+                Logger::warn("No rollup config found for year %lu, month %lu", year, month);
+            else
+            {
+                ASSERT(cfg->exists(CFG_TSDB_ROLLUP_COMPRESSOR_VERSION));
+                ASSERT(cfg->get_int(CFG_TSDB_ROLLUP_COMPRESSOR_VERSION) == 1);
+                cfg->set_value(CFG_TSDB_ROLLUP_COMPRESSOR_VERSION, "2");
+                cfg->persist();
+            }
+
+            success = true;
+        }
+        else
+            std::this_thread::sleep_for(std::chrono::seconds(1));
+    }
+
+    return success;
+}
+
 // Remember sizes of recent rollup data files
 void
 RollupManager::add_data_file_size(int64_t size)

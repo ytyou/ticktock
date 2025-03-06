@@ -2001,7 +2001,7 @@ RollupCompressor_v1::compress(uint8_t *buff, TimeSeriesId tid, uint32_t cnt, dou
 
     int64_t n = std::llround(min * precision);
 
-    if (-32768 <= n && n <= 32767)
+    if (INT16_MIN <= n && n <= INT16_MAX)
     {
         compress_int16(n, buff+idx);
         idx += 2;
@@ -2012,7 +2012,7 @@ RollupCompressor_v1::compress(uint8_t *buff, TimeSeriesId tid, uint32_t cnt, dou
         compress_int24(n, buff+idx);
         idx += 3;
     }
-    else if (-2147483648 <= n && n <= 2147483647)
+    else if (INT32_MIN <= n && n <= INT32_MAX)
     {
         buff[0] |= 0x20;
         compress_int32(n, buff+idx);
@@ -2032,7 +2032,7 @@ RollupCompressor_v1::compress(uint8_t *buff, TimeSeriesId tid, uint32_t cnt, dou
         compress_int24(n, buff+idx);
         idx += 3;
     }
-    else if (-2147483648 <= n && n <= 2147483647)
+    else if (INT32_MIN <= n && n <= INT32_MAX)
     {
         buff[0] |= 0x04;
         compress_int32(n, buff+idx);
@@ -2058,7 +2058,7 @@ RollupCompressor_v1::compress(uint8_t *buff, TimeSeriesId tid, uint32_t cnt, dou
         compress_int24(n, buff+idx);
         idx += 3;
     }
-    else if (-2147483648 <= n && n <= 2147483647)
+    else if (INT32_MIN <= n && n <= INT32_MAX)
     {
         buff[0] |= 0x01;
         compress_int32(n, buff+idx);
@@ -2075,6 +2075,147 @@ RollupCompressor_v1::compress(uint8_t *buff, TimeSeriesId tid, uint32_t cnt, dou
         buff[0] |= 0x03;
         compress_int64(n, buff+idx);
         idx += 8;
+    }
+
+    return idx;
+}
+
+/* flag bits:
+ *   1st bit: tid (0 => 3 bytes, 1 => 4 bytes)
+ *   2nd bit: cnt (0 => 2 bytes, 1 => 4 bytes)
+ *   3-4 bit: min (00 => 2 bytes, 01 => 3 bytes, 10 => 4 bytes, 11 => 8 bytes)
+ *   5-6 bit: max (00 => 3 bytes, 01 => 4 bytes, 10 => 5 bytes, 11 => 8 bytes)
+ *   7-8 bit: sum (00 => 3 bytes, 01 => 4 bytes, 10 => 5 bytes, 11 => 8 bytes)
+ */
+int
+RollupCompressor_v1::compress2(uint8_t *buff, TimeSeriesId tid, uint32_t cnt, double min, double max, double sum, double precision)
+{
+    ASSERT(buff != nullptr);
+    ASSERT(tid != TT_INVALID_TIME_SERIES_ID);
+
+    int bytes;
+    int64_t n;
+    int idx = 1;
+
+    if (tid <= 0xFFFFFF)
+    {
+        buff[0] = 0x00;
+        compress_int24(tid, buff+idx);
+        idx += 3;
+    }
+    else
+    {
+        buff[0] = 0x80;
+        compress_int32(tid, buff+idx);
+        idx += 4;
+    }
+
+    if (cnt <= 0xFFFF)
+    {
+        compress_int16(cnt, buff+idx);
+        idx += 2;
+    }
+    else
+    {
+        buff[0] |= 0x40;
+        compress_int32(cnt, buff+idx);
+        idx += 4;
+    }
+
+    if (cnt == 0)
+        return idx;
+
+    bytes = bytes_needed(min, precision);
+
+    if (4 < bytes)
+    {
+        buff[0] |= 0x30;
+        compress_double(min, buff+idx);
+        idx += 8;
+    }
+    else
+    {
+        n = std::llround(min * precision);
+
+        if (bytes <= 2)
+        {
+            compress_int16(n, buff+idx);
+            idx += 2;
+        }
+        else if (bytes == 3)
+        {
+            buff[0] |= 0x10;
+            compress_int24(n, buff+idx);
+            idx += 3;
+        }
+        else
+        {
+            buff[0] |= 0x20;
+            compress_int32(n, buff+idx);
+            idx += 4;
+        }
+    }
+
+    bytes = bytes_needed(max, precision);
+
+    if (5 < bytes)
+    {
+        buff[0] |= 0x0C;
+        compress_double(max, buff+idx);
+        idx += 8;
+    }
+    else
+    {
+        n = std::llround(max * precision);
+
+        if (bytes <= 3)
+        {
+            compress_int24(n, buff+idx);
+            idx += 3;
+        }
+        else if (bytes == 4)
+        {
+            buff[0] |= 0x04;
+            compress_int32(n, buff+idx);
+            idx += 4;
+        }
+        else
+        {
+            buff[0] |= 0x08;
+            compress_int40(n, buff+idx);
+            idx += 5;
+        }
+    }
+
+    bytes = bytes_needed(sum, precision);
+
+    if (5 < bytes)
+    {
+        buff[0] |= 0x03;
+        compress_double(sum, buff+idx);
+        idx += 8;
+    }
+    else
+    {
+        n = std::llround(sum * precision);
+
+        if (bytes <= 3)
+        {
+            compress_int24(n, buff+idx);
+            idx += 3;
+        }
+        else if (bytes == 4)
+        {
+            buff[0] |= 0x01;
+            compress_int32(n, buff+idx);
+            idx += 4;
+        }
+        else
+        {
+            buff[0] |= 0x02;
+            compress_int40(n, buff+idx);
+            idx += 5;
+        }
     }
 
     return idx;
@@ -2204,7 +2345,6 @@ RollupCompressor_v1::uncompress(uint8_t *buff, int size, struct rollup_entry *en
         else
         {
             if ((size - len) < 8) return 0;
-
             int64_t sum = uncompress_int64(buff+len);
             entry->sum = (double)sum / precision;
             len += 8;
@@ -2218,6 +2358,172 @@ RollupCompressor_v1::uncompress(uint8_t *buff, int size, struct rollup_entry *en
     }
 
     return len;
+}
+
+/* @return Number of bytes processed during uncompress; 0 if not enough data in the buff
+ */
+int
+RollupCompressor_v1::uncompress2(uint8_t *buff, int size, struct rollup_entry *entry, double precision)
+{
+    ASSERT(buff != nullptr);
+    ASSERT(entry != nullptr);
+    ASSERT(precision != 0.0);
+
+    if (size < 6) return 0;
+
+    int len = 1;
+    uint8_t flag = buff[0];
+
+    if (flag & 0x80)            // tid
+    {
+        entry->tid = uncompress_uint32(buff+len);
+        len += 4;
+        ASSERT(len == 5);
+    }
+    else
+    {
+        entry->tid = uncompress_uint24(buff+len);
+        len += 3;
+        ASSERT(len == 4);
+    }
+
+    if (flag & 0x40)            // cnt
+    {
+        if ((size - len) < 4) return 0;
+        entry->cnt = uncompress_uint32(buff+len);
+        len += 4;
+    }
+    else
+    {
+        if ((size - len) < 2) return 0;
+        entry->cnt = uncompress_uint16(buff+len);
+        len += 2;
+    }
+
+    ASSERT(len <= 9);
+
+    if (entry->cnt != 0)
+    {
+        if ((size - len) < 8) return 0;     // not enough data in buffer
+
+        if ((flag & 0x30) == 0x00)          // min
+        {
+            int16_t min = uncompress_int16(buff+len);
+            entry->min = (double)min / precision;
+            len += 2;
+        }
+        else if ((flag & 0x30) == 0x10)
+        {
+            int32_t min = uncompress_int24(buff+len);
+            entry->min = (double)min / precision;
+            len += 3;
+        }
+        else if ((flag & 0x30) == 0x20)
+        {
+            int32_t min = uncompress_int32(buff+len);
+            entry->min = (double)min / precision;
+            len += 4;
+        }
+        else
+        {
+            entry->min = uncompress_double(buff+len);
+            len += 8;
+        }
+
+        if ((size - len) < 6) return 0;
+
+        if ((flag & 0x0C) == 0x00)          // max
+        {
+            int32_t max = uncompress_int24(buff+len);
+            entry->max = (double)max / precision;
+            len += 3;
+        }
+        else if ((flag & 0x0C) == 0x04)
+        {
+            int32_t max = uncompress_int32(buff+len);
+            entry->max = (double)max / precision;
+            len += 4;
+        }
+        else if ((flag & 0x0C) == 0x08)
+        {
+            int64_t max = uncompress_int40(buff+len);
+            entry->max = (double)max / precision;
+            len += 5;
+        }
+        else
+        {
+            if ((size - len) < 8) return 0;
+            entry->max = uncompress_double(buff+len);
+            len += 8;
+        }
+
+        if ((flag & 0x03) == 0x00)          // sum
+        {
+            if ((size - len) < 3) return 0;
+            int32_t sum = uncompress_int24(buff+len);
+            entry->sum = (double)sum / precision;
+            len += 3;
+        }
+        else if ((flag & 0x03) == 0x01)
+        {
+            if ((size - len) < 4) return 0;
+            int32_t sum = uncompress_int32(buff+len);
+            entry->sum = (double)sum / precision;
+            len += 4;
+        }
+        else if ((flag & 0x03) == 0x02)
+        {
+            if ((size - len) < 5) return 0;
+            int64_t sum = uncompress_int40(buff+len);
+            entry->sum = (double)sum / precision;
+            len += 5;
+        }
+        else
+        {
+            if ((size - len) < 8) return 0;
+            entry->sum = uncompress_double(buff+len);
+            len += 8;
+        }
+    }
+    else
+    {
+        entry->min = std::numeric_limits<double>::max();
+        entry->max = std::numeric_limits<double>::lowest();
+        entry->sum = 0.0;
+    }
+
+    return len;
+}
+
+/* @param f could be positive or negative number
+ * @param p must be positive
+ */
+int
+RollupCompressor_v1::bytes_needed(double f, double p)
+{
+    ASSERT(0.0 < p);
+
+    int bytes;
+
+    if (std::abs(f) < (((double)INT64_MAX / p) - 1.0))
+    {
+        int64_t n = std::llround(f * p);
+
+        if (INT16_MIN <= n && n <= INT16_MAX)
+            bytes = 2;
+        else if (-8388608 <= n && n <= 8388607)
+            bytes = 3;
+        else if (INT32_MIN <= n && n <= INT32_MAX)
+            bytes = 4;
+        else if (-549755813888 <= n && n <= 549755813887)
+            bytes = 5;
+        else
+            bytes = 8;
+    }
+    else
+        bytes = 8;
+
+    return bytes;
 }
 
 void
@@ -2267,6 +2573,12 @@ RollupCompressor_v1::compress_int64(int64_t n, uint8_t *buff)
 {
     uint64_t x = htobe64((uint64_t)n);
     std::memcpy(buff, (uint8_t*)&x, 8);
+}
+
+void
+RollupCompressor_v1::compress_double(double f, uint8_t *buff)
+{
+    std::memcpy(buff, (uint8_t*)&f, 8);
 }
 
 int16_t
@@ -2341,6 +2653,14 @@ RollupCompressor_v1::uncompress_int64(uint8_t *buff)
         ((uint8_t*)&x)[i] = buff[i];
 
     return (int64_t)htobe64(x);
+}
+
+double
+RollupCompressor_v1::uncompress_double(uint8_t *buff)
+{
+    double f;
+    std::memcpy((uint8_t*)&f, buff, 8);
+    return f;
 }
 
 uint32_t

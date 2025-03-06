@@ -256,12 +256,14 @@ Query::Query(JsonMap& map, StringBuffer& strbuf) :
 
             if ((opts.size() > 1) && (! opts[1].empty()))
             {
-                counter_max = std::stoull(opts[1]);
+                std::size_t pos;
+                counter_max = std::stoull(opts[1], &pos, 10);
             }
 
             if ((opts.size() > 2) && (! opts[2].empty()))
             {
-                reset_value = std::stoull(opts[2]);
+                std::size_t pos;
+                reset_value = std::stoull(opts[2], &pos, 10);
             }
 
             if ((opts.size() > 3) && (! opts[2].empty()))
