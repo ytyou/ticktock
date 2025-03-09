@@ -1464,7 +1464,7 @@ RollupDataFile::add_data_point(TimeSeriesId tid, Timestamp tstamp, uint32_t cnt,
 void
 RollupDataFile::add_data_points(std::unordered_map<TimeSeriesId,std::vector<struct rollup_entry_ext>>& data)
 {
-    int idx = -1;
+    int idx;
     const int size = 100;
     struct rollup_entry_ext buff[size];
     std::lock_guard<std::mutex> guard(m_lock);
@@ -1475,8 +1475,11 @@ RollupDataFile::add_data_points(std::unordered_map<TimeSeriesId,std::vector<stru
 
     for (auto& it: data)
     {
+        TimeSeriesId tid = it.first;
         std::vector<struct rollup_entry_ext>& entries = it.second;
         Timestamp last_tstamp = 0;
+
+        idx = -1;
 
         for (auto& entry: entries)
         {
@@ -1492,10 +1495,12 @@ RollupDataFile::add_data_points(std::unordered_map<TimeSeriesId,std::vector<stru
                 idx++;
                 ASSERT(idx == 0);
 
+                buff[idx].tid = tid;
                 buff[idx].cnt = entry.cnt;
                 buff[idx].min = entry.min;
                 buff[idx].max = entry.max;
                 buff[idx].sum = entry.sum;
+                buff[idx].tstamp = ts;
             }
             else if (ts == buff[idx].tstamp)
             {
@@ -1516,12 +1521,17 @@ RollupDataFile::add_data_points(std::unordered_map<TimeSeriesId,std::vector<stru
                     idx = 0;
                 }
 
+                buff[idx].tid = tid;
                 buff[idx].cnt = entry.cnt;
                 buff[idx].min = entry.min;
                 buff[idx].max = entry.max;
                 buff[idx].sum = entry.sum;
+                buff[idx].tstamp = ts;
             }
         }
+
+        if (0 <= idx)
+            std::fwrite(buff, (idx+1)*sizeof(struct rollup_entry_ext), 1, m_file);
     }
 
     if (0 <= idx)
@@ -1785,7 +1795,6 @@ RollupDataFile::query2(const TimeRange& range, std::unordered_map<TimeSeriesId,Q
         for (std::size_t i = 0; i < n; i += sizeof(struct rollup_entry_ext))
         {
             struct rollup_entry_ext *entry = (struct rollup_entry_ext*)&buff[i];
-
             auto search = map.find(entry->tid);
 
             if (search != map.end())

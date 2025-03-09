@@ -1158,9 +1158,34 @@ QuerySuperTask::query_rollup_daily(RollupType rollup)
     ASSERT(is_rollup_level2(rollup));
     ASSERT(rollup != RollupType::RU_NONE);
 
-    bool query_ts = true;   // need to call query_ts_data()?
+    //bool query_ts = true;   // need to call query_ts_data()?
     RollupManager::query(m_metric_id, m_time_range, m_tasks, rollup);
 
+    // for those with invalid rollup data, we'll query raw instead
+    for (auto tsdb: m_tsdbs)
+    {
+        if (tsdb->can_use_rollup(true))
+            continue;
+
+        std::vector<QueryTask*> tasks;
+
+        for (auto task: m_tasks)
+        {
+            if (! tsdb->can_use_rollup(task->get_ts_id()))
+            {
+                tasks.push_back(task);
+                task->remove_dps(tsdb->get_time_range());
+            }
+        }
+
+        if (! tasks.empty())
+            query_raw(tsdb, tasks);
+    }
+
+    for (auto task: m_tasks)
+        task->query_ts_data(m_time_range, rollup, m_ms);
+
+#if 0
     // for those with invalid rollup, we'll query hourly/raw instead
     while (! m_tsdbs.empty())
     {
@@ -1245,6 +1270,7 @@ QuerySuperTask::query_rollup_daily(RollupType rollup)
         for (QueryTask *task : m_tasks)
             task->query_ts_data(m_time_range, rollup, m_ms);
     }
+#endif
 }
 
 void
