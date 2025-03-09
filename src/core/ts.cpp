@@ -500,6 +500,7 @@ TimeSeries::query_for_rollup(const TimeRange& range, QueryTask *qt, RollupType r
         if (m_rollup.get(entry))
         {
             if (ms) entry.tstamp *= 1000;
+            entry.tid = m_id;
             qt->add_data_point(&entry, rollup);
         }
     }

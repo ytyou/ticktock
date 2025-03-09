@@ -61,12 +61,11 @@ BitSet::~BitSet()
 }
 
 void
-BitSet::init(uint8_t *base, size_t capacity_in_bytes)
+BitSet::init(uint8_t *base, size_t capacity_in_bytes, bool full)
 {
     ASSERT(base != nullptr);
 
     m_bits = base;
-    m_cursor = base;
     m_capacity_in_bytes = capacity_in_bytes;
     m_start = 0;
 
@@ -74,6 +73,7 @@ BitSet::init(uint8_t *base, size_t capacity_in_bytes)
     m_cp_start = 0;
 
     m_end = m_bits + capacity_in_bytes;
+    m_cursor = full ? m_end : base;
 }
 
 size_t

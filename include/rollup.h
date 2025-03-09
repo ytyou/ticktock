@@ -74,7 +74,6 @@ public:
     static void get_data_files_1h(MetricId mid, const TimeRange& range, std::vector<RollupDataFile*>& files);   // monthly
     static void get_data_files_1d(MetricId mid, const TimeRange& range, std::vector<RollupDataFile*>& files);   // annual
     static void query(MetricId mid, const TimeRange& range, std::vector<QueryTask*>& tasks, RollupType rollup);
-    static void query(MetricId mid, const TimeRange& range, std::unordered_map<TimeSeriesId,struct rollup_entry_ext>& output);
     static double query(struct rollup_entry *entry, RollupType type);
     static void rotate();
     static bool swap_recompressed_files(std::vector<RollupDataFile*>& data_files);

@@ -122,7 +122,7 @@ RollupManager::init()
         std::unordered_map<TimeSeriesId,struct rollup_entry_ext> map;
 
         m_wal_data_file->open(true);
-        m_wal_data_file->query_ext(TimeRange::MAX, map);
+        m_wal_data_file->query_from_wal(TimeRange::MAX, map);
 
         Tsdb::restore_rollup_mgr(map);
         m_wal_data_file->close();
@@ -193,6 +193,22 @@ RollupManager::add_data_point(Tsdb *tsdb, MetricId mid, TimeSeriesId tid, DataPo
     ASSERT(interval > 0);
     Timestamp tstamp1 = tstamp - (tstamp % interval);
 
+    // reject new data if the rollup data file has already been re-compressed
+    if ((m_data_file == nullptr) || (m_data_file->get_begin_timestamp() != Calendar::begin_month_of(tstamp1)))
+    {
+        if (m_data_file != nullptr)
+            m_data_file->dec_ref_count();
+        m_data_file = get_or_create_data_file(mid, tstamp1);
+    }
+
+    if (UNLIKELY(3 <= m_data_file->get_compressor_version()))
+    {
+        // this file has already been re-compressed
+        tsdb->set_out_of_order2(tid, true);     // this will cause query to skip this rollup file
+        m_cnt = 0;  // invalidate any data currently in buffer
+        return;
+    }
+
     if (tstamp1 > m_tstamp)
     {
         flush(mid, tid);
@@ -212,6 +228,8 @@ RollupManager::add_data_point(Tsdb *tsdb, MetricId mid, TimeSeriesId tid, DataPo
     {
         // out-of-order!!!
         tsdb->set_out_of_order2(tid, true);
+        m_cnt = 0;  // invalidate any data currently in buffer
+        return;
     }
 
     m_cnt++;
@@ -341,6 +359,7 @@ RollupManager::get(struct rollup_entry_ext& entry)
 {
     if (m_cnt == 0) return false;
 
+    entry.tid = TT_INVALID_TIME_SERIES_ID;
     entry.cnt = m_cnt;
     entry.max = m_max;
     entry.min = m_min;
@@ -381,19 +400,6 @@ RollupManager::query(MetricId mid, const TimeRange& range, std::vector<QueryTask
             file->query2(range, map, rollup);
         else
             file->query(range, map, rollup);
-        file->dec_ref_count();
-    }
-}
-
-void
-RollupManager::query(MetricId mid, const TimeRange& range, std::unordered_map<TimeSeriesId,struct rollup_entry_ext>& outputs)
-{
-    std::vector<RollupDataFile*> data_files;
-    get_data_files_1h(mid, range, data_files);
-
-    for (auto file: data_files)
-    {
-        file->query(range, outputs);
         file->dec_ref_count();
     }
 }
@@ -712,6 +718,7 @@ RollupManager::swap_recompressed_files(std::vector<RollupDataFile*>& data_files)
             rm_dir(bak_dir);    // make sure it does not exist
             std::rename(old_dir.c_str(), bak_dir.c_str());
             std::rename(new_dir.c_str(), old_dir.c_str());
+            //rm_dir(bak_dir);  // TODO:
 
             // update config
             int year, month;
@@ -722,10 +729,13 @@ RollupManager::swap_recompressed_files(std::vector<RollupDataFile*>& data_files)
             else
             {
                 ASSERT(cfg->exists(CFG_TSDB_ROLLUP_COMPRESSOR_VERSION));
-                ASSERT(cfg->get_int(CFG_TSDB_ROLLUP_COMPRESSOR_VERSION) == 1);
-                cfg->set_value(CFG_TSDB_ROLLUP_COMPRESSOR_VERSION, "2");
+                ASSERT(cfg->get_int(CFG_TSDB_ROLLUP_COMPRESSOR_VERSION) < 3);
+                cfg->set_value(CFG_TSDB_ROLLUP_COMPRESSOR_VERSION, "3");
                 cfg->persist();
             }
+
+            for (auto file: data_files)
+                file->set_compressor_version(3);
 
             success = true;
         }

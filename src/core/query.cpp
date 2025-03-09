@@ -695,7 +695,9 @@ QueryTask::remove_dps(const TimeRange& range)
 {
     for (auto it = m_dps.begin(); it != m_dps.end(); )
     {
-        if (range.in_range(it->first) == 0)
+        Timestamp ts = validate_resolution(it->first);
+
+        if (range.in_range(ts) == 0)
             it = m_dps.erase(it);
         else
             it++;
@@ -817,6 +819,9 @@ QueryTask::query_with_ooo()
         else
             m_downsampler->add_data_point(prev_dp, m_dps);
     }
+
+    if (m_downsampler != nullptr)
+        m_downsampler->add_last_point(m_dps);
 }
 
 void

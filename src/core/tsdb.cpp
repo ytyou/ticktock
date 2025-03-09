@@ -2010,7 +2010,7 @@ Tsdb::can_use_rollup(TimeSeriesId tid)
     if (is_crashed()) return false;
     std::lock_guard<std::mutex> guard(m_lock);
     m_index_file.ensure_open(true);
-    return m_index_file.get_out_of_order2(tid);
+    return ! m_index_file.get_out_of_order2(tid);
 }
 
 bool
@@ -3819,7 +3819,7 @@ Tsdb::rollup(TaskData& data)
                 continue;
 
             std::unordered_map<TimeSeriesId,std::vector<struct rollup_entry_ext>> data;
-            data_file_1h->query(data);
+            data_file_1h->query_for_level2_rollup(data);
             recompress_success = recompress_success && data_file_1h->recompress(data);
             data_file_1h->dec_ref_count();
             data_files_1h.push_back(data_file_1h);
@@ -3840,10 +3840,10 @@ Tsdb::rollup(TaskData& data)
             recompress_success = RollupManager::swap_recompressed_files(data_files_1h);
         }
 
-        data.integer = tsdbs.size();
-
         if (recompress_success)
         {
+            data.integer = tsdbs.size();
+
             for (auto tsdb: tsdbs)
             {
                 std::lock_guard<std::mutex> guard(tsdb->m_lock);
@@ -3853,9 +3853,11 @@ Tsdb::rollup(TaskData& data)
                 tsdb->write_config(dir);    // persist the 'rolled_up' status
                 tsdb->dec_ref_count();
             }
-        }
 
-        Logger::info("[rollup] rolled up %d Tsdbs.", data.integer);
+            Logger::info("[rollup] rolled up %d Tsdbs.", data.integer);
+        }
+        else
+            Logger::warn("[rollup] rollup failed.");
     }
     else
     {

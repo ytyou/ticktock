@@ -39,6 +39,7 @@ class RollupDataFile;
 class MmapFile
 {
 public:
+    MmapFile();
     MmapFile(const std::string& file_name);
     virtual ~MmapFile();
 
@@ -46,10 +47,10 @@ public:
     bool resize(int64_t length);
     virtual void open(bool for_read) = 0;
     virtual void close();
+    virtual void close_no_lock();
     virtual void flush(bool sync);
     virtual void ensure_open(bool for_read);
-
-    void dont_need(void *addr, size_t length);
+    virtual void ensure_open_no_lock(bool for_read);
 
     inline void *get_pages() { return m_pages; }
     inline size_t get_length() const { return m_length; }
@@ -65,12 +66,12 @@ protected:
 
     std::mutex m_lock;
     std::string m_name;
+    bool m_read_only;
 
 private:
     int64_t m_length;
     void *m_pages;
     int m_fd;
-    bool m_read_only;
 };
 
 
@@ -262,7 +263,7 @@ private:
 };
 
 
-class RollupDataFile
+class RollupDataFile : public MmapFile
 {
 public:
     RollupDataFile(int bucket, Timestamp tstamp);   // create 1d data file
@@ -270,14 +271,17 @@ public:
     RollupDataFile(MetricId mid, Timestamp begin, bool monthly);
     ~RollupDataFile();
 
-    void open(bool for_read);
-    void close();
+    void open(bool read_only) override;
+    void ensure_open(bool for_read) override;
+    void close() override;
     bool close_if_idle(Timestamp threshold_sec, Timestamp now_sec);
     bool is_open(bool for_read) const;
     inline int64_t size() const { return m_size; }
     inline Timestamp get_begin_timestamp() const { return m_begin; }
     std::string get_rollup_dir() { return get_dir_of(m_name); }
     std::string get_rollup_dir2();  // this is a tmp dir used during recompress
+    short get_compressor_version() const { return m_compressor_version; }
+    void set_compressor_version(short version) { m_compressor_version = version; }
 
     inline bool empty() const { return (m_index == 0) && !file_exists(m_name); }
     inline void remove() { rm_file(m_name); }
@@ -290,13 +294,20 @@ public:
     void add_data_point(TimeSeriesId tid, uint32_t cnt, double min, double max, double sum);
     void add_data_point(TimeSeriesId tid, Timestamp tstamp, uint32_t cnt, double min, double max, double sum);  // called during shutdown
     void add_data_points(std::unordered_map<TimeSeriesId,std::vector<struct rollup_entry_ext>>& data);
+
     void query(const TimeRange& range, std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupType rollup);  // query hourly rollup
+    // query RollupDataFile compressed using compressor v1 or v2
+    void query1(const TimeRange& range, std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupType rollup);  // query hourly rollup, for compressor v1/v2
+    // query RollupDataFile compressed using compressor v3
+    void query3(const TimeRange& range, std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupType rollup);  // query hourly rollup, for compressor v3
+
+    // query level2 rollup data file
     void query2(const TimeRange& range, std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupType rollup); // query daily rollup
     // used by Tsdb::rollup() for offline processing
-    void query(const TimeRange& range, std::unordered_map<TimeSeriesId,struct rollup_entry_ext>& map);
-    void query_ext(const TimeRange& range, std::unordered_map<TimeSeriesId,struct rollup_entry_ext>& map);
+    //void query_for_recompress(const TimeRange& range, std::unordered_map<TimeSeriesId,struct rollup_entry_ext>& map);
+    void query_from_wal(const TimeRange& range, std::unordered_map<TimeSeriesId,struct rollup_entry_ext>& map);
     // used by Tsdb::rollup()
-    void query(std::unordered_map<TimeSeriesId,std::vector<struct rollup_entry_ext>>& data);
+    void query_for_level2_rollup(std::unordered_map<TimeSeriesId,std::vector<struct rollup_entry_ext>>& data);
     bool recompress(std::unordered_map<TimeSeriesId,std::vector<struct rollup_entry_ext>>& data);
 
     void dec_ref_count();
@@ -313,19 +324,18 @@ private:
     FILE *open_4_recompress();
     int query_entry(const TimeRange& range, struct rollup_entry *entry, std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupType rollup);
 
-    std::string m_name;
+    //std::string m_name;
     FILE *m_file;
     Timestamp m_begin;
     int m_index;    // index of m_buff[]
     uint8_t m_buff[4096];
     Timestamp m_last_access;
     int64_t m_size;
-    std::mutex m_lock;
+    //std::mutex m_lock;
     int m_ref_count;        // prevent unload when in use
     short m_compressor_version;
     double m_compressor_precision;
     bool m_monthly;         // true: monthly; false: annually
-    bool m_for_read;
 };
 
 

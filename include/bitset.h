@@ -58,7 +58,8 @@ public:
     BitSet(size_t size_in_bits);
     ~BitSet();
 
-    void init(uint8_t *base, size_t capacity_in_bytes);
+    // full = true means there are already data in the 'base'
+    void init(uint8_t *base, size_t capacity_in_bytes, bool full = false);
     void recycle();
     void rebase(uint8_t *base);
     BitSetCursor *new_cursor();
@@ -110,7 +111,15 @@ public:
     {
         ASSERT(cursor != nullptr);
         ASSERT(cursor->m_cursor <= m_cursor);
-        return 8 * (m_cursor - cursor->m_cursor) + m_start;
+        return 8 * (m_cursor - cursor->m_cursor) + m_start - cursor->m_start;
+    }
+
+    // ignore both m_start
+    inline size_t bytes_processed(BitSetCursor *cursor)
+    {
+        ASSERT(cursor != nullptr);
+        ASSERT(m_bits <= cursor->m_cursor);
+        return (cursor->m_cursor - m_bits);
     }
 
     inline size_t size_in_bytes() const
