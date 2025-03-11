@@ -2484,9 +2484,6 @@ RollupCompressor_v1::uncompress2(uint8_t *buff, int size, struct rollup_entry *e
             entry->sum = uncompress_double(buff+len);
             len += 8;
         }
-
-        ASSERT(entry->min <= entry->max);
-        ASSERT(entry->max <= entry->sum);
     }
     else
     {

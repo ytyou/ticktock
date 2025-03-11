@@ -76,6 +76,8 @@ public:
         return m_time_range;
     }
 
+    void update_range(const TimeRange& range);
+
     // this range will include those trailing dps that should be
     // included AFTER stepping-down
     inline const TimeRange get_expanded_range() const

@@ -245,6 +245,13 @@ Downsampler::is_downsampler(const char *str)
     }
 }
 
+void
+Downsampler::update_range(const TimeRange& range)
+{
+    m_start = range.get_from();
+    m_time_range = range;
+}
+
 Timestamp
 Downsampler::step_up(Timestamp tstamp) const
 {

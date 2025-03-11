@@ -1531,7 +1531,10 @@ RollupDataFile::add_data_points(std::unordered_map<TimeSeriesId,std::vector<stru
         }
 
         if (0 <= idx)
+        {
             std::fwrite(buff, (idx+1)*sizeof(struct rollup_entry_ext), 1, m_file);
+            idx = -1;
+        }
     }
 
     if (0 <= idx)
@@ -1779,9 +1782,10 @@ RollupDataFile::query2(const TimeRange& range, std::unordered_map<TimeSeriesId,Q
 {
     set_rollup_level(rollup, false);    // unset level2
 
-    std::lock_guard<std::mutex> guard(m_lock);
+    std::unordered_map<TimeSeriesId,QueryTask*> map2(map);
     uint8_t buff[1024*sizeof(struct rollup_entry_ext)];
     std::size_t n;
+    std::lock_guard<std::mutex> guard(m_lock);
 
     m_last_access = ts_now_sec();
     if (! is_open(true) && ! is_open(false))
@@ -1795,9 +1799,9 @@ RollupDataFile::query2(const TimeRange& range, std::unordered_map<TimeSeriesId,Q
         for (std::size_t i = 0; i < n; i += sizeof(struct rollup_entry_ext))
         {
             struct rollup_entry_ext *entry = (struct rollup_entry_ext*)&buff[i];
-            auto search = map.find(entry->tid);
+            auto search = map2.find(entry->tid);
 
-            if (search != map.end())
+            if (search != map2.end())
             {
                 QueryTask *task = search->second;
                 Timestamp ts = entry->tstamp;
@@ -1811,8 +1815,14 @@ RollupDataFile::query2(const TimeRange& range, std::unordered_map<TimeSeriesId,Q
 
                 task->set_last_tstamp(ts);
                 ts = validate_resolution(ts);
+                int in_range = range.in_range(ts);
 
-                if (entry->cnt != 0 && range.in_range(ts) == 0)
+                if (in_range > 0)
+                {
+                    map2.erase(search);
+                    if (map2.empty()) break;
+                }
+                else if (entry->cnt != 0 && in_range == 0)
                 {
                     //double val = RollupManager::query((struct rollup_entry*)entry, rollup);
                     //task->add_data_point(ts, val);
@@ -1820,6 +1830,9 @@ RollupDataFile::query2(const TimeRange& range, std::unordered_map<TimeSeriesId,Q
                 }
             }
         }
+
+        if (map2.empty())
+            break;
     }
 }
 

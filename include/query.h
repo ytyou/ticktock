@@ -199,6 +199,7 @@ public:
     bool is_empty() const;      // did query results in any data for this TS?
     TimeRange get_query_range() const;
     inline Downsampler *get_downsampler() { return m_downsampler; }
+    void update_downsampler(const TimeRange& range);  // update downsampler's range
 
     inline void set_ooo(bool ooo)
     {
@@ -325,6 +326,7 @@ public:
 private:
     void query_raw(Tsdb* tsdb, std::vector<QueryTask*>& tasks);
     void query_rollup_hourly(const TimeRange& range, const std::vector<Tsdb*>& tsdbs, RollupType rollup);
+    void query_rollup_hourly(const TimeRange& range, const std::vector<Tsdb*>& tsdbs, const std::vector<QueryTask*>& tasks, RollupType rollup);
     void query_rollup_daily(RollupType rollup);
 
     bool m_ms;

@@ -703,9 +703,21 @@ QueryTask::remove_dps(const TimeRange& range)
             it++;
     }
 
-    m_last_tstamp = TT_INVALID_TIMESTAMP;
-    m_downsampler->recycle();
     m_sort_needed = true;
+    m_last_tstamp = TT_INVALID_TIMESTAMP;
+
+    if (m_downsampler != nullptr)
+    {
+        m_downsampler->add_last_point(m_dps);
+        m_downsampler->recycle();
+    }
+}
+
+void
+QueryTask::update_downsampler(const TimeRange& range)
+{
+    if (m_downsampler != nullptr)
+        m_downsampler->update_range(range);
 }
 
 bool
@@ -1122,10 +1134,16 @@ QuerySuperTask::query_raw(Tsdb *tsdb, std::vector<QueryTask*>& tasks)
 void
 QuerySuperTask::query_rollup_hourly(const TimeRange& range, const std::vector<Tsdb*>& tsdbs, RollupType rollup)
 {
+    query_rollup_hourly(range, tsdbs, m_tasks, rollup);
+}
+
+void
+QuerySuperTask::query_rollup_hourly(const TimeRange& range, const std::vector<Tsdb*>& tsdbs, const std::vector<QueryTask*>& tasks, RollupType rollup)
+{
     ASSERT(rollup != RollupType::RU_NONE);
 
     set_rollup_level(rollup, false);    // convert to level1 rollup
-    RollupManager::query(m_metric_id, range, m_tasks, rollup);
+    RollupManager::query(m_metric_id, range, tasks, rollup);
 
     // for those with invalid rollup, we'll query raw instead
     for (auto tsdb: tsdbs)
@@ -1133,23 +1151,27 @@ QuerySuperTask::query_rollup_hourly(const TimeRange& range, const std::vector<Ts
         if (tsdb->can_use_rollup(false))
             continue;
 
-        std::vector<QueryTask*> tasks;
+        std::vector<QueryTask*> tasks_for_raw;
 
-        for (QueryTask *task : m_tasks)
+        for (QueryTask *task : tasks)
         {
             if (! tsdb->can_use_rollup(task->get_ts_id()))
             {
-                tasks.push_back(task);
+                tasks_for_raw.push_back(task);
                 task->remove_dps(tsdb->get_time_range());
+                task->update_downsampler(tsdb->get_time_range());
             }
         }
 
-        if (! tasks.empty())
-            query_raw(tsdb, tasks);
+        if (! tasks_for_raw.empty())
+            query_raw(tsdb, tasks_for_raw);
     }
 
-    for (QueryTask *task : m_tasks)
+    for (QueryTask *task : tasks)
+    {
+        task->update_downsampler(task->m_time_range);
         task->query_ts_data(range, rollup, m_ms);
+    }
 }
 
 void
@@ -1161,12 +1183,69 @@ QuerySuperTask::query_rollup_daily(RollupType rollup)
     //bool query_ts = true;   // need to call query_ts_data()?
     RollupManager::query(m_metric_id, m_time_range, m_tasks, rollup);
 
+    std::vector<Tsdb*> tsdbs;
+    std::unordered_set<QueryTask*> taskset;
+
     // for those with invalid rollup data, we'll query raw instead
     for (auto tsdb: m_tsdbs)
     {
         if (tsdb->can_use_rollup(true))
             continue;
 
+        if (! tsdb->has_daily_rollup())
+        {
+            tsdbs.push_back(tsdb);
+            for (auto task: m_tasks)
+                taskset.insert(task);
+        }
+
+        bool found = false;
+
+        for (auto task: m_tasks)
+        {
+            if (! tsdb->can_use_rollup(task->get_ts_id()))
+            {
+                found = true;
+                taskset.insert(task);
+            }
+        }
+
+        if (found)
+            tsdbs.push_back(tsdb);
+    }
+
+    if (! tsdbs.empty())
+    {
+        ASSERT(! tasks.empty());
+        TimeRange range(TimeRange::MIN);
+
+        for (auto tsdb: tsdbs)
+            range.merge(tsdb->get_time_range());
+        range.intersect(m_time_range);
+
+        // need to temporarily update the downsamplers in QueryTasks
+        // to reflect the new 'range' before calling query_rollup_hourly()
+        for (auto task: m_tasks)
+        {
+            task->remove_dps(range);
+            task->update_downsampler(range);
+            task->set_last_tstamp(TT_INVALID_TIMESTAMP);
+        }
+
+        std::vector<QueryTask*> tasks;
+
+        for (auto task: taskset)
+            tasks.push_back(task);
+
+        ASSERT(rollup != RollupType::RU_NONE);
+        query_rollup_hourly(range, tsdbs, tasks, rollup);
+
+        // restore downsampler's range
+        for (auto task: m_tasks)
+            task->update_downsampler(task->m_time_range);
+    }
+
+#if 0
         std::vector<QueryTask*> tasks;
 
         for (auto task: m_tasks)
@@ -1185,7 +1264,6 @@ QuerySuperTask::query_rollup_daily(RollupType rollup)
     for (auto task: m_tasks)
         task->query_ts_data(m_time_range, rollup, m_ms);
 
-#if 0
     // for those with invalid rollup, we'll query hourly/raw instead
     while (! m_tsdbs.empty())
     {

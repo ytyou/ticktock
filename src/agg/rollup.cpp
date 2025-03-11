@@ -373,7 +373,7 @@ RollupManager::get(struct rollup_entry_ext& entry)
  * It will query either 1h rollup data or 1d rollup data, depending on the 'rollup' argument.
  */
 void
-RollupManager::query(MetricId mid, const TimeRange& range, std::vector<QueryTask*>& tasks, RollupType rollup)
+RollupManager::query(MetricId mid, const TimeRange& range, const std::vector<QueryTask*>& tasks, RollupType rollup)
 {
     ASSERT(! tasks.empty());
     ASSERT(rollup != RollupType::RU_NONE);
