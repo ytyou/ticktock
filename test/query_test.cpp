@@ -77,7 +77,7 @@ QueryTests::update_config(Timestamp archive_ms)
 void
 QueryTests::basic_query_tests()
 {
-    Timestamp start = 946684800000; // 2020-01-01
+    Timestamp start = 946684800000; // 2000-01-01
     Timestamp now = ts_now_ms();
     int dps_cnt = 20;
     DataPointVector dps;
@@ -116,7 +116,7 @@ QueryTests::basic_query_tests()
 void
 QueryTests::duplicate_dp_tests()
 {
-    Timestamp start = 946684800000; // 2020-01-01
+    Timestamp start = 946684800000; // 2000-01-01
     Timestamp now = ts_now_ms();
     int dps_cnt = 256;
     DataPointVector dps;
@@ -179,7 +179,7 @@ QueryTests::duplicate_dp_tests()
 void
 QueryTests::downsample_tests()
 {
-    Timestamp start = 946684800000; // 2020-01-01
+    Timestamp start = 946684800000; // 2000-01-01
     Timestamp now = ts_now_ms();
     int dps_cnt = 20;
     DataPointVector dps;

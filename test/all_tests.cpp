@@ -107,7 +107,6 @@ main(int argc, char *argv[])
     std::free(config_file);
     delete MetaFile::instance();
     delete Config::inst();
-    RollupManager::shutdown();
 
     printf("PASSED: %d, FAILED: %d, TOTAL: %d, SEED-USED: %ld\n", stats.get_passed(), stats.get_failed(), stats.get_total(), seed);
     return stats.get_failed() > 0 ? 1 : 0;

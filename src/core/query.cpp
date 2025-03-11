@@ -1216,7 +1216,7 @@ QuerySuperTask::query_rollup_daily(RollupType rollup)
 
     if (! tsdbs.empty())
     {
-        ASSERT(! tasks.empty());
+        ASSERT(! taskset.empty());
         TimeRange range(TimeRange::MIN);
 
         for (auto tsdb: tsdbs)

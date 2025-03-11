@@ -279,6 +279,7 @@ public:
     static void clean_shutdown()
     {
         tt::Tsdb::shutdown();
+        tt::RollupManager::shutdown();
     }
 
     const char *get_name() const
