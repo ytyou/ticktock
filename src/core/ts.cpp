@@ -427,7 +427,7 @@ TimeSeries::add_ooo_data_point(MetricId mid, DataPoint& dp)
 }
 
 bool
-TimeSeries::query_for_data(Tsdb *tsdb, TimeRange& range, std::vector<DataPointContainer*>& data)
+TimeSeries::query_for_data(Tsdb *tsdb, const TimeRange& range, std::vector<DataPointContainer*>& data)
 {
     bool has_ooo = false;
     //std::lock_guard<std::mutex> guard(m_lock);

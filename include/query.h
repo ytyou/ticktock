@@ -177,9 +177,9 @@ class QueryTask : public Recyclable
 {
 public:
     QueryTask();
-    void query_ts_data(Tsdb *tsdb);
+    void query_ts_data(Tsdb *tsdb, const TimeRange& range);
     void query_ts_data(const TimeRange& range, RollupType rollup_type, bool ms);
-    void merge_data();
+    void merge_data(const TimeRange& range);
     void fill();
     void convert_to_ms();
     void convert_to_sec();
@@ -199,7 +199,6 @@ public:
     bool is_empty() const;      // did query results in any data for this TS?
     TimeRange get_query_range() const;
     inline Downsampler *get_downsampler() { return m_downsampler; }
-    void update_downsampler(const TimeRange& range);  // update downsampler's range
 
     inline void set_ooo(bool ooo)
     {
@@ -280,8 +279,8 @@ private:
     friend class QueryExecutor;
     friend class QuerySuperTask;
 
-    void query_with_ooo();
-    void query_without_ooo();
+    void query_with_ooo(const TimeRange& range);
+    void query_without_ooo(const TimeRange& range);
 
     Timestamp m_last_tstamp;
     TimeRange m_time_range;
@@ -296,6 +295,7 @@ private:
     uint32_t m_tstamp_from;
     bool m_has_ooo;
     bool m_sort_needed;
+    QueryTask *m_parent;
 };
 
 
@@ -312,6 +312,7 @@ public:
 
     void perform(bool lock = true); // perform tasks
     void add_task(TimeSeries *ts);
+    QueryTask *create_task(QueryTask *parent, TimeSeries *ts, const TimeRange& range);
 
     RollupType use_rollup() const;
     int get_task_count() const { return m_tasks.size(); }
@@ -324,7 +325,7 @@ public:
                                 // that should be included after stepping down
 
 private:
-    void query_raw(Tsdb* tsdb, std::vector<QueryTask*>& tasks);
+    void query_raw(Tsdb* tsdb, const TimeRange& range, std::vector<QueryTask*>& tasks);
     void query_rollup_hourly(const TimeRange& range, const std::vector<Tsdb*>& tsdbs, RollupType rollup);
     void query_rollup_hourly(const TimeRange& range, const std::vector<Tsdb*>& tsdbs, const std::vector<QueryTask*>& tasks, RollupType rollup);
     void query_rollup_daily(RollupType rollup);

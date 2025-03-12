@@ -81,7 +81,7 @@ public:
     void get_keys(std::set<std::string>& keys) const { m_tags.get_keys(keys); }
     void get_values(std::set<std::string>& values) const { m_tags.get_values(values); }
 
-    bool query_for_data(Tsdb *tsdb, TimeRange& range, std::vector<DataPointContainer*>& data);
+    bool query_for_data(Tsdb *tsdb, const TimeRange& range, std::vector<DataPointContainer*>& data);
     void query_for_rollup(const TimeRange& range, QueryTask *qt, RollupType rollup, bool ms);
 
     inline bool is_type(int type) const override

@@ -2038,9 +2038,9 @@ class Long_Running_Tests(Test):
                 start = start + 3
 
             if self._failed == 0:
-                print("Iteration " + str(i+1) + "/10: ALL SUCCESS")
+                print("Iteration " + str(i+1) + "/" + str(iteration) + ": ALL SUCCESS")
             else:
-                print("Iteration " + str(i+1) + "/10: " + str(self._failed) + " FAILED")
+                print("Iteration " + str(i+1) + "/" + str(iteration) + ": " + str(self._failed) + " FAILED")
 
         # stop tt
         self.stop_tt()

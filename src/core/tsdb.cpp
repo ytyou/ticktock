@@ -1721,7 +1721,7 @@ Tsdb::query_for_data(Metric *metric, QueryTask *task)
 
 // Query for multiple TimeSeries
 void
-Tsdb::query_for_data(MetricId mid, TimeRange& range, std::vector<QueryTask*>& tasks, bool compact)
+Tsdb::query_for_data(MetricId mid, const TimeRange& range, std::vector<QueryTask*>& tasks, bool compact)
 {
     uint32_t file_or_rollup_idx;
     FileIndex file_idx;
@@ -1788,7 +1788,7 @@ Tsdb::query_for_data(MetricId mid, TimeRange& range, std::vector<QueryTask*>& ta
         task->get_indices(file_or_rollup_idx, header_idx);
 
         if (! get_out_of_order(task->get_ts_id()))
-            task->merge_data();
+            task->merge_data(range);
 
         if (file_or_rollup_idx != TT_INVALID_ROLLUP_INDEX && header_idx != TT_INVALID_HEADER_INDEX)
             pq.push(task);

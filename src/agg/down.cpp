@@ -44,7 +44,7 @@ Downsampler::Downsampler() :
 /* @param range Query range
  */
 void
-Downsampler::initialize(char *interval, char *fill, TimeRange& range, bool ms)
+Downsampler::initialize(char *interval, char *fill, const TimeRange& range, bool ms)
 {
     ASSERT(interval != nullptr);
 
@@ -130,7 +130,7 @@ Downsampler::initialize(char *interval, char *fill, TimeRange& range, bool ms)
 /* @param range Query range
  */
 Downsampler *
-Downsampler::create(const char *downsample, TimeRange& range, bool ms)
+Downsampler::create(const char *downsample, const TimeRange& range, bool ms)
 {
     if (downsample == nullptr)
     {
@@ -245,13 +245,6 @@ Downsampler::is_downsampler(const char *str)
     }
 }
 
-void
-Downsampler::update_range(const TimeRange& range)
-{
-    m_start = range.get_from();
-    m_time_range = range;
-}
-
 Timestamp
 Downsampler::step_up(Timestamp tstamp) const
 {
@@ -348,7 +341,7 @@ DownsamplerAvg::add_data_point(DataPointPair& dp, DataPointVector& dps)
     else
     {
         // start a new interval
-        if (m_last_tstamp != TT_INVALID_TIMESTAMP)
+        if ((m_last_tstamp != TT_INVALID_TIMESTAMP) && (0 < m_count))
         {
             ASSERT(m_count != 0L);
             dps.emplace_back(resolution(m_last_tstamp), m_sum/(double)m_count);

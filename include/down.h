@@ -46,7 +46,7 @@ class Downsampler : public Recyclable
 {
 public:
     Downsampler();
-    static Downsampler *create(const char *downsample, TimeRange& range, bool ms);
+    static Downsampler *create(const char *downsample, const TimeRange& range, bool ms);
 
     virtual RollupType get_rollup_type() const = 0;
     virtual void add_data_point(DataPointPair& dp, DataPointVector& dps) = 0;
@@ -76,8 +76,6 @@ public:
         return m_time_range;
     }
 
-    void update_range(const TimeRange& range);
-
     // this range will include those trailing dps that should be
     // included AFTER stepping-down
     inline const TimeRange get_expanded_range() const
@@ -93,7 +91,7 @@ public:
 protected:
     Downsampler(const Downsampler&) = delete;
 
-    void initialize(char *interval, char *fill, TimeRange& range, bool ms);
+    void initialize(char *interval, char *fill, const TimeRange& range, bool ms);
     void fill_to(Timestamp to, DataPointVector& dps);
     Timestamp step_up(Timestamp tstamp) const;
     Timestamp step_down(Timestamp tstamp) const;

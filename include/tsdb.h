@@ -260,7 +260,7 @@ public:
     static MetricId query_for_ts(const char *metric, Tag *tags, std::unordered_set<TimeSeries*>& tsv, const char *key, bool explicit_tags);
 
     void query_for_data(Metric *metric, QueryTask *task);
-    void query_for_data(MetricId mid, TimeRange& range, std::vector<QueryTask*>& tasks, bool compact = false);
+    void query_for_data(MetricId mid, const TimeRange& range, std::vector<QueryTask*>& tasks, bool compact = false);
 
     void flush(bool sync);
     void flush_for_test();  // for testing only
