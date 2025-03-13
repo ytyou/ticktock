@@ -10,6 +10,7 @@ uname_m := $(shell uname -m)
 SANITIZE.x86_64 := -fsanitize=address
 SANITIZE += $(SANITIZE.$(uname_m))
 CTIME := $(shell date +%s)
+BRANCH := $(shell git rev-parse --abbrev-ref HEAD)
 
 # add -flto=auto flag on non-arm platforms
 ifneq ($(findstring arm,$(uname_m)),arm)
@@ -21,7 +22,7 @@ PROD_FLAGS = -O3 -march=native -ffast-math
 #LEAK_FLAGS = -D_LEAK_DETECTION
 #PROF_FLAGS = -pg -D_GLIBCXX_DEBUG
 
-CFLAGS = -I include -std=c++11 -DCOMPILE_TIME=$(CTIME) -Wno-unused-result -Wno-format-truncation -Wno-psabi -Wno-deprecated-declarations $(LINKOPT) $(DEBUG_FLAGS) $(PROF_FLAGS) $(LEAK_FLAGS) $(PROD_FLAGS)
+CFLAGS = -I include -std=c++11 -DCOMPILE_TIME=$(CTIME) -DTT_BRANCH='"$(BRANCH)"' -Wno-unused-result -Wno-format-truncation -Wno-psabi -Wno-deprecated-declarations $(LINKOPT) $(DEBUG_FLAGS) $(PROF_FLAGS) $(LEAK_FLAGS) $(PROD_FLAGS)
 LFLAGS = -pthread $(LINKOPT) $(DEBUG_FLAGS) $(PROF_FLAGS)
 LIBS = $(DEBUG_LIBS) -lz
 
