@@ -477,6 +477,7 @@ DownsamplerDev::add_last_point(DataPointVector& dps)
 
     m_count = 0L;
     m_mean = m_m2 = 0;
+    m_last_tstamp = TT_INVALID_TIMESTAMP;
 }
 
 
@@ -662,6 +663,8 @@ DownsamplerPercentile::add_last_point(DataPointVector& dps)
         dps.emplace_back(resolution(m_last_tstamp), calc_percentile());
         m_values.clear();
     }
+
+    m_last_tstamp = TT_INVALID_TIMESTAMP;
 }
 
 

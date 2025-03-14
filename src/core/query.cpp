@@ -1150,8 +1150,6 @@ QuerySuperTask::query_raw(Tsdb *tsdb, const TimeRange& range, std::vector<QueryT
     {
         task->query_ts_data(tsdb, range);
         task->merge_data(range);
-        if (task->m_downsampler != nullptr)
-            task->m_downsampler->add_last_point(task->m_dps);
         task->set_tstamp_from(0);
     }
 }
@@ -1322,6 +1320,9 @@ QuerySuperTask::perform(bool lock)
         for (auto it = m_tasks.begin(); it != m_tasks.end(); )
         {
             auto task = *it;
+
+            if (task->m_downsampler != nullptr)
+                task->m_downsampler->add_last_point(task->m_dps);
 
             task->sort_if_needed();
             task->fill();

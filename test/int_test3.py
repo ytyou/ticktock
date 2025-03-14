@@ -44,8 +44,6 @@ class TickTockConfig(object):
         self._dict["log.level"] = "INFO"
         self._dict["log.file"] = os.path.join(self._options.root,"tt.log")
 
-        self._dict["query.executor.parallel"] = "false"
-
         self._dict["stats.frequency.sec"] = 30
 
         self._dict["sanity.check.frequency.sec"] = 3600
@@ -286,6 +284,7 @@ class Test(object):
         time.sleep(1)
         response = requests.post("http://"+self._options.ip+":"+str(port)+"/api/admin?cmd=stop")
         response.raise_for_status()
+        print("tt stopped")
 
     def tt_stopped(self):
         self._tt.poll()
@@ -714,7 +713,6 @@ class Multi_Thread_Tests(Test):
     def __call__(self):
 
         config = TickTockConfig(self._options)
-        config.add_entry("query.executor.parallel", "true");
         config.add_entry("http.listener.count", 2);
         config.add_entry("http.responders.per.listener", 3);
         config()    # generate config
@@ -846,7 +844,7 @@ class Stop_Restart_Tests(Test):
             print("iteration {}".format(i))
 
             # add more dps
-            dps2 = DataPoints(self._prefix, self._options.start+10*i, metric_count=0)
+            dps2 = DataPoints(self._prefix, self._options.start+10*i, metric_count=100)
             dp = DataPoint(metric=self._prefix+"_metric_bug0", timestamp=self._options.start+100*i, value=i*100, tags=tags1)
             dps2.add_dp(dp)
             self.send_data(dps2)
@@ -874,7 +872,7 @@ class Stop_Restart_Tests(Test):
                 time.sleep(4)
 
                 # add more dps
-                dps3 = DataPoints(self._prefix, self._options.start-10*i, metric_count=0)
+                dps3 = DataPoints(self._prefix, self._options.start-10*i, metric_count=100)
                 dp = DataPoint(metric=self._prefix+"_metric_bug0", timestamp=self._options.start-100*i, value=i, tags=tags1)
                 dps3.add_dp(dp)
                 self.send_data(dps3)
@@ -1149,7 +1147,7 @@ class Advanced_Query_With_Aggregation(Test):
             self.start_tt()
 
         # insert some dps
-        dps = DataPoints("notused", 0, metric_count=0)
+        dps = DataPoints("notused", self._options.start, metric_count=100)
 
         tags = {}
         tags["tag1"] = "val1"
@@ -1204,6 +1202,57 @@ class Advanced_Query_With_Aggregation(Test):
             self.wait_for_tt(self._options.timeout)
 
 
+class Advanced_Query_With_Rollup_Tests(Test):
+
+    def __init__(self, options, prefix: str = "aqr", tcp_socket=None):
+        super(Advanced_Query_With_Rollup_Tests, self).__init__(options, prefix, tcp_socket)
+        self._precision = 0.00015
+
+    def __call__(self, metric_count=7200, metric_cardinality=2, tag_cardinality=1, run_tt=True, via_tcp=False):
+
+        if run_tt:
+            # generate config
+            config = TickTockConfig(self._options)
+            config()    # generate config
+
+            # start tt
+            self.start_tt()
+
+        # insert some dps, with 30min interval
+        start = self._options.start
+        for i in range(31):
+            dps = DataPoints(self._prefix, start, interval_ms=1800000, metric_count=256, metric_cardinality=metric_cardinality, tag_cardinality=tag_cardinality)
+            start = dps._end + 1800000
+
+            if via_tcp:
+                self.send_data_tcp(dps)
+            else:
+                self.send_data(dps)
+
+        print("Downsamples without fill...")
+        for m in range(metric_cardinality):
+            for down in ["avg", "count", "dev", "first", "last", "max", "min", "p50", "p75", "p90", "p95", "p99", "p999", "sum"]:
+                query = Query(metric=self.metric_name(m), start=self._options.start, end=dps._end, downsampler="2h-"+down)
+                self.query_and_verify(query)
+                query = Query(metric=self.metric_name(m), start=self._options.start, end=dps._end, downsampler="1d-"+down)
+                self.query_and_verify(query)
+
+        print("Downsamples with zero fill...")
+        for m in range(metric_cardinality):
+            for down in ["avg", "count", "dev", "first", "last", "max", "min", "p50", "p75", "p90", "p95", "p99", "p999", "sum"]:
+                query = Query(metric=self.metric_name(m), start=self._options.start-99999, end=dps._end+99999, downsampler="1h-"+down+"-zero")
+                self.query_and_verify(query)
+                query = Query(metric=self.metric_name(m), start=self._options.start-99999, end=dps._end+99999, downsampler="2d-"+down+"-zero")
+                self.query_and_verify(query)
+
+        if run_tt:
+            # stop tt
+            self.stop_tt()
+
+            # make sure tt stopped
+            self.wait_for_tt(self._options.timeout)
+
+
 class Query_Tests(Test):
 
     def __init__(self, options, metric_count=2, metric_cardinality=2, tag_cardinality=2):
@@ -1217,16 +1266,11 @@ class Query_Tests(Test):
     def __call__(self):
 
         conf = {}
-        conf["query.executor.parallel"] = "false"
         self._options.method = "get"
         self.test_once("q1", conf)
 
         self.cleanup()
 
-        # default TIME_WAIT is 60 seconds; make sure we wait it out
-        #time.sleep(2)
-
-        conf["query.executor.parallel"] = "true"
         conf["http.listener.count"] = 2
         conf["http.responders.per.listener"] = 2
         self._options.method = "post"
@@ -1248,6 +1292,16 @@ class Query_Tests(Test):
         test(run_tt=False)
         if test._failed > 0:
             print("[FAIL] Advanced_Query_With_Aggregation() failed")
+        self._passed = self._passed + test._passed
+        self._failed = self._failed + test._failed
+
+        print("Running Advanced_Query_With_Rollup_Tests()...")
+        test = Advanced_Query_With_Rollup_Tests(self._options, prefix=prefix)
+        test(run_tt=False)
+        if test._failed > 0:
+            print("[FAIL] Advanced_Query_With_Rollup_Tests() failed")
+        self._passed = self._passed + test._passed
+        self._failed = self._failed + test._failed
 
         for metric_cnt in range(2, self._metric_count+1):
             for metric_card in range(2, self._metric_cardinality+1):
@@ -1965,7 +2019,6 @@ class Memory_Leak_Tests(Test):
 
         # generate config
         #config = TickTockConfig(self._options)
-        #config.add_entry("query.executor.parallel", "true");
         #config.add_entry("http.listener.count", 2);
         #config.add_entry("http.responders.per.listener", 3);
         ##config.add_entry("tsdb.rotation.frequency.sec", 9999999);
@@ -2072,7 +2125,7 @@ class Bucket_Tests(Test):
         tags["t1"] = "v1"
 
         for m in range(100):
-            dps = DataPoints(self._prefix, self._options.start, metric_count=0, metric_cardinality=0, tag_cardinality=0)
+            dps = DataPoints(self._prefix, self._options.start, metric_count=100, metric_cardinality=0, tag_cardinality=0)
             dp = DataPoint("bucket.metric."+str(m), start, random.uniform(0,1000), tags)
             dps.add_dp(dp)
             self.send_data_to_ticktock(dps)
@@ -2082,7 +2135,7 @@ class Bucket_Tests(Test):
         for i in range(250000):
 
             R = random.randint(0, 100)
-            dps = DataPoints(self._prefix, self._options.start, metric_count=0, metric_cardinality=0, tag_cardinality=0)
+            dps = DataPoints(self._prefix, self._options.start, metric_count=100, metric_cardinality=0, tag_cardinality=0)
 
             for m in range(100):
                 B = m % 10
