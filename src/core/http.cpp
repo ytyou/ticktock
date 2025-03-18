@@ -1174,18 +1174,15 @@ HttpRequest::parse_params(JsonMap& pairs)
     for (const auto& token: tokens)
     {
         char *key, *value;
+        JsonValue *v =
+            (JsonValue*)MemoryManager::alloc_recyclable(RecyclableType::RT_JSON_VALUE);
 
         if (tokenize(token, key, value, '='))
-        {
-            JsonValue *v =
-                (JsonValue*)MemoryManager::alloc_recyclable(RecyclableType::RT_JSON_VALUE);
             v->set_value(value);
-            pairs[key] = v;
-        }
         else
-        {
-            Logger::warn("Failed to parse uri query params: %s", token);
-        }
+            v->set_type(JsonValueType::JVT_NONE);
+
+        pairs[key] = v;
     }
 }
 

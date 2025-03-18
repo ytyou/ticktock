@@ -712,7 +712,11 @@ bool
 tokenize(char* str, char* &key, char* &value, char delim)
 {
     char* separator = strchr(str, delim);
-    if (separator == nullptr) return false;
+    if (separator == nullptr)
+    {
+        key = trim_cstr(str);
+        return false;
+    }
     *separator = 0;
     key = trim_cstr(str);
     value = trim_cstr(separator + 1);

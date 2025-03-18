@@ -212,6 +212,12 @@ Query::Query(JsonMap& map, StringBuffer& strbuf) :
     {
         m_ms = search->second->to_bool();
     }
+    else
+    {
+        search = map.find("ms");
+        if (search != map.end())
+            m_ms = true;
+    }
 
     search = map.find("m");
     if (search == map.end())
@@ -1445,6 +1451,12 @@ QueryExecutor::http_post_api_query_handler(HttpRequest& request, HttpResponse& r
     if (search != map.end())
     {
         ms = search->second->to_bool();
+    }
+    else
+    {
+        search = map.find("ms");
+        if (search != map.end())
+            ms = true;
     }
 
     search = map.find("queries");

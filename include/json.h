@@ -65,6 +65,7 @@ enum JsonValueType : unsigned char
     JVT_BOOL,
     JVT_DOUBLE,
     JVT_MAP,
+    JVT_NONE,
     JVT_STRING
 };
 
