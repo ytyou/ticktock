@@ -89,6 +89,17 @@ public:
     virtual ~BaseType() {};
 };
 
+/* We support 2 levels of rollup.
+ * 1. One data point per hour; We call this 'level-1' rollup;
+ * 2. One data point per day; We call this 'level-2' rollup;
+ */
+enum RollupLevel : unsigned char
+{
+    RL_LEVEL_NONE = 0,
+    RL_LEVEL1 = 1,
+    RL_LEVEL2 = 2
+};
+
 enum RollupType : unsigned char
 {
     RU_NONE = 0x00,

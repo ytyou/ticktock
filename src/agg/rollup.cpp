@@ -390,16 +390,16 @@ RollupManager::query(MetricId mid, const TimeRange& range, const std::vector<Que
     bool level2 = is_rollup_level2(rollup);
 
     if (level2)
-        get_data_files_1d(mid, range, data_files);
+        get_level2_data_files(mid, range, data_files);
     else
-        get_data_files_1h(mid, range, data_files);
+        get_level1_data_files(mid, range, data_files);
 
     for (auto file: data_files)
     {
         if (level2)
-            file->query2(range, map, rollup);
+            file->query_level2(range, map, rollup);
         else
-            file->query(range, map, rollup);
+            file->query_level1(range, map, rollup);
         file->dec_ref_count();
     }
 }
@@ -426,11 +426,11 @@ RollupManager::get_or_create_data_file(MetricId mid, Timestamp tstamp)
 {
     Timestamp begin = Calendar::begin_month_of(tstamp);
     std::lock_guard<std::mutex> guard(m_lock);
-    return get_or_create_data_file(mid, begin, m_data_files, true);
+    return get_or_create_data_file(mid, begin, m_data_files, RL_LEVEL1);
 }
 
 RollupDataFile *
-RollupManager::get_or_create_data_file(MetricId mid, Timestamp tstamp, std::unordered_map<uint64_t, RollupDataFile*>& map, bool monthly)
+RollupManager::get_or_create_data_file(MetricId mid, Timestamp tstamp, std::unordered_map<uint64_t, RollupDataFile*>& map, RollupLevel level)
 {
     // calc a unique 'bucket' for each year/month
     uint64_t bucket = tstamp * MAX_ROLLUP_BUCKET_COUNT + get_rollup_bucket(mid);
@@ -439,7 +439,7 @@ RollupManager::get_or_create_data_file(MetricId mid, Timestamp tstamp, std::unor
 
     if (search == map.end())
     {
-        data_file = new RollupDataFile(mid, tstamp, monthly);
+        data_file = new RollupDataFile(mid, tstamp, level);
         map.insert(std::make_pair(bucket, data_file));
     }
     else
@@ -452,7 +452,7 @@ RollupManager::get_or_create_data_file(MetricId mid, Timestamp tstamp, std::unor
 }
 
 RollupDataFile *
-RollupManager::get_data_file(MetricId mid, Timestamp tstamp, std::unordered_map<uint64_t, RollupDataFile*>& map, bool monthly)
+RollupManager::get_data_file(MetricId mid, Timestamp tstamp, std::unordered_map<uint64_t, RollupDataFile*>& map, RollupLevel level)
 {
     // calc a unique 'bucket' for each year/month
     uint64_t bucket = tstamp * MAX_ROLLUP_BUCKET_COUNT + get_rollup_bucket(mid);
@@ -465,13 +465,13 @@ RollupManager::get_data_file(MetricId mid, Timestamp tstamp, std::unordered_map<
         get_year_month(tstamp, year, month);
 
         std::string name =
-            monthly ?
-                RollupDataFile::get_name_by_mid_1h(mid, year, month) :
-                RollupDataFile::get_name_by_mid_1d(mid, year);
+            (level == RL_LEVEL1) ?
+                RollupDataFile::get_level1_name_by_mid(mid, year, month) :
+                RollupDataFile::get_level2_name_by_mid(mid, year);
 
         if (file_exists(name))
         {
-            data_file = new RollupDataFile(mid, tstamp, monthly);
+            data_file = new RollupDataFile(mid, tstamp, level);
             map.insert(std::make_pair(bucket, data_file));
         }
     }
@@ -485,7 +485,7 @@ RollupManager::get_data_file(MetricId mid, Timestamp tstamp, std::unordered_map<
 }
 
 void
-RollupManager::get_data_files_1h(MetricId mid, const TimeRange& range, std::vector<RollupDataFile*>& files)
+RollupManager::get_level1_data_files(MetricId mid, const TimeRange& range, std::vector<RollupDataFile*>& files)
 {
     int year, month;
     Timestamp end = range.get_to_sec();
@@ -507,7 +507,7 @@ RollupManager::get_data_files_1h(MetricId mid, const TimeRange& range, std::vect
         Timestamp ts = begin_month(year, month);
         if (end <= ts) break;
 
-        RollupDataFile *data_file = get_data_file(mid, ts, m_data_files, true);
+        RollupDataFile *data_file = get_data_file(mid, ts, m_data_files, RL_LEVEL1);
 
         if (data_file != nullptr)
         {
@@ -528,7 +528,7 @@ RollupManager::get_data_files_1h(MetricId mid, const TimeRange& range, std::vect
 }
 
 void
-RollupManager::get_data_files_1d(MetricId mid, const TimeRange& range, std::vector<RollupDataFile*>& files)
+RollupManager::get_level2_data_files(MetricId mid, const TimeRange& range, std::vector<RollupDataFile*>& files)
 {
     int year, month;
     Timestamp end = range.get_to_sec();
@@ -546,7 +546,7 @@ RollupManager::get_data_files_1d(MetricId mid, const TimeRange& range, std::vect
         Timestamp ts = begin_month(year, 0);
         if (end <= ts) break;
 
-        RollupDataFile *data_file = get_data_file(mid, ts, m_data_files2, false);
+        RollupDataFile *data_file = get_data_file(mid, ts, m_data_files2, RL_LEVEL2);
 
         if (data_file != nullptr)
         {
@@ -564,7 +564,7 @@ RollupManager::get_data_files_1d(MetricId mid, const TimeRange& range, std::vect
 /* @param tstamp beginning of month, in seconds
  */
 RollupDataFile *
-RollupManager::get_data_file_by_bucket_1h(int bucket, Timestamp tstamp)
+RollupManager::get_level1_data_file_by_bucket(int bucket, Timestamp tstamp)
 {
     ASSERT(bucket >= 0);
     ASSERT(is_sec(tstamp));
@@ -578,7 +578,7 @@ RollupManager::get_data_file_by_bucket_1h(int bucket, Timestamp tstamp)
     {
         int year, month;
         get_year_month(tstamp, year, month);
-        std::string name = RollupDataFile::get_name_by_bucket_1h(bucket, year, month);
+        std::string name = RollupDataFile::get_level1_name_by_bucket(bucket, year, month);
 
         if (file_exists(name))
         {
@@ -599,7 +599,7 @@ RollupManager::get_data_file_by_bucket_1h(int bucket, Timestamp tstamp)
 }
 
 RollupDataFile *
-RollupManager::get_or_create_data_file_by_bucket_1d(int bucket, Timestamp tstamp)
+RollupManager::get_or_create_level2_data_file_by_bucket(int bucket, Timestamp tstamp)
 {
     ASSERT(bucket >= 0);
     ASSERT(is_sec(tstamp));
@@ -621,15 +621,6 @@ RollupManager::get_or_create_data_file_by_bucket_1d(int bucket, Timestamp tstamp
     data_file->inc_ref_count();
 
     return data_file;
-}
-
-// get annual data file
-RollupDataFile *
-RollupManager::get_data_file2(MetricId mid, Timestamp tstamp)
-{
-    Timestamp begin = begin_year(tstamp);
-    std::lock_guard<std::mutex> guard(m_lock2);
-    return get_data_file(mid, begin, m_data_files2, false);
 }
 
 void
@@ -761,25 +752,25 @@ RollupManager::add_data_file_size(int64_t size)
 }
 
 int64_t
-RollupManager::get_rollup_data_file_size(bool monthly)
+RollupManager::get_rollup_data_file_size(RollupLevel level)
 {
     //std::lock_guard<std::mutex> guard(m_lock);
-    int64_t monthly_size;
+    int64_t level1_size;
 
     if (m_sizes.empty())
     {
         // estimate rollup data file size
-        monthly_size = TimeSeries::get_next_id();
-        monthly_size *= 24 * 30 * 10;
-        monthly_size /= Config::inst()->get_int(CFG_TSDB_ROLLUP_BUCKETS, CFG_TSDB_ROLLUP_BUCKETS_DEF);
+        level1_size = TimeSeries::get_next_id();
+        level1_size *= 24 * 30 * 10;
+        level1_size /= Config::inst()->get_int(CFG_TSDB_ROLLUP_BUCKETS, CFG_TSDB_ROLLUP_BUCKETS_DEF);
     }
     else
-        monthly_size = m_size_hint / m_sizes.size();
+    level1_size = m_size_hint / m_sizes.size();
 
-    if (monthly)
-        return monthly_size;
+    if (level == RL_LEVEL1)
+        return level1_size;
 
-    return (monthly_size / 28) * sizeof(struct rollup_entry_ext);
+    return (level1_size / 28) * sizeof(struct rollup_entry_ext);
 }
 
 void

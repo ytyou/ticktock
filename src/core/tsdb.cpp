@@ -3813,7 +3813,7 @@ Tsdb::rollup(TaskData& data)
         for (int bucket = 0; bucket < bucket_count; bucket++)
         {
             RollupDataFile *data_file_1h =
-                RollupManager::get_data_file_by_bucket_1h(bucket, month_range.get_from());
+                RollupManager::get_level1_data_file_by_bucket(bucket, month_range.get_from());
 
             if (data_file_1h == nullptr)
                 continue;
@@ -3825,7 +3825,7 @@ Tsdb::rollup(TaskData& data)
             data_files_1h.push_back(data_file_1h);
 
             RollupDataFile *data_file_1d =
-                RollupManager::get_or_create_data_file_by_bucket_1d(bucket, month_range.get_from());
+                RollupManager::get_or_create_level2_data_file_by_bucket(bucket, month_range.get_from());
             ASSERT(data_file_1d != nullptr);
             data_file_1d->add_data_points(data);
             data_file_1d->dec_ref_count();

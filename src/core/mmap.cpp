@@ -1135,32 +1135,32 @@ DataFile::get_page(PageIndex idx)
 /* @param mid Metric ID
  * @param begin Timestamp (in seconds) of beginning of a month
  */
-RollupDataFile::RollupDataFile(MetricId mid, Timestamp begin, bool monthly) :
+RollupDataFile::RollupDataFile(MetricId mid, Timestamp begin, RollupLevel level) :
     m_file(nullptr),
     m_begin(begin),
     m_last_access(0),
     m_index(0),
     m_size(0),
     m_ref_count(0),
-    m_monthly(monthly)
+    m_level(level)
 {
     int year, month;
     get_year_month(begin, year, month);
     Config *cfg = nullptr;
 
-    if (monthly)
+    if (level == RL_LEVEL1)
     {
         cfg = RollupManager::get_rollup_config(year, month, true);
-        m_name = get_name_by_mid_1h(mid, year, month);;
+        m_name = get_level1_name_by_mid(mid, year, month);;
     }
     else
     {
         cfg = RollupManager::get_rollup_config(year, true);
-        m_name = get_name_by_mid_1d(mid, year);
+        m_name = get_level2_name_by_mid(mid, year);
     }
 
     ASSERT(cfg != nullptr);
-    m_compressor_version = monthly ?
+    m_compressor_version = (level == RL_LEVEL1) ?
         cfg->get_int(CFG_TSDB_ROLLUP_COMPRESSOR_VERSION, CFG_TSDB_ROLLUP_COMPRESSOR_VERSION_DEF)
         : 0;
     m_compressor_precision = std::pow(10,
@@ -1176,7 +1176,7 @@ RollupDataFile::RollupDataFile(const std::string& name, Timestamp begin) :
     m_index(0),
     m_size(0),
     m_ref_count(0),
-    m_monthly(true)
+    m_level(RL_LEVEL1)
 {
     int year, month;
     get_year_month(begin, year, month);
@@ -1199,14 +1199,14 @@ RollupDataFile::RollupDataFile(int bucket, Timestamp tstamp) :
     m_index(0),
     m_size(0),
     m_ref_count(0),
-    m_monthly(false)
+    m_level(RL_LEVEL2)
 {
     ASSERT(bucket >= 0);
     ASSERT(is_sec(tstamp));
 
     int year, month;
     get_year_month(tstamp, year, month);
-    m_name = get_name_by_bucket_1d(bucket, year);
+    m_name = get_level2_name_by_bucket(bucket, year);
     Config *cfg = RollupManager::get_rollup_config(year, true);
     ASSERT(cfg != nullptr);
     m_compressor_version = 0;   // TODO: compress 1d rollup data file
@@ -1256,7 +1256,7 @@ RollupDataFile::open(bool for_read)
                 // new file?
                 if (sb.st_size == 0)
                 {
-                    int64_t length = RollupManager::get_rollup_data_file_size(m_monthly);
+                    int64_t length = RollupManager::get_rollup_data_file_size(m_level);
 
                     if (g_sys_page_size < length)
                     {
@@ -1305,7 +1305,7 @@ RollupDataFile::open_4_recompress()
 
         if (sb.st_size == 0)
         {
-            int64_t length = RollupManager::get_rollup_data_file_size(m_monthly);
+            int64_t length = RollupManager::get_rollup_data_file_size(m_level);
 
             if (g_sys_page_size < length)
             {
@@ -1647,17 +1647,17 @@ RollupDataFile::query_entry(const TimeRange& range, struct rollup_entry *entry, 
 }
 
 void
-RollupDataFile::query(const TimeRange& range, std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupType rollup)
+RollupDataFile::query_level1(const TimeRange& range, std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupType rollup)
 {
     if (3 <= m_compressor_version)
-        query3(range, map, rollup);
+        query_level1_compressor_v3(range, map, rollup);
     else
-        query1(range, map, rollup);
+        query_level1_compressor_v1_v2(range, map, rollup);
 }
 
 // query recompressed data
 void
-RollupDataFile::query3(const TimeRange& range, std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupType rollup)
+RollupDataFile::query_level1_compressor_v3(const TimeRange& range, std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupType rollup)
 {
     BitSet bitset;
     int finished_task_cnt = 0;
@@ -1740,7 +1740,7 @@ RollupDataFile::query3(const TimeRange& range, std::unordered_map<TimeSeriesId,Q
 }
 
 void
-RollupDataFile::query1(const TimeRange& range, std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupType rollup)
+RollupDataFile::query_level1_compressor_v1_v2(const TimeRange& range, std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupType rollup)
 {
     RollupDataFileCursor cursor;
     int task_cnt = (int)map.size();
@@ -1778,7 +1778,7 @@ RollupDataFile::query1(const TimeRange& range, std::unordered_map<TimeSeriesId,Q
 }
 
 void
-RollupDataFile::query2(const TimeRange& range, std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupType rollup)
+RollupDataFile::query_level2(const TimeRange& range, std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupType rollup)
 {
     set_rollup_level(rollup, false);    // unset level2
 
@@ -2031,13 +2031,13 @@ RollupDataFile::recompress(std::unordered_map<TimeSeriesId,std::vector<struct ro
 }
 
 std::string
-RollupDataFile::get_name_by_mid_1h(MetricId mid, int year, int month)
+RollupDataFile::get_level1_name_by_mid(MetricId mid, int year, int month)
 {
-    return get_name_by_bucket_1h(RollupManager::get_rollup_bucket(mid), year, month);
+    return get_level1_name_by_bucket(RollupManager::get_rollup_bucket(mid), year, month);
 }
 
 std::string
-RollupDataFile::get_name_by_bucket_1h(int bucket, int year, int month)
+RollupDataFile::get_level1_name_by_bucket(int bucket, int year, int month)
 {
     std::ostringstream oss;
     oss << Config::get_data_dir() << "/"
@@ -2048,13 +2048,13 @@ RollupDataFile::get_name_by_bucket_1h(int bucket, int year, int month)
 }
 
 std::string
-RollupDataFile::get_name_by_mid_1d(MetricId mid, int year)
+RollupDataFile::get_level2_name_by_mid(MetricId mid, int year)
 {
-    return get_name_by_bucket_1d(RollupManager::get_rollup_bucket(mid), year);
+    return get_level2_name_by_bucket(RollupManager::get_rollup_bucket(mid), year);
 }
 
 std::string
-RollupDataFile::get_name_by_bucket_1d(int bucket, int year)
+RollupDataFile::get_level2_name_by_bucket(int bucket, int year)
 {
     std::ostringstream oss;
     oss << Config::get_data_dir() << "/"

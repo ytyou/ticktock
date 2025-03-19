@@ -65,14 +65,13 @@ public:
     bool query(RollupType type, DataPointPair& dp);
 
     static void add_data_file_size(int64_t size);
-    static int64_t get_rollup_data_file_size(bool monthly);
+    static int64_t get_rollup_data_file_size(RollupLevel level);
     static int get_rollup_bucket(MetricId mid);
-    static RollupDataFile *get_data_file2(MetricId mid, Timestamp tstamp);  // get annual data files
-    static RollupDataFile *get_data_file_by_bucket_1h(int bucket, Timestamp begin); // get monthly data files
-    static RollupDataFile *get_or_create_data_file(MetricId mid, Timestamp tstamp);   // get monthly data files
-    static RollupDataFile *get_or_create_data_file_by_bucket_1d(int bucket, Timestamp begin); // get annual data files
-    static void get_data_files_1h(MetricId mid, const TimeRange& range, std::vector<RollupDataFile*>& files);   // monthly
-    static void get_data_files_1d(MetricId mid, const TimeRange& range, std::vector<RollupDataFile*>& files);   // annual
+    static RollupDataFile *get_level1_data_file_by_bucket(int bucket, Timestamp begin);
+    static RollupDataFile *get_or_create_data_file(MetricId mid, Timestamp tstamp);
+    static RollupDataFile *get_or_create_level2_data_file_by_bucket(int bucket, Timestamp begin);
+    static void get_level1_data_files(MetricId mid, const TimeRange& range, std::vector<RollupDataFile*>& files);
+    static void get_level2_data_files(MetricId mid, const TimeRange& range, std::vector<RollupDataFile*>& files);
     static void query(MetricId mid, const TimeRange& range, const std::vector<QueryTask*>& tasks, RollupType rollup);
     static double query(struct rollup_entry *entry, RollupType type);
     static void rotate();
@@ -83,8 +82,8 @@ public:
 
 private:
     static Timestamp step_down(Timestamp tstamp);
-    static RollupDataFile *get_data_file(MetricId mid, Timestamp tstamp, std::unordered_map<uint64_t, RollupDataFile*>& map, bool monthly);
-    static RollupDataFile *get_or_create_data_file(MetricId mid, Timestamp tstamp, std::unordered_map<uint64_t, RollupDataFile*>& map, bool monthly);
+    static RollupDataFile *get_data_file(MetricId mid, Timestamp tstamp, std::unordered_map<uint64_t, RollupDataFile*>& map, RollupLevel level);
+    static RollupDataFile *get_or_create_data_file(MetricId mid, Timestamp tstamp, std::unordered_map<uint64_t, RollupDataFile*>& map, RollupLevel level);
 
     uint32_t m_cnt;
     double m_min;

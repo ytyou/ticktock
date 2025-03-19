@@ -266,9 +266,9 @@ private:
 class RollupDataFile : public MmapFile
 {
 public:
-    RollupDataFile(int bucket, Timestamp tstamp);   // create 1d data file
+    RollupDataFile(int bucket, Timestamp tstamp);   // create level2 data file
     RollupDataFile(const std::string& name, Timestamp begin);
-    RollupDataFile(MetricId mid, Timestamp begin, bool monthly);
+    RollupDataFile(MetricId mid, Timestamp begin, RollupLevel level);
     ~RollupDataFile();
 
     void open(bool read_only) override;
@@ -295,14 +295,15 @@ public:
     void add_data_point(TimeSeriesId tid, Timestamp tstamp, uint32_t cnt, double min, double max, double sum);  // called during shutdown
     void add_data_points(std::unordered_map<TimeSeriesId,std::vector<struct rollup_entry_ext>>& data);
 
-    void query(const TimeRange& range, std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupType rollup);  // query hourly rollup
+    // query level1 rollup data files
+    void query_level1(const TimeRange& range, std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupType rollup);
     // query RollupDataFile compressed using compressor v1 or v2
-    void query1(const TimeRange& range, std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupType rollup);  // query hourly rollup, for compressor v1/v2
+    void query_level1_compressor_v1_v2(const TimeRange& range, std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupType rollup);
     // query RollupDataFile compressed using compressor v3
-    void query3(const TimeRange& range, std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupType rollup);  // query hourly rollup, for compressor v3
+    void query_level1_compressor_v3(const TimeRange& range, std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupType rollup);
 
     // query level2 rollup data file
-    void query2(const TimeRange& range, std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupType rollup); // query daily rollup
+    void query_level2(const TimeRange& range, std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupType rollup);
     // used by Tsdb::rollup() for offline processing
     //void query_for_recompress(const TimeRange& range, std::unordered_map<TimeSeriesId,struct rollup_entry_ext>& map);
     void query_from_wal(const TimeRange& range, std::unordered_map<TimeSeriesId,struct rollup_entry_ext>& map);
@@ -314,10 +315,10 @@ public:
     void inc_ref_count();
     int get_ref_count() const { return m_ref_count; }
 
-    static std::string get_name_by_mid_1h(MetricId mid, int year, int month);
-    static std::string get_name_by_bucket_1h(int bucket, int year, int month);
-    static std::string get_name_by_mid_1d(MetricId mid, int year);
-    static std::string get_name_by_bucket_1d(int bucket, int year);
+    static std::string get_level1_name_by_mid(MetricId mid, int year, int month);
+    static std::string get_level1_name_by_bucket(int bucket, int year, int month);
+    static std::string get_level2_name_by_mid(MetricId mid, int year);
+    static std::string get_level2_name_by_bucket(int bucket, int year);
 
 private:
     void flush();
@@ -335,7 +336,7 @@ private:
     int m_ref_count;        // prevent unload when in use
     short m_compressor_version;
     double m_compressor_precision;
-    bool m_monthly;         // true: monthly; false: annually
+    RollupLevel m_level;
 };
 
 
