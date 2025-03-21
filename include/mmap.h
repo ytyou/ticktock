@@ -304,15 +304,18 @@ public:
 
     // query level2 rollup data file
     void query_level2(const TimeRange& range, std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupType rollup);
+    void query_level2_v0(const TimeRange& range, std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupType rollup);
+    void query_level2_v1(const TimeRange& range, std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupType rollup);
     // used by Tsdb::rollup() for offline processing
     //void query_for_recompress(const TimeRange& range, std::unordered_map<TimeSeriesId,struct rollup_entry_ext>& map);
     void query_from_wal(const TimeRange& range, std::unordered_map<TimeSeriesId,struct rollup_entry_ext>& map);
     // used by Tsdb::rollup()
     void query_for_level2_rollup(std::unordered_map<TimeSeriesId,std::vector<struct rollup_entry_ext>>& data);
-    bool recompress(std::unordered_map<TimeSeriesId,std::vector<struct rollup_entry_ext>>& data);
+    bool recompress(std::unordered_map<TimeSeriesId,std::vector<struct rollup_entry_ext>>& data);   // level 1 rollup
 
     void dec_ref_count();
     void inc_ref_count();
+    void inc_ref_count_no_lock();
     int get_ref_count() const { return m_ref_count; }
 
     static std::string get_level1_name_by_mid(MetricId mid, int year, int month);
@@ -321,6 +324,8 @@ public:
     static std::string get_level2_name_by_bucket(int bucket, int year);
 
 private:
+    void write(uint8_t *buff, size_t size);
+    void write_no_lock(uint8_t *buff, size_t size);
     void flush();
     FILE *open_4_recompress();
     int query_entry(const TimeRange& range, struct rollup_entry *entry, std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupType rollup);

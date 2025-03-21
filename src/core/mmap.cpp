@@ -1160,14 +1160,31 @@ RollupDataFile::RollupDataFile(MetricId mid, Timestamp begin, RollupLevel level)
     }
 
     ASSERT(cfg != nullptr);
-    m_compressor_version = (level == RL_LEVEL1) ?
-        cfg->get_int(CFG_TSDB_ROLLUP_COMPRESSOR_VERSION, CFG_TSDB_ROLLUP_COMPRESSOR_VERSION_DEF)
-        : 0;
+
+    if (level == RL_LEVEL1)
+    {
+        if (cfg->exists(CFG_TSDB_ROLLUP_LEVEL1_COMPRESSOR_VERSION))
+            m_compressor_version = cfg->get_int(CFG_TSDB_ROLLUP_LEVEL1_COMPRESSOR_VERSION);
+        else if (cfg->exists(CFG_TSDB_ROLLUP_COMPRESSOR_VERSION))   // for backward compatiblity
+            m_compressor_version = cfg->get_int(CFG_TSDB_ROLLUP_COMPRESSOR_VERSION);
+        else
+            m_compressor_version = CFG_TSDB_ROLLUP_LEVEL1_COMPRESSOR_VERSION_DEF;
+    }
+    else
+    {
+        if (cfg->exists(CFG_TSDB_ROLLUP_LEVEL2_COMPRESSOR_VERSION))
+            m_compressor_version = cfg->get_int(CFG_TSDB_ROLLUP_LEVEL2_COMPRESSOR_VERSION);
+        else if (cfg->exists(CFG_TSDB_ROLLUP_COMPRESSOR_VERSION))   // for backward compatiblity
+            m_compressor_version = cfg->get_int(CFG_TSDB_ROLLUP_COMPRESSOR_VERSION);
+        else
+            m_compressor_version = CFG_TSDB_ROLLUP_LEVEL2_COMPRESSOR_VERSION_DEF;
+    }
+
     m_compressor_precision = std::pow(10,
         cfg->get_int(CFG_TSDB_ROLLUP_COMPRESSOR_PRECISION, CFG_TSDB_ROLLUP_COMPRESSOR_PRECISION_DEF));
 }
 
-// create 1h rollup file
+// create level1 rollup file
 RollupDataFile::RollupDataFile(const std::string& name, Timestamp begin) :
     MmapFile(name),
     m_file(nullptr),
@@ -1185,16 +1202,20 @@ RollupDataFile::RollupDataFile(const std::string& name, Timestamp begin) :
         cfg = Config::inst();
     ASSERT(cfg != nullptr);
 
-    m_compressor_version =
-        cfg->get_int(CFG_TSDB_ROLLUP_COMPRESSOR_VERSION, CFG_TSDB_ROLLUP_COMPRESSOR_VERSION_DEF);
+    if (cfg->exists(CFG_TSDB_ROLLUP_LEVEL1_COMPRESSOR_VERSION))
+        m_compressor_version = cfg->get_int(CFG_TSDB_ROLLUP_LEVEL1_COMPRESSOR_VERSION);
+    else if (cfg->exists(CFG_TSDB_ROLLUP_COMPRESSOR_VERSION))   // for backward compatiblity
+        m_compressor_version = cfg->get_int(CFG_TSDB_ROLLUP_COMPRESSOR_VERSION);
+    else
+        m_compressor_version = CFG_TSDB_ROLLUP_LEVEL1_COMPRESSOR_VERSION_DEF;
+
     m_compressor_precision = std::pow(10,
         cfg->get_int(CFG_TSDB_ROLLUP_COMPRESSOR_PRECISION, CFG_TSDB_ROLLUP_COMPRESSOR_PRECISION_DEF));
 }
 
-// create 1d rollup file
+// create level2 rollup file
 RollupDataFile::RollupDataFile(int bucket, Timestamp tstamp) :
     m_file(nullptr),
-    m_begin(TT_INVALID_TIMESTAMP),
     m_last_access(0),
     m_index(0),
     m_size(0),
@@ -1206,11 +1227,19 @@ RollupDataFile::RollupDataFile(int bucket, Timestamp tstamp) :
 
     int year, month;
     get_year_month(tstamp, year, month);
+    m_begin = begin_year(tstamp);
     m_name = get_level2_name_by_bucket(bucket, year);
     Config *cfg = RollupManager::get_rollup_config(year, true);
+
     ASSERT(cfg != nullptr);
-    m_compressor_version = 0;   // TODO: compress 1d rollup data file
-        //cfg->get_int(CFG_TSDB_ROLLUP_COMPRESSOR_VERSION, CFG_TSDB_ROLLUP_COMPRESSOR_VERSION_DEF);;
+
+    if (cfg->exists(CFG_TSDB_ROLLUP_LEVEL2_COMPRESSOR_VERSION))
+        m_compressor_version = cfg->get_int(CFG_TSDB_ROLLUP_LEVEL2_COMPRESSOR_VERSION);
+    else if (cfg->exists(CFG_TSDB_ROLLUP_COMPRESSOR_VERSION))   // for backward compatiblity
+        m_compressor_version = cfg->get_int(CFG_TSDB_ROLLUP_COMPRESSOR_VERSION);
+    else
+        m_compressor_version = CFG_TSDB_ROLLUP_LEVEL2_COMPRESSOR_VERSION_DEF;
+
     m_compressor_precision = std::pow(10,
         cfg->get_int(CFG_TSDB_ROLLUP_COMPRESSOR_PRECISION, CFG_TSDB_ROLLUP_COMPRESSOR_PRECISION_DEF));
 }
@@ -1225,7 +1254,8 @@ RollupDataFile::open(bool for_read)
 {
     m_last_access = ts_now_sec();
 
-    if (for_read && (3 <= m_compressor_version))
+    if (((m_level == RL_LEVEL1) && for_read && (3 <= m_compressor_version)) ||
+        ((m_level == RL_LEVEL2) && for_read && (1 <= m_compressor_version)))
     {
         // after re-compress
         MmapFile::open_existing(true, true);
@@ -1325,6 +1355,31 @@ RollupDataFile::open_4_recompress()
 }
 
 void
+RollupDataFile::write(uint8_t *buff, size_t size)
+{
+    std::lock_guard<std::mutex> guard(m_lock);
+    write_no_lock(buff, size);
+    m_last_access = ts_now_sec();
+}
+
+void
+RollupDataFile::write_no_lock(uint8_t *buff, size_t size)
+{
+    ASSERT(size <= sizeof(m_buff));
+
+    if (sizeof(m_buff) < (m_index + size))
+    {
+        // write the m_buff[] out
+        ensure_open(false);
+        flush();
+    }
+
+    std::memcpy(m_buff+m_index, buff, size);
+    m_index += size;
+    m_size += size;
+}
+
+void
 RollupDataFile::flush()
 {
     if ((m_file != nullptr) && (m_index > 0))
@@ -1333,6 +1388,7 @@ RollupDataFile::flush()
         std::fwrite(m_buff, m_index, 1, m_file);
         std::fflush(m_file);
         m_index = 0;
+        m_size = 0;
     }
 }
 
@@ -1346,6 +1402,7 @@ RollupDataFile::close()
         ASSERT(m_file != nullptr);
         ASSERT(0 <= m_index && m_index <= sizeof(m_buff));
         std::fwrite(m_buff, m_index, 1, m_file);
+        m_index = 0;
     }
 
     if (m_file != nullptr)
@@ -1381,8 +1438,11 @@ RollupDataFile::close_if_idle(Timestamp threshold_sec, Timestamp now_sec)
 bool
 RollupDataFile::is_open(bool for_read) const
 {
-    if (for_read && (3 <= m_compressor_version))
+    if (((m_level == RL_LEVEL1) && for_read && (3 <= m_compressor_version)) ||
+        ((m_level == RL_LEVEL2) && for_read && (1 <= m_compressor_version)))
+    {
         return MmapFile::is_open(for_read);
+    }
     else
         return (m_file != nullptr);
 }
@@ -1424,26 +1484,10 @@ RollupDataFile::add_data_point(TimeSeriesId tid, uint32_t cnt, double min, doubl
     else
         ASSERT(false);
 
-    std::lock_guard<std::mutex> guard(m_lock);
-
-    if (sizeof(m_buff) < (m_index + size))
-    {
-        // write the m_buff[] out
-        ensure_open(false);
-        ASSERT(m_file != nullptr);
-        std::fwrite(m_buff, m_index, 1, m_file);
-        std::fflush(m_file);
-        m_index = 0;
-        m_size = 0;
-    }
-
-    std::memcpy(m_buff+m_index, buff, size);
-    m_index += size;
-    m_size += size;
-    m_last_access = ts_now_sec();
+    write(buff, size);
 }
 
-// This is for daily rollup as well as backup file.
+// This is for writing to WAL.
 void
 RollupDataFile::add_data_point(TimeSeriesId tid, Timestamp tstamp, uint32_t cnt, double min, double max, double sum)
 {
@@ -1464,9 +1508,9 @@ RollupDataFile::add_data_point(TimeSeriesId tid, Timestamp tstamp, uint32_t cnt,
 void
 RollupDataFile::add_data_points(std::unordered_map<TimeSeriesId,std::vector<struct rollup_entry_ext>>& data)
 {
-    int idx;
-    const int size = 100;
-    struct rollup_entry_ext buff[size];
+    int size;
+    uint8_t buff[128];
+    TimeSeriesId last_tid = TT_INVALID_TIME_SERIES_ID;
     std::lock_guard<std::mutex> guard(m_lock);
 
     //ASSERT(! is_open(false) && ! is_open(true));
@@ -1476,71 +1520,55 @@ RollupDataFile::add_data_points(std::unordered_map<TimeSeriesId,std::vector<stru
     for (auto& it: data)
     {
         TimeSeriesId tid = it.first;
+        struct rollup_entry_ext last_entry;
         std::vector<struct rollup_entry_ext>& entries = it.second;
-        Timestamp last_tstamp = 0;
-
-        idx = -1;
 
         for (auto& entry: entries)
         {
-            ASSERT(it.first == entry.tid);
+            ASSERT(tid == entry.tid);
 
             if (entry.cnt == 0)
                 continue;
 
-            Timestamp ts = step_down(entry.tstamp, g_rollup_interval_1d);
+            ASSERT(m_begin <= entry.tstamp);
+            entry.tstamp = step_down(entry.tstamp, g_rollup_interval_1d);
 
-            if (idx < 0)
+            ASSERT(m_begin <= entry.tstamp);
+            ASSERT(last_entry.tstamp == TT_INVALID_TIMESTAMP || last_entry.tstamp <= entry.tstamp);
+
+            if (entry.tstamp == last_entry.tstamp)
             {
-                idx++;
-                ASSERT(idx == 0);
-
-                buff[idx].tid = tid;
-                buff[idx].cnt = entry.cnt;
-                buff[idx].min = entry.min;
-                buff[idx].max = entry.max;
-                buff[idx].sum = entry.sum;
-                buff[idx].tstamp = ts;
+                // aggregate
+                last_entry.cnt += entry.cnt;
+                last_entry.min = std::min(last_entry.min, entry.min);
+                last_entry.max = std::max(last_entry.max, entry.max);
+                last_entry.sum += entry.sum;
             }
-            else if (ts == buff[idx].tstamp)
+            else if (0 < last_entry.cnt)
             {
-                buff[idx].cnt += entry.cnt;
-                buff[idx].min = std::min(buff[idx].min, entry.min);
-                buff[idx].max = std::max(buff[idx].max, entry.max);
-                buff[idx].sum += entry.sum;
+                // write last_entry out
+                ASSERT(tid == last_entry.tid);
+                bool same_tid = (last_tid == last_entry.tid);
+                last_entry.tstamp = (last_entry.tstamp - m_begin) / g_rollup_interval_1d;
+                size = RollupCompressor_v1::compress3(buff, last_entry, m_compressor_precision, same_tid);
+                write_no_lock(buff, size);
+
+                last_tid = last_entry.tid;
+                last_entry = entry;
             }
             else
-            {
-                idx++;
-
-                if (size <= idx)
-                {
-                    // buff is full, write it out
-                    ASSERT(idx == size);
-                    std::fwrite(buff, idx*sizeof(struct rollup_entry_ext), 1, m_file);
-                    idx = 0;
-                }
-
-                buff[idx].tid = tid;
-                buff[idx].cnt = entry.cnt;
-                buff[idx].min = entry.min;
-                buff[idx].max = entry.max;
-                buff[idx].sum = entry.sum;
-                buff[idx].tstamp = ts;
-            }
+                last_entry = entry;
         }
 
-        if (0 <= idx)
+        if (0 < last_entry.cnt)
         {
-            std::fwrite(buff, (idx+1)*sizeof(struct rollup_entry_ext), 1, m_file);
-            idx = -1;
+            // write last_entry out
+            ASSERT(tid == last_entry.tid);
+            bool same_tid = (last_tid == last_entry.tid);
+            last_entry.tstamp = (last_entry.tstamp - m_begin) / g_rollup_interval_1d;
+            size = RollupCompressor_v1::compress3(buff, last_entry, m_compressor_precision, same_tid);
+            write_no_lock(buff, size);
         }
-    }
-
-    if (0 <= idx)
-    {
-        // write it out
-        std::fwrite(buff, idx*sizeof(struct rollup_entry_ext), 1, m_file);
     }
 
     close();
@@ -1780,6 +1808,20 @@ RollupDataFile::query_level1_compressor_v1_v2(const TimeRange& range, std::unord
 void
 RollupDataFile::query_level2(const TimeRange& range, std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupType rollup)
 {
+    if (m_compressor_version == 0)
+    {
+        query_level2_v0(range, map, rollup);
+    }
+    else
+    {
+        ASSERT(m_compressor_version == 1);
+        query_level2_v1(range, map, rollup);
+    }
+}
+
+void
+RollupDataFile::query_level2_v0(const TimeRange& range, std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupType rollup)
+{
     set_rollup_level(rollup, false);    // unset level2
 
     std::unordered_map<TimeSeriesId,QueryTask*> map2(map);
@@ -1833,6 +1875,72 @@ RollupDataFile::query_level2(const TimeRange& range, std::unordered_map<TimeSeri
 
         if (map2.empty())
             break;
+    }
+}
+
+void
+RollupDataFile::query_level2_v1(const TimeRange& range, std::unordered_map<TimeSeriesId,QueryTask*>& map, RollupType rollup)
+{
+    set_rollup_level(rollup, false);    // unset level2
+
+    std::unordered_map<TimeSeriesId,QueryTask*> map2(map);
+    std::size_t length, len = 0;
+    TimeSeriesId last_tid = TT_INVALID_TIME_SERIES_ID;
+    uint8_t *pages;
+    std::lock_guard<std::mutex> guard(m_lock);
+
+    m_last_access = ts_now_sec();
+    if (! is_open(true) && ! is_open(false))
+        open(true);
+
+    pages = (uint8_t*)get_pages();
+    length = get_length();
+
+    ASSERT(pages != nullptr);
+
+    while (len < length)
+    {
+        int l;
+        struct rollup_entry_ext entry;
+
+        entry.tid = last_tid;
+        l = RollupCompressor_v1::uncompress3(pages+len, length-len, &entry, m_compressor_precision, m_begin);
+        last_tid = entry.tid;
+
+        if (l <= 0) break;
+        len += l;
+
+        auto search = map2.find(entry.tid);
+
+        if (search != map2.end())
+        {
+            QueryTask *task = search->second;
+            Timestamp ts = entry.tstamp;
+            Timestamp last_ts = task->get_last_tstamp();
+
+            // out-of-order?
+            if ((last_ts != TT_INVALID_TIMESTAMP) && (ts <= last_ts))
+            {
+                // TODO: handle OOO
+                ASSERT(last_ts <= ts);
+            }
+
+            task->set_last_tstamp(ts);
+            ts = validate_resolution(ts);
+            int in_range = range.in_range(ts);
+
+            if (in_range > 0)
+            {
+                map2.erase(search);
+                if (map2.empty()) break;
+            }
+            else if (in_range == 0)
+            {
+                //double val = RollupManager::query((struct rollup_entry*)entry, rollup);
+                //task->add_data_point(ts, val);
+                task->add_data_point(&entry, rollup);
+            }
+        }
     }
 }
 
@@ -2074,6 +2182,12 @@ void
 RollupDataFile::inc_ref_count()
 {
     std::lock_guard<std::mutex> guard(m_lock);
+    m_ref_count++;
+}
+
+void
+RollupDataFile::inc_ref_count_no_lock()
+{
     m_ref_count++;
 }
 

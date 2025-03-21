@@ -547,8 +547,13 @@ public:
     static int compress(uint8_t *buff, TimeSeriesId tid, uint32_t cnt, double min, double max, double sum, double precision);
     static int uncompress(uint8_t *buff, int size, struct rollup_entry *entry, double precision);
 
+    // level1 rollup compressor
     static int compress2(uint8_t *buff, TimeSeriesId tid, uint32_t cnt, double min, double max, double sum, double precision);
     static int uncompress2(uint8_t *buff, int size, struct rollup_entry *entry, double precision);
+
+    // level2 rollup compressor
+    static int compress3(uint8_t *buff, struct rollup_entry_ext& entry, double precision, bool same_tid);
+    static int uncompress3(uint8_t *buff, int size, struct rollup_entry_ext *entry, double precision, Timestamp begin);
 
 private:
     static int bytes_needed(double f, double p);
@@ -556,12 +561,16 @@ private:
     static void compress_int24(int64_t n, uint8_t *buff);
     static void compress_int32(int64_t n, uint8_t *buff);
     static void compress_int40(int64_t n, uint8_t *buff);
+    static void compress_int48(int64_t n, uint8_t *buff);
+    static void compress_int56(int64_t n, uint8_t *buff);
     static void compress_int64(int64_t n, uint8_t *buff);
 
     static int16_t uncompress_int16(uint8_t *buff);
     static int32_t uncompress_int24(uint8_t *buff);
     static int32_t uncompress_int32(uint8_t *buff);
     static int64_t uncompress_int40(uint8_t *buff);
+    static int64_t uncompress_int48(uint8_t *buff);
+    static int64_t uncompress_int56(uint8_t *buff);
     static int64_t uncompress_int64(uint8_t *buff);
 
     static uint32_t uncompress_uint16(uint8_t *buff);

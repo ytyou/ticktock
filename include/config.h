@@ -137,7 +137,10 @@
 #define CFG_TSDB_ROLLUP_COMPRESSOR_PRECISION    "tsdb.rollup.compressor.precision"
 #define CFG_TSDB_ROLLUP_COMPRESSOR_PRECISION_DEF 8
 #define CFG_TSDB_ROLLUP_COMPRESSOR_VERSION      "tsdb.rollup.compressor.version"
-#define CFG_TSDB_ROLLUP_COMPRESSOR_VERSION_DEF  2
+#define CFG_TSDB_ROLLUP_LEVEL1_COMPRESSOR_VERSION       "tsdb.rollup.level1.compressor.version"
+#define CFG_TSDB_ROLLUP_LEVEL1_COMPRESSOR_VERSION_DEF   2
+#define CFG_TSDB_ROLLUP_LEVEL2_COMPRESSOR_VERSION       "tsdb.rollup.level2.compressor.version"
+#define CFG_TSDB_ROLLUP_LEVEL2_COMPRESSOR_VERSION_DEF   1
 #define CFG_TSDB_ROLLUP_ENABLED                 "tsdb.rollup.enabled"
 #define CFG_TSDB_ROLLUP_ENABLED_DEF             true
 #define CFG_TSDB_ROLLUP_FREQUENCY               "tsdb.rollup.frequency"

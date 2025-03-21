@@ -446,7 +446,7 @@ RollupManager::get_or_create_data_file(MetricId mid, Timestamp tstamp, std::unor
         data_file = search->second;
 
     ASSERT(data_file != nullptr);
-    data_file->inc_ref_count();
+    data_file->inc_ref_count_no_lock();
 
     return data_file;
 }
@@ -719,9 +719,9 @@ RollupManager::swap_recompressed_files(std::vector<RollupDataFile*>& data_files)
                 Logger::warn("No rollup config found for year %lu, month %lu", year, month);
             else
             {
-                ASSERT(cfg->exists(CFG_TSDB_ROLLUP_COMPRESSOR_VERSION));
-                ASSERT(cfg->get_int(CFG_TSDB_ROLLUP_COMPRESSOR_VERSION) < 3);
-                cfg->set_value(CFG_TSDB_ROLLUP_COMPRESSOR_VERSION, "3");
+                ASSERT(cfg->exists(CFG_TSDB_ROLLUP_LEVEL1_COMPRESSOR_VERSION));
+                ASSERT(cfg->get_int(CFG_TSDB_ROLLUP_LEVEL1_COMPRESSOR_VERSION) < 3);
+                cfg->set_value(CFG_TSDB_ROLLUP_LEVEL1_COMPRESSOR_VERSION, "3");
                 cfg->persist();
             }
 
@@ -818,7 +818,7 @@ RollupManager::get_rollup_config(int year, int month, bool create)
     std::lock_guard<std::mutex> guard(m_cfg_lock);
     auto search = m_configs.find(key);
     Config *cfg = nullptr;
-    bool monthly;
+    RollupLevel level;
 
     if (search == m_configs.end())
     {
@@ -827,7 +827,7 @@ RollupManager::get_rollup_config(int year, int month, bool create)
         if (month == 0)
         {
             // 1d
-            monthly = false;
+            level = RL_LEVEL2;
             std::ostringstream oss;
             oss << Config::get_data_dir() << "/"
                 << std::to_string(year) << "/rollup";
@@ -836,7 +836,7 @@ RollupManager::get_rollup_config(int year, int month, bool create)
         else
         {
             // 1h
-            monthly = true;
+            level = RL_LEVEL1;
             std::ostringstream oss;
             oss << Config::get_data_dir() << "/"
                 << std::to_string(year) << "/"
@@ -852,11 +852,20 @@ RollupManager::get_rollup_config(int year, int month, bool create)
 
                 // create config file
                 cfg = new Config(dir_name + "/config");
-                int compressor = monthly ? CFG_TSDB_ROLLUP_COMPRESSOR_VERSION_DEF : 0;
-                    //Config::inst()->get_int(CFG_TSDB_ROLLUP_COMPRESSOR_VERSION, CFG_TSDB_ROLLUP_COMPRESSOR_VERSION_DEF);
                 int precision =
                     Config::inst()->get_int(CFG_TSDB_ROLLUP_COMPRESSOR_PRECISION, CFG_TSDB_ROLLUP_COMPRESSOR_PRECISION_DEF);
-                cfg->set_value(CFG_TSDB_ROLLUP_COMPRESSOR_VERSION, std::to_string(compressor));
+                if (level == RL_LEVEL1)
+                {
+                    int compressor =
+                        Config::inst()->get_int(CFG_TSDB_ROLLUP_LEVEL1_COMPRESSOR_VERSION, CFG_TSDB_ROLLUP_LEVEL1_COMPRESSOR_VERSION_DEF);
+                    cfg->set_value(CFG_TSDB_ROLLUP_LEVEL1_COMPRESSOR_VERSION, std::to_string(compressor));
+                }
+                else
+                {
+                    int compressor =
+                        Config::inst()->get_int(CFG_TSDB_ROLLUP_LEVEL2_COMPRESSOR_VERSION, CFG_TSDB_ROLLUP_LEVEL2_COMPRESSOR_VERSION_DEF);
+                    cfg->set_value(CFG_TSDB_ROLLUP_LEVEL2_COMPRESSOR_VERSION, std::to_string(compressor));
+                }
                 cfg->set_value(CFG_TSDB_ROLLUP_COMPRESSOR_PRECISION, std::to_string(precision));
                 cfg->set_value(CFG_TSDB_ROLLUP_BUCKETS,
                     std::to_string(Config::inst()->get_int(CFG_TSDB_ROLLUP_BUCKETS, CFG_TSDB_ROLLUP_BUCKETS_DEF)));

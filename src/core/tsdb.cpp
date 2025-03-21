@@ -3808,27 +3808,27 @@ Tsdb::rollup(TaskData& data)
         int pause = interactive ? 0 :
             Config::inst()->get_time(CFG_TSDB_ROLLUP_PAUSE,TimeUnit::SEC,CFG_TSDB_ROLLUP_PAUSE_DEF);
         bool recompress_success = true;
-        std::vector<RollupDataFile*> data_files_1h;
+        std::vector<RollupDataFile*> data_files_level1;
 
         for (int bucket = 0; bucket < bucket_count; bucket++)
         {
-            RollupDataFile *data_file_1h =
+            RollupDataFile *data_file_level1 =
                 RollupManager::get_level1_data_file_by_bucket(bucket, month_range.get_from());
 
-            if (data_file_1h == nullptr)
+            if (data_file_level1 == nullptr)
                 continue;
 
             std::unordered_map<TimeSeriesId,std::vector<struct rollup_entry_ext>> data;
-            data_file_1h->query_for_level2_rollup(data);
-            recompress_success = recompress_success && data_file_1h->recompress(data);
-            data_file_1h->dec_ref_count();
-            data_files_1h.push_back(data_file_1h);
+            data_file_level1->query_for_level2_rollup(data);
+            recompress_success = recompress_success && data_file_level1->recompress(data);
+            data_file_level1->dec_ref_count();
+            data_files_level1.push_back(data_file_level1);
 
-            RollupDataFile *data_file_1d =
+            RollupDataFile *data_file_level2 =
                 RollupManager::get_or_create_level2_data_file_by_bucket(bucket, month_range.get_from());
-            ASSERT(data_file_1d != nullptr);
-            data_file_1d->add_data_points(data);
-            data_file_1d->dec_ref_count();
+            ASSERT(data_file_level2 != nullptr);
+            data_file_level2->add_data_points(data);
+            data_file_level2->dec_ref_count();
 
             if (pause > 0)
                 std::this_thread::sleep_for(std::chrono::seconds(pause));
@@ -3837,7 +3837,7 @@ Tsdb::rollup(TaskData& data)
         if (recompress_success)
         {
             // switch to newly compressed rollup files
-            recompress_success = RollupManager::swap_recompressed_files(data_files_1h);
+            recompress_success = RollupManager::swap_recompressed_files(data_files_level1);
         }
 
         if (recompress_success)

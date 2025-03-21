@@ -211,7 +211,8 @@ Config::verify()
     ints.emplace(CFG_TSDB_RETENTION_THRESHOLD);
     ints.emplace(CFG_TSDB_ROLLUP_BUCKETS);
     ints.emplace(CFG_TSDB_ROLLUP_COMPRESSOR_PRECISION);
-    ints.emplace(CFG_TSDB_ROLLUP_COMPRESSOR_VERSION);
+    ints.emplace(CFG_TSDB_ROLLUP_LEVEL1_COMPRESSOR_VERSION);
+    ints.emplace(CFG_TSDB_ROLLUP_LEVEL2_COMPRESSOR_VERSION);
     ints.emplace(CFG_UDP_LISTENER_COUNT);
     ints.emplace(CFG_UDP_BATCH_SIZE);
     ints.emplace(CFG_UDP_SERVER_PORT);
