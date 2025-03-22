@@ -721,6 +721,232 @@ inspect_tsdb(const std::string& dir)
     }
 }
 
+/* @param filename Format of this name: .../YYYY/MM/rollup/r....data; OR
+ *                 .../YYYY/rollup/r...data;
+ */
+Timestamp
+get_rollup_begin_time(const std::string& filename)
+{
+    std::string fname(filename);
+    std::vector<std::string> tokens;
+
+    tokenize(fname, tokens, '/');
+
+    int len = tokens.size();
+    int year, month;
+
+    if (tokens[len-4] == "data")
+    {
+        month = 0;
+        year = std::stod(tokens[len-3]);
+    }
+    else
+    {
+        year = std::stod(tokens[len-4]);
+        month = std::stod(tokens[len-3]);
+    }
+
+    return begin_month(year-1900, month-1);
+}
+
+void
+print_rollup_entry(Timestamp ts, struct rollup_entry *entry)
+{
+    printf("ts=%lu, tid=%u, cnt=%u, min=%0.3f, max=%0.3f, sum=%0.3f\n",
+        ts, entry->tid, entry->cnt, entry->min, entry->max, entry->sum);
+}
+
+void
+inspect_level1_rollup_v1(uint8_t *pages, std::size_t size)
+{
+
+}
+
+void
+inspect_level1_rollup_v2(uint8_t *pages, std::size_t size, Timestamp begin, double precision)
+{
+    std::size_t idx = 0;
+    Timestamp ts = begin;
+    struct rollup_entry entry;
+
+    while (idx < size)
+    {
+        int len = RollupCompressor_v1::uncompress2(pages+idx, size-idx, &entry, precision);
+
+        if (len <= 0)
+            break;
+
+        print_rollup_entry(ts, &entry);
+
+        idx += len;
+        ts += g_rollup_interval_1h;
+    }
+}
+
+void
+inspect_level1_rollup_v3(uint8_t *pages, std::size_t size, Timestamp begin, double precision)
+{
+    BitSet bitset;
+    struct rollup_entry entry;
+
+    bitset.init(pages, size, true);
+    BitSetCursor *cursor = bitset.new_cursor();
+
+    while (bitset.bytes_processed(cursor) < size)
+    {
+        Timestamp ts = begin;
+        uint32_t prev_cnt = 0;
+        double prev_min = 0.0, prev_min_delta = 0.0;
+        double prev_max = 0.0, prev_max_delta = 0.0;
+        double prev_sum = 0.0, prev_sum_delta = 0.0;
+        entry.tid = Compressor::uncompress_i4a(cursor, bitset);
+        uint32_t size = Compressor::uncompress_i4a(cursor, bitset);
+        uint32_t idx = 0;
+
+        while (idx < size)
+        {
+            idx++;
+
+            int64_t cnt_delta = Compressor::uncompress_i4(cursor, bitset);
+            entry.cnt = (uint32_t)(cnt_delta + (int64_t)prev_cnt);
+
+            if (entry.cnt != 0)
+            {
+                double min_delta, max_delta, sum_delta, dod;
+
+                dod = Compressor::uncompress_f4(cursor, precision, bitset);
+                min_delta = prev_min_delta + dod;
+                entry.min = min_delta + prev_min;
+                dod = Compressor::uncompress_f4(cursor, precision, bitset);
+                max_delta = prev_max_delta + dod;
+                entry.max = max_delta + prev_max;
+                dod = Compressor::uncompress_f4(cursor, precision, bitset);
+                sum_delta = prev_sum_delta + dod;
+                entry.sum = sum_delta + prev_sum;
+
+                print_rollup_entry(ts, &entry);
+
+                ts += g_rollup_interval_1h;
+                prev_cnt = entry.cnt;
+                prev_min = entry.min; prev_min_delta = min_delta;
+                prev_max = entry.max; prev_max_delta = max_delta;
+                prev_sum = entry.sum; prev_sum_delta = sum_delta;
+            }
+        }
+
+        cursor->ignore_rest_of_byte();
+    }
+
+    MemoryManager::free_recyclable(cursor);
+}
+
+void
+inspect_level1_rollup(const std::string& filename, int compressor_version, double precision)
+{
+    std::cerr << "Inspecting level1 rollup (v" << compressor_version << "): " << filename << "..." << std::endl;
+    Timestamp begin = get_rollup_begin_time(filename);
+    int fd;
+    std::size_t size;
+    uint8_t *pages = (uint8_t*)open_mmap(filename, fd, size);
+
+    if (compressor_version == 3)
+        inspect_level1_rollup_v3(pages, size, begin, precision);
+    else if (compressor_version == 2)
+        inspect_level1_rollup_v2(pages, size, begin, precision);
+    else
+        inspect_level1_rollup_v1(pages, size);
+
+    close_mmap(fd, (char*)pages, size);
+}
+
+void
+inspect_level2_rollup_v0(uint8_t *pages, std::size_t size, Timestamp begin, double precision)
+{
+
+}
+
+void
+inspect_level2_rollup_v1(uint8_t *pages, std::size_t size, Timestamp begin, double precision)
+{
+    std::size_t idx = 0;
+    TimeSeriesId last_tid = TT_INVALID_TIME_SERIES_ID;
+
+    ASSERT(pages != nullptr);
+
+    while (idx < size)
+    {
+        int l;
+        struct rollup_entry_ext entry;
+
+        entry.tid = last_tid;
+        l = RollupCompressor_v1::uncompress3(pages+idx, size-idx, &entry, precision, begin);
+        last_tid = entry.tid;
+
+        if (l <= 0) break;
+        idx += l;
+
+        print_rollup_entry(entry.tstamp, (struct rollup_entry*)&entry);
+    }
+}
+
+void
+inspect_level2_rollup(const std::string& filename, int compressor_version, double precision)
+{
+    std::cerr << "Inspecting level2 rollup (v" << compressor_version << "): " << filename << "..." << std::endl;
+    Timestamp begin = get_rollup_begin_time(filename);
+    int fd;
+    std::size_t size;
+    uint8_t *pages = (uint8_t*)open_mmap(filename, fd, size);
+
+    if (compressor_version == 1)
+        inspect_level2_rollup_v1(pages, size, begin, precision);
+    else
+        inspect_level2_rollup_v0(pages, size, begin, precision);
+
+    close_mmap(fd, (char*)pages, size);
+}
+
+void
+inspect_rollup(const std::string& dir)
+{
+    std::string cfg_fname = dir + "/config";
+    Config cfg(cfg_fname);
+    RollupLevel level;
+    int compressor_version;
+    double precision;
+
+    cfg.load(false);
+
+    if (cfg.exists(CFG_TSDB_ROLLUP_LEVEL1_COMPRESSOR_VERSION))
+    {
+        level = RL_LEVEL1;
+        compressor_version = cfg.get_int(CFG_TSDB_ROLLUP_LEVEL1_COMPRESSOR_VERSION);
+    }
+    else if (cfg.exists(CFG_TSDB_ROLLUP_LEVEL2_COMPRESSOR_VERSION))
+    {
+        level = RL_LEVEL2;
+        compressor_version = cfg.get_int(CFG_TSDB_ROLLUP_LEVEL2_COMPRESSOR_VERSION);
+    }
+    else
+    {
+        fprintf(stderr, "[FATAL] Unrecognized rollup directory: %s\n", dir.c_str());
+        return;
+    }
+
+    precision = std::pow(10, cfg.get_int(CFG_TSDB_ROLLUP_COMPRESSOR_PRECISION));
+
+    std::vector<std::string> files;
+    get_all_files(dir+"/r*.data", files);
+
+    for (auto file: files)
+    {
+        if (level == RL_LEVEL1)
+            inspect_level1_rollup(file, compressor_version, precision);
+        else
+            inspect_level2_rollup(file, compressor_version, precision);
+    }
+}
+
 int
 main(int argc, char *argv[])
 {
@@ -771,6 +997,10 @@ main(int argc, char *argv[])
         // data directory structure:
         // <year>/<month>/<tsdb>/<index>|<header>|<data>
         for_all_dirs(g_data_dir, inspect_tsdb, 3);
+    }
+    else if (ends_with(g_tsdb_dir.c_str(), "/rollup") || ends_with(g_tsdb_dir.c_str(), "/rollup.bak"))
+    {
+        inspect_rollup(g_tsdb_dir);
     }
     else
     {
