@@ -65,7 +65,7 @@ error() {
     H=$1
     M=$2
     TS=$(date +"%Y-%m-%d %H:%M:%S")
-    echo "[$TS] [$H] [ERROR] $M"
+    echo "[$TS] [$H] [\033[1;91mERROR\033[0m] $M"
     echo "[$TS] [$H] [ERROR] $M" >> $SELF_LOG
 }
 
@@ -73,7 +73,7 @@ fail() {
     H=$1
     M=$2
     TS=$(date +"%Y-%m-%d %H:%M:%S")
-    echo "[$TS] [$H] [STAT] [FAIL] $M"
+    echo -e "[$TS] [$H] [STAT] [\033[1;91mFAIL\033[0m] $M"
     echo "[$TS] [$H] [STAT] [FAIL] $M" >> $SELF_LOG
     FAILED=$((FAILED + 1))
 }
@@ -82,7 +82,7 @@ pass() {
     H=$1
     M=$2
     TS=$(date +"%Y-%m-%d %H:%M:%S")
-    echo "[$TS] [$H] [STAT] [PASS] $M"
+    echo -e "[$TS] [$H] [STAT] [\033[1;92mPASS\033[0m] $M"
     echo "[$TS] [$H] [STAT] [PASS] $M" >> $SELF_LOG
 }
 
@@ -301,6 +301,7 @@ run_bats() {
 
     ssh $H $SHELL << EOF
     cd /home/yongtao/src/tt/bats;
+    git pull;
     rm -rf /tmp/tt_bats;
     export TT_SRC=../$BRANCH
     ./bats/bin/bats tests/ >> $LOG/$H/bats.log
