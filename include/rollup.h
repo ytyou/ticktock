@@ -54,6 +54,7 @@ public:
     static void shutdown();
 
     // process in-order dps only
+    void update_data_file(MetricId mid, DataPoint& dp);
     void add_data_point(Tsdb *tsdb, MetricId mid, TimeSeriesId tid, DataPoint& dp);
     void flush(MetricId mid, TimeSeriesId tid);
     void close(TimeSeriesId tid);   // called during TT shutdown

@@ -298,6 +298,7 @@ TimeSeries::add_data_point(MetricId mid, DataPoint& dp)
     const double value = dp.get_value();
     const Timestamp tstamp = dp.get_timestamp();
     bool is_ooo = isnan(value) || isinf(value);
+    bool update_rollup = false;
     //std::lock_guard<std::mutex> guard(m_lock);
 
     // timestamp can't be 14 digits or more
@@ -315,7 +316,10 @@ TimeSeries::add_data_point(MetricId mid, DataPoint& dp)
         Timestamp last_tstamp = tsdb->get_last_tstamp(mid, m_id);
         is_ooo = is_ooo || (tstamp <= last_tstamp);
         if (! is_ooo)
+        {
+            update_rollup = true;
             m_buff = new PageInMemory(mid, m_id, tsdb, false);
+        }
     }
     else if ((in_range = m_buff->in_range_strictly(tstamp)) != 0)
     {
@@ -331,6 +335,7 @@ TimeSeries::add_data_point(MetricId mid, DataPoint& dp)
             // reset the m_buff
             Tsdb *tsdb = Tsdb::inst(tstamp, true);
             m_buff->init(mid, m_id, tsdb, false);
+            update_rollup = true;
         }
     }
     else
@@ -369,7 +374,11 @@ TimeSeries::add_data_point(MetricId mid, DataPoint& dp)
 
     // rollup
     if (g_rollup_enabled)
+    {
+        if (update_rollup)
+            m_rollup.update_data_file(mid, dp);
         m_rollup.add_data_point(m_buff->get_tsdb(), mid, m_id, dp);
+    }
 
     return ok;
 }
@@ -378,6 +387,7 @@ TimeSeries::add_data_point(MetricId mid, DataPoint& dp)
 bool
 TimeSeries::add_ooo_data_point(MetricId mid, DataPoint& dp)
 {
+    bool update_rollup = false;
     const Timestamp tstamp = dp.get_timestamp();
 
     // Make sure we have a valid m_ooo_buff (PageInMemory)
@@ -386,6 +396,7 @@ TimeSeries::add_ooo_data_point(MetricId mid, DataPoint& dp)
         Tsdb *tsdb = Tsdb::inst(tstamp, true);
         m_ooo_buff = new PageInMemory(mid, m_id, tsdb, true);
         tsdb->set_out_of_order(m_id, true);
+        update_rollup = true;
     }
     else if (m_ooo_buff->in_range_strictly(tstamp) != 0)
     {
@@ -397,6 +408,7 @@ TimeSeries::add_ooo_data_point(MetricId mid, DataPoint& dp)
         Tsdb *tsdb = Tsdb::inst(tstamp, true);
         m_ooo_buff->init(mid, m_id, tsdb, true);
         tsdb->set_out_of_order(m_id, true);
+        update_rollup = true;
     }
 
     bool ok = m_ooo_buff->add_data_point(tstamp, dp.get_value());
@@ -421,7 +433,11 @@ TimeSeries::add_ooo_data_point(MetricId mid, DataPoint& dp)
 
     // rollup
     if (g_rollup_enabled)
+    {
+        if (update_rollup)
+            m_rollup.update_data_file(mid, dp);
         m_rollup.add_data_point(m_ooo_buff->get_tsdb(), mid, m_id, dp);
+    }
 
     return ok;
 }

@@ -177,6 +177,24 @@ RollupManager::shutdown()
     }
 }
 
+void
+RollupManager::update_data_file(MetricId mid, DataPoint& dp)
+{
+    Timestamp tstamp = to_sec(dp.get_timestamp());
+    Timestamp interval = g_rollup_interval_1h;
+    Timestamp tstamp1 = tstamp - (tstamp % interval);
+
+    // reject new data if the rollup data file has already been re-compressed
+    if ((m_data_file == nullptr) || (m_data_file->get_begin_timestamp() != Calendar::begin_month_of(tstamp1)))
+    {
+        if (m_data_file != nullptr)
+            m_data_file->dec_ref_count();
+        m_data_file = get_or_create_data_file(mid, tstamp1);
+    }
+
+    ASSERT(m_data_file != nullptr);
+}
+
 // Here we only handle in-order dps!
 void
 RollupManager::add_data_point(Tsdb *tsdb, MetricId mid, TimeSeriesId tid, DataPoint& dp)
@@ -193,13 +211,7 @@ RollupManager::add_data_point(Tsdb *tsdb, MetricId mid, TimeSeriesId tid, DataPo
     ASSERT(interval > 0);
     Timestamp tstamp1 = tstamp - (tstamp % interval);
 
-    // reject new data if the rollup data file has already been re-compressed
-    if ((m_data_file == nullptr) || (m_data_file->get_begin_timestamp() != Calendar::begin_month_of(tstamp1)))
-    {
-        if (m_data_file != nullptr)
-            m_data_file->dec_ref_count();
-        m_data_file = get_or_create_data_file(mid, tstamp1);
-    }
+    ASSERT(m_data_file != nullptr);
 
     if (UNLIKELY(3 <= m_data_file->get_compressor_version()))
     {
@@ -709,7 +721,7 @@ RollupManager::swap_recompressed_files(std::vector<RollupDataFile*>& data_files)
             rm_dir(bak_dir);    // make sure it does not exist
             std::rename(old_dir.c_str(), bak_dir.c_str());
             std::rename(new_dir.c_str(), old_dir.c_str());
-            //rm_dir(bak_dir);  // TODO:
+            rm_dir(bak_dir);
 
             // update config
             int year, month;
