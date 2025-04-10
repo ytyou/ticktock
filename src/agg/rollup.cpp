@@ -773,7 +773,7 @@ RollupManager::get_rollup_data_file_size(RollupLevel level)
     {
         // estimate rollup data file size
         level1_size = TimeSeries::get_next_id();
-        level1_size *= 24 * 30 * 10;
+        level1_size *= 24 * 30 * 4;
         level1_size /= Config::inst()->get_int(CFG_TSDB_ROLLUP_BUCKETS, CFG_TSDB_ROLLUP_BUCKETS_DEF);
     }
     else
