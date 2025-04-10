@@ -895,8 +895,8 @@ bool
 HttpServer::http_get_api_version_handler(HttpRequest& request, HttpResponse& response)
 {
     char buff[256];
-    sprintf(buff, "{\"repo\":\"github.com/ytyou/ticktock.git\",\"version\":\"%d.%d.%d\",\"branch\":\"%s\",\"timestamp\":\"%" PRIu64 "\"}",
-        TT_MAJOR_VERSION, TT_MINOR_VERSION, TT_PATCH_VERSION, TT_BRANCH , (Timestamp)(COMPILE_TIME));
+    sprintf(buff, "{\"repo\":\"github.com/ytyou/ticktock.git\",\"version\":\"%d.%d.%d\",\"branch\":\"%s\",\"commit\":\"%s\",\"timestamp\":\"%" PRIu64 "\"}",
+        TT_MAJOR_VERSION, TT_MINOR_VERSION, TT_PATCH_VERSION, TT_BRANCH, TT_COMMIT, (Timestamp)(COMPILE_TIME));
     ASSERT(std::strlen(buff) < (sizeof(buff)-1));
     response.init(200, HttpContentType::JSON, std::strlen(buff), buff);
     return true;
