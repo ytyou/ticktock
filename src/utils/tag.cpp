@@ -701,14 +701,15 @@ TagMatcher::init(Tag *tags)
 
     char buff[MAX_TOTAL_TAG_LENGTH];
     const char *value = tags->m_value;
-    size_t last = std::strlen(value) - 1;
+    size_t last = std::strlen(value);
 
-    if (UNLIKELY(last >= MAX_TOTAL_TAG_LENGTH/2))
+    if (UNLIKELY(last == 0 || MAX_TOTAL_TAG_LENGTH/2 <= last))
     {
-        Logger::error("Tag value too long: %s", value);
+        Logger::error("Tag value invalid: %s=%s", tags->m_key, value);
         return;
     }
 
+    last--;
     m_key_id = Tag_v2::get_id(tags->m_key);
     m_value_id = TT_INVALID_TAG_ID;
 
