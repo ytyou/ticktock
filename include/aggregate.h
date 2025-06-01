@@ -50,18 +50,20 @@ public:
     virtual void aggregate(const char *metric, std::vector<QueryTask*>& qtv, std::vector<QueryResults*>& results, StringBuffer& strbuf)
     { ASSERT(false); };     // should not call this
 
+    // registered with the HTTP server to spit out supported aggregators
     static bool http_get_api_aggregators_handler(HttpRequest& request, HttpResponse& response);
 
 protected:
-    Aggregator() {};
+    Aggregator() {};    // aggregators should be created by calling Aggregator::create();
 
     virtual void init() {}
-    virtual void add_data_point(DataPointPair& dp) {}
+    virtual void add_data_point(DataPointPair& dp) {}   // add one raw data point
     virtual bool has_data() { return false; }
-    virtual void add_aggregated(Timestamp ts, DataPointVector& dps) {}
+    virtual void add_aggregated(Timestamp ts, DataPointVector& dps) {}  // add data points already aggregated into 'dps'
 
 private:
     Aggregator(const Aggregator&) = delete;
+    // aggregate dps in 'src' into 'dst'; dps in 'src' are sorted by timestamp
     void merge(std::vector<std::reference_wrapper<DataPointVector>>& src, DataPointVector& dst);
 };
 

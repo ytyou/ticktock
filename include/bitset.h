@@ -35,16 +35,16 @@ class BitSet;
 class BitSetCursor : public Recyclable
 {
 public:
-    void ignore_rest_of_byte();
+    void ignore_rest_of_byte(); // skip the rest of the byte
 
 private:
     friend class BitSet;
 
     void init() override;
-    void init(BitSet *bitset);
+    void init(BitSet *bitset);  // prepare to traverse the given BitSet, from the beginning
 
-    uint8_t *m_cursor;
-    uint8_t m_start;
+    uint8_t *m_cursor;  // point to the current byte being traversed
+    uint8_t m_start;    // point to the current bit, with m_cursor, being traversed
 };
 
 
@@ -60,9 +60,8 @@ public:
 
     // full = true means there are already data in the 'base'
     void init(uint8_t *base, size_t capacity_in_bytes, bool full = false);
-    void recycle();
-    void rebase(uint8_t *base);
-    BitSetCursor *new_cursor();
+    void recycle();     // prepare to be re-used
+    BitSetCursor *new_cursor(); // create a new cursor to traverse the BitSet
 
     void set(size_t idx);
     bool test(size_t idx);

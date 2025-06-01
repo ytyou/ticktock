@@ -35,6 +35,7 @@ class Admin
 {
 public:
     static void init();
+    // this will be registered with the HTTP server
     static bool http_post_api_admin_handler(HttpRequest& request, HttpResponse& response);
 
 private:

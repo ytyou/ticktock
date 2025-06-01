@@ -110,25 +110,6 @@ BitSet::reset()
     ASSERT(m_cursor <= m_end);
 }
 
-void
-BitSet::rebase(uint8_t *base)
-{
-    ASSERT(base != nullptr);
-    ASSERT(base != m_bits);
-
-    if (m_bits != nullptr)
-    {
-        if (m_cursor != nullptr) m_cursor = base + (m_cursor - m_bits);
-        if (m_cp_cursor != nullptr) m_cp_cursor = base + (m_cp_cursor - m_bits);
-        if (m_end != nullptr) m_end = base + (m_end - m_bits);
-    }
-
-    m_bits = base;
-    ASSERT(m_bits <= m_end);
-    ASSERT(m_bits <= m_cursor);
-    ASSERT(m_cursor <= m_end);
-}
-
 BitSetCursor *
 BitSet::new_cursor()
 {

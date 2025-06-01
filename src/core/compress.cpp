@@ -1538,18 +1538,6 @@ Compressor_v1::restore(DataPointVector& dps, CompressorPosition& position, uint8
     ASSERT(m_dp_count == dps.size());
 }
 
-void
-Compressor_v1::rebase(uint8_t *base)
-{
-    if ((m_cursor != nullptr) && (m_base != nullptr))
-    {
-        ASSERT(m_cursor >= m_base);
-        m_cursor = base + (m_cursor - m_base);
-    }
-
-    m_base = base;
-}
-
 int
 Compressor_v1::append(FILE *file)
 {

@@ -33,7 +33,7 @@ namespace tt
 class TimeSeries;
 
 
-/* This is used to recover from an abnormal termination.
+/* This is used to read/write WAL, in order to recover from an abnormal termination.
  */
 class AppendLog
 {
@@ -41,12 +41,12 @@ public:
     static void init();
     static FILE *open(std::string& name);
 
-    // This will be called from Timer periodically to generate append log.
-    static bool flush_all(TaskData& data);
+    // This will be called from Timer periodically to generate append log (WAL).
+    static bool flush_all(TaskData& data);  // generate a new WAL to replace the existing one
     static void shutdown();     // called during normal shutdown
 
-    static bool restore_needed();
-    static void restore(std::vector<TimeSeries*>& tsv);
+    static bool restore_needed();   // need to restore from WAL?
+    static void restore(std::vector<TimeSeries*>& tsv); // restore from WAL
 
     // make it non-copyable
     AppendLog(AppendLog const&) = delete;

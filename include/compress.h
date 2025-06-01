@@ -103,7 +103,6 @@ public:
     virtual void save(uint8_t *base) = 0;                   // save data
     virtual void pad() {}               // only needed by v4
     virtual bool recycle() { return true; }
-    virtual void rebase(uint8_t *base) = 0;
     virtual int append(FILE *file) = 0; // write to append.log, return #bytes written
 
     // return true if sucessfully added the dp;
@@ -155,10 +154,6 @@ public:
     void save(CompressorPosition& position) override;
     void save(uint8_t *base) override;
     void pad() override;
-    inline void rebase(uint8_t *base)
-    {
-        m_bitset.rebase(base);
-    }
 
     int append(FILE *file) override;    // write to append.log, return #bytes written
 
@@ -235,10 +230,6 @@ public:
     void init(Timestamp start, uint8_t *base, size_t size);
     void restore(DataPointVector& dps, CompressorPosition& position, uint8_t *base);
     void save(CompressorPosition& position);
-    inline void rebase(uint8_t *base)
-    {
-        m_bitset.rebase(base);
-    }
 
     inline void save(uint8_t *base)
     {
@@ -317,10 +308,6 @@ public:
     void init(Timestamp start, uint8_t *base, size_t size);
     void restore(DataPointVector& dps, CompressorPosition& position, uint8_t *base);
     void save(CompressorPosition& position);
-    inline void rebase(uint8_t *base)
-    {
-        m_bitset.rebase(base);
-    }
 
     inline void save(uint8_t *base)
     {
@@ -395,7 +382,6 @@ class Compressor_v1 : public Compressor
 public:
     void init(Timestamp start, uint8_t *base, size_t size);
     void restore(DataPointVector& dps, CompressorPosition& position, uint8_t *base);
-    inline void rebase(uint8_t *base);
 
     inline void save(CompressorPosition& position)
     {
@@ -486,11 +472,6 @@ public:
     void init(Timestamp start, uint8_t *base, size_t size);
     void restore(DataPointVector& dps, CompressorPosition& position, uint8_t *base);
     void save(uint8_t *base);                       // save data
-
-    inline void rebase(uint8_t *base)
-    {
-        m_data_points = reinterpret_cast<DataPointPair*>(base);
-    }
 
     inline void save(CompressorPosition& position)  // save meta
     {
