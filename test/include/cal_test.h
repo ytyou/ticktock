@@ -18,29 +18,22 @@
 
 #pragma once
 
-#include <mutex>
-#include <vector>
-#include "utils.h"
+#include "test.h"
 
 
-namespace tt
+namespace tt_test
 {
 
 
-class Calendar
+class CalendarTests : public TestCase
 {
 public:
-    static Timestamp begin_month_of(Timestamp ts);
-    static Timestamp end_month_of(Timestamp ts);
+    CalendarTests() { m_name = "calendar_tests"; }
+    void run();
 
 private:
-    Calendar() = default;
-    static std::size_t add_month(Timestamp ts, int n);
-    static int binary_search(Timestamp ts, int n);  // return idx of found month (begin); -1 if not found
-
-    // cache for known (beginn/end of) months, in increasing order
-    static std::mutex m_lock;
-    static std::vector<Timestamp> m_months;
+    void test1();
+    tt::Timestamp verify(tt::Timestamp ts);     // return begin_of_month(ts)
 };
 
 

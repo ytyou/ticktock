@@ -66,7 +66,7 @@ public:
     void set(size_t idx);
     bool test(size_t idx);
 
-    void reset();
+    void reset();       // like recycle(), but also zero-out all the bits
     size_t capacity_in_bytes() const;
 
     // append 'len' of bits stored in 'bits', starting at
@@ -142,9 +142,6 @@ public:
     {
         return (m_cursor == m_bits) && (m_start == 0);
     }
-
-    //inline size_t c_size() const override { return 128; }
-    //const char *c_str(char *buff) const override;
 
 private:
     friend class BitSetCursor;

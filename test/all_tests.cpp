@@ -19,6 +19,7 @@
 #include "global.h"
 #include "agg_test.h"
 #include "bitset_test.h"
+#include "cal_test.h"
 #include "compact_test.h"
 #include "compress_test.h"
 #include "cp_test.h"
@@ -37,6 +38,7 @@ static TestCase *tests[] =
 {
     new AggregateTests(),
     new BitSetTests(),
+    new CalendarTests(),
     new CheckPointTests(),
     //new CompactTests(),
     new CompressTests(),

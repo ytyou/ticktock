@@ -27,30 +27,66 @@ std::mutex Calendar::m_lock;
 std::vector<Timestamp> Calendar::m_months;
 
 
+int
+Calendar::binary_search(Timestamp ts, int n)
+{
+    if (n == 0) return -1;  // m_months[] is empty
+    ASSERT(n > 1);  // n can never be 1
+    ASSERT(m_months.size() == n);
+
+    if (ts < m_months[0]) return -1;
+    if (m_months[n-1] <= ts) return -1;
+
+    // special case (last month)
+    if (m_months[n-2] <= ts && ts < m_months[n-1])
+        return n-2;
+
+    // perform binary search
+    int left = 0, right = n-1;
+
+    while (left < right)
+    {
+        int mid = left + (right - left) / 2;
+
+        if (m_months[mid] < ts)
+        {
+            if (left == mid)
+                break;
+            left = mid;
+        }
+        else if (ts < m_months[mid])
+        {
+            if (right == mid)
+                break;
+            right = mid;
+        }
+        else // ts == m_months[mid]
+        {
+            left = mid;
+            break;
+        }
+        //{
+            //left++;
+            //break;
+        //}
+    }
+
+    return left;
+}
+
 Timestamp
 Calendar::begin_month_of(Timestamp ts)
 {
     std::lock_guard<std::mutex> guard(m_lock);
     int n = m_months.size();
+    int i = binary_search(ts, n);
 
-    if (n > 1)
-    {
-        for (int i = n-1; i >= 0; i--)
-        {
-            Timestamp b = m_months[i];
+    if (i < 0)
+        i = add_month(ts, n);
 
-            if (b <= ts)
-            {
-                if (i < (n-1))
-                    return b;
-                break;
-            }
-        }
-    }
-
-    n = add_month(ts, n);
-    ASSERT(m_months[n] == begin_month(ts));
-    return m_months[n];
+    ASSERT(i >= 0);
+    ASSERT(m_months[i] == begin_month(ts));
+    return m_months[i];
 }
 
 Timestamp
@@ -58,26 +94,18 @@ Calendar::end_month_of(Timestamp ts)
 {
     std::lock_guard<std::mutex> guard(m_lock);
     int n = m_months.size();
+    int i = binary_search(ts, n);
 
-    if (n > 1)
-    {
-        for (int i = n-1; i >= 0; i--)
-        {
-            if (m_months[i] <= ts)
-            {
-                if (i < (n-1))
-                    return m_months[i+1];
-                break;
-            }
-        }
-    }
+    if (i < 0)
+        i = add_month(ts, n);
 
-    n = add_month(ts, n);
-    ASSERT(m_months[n+1] == end_month(ts));
-    return m_months[n+1];
+    ASSERT(0 <= i && i < (n-1));
+    ASSERT(m_months[i+1] == end_month(ts));
+    return m_months[i+1];
 }
 
-// return index of begin
+// add begin-of-month(ts) to cache (m_months), and return index of it;
+// 'n' should be the size of m_months[];
 std::size_t
 Calendar::add_month(Timestamp ts, int n)
 {
@@ -88,16 +116,19 @@ Calendar::add_month(Timestamp ts, int n)
 
     if (n == 0)
     {
+        // m_months[] is empty
         m_months.push_back(begin);
         m_months.push_back(end);
     }
     else if (m_months[n-1] == begin)
     {
+        // last of m_months[] is the 'begin'
         m_months.push_back(end);
         n--;
     }
     else if (m_months[n-1] < begin)
     {
+        // 'begin' is after the last of m_months[]
         Timestamp back = m_months.back();
 
         ASSERT(is_sec(back));
@@ -115,11 +146,13 @@ Calendar::add_month(Timestamp ts, int n)
     }
     else if (m_months[0] == end)
     {
+        // 'begin' is right before the first of m_months[]
         m_months.insert(m_months.begin(), begin);
         n = 0;
     }
     else
     {
+        // 'begin' is before the first of m_months[]
         ASSERT(end < m_months[0]);
         Timestamp front = m_months.front();
         std::vector<Timestamp> tmp = std::move(m_months);
