@@ -3,19 +3,29 @@ default: build
 CC = gcc
 CPP = g++
 LINK = $(CPP)
-RM = /usr/bin/rm -f
+RM = /bin/rm -f
+
+# sanitize only works on 64-bit host
+uname_m := $(shell uname -m)
+SANITIZE.x86_64 := -fsanitize=address
+SANITIZE += $(SANITIZE.$(uname_m))
 CTIME := $(shell date +%s)
 BRANCH := $(shell git rev-parse --abbrev-ref HEAD)
 COMMIT := $(shell git rev-parse --short HEAD)
 
-#DEBUG_FLAGS = -g3 -rdynamic -ggdb -D_DEBUG -D_TEST -D_GLIBCXX_DEBUG -O0
-PROD_FLAGS = -O1 -march=native -ffast-math
+# add -flto=auto flag on non-arm platforms
+ifneq ($(findstring arm,$(uname_m)),arm)
+LINKOPT += -flto=auto
+endif
+
+#DEBUG_FLAGS = -g3 -rdynamic -ggdb -D_DEBUG -D_TEST -D_GLIBCXX_DEBUG -O0 $(SANITIZE) -fno-omit-frame-pointer
+PROD_FLAGS = -O3 -march=native -ffast-math
 #LEAK_FLAGS = -D_LEAK_DETECTION
 #PROF_FLAGS = -pg -D_GLIBCXX_DEBUG
-LIBS = /usr/lib/libz.so.1
 
-CFLAGS = -I include -std=c++11 -D_TIME_BITS=64 -D_FILE_OFFSET_BITS=64 -DCOMPILE_TIME=$(CTIME) -DTT_BRANCH='"$(BRANCH)"' -DTT_COMMIT='"$(COMMIT)"' -DTT_32BIT=1 -Wno-unused-result -Wno-format-truncation -Wno-psabi -Wno-deprecated-declarations $(DEBUG_FLAGS) $(PROF_FLAGS) $(LEAK_FLAGS) $(PROD_FLAGS)
-LFLAGS = -lpthread $(PROF_FLAGS) $(DEBUG_FLAGS)
+CFLAGS = -I include -std=c++11 -D_TIME_BITS=64 -D_FILE_OFFSET_BITS=64 -DCOMPILE_TIME=$(CTIME) -DTT_BRANCH='"$(BRANCH)"' -DTT_COMMIT='"$(COMMIT)"' -Wno-unused-result -Wno-format-truncation -Wno-psabi -Wno-deprecated-declarations $(LINKOPT) $(DEBUG_FLAGS) $(PROF_FLAGS) $(LEAK_FLAGS) $(PROD_FLAGS)
+LFLAGS = -pthread $(LINKOPT) $(DEBUG_FLAGS) $(PROF_FLAGS)
+LIBS = $(DEBUG_LIBS) -lz
 
 INCS = $(wildcard include/*.h)
 TINCS = $(wildcard test/include/*.h)
@@ -33,13 +43,16 @@ OBJT = $(patsubst %.cpp,%.o,$(TMPT))
 
 TARGET = bin/tt
 TESTS = bin/all_tests
-TOOLS = bin/inspect bin/iobench
+TOOLS = bin/inspect
 
 build: $(TARGET)
 
+package: bin/tt bin/inspect
+	scripts/package.sh
+
 bin/tt: $(OBJS)
 	@mkdir -p $(@D)
-	$(LINK) $(LFLAGS) -o $@ $(OBJS) $(LIBS)
+	$(LINK) $(LFLAGS) -o $(TARGET) $(OBJS) $(LIBS)
 
 objs/%.o: src/%.cpp $(INCS)
 	@mkdir -p $(@D)
@@ -80,6 +93,14 @@ bin/inspect: objs/tools/inspect.o $(OBJI)
 bin/iobench: objs/tools/iobench.o $(OBJI)
 	@mkdir -p $(@D)
 	$(LINK) $(LFLAGS) -o $@ $< $(OBJI) $(LIBS)
+
+bin/append: objs/tools/append.o $(OBJI)
+	@mkdir -p $(@D)
+	$(LINK) $(LFLAGS) -o $@ $< $(OBJI) $(LIBS)
+
+bin/client_http: objs/tools/client_http.o
+	@mkdir -p $(@D)
+	$(LINK) $(LFLAGS) -o $@ $<
 
 tt: clean build
 all: build test tools
