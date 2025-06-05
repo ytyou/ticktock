@@ -56,6 +56,7 @@ namespace tt
 {
 
 
+// represent a position within a bit-set, much like BitSetCursor
 class CompressorPosition
 {
 public:
@@ -69,20 +70,14 @@ public:
     {
     }
 
-    CompressorPosition(Timestamp tstamp, PageSize offset, uint8_t start) :
-        m_offset(offset),
-        m_start(start)
-    {
-    }
-
     CompressorPosition(struct compress_info_on_disk *ciod) :
         m_offset(ciod->m_cursor),
         m_start(ciod->m_start)
     {
     }
 
-    PageSize m_offset;
-    uint8_t m_start;
+    PageSize m_offset;  // number of bytes from the beginning
+    uint8_t m_start;    // offset within a byte (0-7)
 };
 
 
@@ -94,18 +89,18 @@ class Compressor : public Recyclable
 #endif
 {
 public:
-    static Compressor *create(int version);
-    static void initialize();
+    static Compressor *create(int version); // create a specific version of the compressor
+    static void initialize();   // one-time initialization at the start
 
-    virtual void init(Timestamp start, uint8_t *base, size_t size);
+    virtual void init(Timestamp start, uint8_t *base, size_t size); // initialize this compressor
     virtual void restore(DataPointVector& dps, CompressorPosition& position, uint8_t *base) = 0;
-    virtual void save(CompressorPosition& position) = 0;    // save meta
-    virtual void save(uint8_t *base) = 0;                   // save data
+    virtual void save(CompressorPosition& position) = 0;    // save last position into 'position'
+    virtual void save(uint8_t *base) = 0;   // save compressed data into buffer pointed to by 'base'
     virtual void pad() {}               // only needed by v4
     virtual bool recycle() { return true; }
     virtual int append(FILE *file) = 0; // write to append.log, return #bytes written
 
-    // return true if sucessfully added the dp;
+    // return true if sucessfully added/compressed the dp;
     // return false if the buffer is full;
     virtual bool compress(Timestamp timestamp, double value) = 0;
     virtual void uncompress(DataPointVector& dps) = 0;
@@ -123,7 +118,7 @@ public:
     Timestamp& get_start_tstamp();
     Timestamp get_start_tstamp_const() const;
 
-    // compression version 4
+    // used by compression version 3 & 4
     static void compress4(double v, double precision, BitSet& bitset);
     static void compress4(int64_t n, BitSet& bitset);
     static void compress4a(uint32_t n, BitSet& bitset);
@@ -142,14 +137,14 @@ protected:
 
 /* This compressor takes advantage of repetitions. It is otherwise the same as
  * Compressor_v3. If the next N dps are exactly the same as the current one,
- * we will append an N at the end of the current dp; otherwise we will append
+ * we will append an 1N at the end of the current dp; otherwise we will append
  * a 0 (1 bit).
  */
 class __attribute__ ((__packed__)) Compressor_v4 : public Compressor
 {
 public:
-    static void initialize();
-    void init(Timestamp start, uint8_t *base, size_t size);
+    static void initialize();   // one-time initialization
+    void init(Timestamp start, uint8_t *base, size_t size); // initialize this compressor
     void restore(DataPointVector& dps, CompressorPosition& position, uint8_t *base);
     void save(CompressorPosition& position) override;
     void save(uint8_t *base) override;
@@ -226,8 +221,8 @@ private:
 class __attribute__ ((__packed__)) Compressor_v3 : public Compressor
 {
 public:
-    static void initialize();
-    void init(Timestamp start, uint8_t *base, size_t size);
+    static void initialize();   // one-time initialization
+    void init(Timestamp start, uint8_t *base, size_t size); // initialize this compressor
     void restore(DataPointVector& dps, CompressorPosition& position, uint8_t *base);
     void save(CompressorPosition& position);
 
@@ -283,11 +278,7 @@ private:
 
     Compressor_v3();
     void compress1(Timestamp timestamp, double value);
-    void compress(double n);
-    void compress(int64_t n);
     void uncompress(DataPointVector& dps, bool restore);
-    double uncompress_f(BitSetCursor *cursor);
-    int64_t uncompress_i(BitSetCursor *cursor);
 
     BitSet m_bitset;
     uint16_t m_dp_count;
@@ -305,7 +296,7 @@ private:
 class __attribute__ ((__packed__)) Compressor_v2 : public Compressor
 {
 public:
-    void init(Timestamp start, uint8_t *base, size_t size);
+    void init(Timestamp start, uint8_t *base, size_t size); // initialize this compressor
     void restore(DataPointVector& dps, CompressorPosition& position, uint8_t *base);
     void save(CompressorPosition& position);
 
@@ -380,7 +371,7 @@ private:
 class Compressor_v1 : public Compressor
 {
 public:
-    void init(Timestamp start, uint8_t *base, size_t size);
+    void init(Timestamp start, uint8_t *base, size_t size); // initialize this compressor
     void restore(DataPointVector& dps, CompressorPosition& position, uint8_t *base);
 
     inline void save(CompressorPosition& position)
@@ -424,13 +415,6 @@ public:
         return m_cursor - m_base;
     }
 
-/*
-    inline Timestamp get_start_tstamp() const
-    {
-        return m_start_tstamp;
-    }
-*/
-
     inline Timestamp get_last_tstamp() const
     {
         return m_prev_tstamp;
@@ -469,7 +453,7 @@ private:
 class Compressor_v0 : public Compressor
 {
 public:
-    void init(Timestamp start, uint8_t *base, size_t size);
+    void init(Timestamp start, uint8_t *base, size_t size); // initialize this compressor
     void restore(DataPointVector& dps, CompressorPosition& position, uint8_t *base);
     void save(uint8_t *base);                       // save data
 
