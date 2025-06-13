@@ -352,12 +352,7 @@ validate_resolution(Timestamp tstamp, bool ms)
         else if (tstamp >= MAX_SEC_SINCE_EPOCH)
             tstamp /= 1000ull;          // ms to sec
     }
-/*
-    if (g_tstamp_resolution_ms && is_sec(ts))
-        ts = to_ms(ts);
-    else if (! g_tstamp_resolution_ms && is_ms(ts))
-        ts = to_sec(ts);
-*/
+
     return tstamp;
 }
 
