@@ -1907,6 +1907,7 @@ class Check_Point_Tests(Test):
         # generate config
         config = TickTockConfig(self._options)
         config.add_entry("tsdb.flush.frequency", "1s");
+        config.add_entry("http.request.format", "plain")
         config()
 
         self.start_tt()
@@ -1914,6 +1915,7 @@ class Check_Point_Tests(Test):
         # insert some dps
         dps = DataPoints(self._prefix, self._options.start, metric_count=16)
         self.send_data_to_ticktock_tcp(dps)
+        time.sleep(5)
         cp = self.get_checkpoint()
         j = []
         if self.verify_json(cp, j):
@@ -1923,7 +1925,7 @@ class Check_Point_Tests(Test):
 
         # send first cp
         self.send_checkpoint("l1", "ch1", "cp1")
-        time.sleep(2)
+        time.sleep(1)
         cp = self.get_checkpoint()
         j = [{"leader":"l1","channels":[{"channel":"ch1","checkpoint":"cp1"}]}]
         if self.verify_json(cp, j):
@@ -1934,7 +1936,7 @@ class Check_Point_Tests(Test):
         # insert some more dps
         dps = DataPoints(self._prefix, self._options.start, metric_count=16)
         self.send_data_to_ticktock_tcp(dps)
-        time.sleep(2)
+        time.sleep(5)
         cp = self.get_checkpoint()
         if self.verify_json(cp, j):
             self._passed = self._passed + 1
@@ -1943,7 +1945,7 @@ class Check_Point_Tests(Test):
 
         # send second cp
         self.send_checkpoint("l1", "ch1", "cp2")
-        time.sleep(2)
+        time.sleep(1)
         cp = self.get_checkpoint("l1")
         j = [{"leader":"l1","channels":[{"channel":"ch1","checkpoint":"cp2"}]}]
         if self.verify_json(cp, j):
@@ -1961,7 +1963,7 @@ class Check_Point_Tests(Test):
 
         # send third cp
         self.send_checkpoint("l2", "ch1", "cp1")
-        time.sleep(2)
+        time.sleep(1)
         cp = self.get_checkpoint("l2")
         j = [{"leader":"l2","channels":[{"channel":"ch1","checkpoint":"cp1"}]}]
         if self.verify_json(cp, j):
@@ -1971,7 +1973,7 @@ class Check_Point_Tests(Test):
 
         # send fourth cp
         self.send_checkpoint("l1", "ch2", "cp1")
-        time.sleep(2)
+        time.sleep(1)
         cp = self.get_checkpoint()
         j = [{"leader":"l1","channels":[{"channel":"ch1","checkpoint":"cp2"},{"channel":"ch2","checkpoint":"cp1"}]},{"leader":"l2","channels":[{"channel":"ch1","checkpoint":"cp1"}]}]
         if self.verify_json(cp, j):
@@ -1981,7 +1983,7 @@ class Check_Point_Tests(Test):
 
         # send fifth cp
         self.send_checkpoint("l1", "ch1", "cp3")
-        time.sleep(2)
+        time.sleep(1)
         cp = self.get_checkpoint()
         j = [{"leader":"l1","channels":[{"channel":"ch1","checkpoint":"cp3"},{"channel":"ch2","checkpoint":"cp1"}]},{"leader":"l2","channels":[{"channel":"ch1","checkpoint":"cp1"}]}]
         if self.verify_json(cp, j):
