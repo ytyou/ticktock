@@ -66,10 +66,11 @@ public:
         m_value = value;
     }
 
+    // raw data parsers
     char* from_http(char* http);
     char* from_json(char* json);
     bool from_plain(char* &text);
-    bool parse_raw_tags();
+    bool parse_raw_tags();  // convert raw tags (string) into KeyValuePair(s)
 
     inline const char *get_metric() { return m_metric; }
     inline char *get_raw_tags() { return m_raw_tags; }
@@ -87,11 +88,11 @@ private:
     char* next_tags(char* json);
     bool next_tag(char* &text);
 
-    Timestamp m_timestamp;
+    Timestamp m_timestamp;  // either sec or ms, as in raw data
     double m_value;
 
-    const char *m_metric;
-    char *m_raw_tags;
+    const char *m_metric;   // name of metric (of this dp)
+    char *m_raw_tags;       // tag1=val1,tag2=val2,...
 };
 
 

@@ -58,6 +58,8 @@ DataPoint::init(Timestamp ts, double value)
     TagOwner::init(false);
 }
 
+/* @param http format: "<tstamp> <value> <tag1>=<val1> <tag2>=<val2>..."
+ */
 char *
 DataPoint::from_http(char *http)
 {
@@ -107,6 +109,8 @@ DataPoint::from_http(char *http)
     return curr1;
 }
 
+/* @param json format: {"metric":<metric>,"timestamp":<ts>,"value":<val>,"tags":{"key1":"val1","key2":"val2",...}}
+ */
 char *
 DataPoint::from_json(char* json)
 {
@@ -184,7 +188,6 @@ DataPoint::from_plain(char* &text)
     while ((*text != ' ') && (*text != '\n')) text++;
     if (*text == '\n') { text++; return true; }
     m_raw_tags = ++text;
-    //text = (char*)rawmemchr((void*)text, '\n');
     // Converting <tag1>=<val1> <tag2=<val2> ... into
     // <tag1>=<val1>,<tag2>=<val2>,..., to match the InfluxDB line protocol
     while ((*text != '\n') && (*text != 0))
@@ -301,8 +304,6 @@ DataPoint::next_tags(char* json)
     return json;
 }
 
-// TODO: This is not safe. If input data is mal-formatted, e.g. tag without '=',
-//       this code will overrun buffer...
 // Return true if there are more tags; false if this is the last tag;
 bool
 DataPoint::next_tag(char* &text)
@@ -312,18 +313,20 @@ DataPoint::next_tag(char* &text)
     if (*text == 0) return false;
     char *key = text;
     char *val = key;
-    while ((*val != '=') && (*val != '\n')) val++;
-    if (*val == '\n') { text = val+1; return false; }
+    while ((*val != '=') && (*val != '\n') && (*val != 0)) val++;
+    if (*val == '\n' || *val == 0) { text = val+1; return false; }
+    // *val == '\n'
     *val++ = 0;
-    if (*val == '\n') return false;
-    for (text = val; (*text != ' ') && (*text != '\n'); text++) /* do nothing */;
+    if (*val == '\n' || *val == 0) return false;    // no value found
+    for (text = val; (*text != ' ') && (*text != '\n') && (*text != 0); text++) /* do nothing */;
     char tmp = *text;
     *text = 0;
     add_tag(key, val);
-    text++;
+    if (tmp != 0) text++;
     return (tmp == ' ');
 }
 
+// format: "<tag1>=<val1>,<tag2>=<val2>,..."
 bool
 DataPoint::parse_raw_tags()
 {
