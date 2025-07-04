@@ -117,12 +117,20 @@ HttpServer::init()
     add_post_handler(HTTP_API_ADMIN, &Admin::http_post_api_admin_handler);
 }
 
+/* @param which The HttpServer could have 2 listening ports. This param specifies
+ *              which port we are interested in;
+ * @return The configuration for the number of responders per listener, for a specific port;
+ */
 int
 HttpServer::get_responders_per_listener(int which) const
 {
     return Config::inst()->get_http_responders_per_listener(which);
 }
 
+/* @param which The HttpServer could have 2 listening ports. This param specifies
+ *              which port we are interested in;
+ * @return The configuration for the number of listeners, for a specific port;
+ */
 int
 HttpServer::get_listener_count(int which) const
 {
@@ -132,7 +140,8 @@ HttpServer::get_listener_count(int which) const
 TcpConnection *
 HttpServer::create_conn() const
 {
-    HttpConnection *conn = (HttpConnection*)MemoryManager::alloc_recyclable(RecyclableType::RT_HTTP_CONNECTION);
+    HttpConnection *conn = (HttpConnection*)
+        MemoryManager::alloc_recyclable(RecyclableType::RT_HTTP_CONNECTION);
     conn->forward = false;
     return (TcpConnection*)conn;
 }
@@ -238,6 +247,8 @@ HttpServer::recv_http_data(TaskData& data)
 
     if (conn->buff != nullptr)
     {
+        // In this case, we did not receive the complete HTTP request last time;
+        // So we are trying to finish it up this time...
         if (conn->state & TCS_NEW)
         {
             buff = conn->buff;
@@ -382,6 +393,8 @@ HttpServer::recv_http_data(TaskData& data)
     return false;
 }
 
+// This function tries to finish receive/process the HTTP request that
+// was not received/processed completely last time (by recv_http_data()).
 bool
 HttpServer::recv_http_data_cont(HttpConnection *conn)
 {
@@ -618,14 +631,12 @@ HttpServer::send_response(HttpConnection *conn)
     ssize_t sent = conn->sent;
     int fd = conn->fd;
     HttpResponse& response = conn->response;
-    //size_t max_chunk = 1000000;
 
     while (sent < response.response_size)
     {
         char *buff = response.response + sent;
         target = response.response_size - sent;
 
-        //ssize_t sent = send(fd, buff, std::min(target,max_chunk), MSG_DONTWAIT);
         ssize_t n = send(fd, buff, target, MSG_DONTWAIT);
 
         if (n < 0)
@@ -658,10 +669,7 @@ HttpServer::send_response(HttpConnection *conn)
     }
     else if ((conn->state & TCS_ERROR) == 0)
     {
-        // requeue it to try later
-        //Task task;
-        //task.doit = &HttpServer::resend_response;
-        //task.data.pointer = conn;
+        // re-queue it to try later
         conn->listener->resubmit_by_responder('h', conn);
     }
 
@@ -707,7 +715,7 @@ HttpServer::parse_header(char *buff, int len, HttpRequest& request)
     // parse header
     while (*curr1 != '\r')
     {
-        // we only care about the following 3 entries in the header
+        // we only care about the following 4 entries in the header
         if (curr1[0] == 'C')
         {
             if (strncmp(curr1, "Content-Length:", 15) == 0)

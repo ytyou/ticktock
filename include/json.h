@@ -150,12 +150,12 @@ public:
 private:
     friend class JsonParser;
 
-    JsonValueType type; // this determines which one of the following is used
-    bool boolean;
     double dbl;
     char *str;      // we don't own the memory
     JsonMap map;
     JsonArray arr;
+    bool boolean;
+    JsonValueType type; // this determines which one of the following is used
 };
 
 

@@ -229,14 +229,6 @@ JsonParser::parse_key_value_unquoted(char *json, std::pair<const char*,JsonValue
         value->set_value(false);
         json += 5;
     }
-/*
-    else if (std::isdigit(*json))
-    {
-        double dbl = atof(json);
-        value->set_value(dbl);
-        do { json++; } while ((*json != ',') && (*json != ']') && (*json != '}'));
-    }
-*/
     else
     {
         value->set_value(json);
