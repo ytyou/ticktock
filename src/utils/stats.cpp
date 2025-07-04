@@ -34,7 +34,6 @@
 #include "tsdb.h"
 #include "utils.h"
 #include "memmgr.h"
-#include "leak.h"
 
 
 namespace tt
@@ -397,11 +396,6 @@ Stats::inject_metrics(TaskData& data)
             for (DataPoint& dp: dps) tsdb->add(dp);
         }
 
-#ifdef _LEAK_DETECTION
-        // memory leak detection stats
-        write_leak_stat(now, tsdb);
-#endif
-
         tsdb->dec_ref_count();
     }
 #endif
@@ -742,24 +736,6 @@ Stats::get_disk_avail()
     if (rc != 0) return -1;
     return ((uint64_t)buff.f_bsize * (uint64_t)buff.f_bavail);
 }
-
-#ifdef _LEAK_DETECTION
-
-void
-Stats::write_leak_stat(Timestamp tstamp, Tsdb *tsdb)
-{
-    ASSERT(tsdb != nullptr);
-
-    {
-        DataPoint dp(tstamp, (double)ld_stats(nullptr));
-        dp.set_metric("ticktock.leak.total");
-        //dp.add_tag(METRIC_TAG_NAME, "ticktock.leak.total");
-        dp.add_tag(HOST_TAG_NAME, g_host_name.c_str());
-        tsdb->add(dp);
-    }
-}
-
-#endif
 
 
 }

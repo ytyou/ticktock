@@ -20,10 +20,9 @@ endif
 
 #DEBUG_FLAGS = -g3 -rdynamic -ggdb -D_DEBUG -D_TEST -D_GLIBCXX_DEBUG -O0 $(SANITIZE) -fno-omit-frame-pointer
 PROD_FLAGS = -O3 -march=native -ffast-math
-#LEAK_FLAGS = -D_LEAK_DETECTION
 #PROF_FLAGS = -pg -D_GLIBCXX_DEBUG
 
-CFLAGS = -I include -std=c++11 -D_TIME_BITS=64 -D_FILE_OFFSET_BITS=64 -DCOMPILE_TIME=$(CTIME) -DTT_BRANCH='"$(BRANCH)"' -DTT_COMMIT='"$(COMMIT)"' -Wno-unused-result -Wno-format-truncation -Wno-psabi -Wno-deprecated-declarations $(LINKOPT) $(DEBUG_FLAGS) $(PROF_FLAGS) $(LEAK_FLAGS) $(PROD_FLAGS)
+CFLAGS = -I include -std=c++11 -D_TIME_BITS=64 -D_FILE_OFFSET_BITS=64 -DCOMPILE_TIME=$(CTIME) -DTT_BRANCH='"$(BRANCH)"' -DTT_COMMIT='"$(COMMIT)"' -Wno-unused-result -Wno-format-truncation -Wno-psabi -Wno-deprecated-declarations $(LINKOPT) $(DEBUG_FLAGS) $(PROF_FLAGS) $(PROD_FLAGS)
 LFLAGS = -pthread $(LINKOPT) $(DEBUG_FLAGS) $(PROF_FLAGS)
 LIBS = $(DEBUG_LIBS) -lz
 

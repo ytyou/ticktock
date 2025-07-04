@@ -21,7 +21,6 @@
 #include <cstdlib>
 #include <cstring>
 #include "global.h"
-#include "leak.h"
 #include "logger.h"
 #include "memmgr.h"
 #include "tag.h"
@@ -373,7 +372,7 @@ Tag_v2::set_name(TagId id, const char *name)
         m_names_capacity = new_capacity;
     }
 
-    m_names[id] = STRDUP(name);
+    m_names[id] = strdup(name);
     return m_names[id];
 }
 

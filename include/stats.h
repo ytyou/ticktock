@@ -94,7 +94,6 @@ private:
     static bool collect_http_stat(TaskData& data);
 #endif
     static void write_proc_stat(Timestamp tstamp, Tsdb *tsdb);
-    static void write_leak_stat(Timestamp tstamp, Tsdb *tsdb);
 
     // internal metrics to be injected into Tsdb by inject_metrics()
     static DataPoint *m_dps_head;

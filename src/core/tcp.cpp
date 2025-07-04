@@ -29,7 +29,6 @@
 #include "append.h"
 #include "memmgr.h"
 #include "logger.h"
-#include "leak.h"
 #include "stats.h"
 #include "tsdb.h"
 

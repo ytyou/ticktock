@@ -46,7 +46,6 @@
 #include "timer.h"
 #include "utils.h"
 #include "logger.h"
-#include "leak.h"
 
 
 static void shutdown();
@@ -318,7 +317,6 @@ shutdown()
 {
     g_shutdown_requested = true;
 
-    LD_STATS("Before shutdown");
     if (! g_quiet) printf("Start shutdown process...\n");
     Logger::info("Start shutdown process...");
 
@@ -339,7 +337,6 @@ shutdown()
     }
 
     Logger::info("Shutdown process complete\n\n");
-    LD_STATS("After shutdown");
     Logger::inst()->close();
     if (! g_quiet) printf("Shutdown process complete\n");
 }

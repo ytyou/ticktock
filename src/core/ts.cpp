@@ -24,7 +24,6 @@
 #include "down.h"
 #include "memmgr.h"
 #include "meter.h"
-#include "leak.h"
 #include "limit.h"
 #include "logger.h"
 #include "query.h"
@@ -110,24 +109,6 @@ TimeSeries::~TimeSeries()
         delete m_ooo_buff;
         m_ooo_buff = nullptr;
     }
-
-    //if (m_tags != nullptr)
-    //{
-        //std::free(m_tags);
-        //m_tags = nullptr;
-    //}
-
-    //if (m_key != nullptr)
-    //{
-        //FREE(m_key);
-        //m_key = nullptr;
-    //}
-
-    //if (m_metric != nullptr)
-    //{
-        //FREE(m_metric);
-        //m_metric = nullptr;
-    //}
 }
 
 void

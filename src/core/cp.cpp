@@ -23,7 +23,6 @@
 #include "config.h"
 #include "cp.h"
 #include "fd.h"
-#include "leak.h"
 #include "logger.h"
 
 
@@ -84,7 +83,7 @@ CheckPointManager::add(char *cp)
     auto search1 = m_cps.find(tokens[0]);
     if (search1 == m_cps.end())
     {
-        m_cps.insert(make_pair(STRDUP(tokens[0]), cp_map()));
+        m_cps.insert(make_pair(strdup(tokens[0]), cp_map()));
         search1 = m_cps.find(tokens[0]);
     }
     ASSERT(search1 != m_cps.end());
@@ -92,7 +91,7 @@ CheckPointManager::add(char *cp)
 
     auto search2 = map.find(tokens[1]);
     if (search2 == map.end())
-        map.insert(std::make_pair(STRDUP(tokens[1]), std::string(tokens[2])));
+        map.insert(std::make_pair(strdup(tokens[1]), std::string(tokens[2])));
     else
         search2->second.assign(tokens[2]);
 

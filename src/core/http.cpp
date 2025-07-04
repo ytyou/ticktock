@@ -28,7 +28,6 @@
 #include "config.h"
 #include "memmgr.h"
 #include "logger.h"
-#include "leak.h"
 #include "query.h"
 #include "stats.h"
 #include "zlib/zlib.h"

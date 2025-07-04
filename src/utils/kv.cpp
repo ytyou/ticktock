@@ -20,7 +20,6 @@
 #include "kv.h"
 #include "logger.h"
 #include "utils.h"
-#include "leak.h"
 
 
 namespace tt
@@ -241,8 +240,8 @@ KeyValuePair::clone(KeyValuePair *list)
         KeyValuePair *tmp =
             (KeyValuePair*)MemoryManager::alloc_recyclable(RecyclableType::RT_KEY_VALUE_PAIR);
 
-        tmp->m_key = STRDUP(kv->m_key);
-        tmp->m_value = STRDUP(kv->m_value);
+        tmp->m_key = strdup(kv->m_key);
+        tmp->m_value = strdup(kv->m_value);
         tmp->next() = nullptr;
 
         if (last == nullptr)
@@ -298,8 +297,8 @@ KeyValuePair::free_list(KeyValuePair *list, bool deep)
 
         if (deep)
         {
-            FREE((char*)kv->m_key);
-            FREE((char*)kv->m_value);
+            free((char*)kv->m_key);
+            free((char*)kv->m_value);
         }
 
         MemoryManager::free_recyclable(kv);
@@ -370,8 +369,8 @@ KeyValuePair::parse_multiple(std::string& buff)
 
         KeyValuePair *kv =
             (KeyValuePair*)MemoryManager::alloc_recyclable(RecyclableType::RT_KEY_VALUE_PAIR);
-        kv->m_key = STRDUP(std::get<0>(pair).c_str());
-        kv->m_value = STRDUP(std::get<1>(pair).c_str());
+        kv->m_key = strdup(std::get<0>(pair).c_str());
+        kv->m_value = strdup(std::get<1>(pair).c_str());
         kv->next() = kvs;
         kvs = kv;
     }

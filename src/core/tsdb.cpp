@@ -43,7 +43,6 @@
 #include "json.h"
 #include "stats.h"
 #include "utils.h"
-#include "leak.h"
 
 
 namespace tt
@@ -340,7 +339,7 @@ Mapping::Mapping(const char *name) :
 {
     ASSERT(name != nullptr);
     m_id = m_next_id.fetch_add(1);
-    m_metric = STRDUP(name);
+    m_metric = strdup(name);
     MetaFile::instance()->add_metric(m_id, m_metric);
 
     pthread_rwlockattr_t attr;
@@ -355,7 +354,7 @@ Mapping::Mapping(MetricId id, const char *name) :
     m_tag_count(-1)
 {
     ASSERT(name != nullptr);
-    m_metric = STRDUP(name);
+    m_metric = strdup(name);
     ASSERT(m_metric != nullptr);
 
     if (m_id >= m_next_id.load())
@@ -370,7 +369,7 @@ Mapping::~Mapping()
 {
     if (m_metric != nullptr)
     {
-        FREE(m_metric);
+        free(m_metric);
         m_metric = nullptr;
     }
 
@@ -471,7 +470,7 @@ Mapping::get_ts(DataPoint& dp)
         {
             ts = new TimeSeries(m_metric, buff, dp.get_tags());
             bt = static_cast<BaseType*>(ts);
-            m_map[STRDUP(buff)] = bt;
+            m_map[strdup(buff)] = bt;
             add_ts(ts);
             set_tag_count(dp.get_tag_count(true));
         }
@@ -479,7 +478,7 @@ Mapping::get_ts(DataPoint& dp)
         if (raw_tags != nullptr)
         {
             if (std::strcmp(raw_tags_copy, buff) != 0)
-                m_map[STRDUP(raw_tags_copy)] = bt;
+                m_map[strdup(raw_tags_copy)] = bt;
         }
     }
 
@@ -580,11 +579,11 @@ Mapping::get_measurement(char *raw_tags, TagOwner& owner, const char *measuremen
             mm = new Measurement();
             init_measurement(mm, measurement, ordered, owner, dps);
             bt = static_cast<BaseType*>(mm);
-            m_map[STRDUP(ordered)] = bt;
+            m_map[strdup(ordered)] = bt;
         }
 
         if (m_map.find(original) == m_map.end())
-            m_map[STRDUP(original)] = bt;
+            m_map[strdup(original)] = bt;
         else
             m_map[original] = bt;
 
@@ -770,7 +769,7 @@ Mapping::restore_ts(std::string& metric, std::string& keys, TimeSeriesId id)
 
     Tag *tags = Tag::parse_multiple(keys);
     TimeSeries *ts = new TimeSeries(id, metric.c_str(), keys.c_str(), tags);
-    m_map[STRDUP(keys.c_str())] = ts;
+    m_map[strdup(keys.c_str())] = ts;
     add_ts(ts);
     set_tag_count(TagOwner::get_tag_count(tags, false));
     Tag::free_list(tags, true);
