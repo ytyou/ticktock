@@ -109,6 +109,7 @@ KeyValuePair::match_value(KeyValuePair *list, const char *key, const char *value
     }
 }
 
+// Add the 'kv' to the front of the 'list'
 void
 KeyValuePair::prepend(KeyValuePair **list, KeyValuePair *kv)
 {
@@ -122,6 +123,7 @@ KeyValuePair::prepend(KeyValuePair **list, KeyValuePair *kv)
     *list = kv;
 }
 
+// Add the '<key>=<value>' to the front of the 'list'
 void
 KeyValuePair::prepend(KeyValuePair **list, const char *key, const char *value)
 {
@@ -138,6 +140,7 @@ KeyValuePair::prepend(KeyValuePair **list, const char *key, const char *value)
     *list = kv;
 }
 
+// Insert '<key>=<value>' to the right position, in sorted order by key, in 'list'
 void
 KeyValuePair::insert_in_order(KeyValuePair **list, const char *key, const char *value)
 {
@@ -174,6 +177,7 @@ KeyValuePair::insert_in_order(KeyValuePair **list, const char *key, const char *
     }
 }
 
+// Remove the first occurance of 'key' in 'list'
 KeyValuePair *
 KeyValuePair::remove_first(KeyValuePair **list, const char *key)
 {
@@ -205,6 +209,7 @@ KeyValuePair::remove_first(KeyValuePair **list, const char *key)
     return nullptr;
 }
 
+// Find/return the first occurance of 'key' (and its value) in 'list'
 KeyValuePair *
 KeyValuePair::get_key_value_pair(KeyValuePair *list, const char *key)
 {
@@ -222,6 +227,7 @@ KeyValuePair::get_key_value_pair(KeyValuePair *list, const char *key)
     return nullptr;
 }
 
+// Find/return the value of 'key' in 'list'
 const char *
 KeyValuePair::get_value(KeyValuePair *list, const char *key)
 {
@@ -229,6 +235,7 @@ KeyValuePair::get_value(KeyValuePair *list, const char *key)
     return (kv == nullptr) ? nullptr : kv->m_value;
 }
 
+// Clone and return the given 'list'
 KeyValuePair *
 KeyValuePair::clone(KeyValuePair *list)
 {
@@ -258,6 +265,7 @@ KeyValuePair::clone(KeyValuePair *list)
     return dup;
 }
 
+// Clone and return the given 'list'
 KeyValuePair *
 KeyValuePair::clone(KeyValuePair *list, StringBuffer& strbuf)
 {
@@ -287,6 +295,9 @@ KeyValuePair::clone(KeyValuePair *list, StringBuffer& strbuf)
     return dup;
 }
 
+/* Free the 'list'
+ * @param deep If true, also free each and every 'key' and 'value' in the list
+ */
 void
 KeyValuePair::free_list(KeyValuePair *list, bool deep)
 {
@@ -305,6 +316,7 @@ KeyValuePair::free_list(KeyValuePair *list, bool deep)
     }
 }
 
+// Return the 'list' in Json format
 char *
 KeyValuePair::to_json(KeyValuePair *list, char *buff, int size)
 {
@@ -330,6 +342,7 @@ KeyValuePair::to_json(KeyValuePair *list, char *buff, int size)
     return buff;
 }
 
+// Parse/return the key-value pairs stored in 'buff'
 KeyValuePair *
 KeyValuePair::parse_in_place(char *buff, char delim)
 {

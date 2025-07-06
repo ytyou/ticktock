@@ -54,12 +54,7 @@ enum class RollupUsage : unsigned char
 
 class QueryResults : public TagOwner, public Recyclable
 {
-// TODO: make them private
 public:
-    const char *m_metric;
-    DataPointVector m_dps;
-    std::vector<QueryTask*> m_qtv;
-
     QueryResults() :
         m_metric(nullptr),
         TagOwner(false)
@@ -88,11 +83,21 @@ public:
     void add_first_query_task(QueryTask *qtask, StringBuffer& strbuf);
     void add_query_task(QueryTask *qtask, Tag *grouping_tags, Tag *non_grouping_tags, StringBuffer& strbuf);
 
+    inline void set_metric(const char *metric)
+    {
+        m_metric = metric;
+    }
+
     inline void add_aggregate_tag(char *key)
     {
         ASSERT(key != nullptr);
         m_aggregate_tags.push_back(key);
     }
+
+    void add_dps(DataPointVector& dps);
+
+    inline DataPointVector& get_dps() { return m_dps; }
+    inline std::vector<QueryTask*>& get_query_tasks() { return m_qtv; }
 
     bool empty() const
     {
@@ -105,6 +110,9 @@ public:
 private:
     char *to_json_tags(char *buff, int size) const;
 
+    const char *m_metric;
+    DataPointVector m_dps;
+    std::vector<QueryTask*> m_qtv;
     std::vector<char*> m_aggregate_tags;
 };
 
@@ -289,7 +297,6 @@ private:
     DataPointVector m_dps;  // results before aggregation
     QueryResults m_results; // results after aggregation
     std::vector<DataPointContainer*> m_data;
-    //FileIndex m_file_index;
     uint32_t m_file_index;  // used for both rollup-idx and file-idx
     HeaderIndex m_header_index;
     uint32_t m_tstamp_from;

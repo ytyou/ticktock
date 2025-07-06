@@ -55,20 +55,20 @@ AggregateTests::percentile(const char *pct, double v1, double v2)
     dpv2.emplace_back(1569859300000, 0.000000);
     dpv2.emplace_back(1569859310000, 0.000000);
 
-    results.m_qtv.push_back(&task1);
-    results.m_qtv.push_back(&task2);
+    results.get_query_tasks().push_back(&task1);
+    results.get_query_tasks().push_back(&task2);
 
     Aggregator *aggregator = Aggregator::create(pct);
     aggregator->aggregate(&results);
     delete aggregator;
 
-    CONFIRM(results.m_dps.size() == 2);
-    CONFIRM(results.m_dps[0].first == 1569859300000);
-    CONFIRM(results.m_dps[0].second == v1);
-    CONFIRM(results.m_dps[1].first == 1569859310000);
-    CONFIRM(results.m_dps[1].second == v2);
+    CONFIRM(results.get_dps().size() == 2);
+    CONFIRM(results.get_dps()[0].first == 1569859300000);
+    CONFIRM(results.get_dps()[0].second == v1);
+    CONFIRM(results.get_dps()[1].first == 1569859310000);
+    CONFIRM(results.get_dps()[1].second == v2);
 
-    for (DataPointPair& dp: results.m_dps)
+    for (DataPointPair& dp: results.get_dps())
         printf("[%lu, %f]", dp.first, dp.second);
     printf("\n");
 

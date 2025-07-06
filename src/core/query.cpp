@@ -469,7 +469,7 @@ Query::calculate_rate(std::vector<QueryResults*>& results)
             auto result = *it;
 
             if (result->empty()) continue;
-            m_rate_calculator->calculate(result->m_dps);
+            m_rate_calculator->calculate(result->get_dps());
 
             if (result->empty())
             {
@@ -480,33 +480,6 @@ Query::calculate_rate(std::vector<QueryResults*>& results)
                 it++;
         }
     }
-
-#if 0
-    if (m_rate_calculator != nullptr)
-    {
-        for (QueryResults *result: results)
-        {
-            m_rate_calculator->calculate(result->m_dps);
-        }
-    }
-/*
-    else
-    {
-        // OpenTSDB's behavior is that without rate, empty results are removed
-        for (auto it = results.begin(); it != results.end(); )
-        {
-            if ((*it)->empty())
-            {
-                results.erase(it);
-            }
-            else
-            {
-                it++;
-            }
-        }
-    }
-*/
-#endif
 }
 
 QueryResults *
@@ -516,7 +489,7 @@ Query::create_one_query_results(QueryTask *qtask, StringBuffer& strbuf)
 
     QueryResults *result =
         (QueryResults*)MemoryManager::alloc_recyclable(RecyclableType::RT_QUERY_RESULTS);
-    result->m_metric = m_metric;
+    result->set_metric(m_metric);
     result->add_first_query_task(qtask, strbuf);
     return result;
 }
@@ -1790,6 +1763,12 @@ QueryResults::add_query_task(QueryTask *qtask, Tag *grouping_tags, Tag *non_grou
         Tag::free_list(tag_head);
 
     m_qtv.push_back(qtask);
+}
+
+void
+QueryResults::add_dps(DataPointVector& dps)
+{
+    m_dps.insert(m_dps.end(), dps.begin(), dps.end());
 }
 
 char *

@@ -149,10 +149,10 @@ Aggregator::aggregate(QueryResults *results)
 
     std::vector<std::reference_wrapper<DataPointVector>> vv;
 
-    for (QueryTask *qt: results->m_qtv)
+    for (QueryTask *qt: results->get_query_tasks())
         vv.push_back(qt->get_dps());
 
-    merge(vv, results->m_dps);
+    merge(vv, results->get_dps());
 }
 
 // data points in 'src' are sorted by the timestamp; they will be
@@ -222,12 +222,12 @@ AggregatorNone::aggregate(const char *metric, std::vector<QueryTask*>& qtv, std:
     {
         QueryResults *result =
             (QueryResults*)MemoryManager::alloc_recyclable(RecyclableType::RT_QUERY_RESULTS);
-        result->m_metric = metric;
+        result->set_metric(metric);
         result->set_tags(qt->get_cloned_tags(strbuf));
         results.push_back(result);
 
         DataPointVector& dps = qt->get_dps();
-        result->m_dps.insert(result->m_dps.end(), dps.begin(), dps.end());  // TODO: how to avoid copy?
+        result->add_dps(dps);
         dps.clear();
     }
 }
@@ -249,12 +249,12 @@ AggregatorBottom::aggregate(const char *metric, std::vector<QueryTask*>& qtv, st
 
         QueryResults *result =
             (QueryResults*)MemoryManager::alloc_recyclable(RecyclableType::RT_QUERY_RESULTS);
-        result->m_metric = metric;
+        result->set_metric(metric);
         result->set_tags(qt->get_cloned_tags(strbuf));
         results.push_back(result);
 
         DataPointVector& dps = qt->get_dps();
-        result->m_dps.insert(result->m_dps.end(), dps.begin(), dps.end());  // TODO: how to avoid copy?
+        result->add_dps(dps);
         dps.clear();
     }
 }
@@ -403,12 +403,12 @@ AggregatorTop::aggregate(const char *metric, std::vector<QueryTask*>& qtv, std::
 
         QueryResults *result =
             (QueryResults*)MemoryManager::alloc_recyclable(RecyclableType::RT_QUERY_RESULTS);
-        result->m_metric = metric;
+        result->set_metric(metric);
         result->set_tags(qt->get_cloned_tags(strbuf));
         results.push_back(result);
 
         DataPointVector& dps = qt->get_dps();
-        result->m_dps.insert(result->m_dps.end(), dps.begin(), dps.end());  // TODO: how to avoid copy?
+        result->add_dps(dps);
         dps.clear();
     }
 }
