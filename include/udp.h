@@ -33,7 +33,6 @@ class UdpListener : public Stoppable
 {
 public:
     UdpListener(int id, int port);
-    ~UdpListener();
 
 private:
     void receiver();            // thread loop

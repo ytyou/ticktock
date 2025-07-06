@@ -108,7 +108,6 @@ extern void replace_last(std::string& str, const std::string& old_sub, const std
 extern void spin_yield(unsigned int k);
 extern bool operator<(const DataPointPair& lhs, const DataPointPair& rhs);
 extern bool dp_pair_less(const DataPointPair& lhs, const DataPointPair& rhs);
-extern int max_subset_4k(int16_t set[], size_t size, std::vector<int>& subset); // 'subset' is the output
 
 extern bool is_aligned(uintptr_t ptr, unsigned long align);
 extern void set_rollup_level(RollupType& rollup, bool level2);
