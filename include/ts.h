@@ -61,8 +61,6 @@ public:
     void close(MetricId mid);   // called during TT shutdown
     void flush(MetricId mid);
     void flush_no_lock(MetricId mid, bool close = false);
-    //bool compact(MetaFile& meta_file);
-    void set_check_point();
     void archive(MetricId mid, Timestamp now_sec, Timestamp threshold_sec);
 
     bool add_data_point(MetricId mid, DataPoint& dp);

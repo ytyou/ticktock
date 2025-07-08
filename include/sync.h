@@ -21,7 +21,6 @@
 #include <atomic>
 #include <mutex>
 #include <condition_variable>
-#include "utils.h"
 
 
 namespace tt
@@ -60,31 +59,6 @@ public:
 private:
     std::atomic<int32_t> m_count;
 };
-
-
-/*
-class CountKeeper
-{
-public:
-    CountKeeper(Counter& counter) :
-        m_count(counter.m_count)
-    {
-        ASSERT(m_count >= 0);
-        m_count++;
-        ASSERT(m_count >= 1);
-    }
-
-    ~CountKeeper()
-    {
-        ASSERT(m_count >= 1);
-        m_count--;
-        ASSERT(m_count >= 0);
-    }
-
-private:
-    std::atomic<int32_t>& m_count;
-};
-*/
 
 
 }

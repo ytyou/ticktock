@@ -107,8 +107,6 @@ public:
     { return TT_TYPE_MEASUREMENT == type; }
 
     std::mutex m_lock;
-    //pthread_rwlock_t m_lock;
-    //default_contention_free_shared_mutex m_lock;
 
 private:
     TimeSeries *get_ts_no_lock(bool add, Mapping *mapping);
@@ -157,19 +155,13 @@ private:
     int get_dp_count();
     int get_ts_count();
 
-    //std::mutex m_lock;
     pthread_rwlock_t m_lock;
-    //default_contention_free_shared_mutex m_lock;
 
     // Keys of the m_map are of the following format:
     //  <tag1>=<val1>,<tag2>=<val2>,...,<tagN>=<valN>
     // One special key, consisting of just a semicolon (";"),
     // reprensets the case where there's no tag at all.
     tsl::robin_map<const char*,BaseType*,hash_func,eq_func> m_map;
-    //std::unordered_map<const char*,BaseType*,hash_func,eq_func> m_map;
-
-    //default_contention_free_shared_mutex m_lock2;
-    //tsl::robin_map<const char*,Measurement*,hash_func,eq_func> m_map2;
 
     std::mutex m_ts_lock;   // to protect m_ts_head
     TimeSeries *m_ts_head;
@@ -191,7 +183,6 @@ public:
     void close();
     void flush(bool sync);
     bool rotate(Timestamp now_sec, Timestamp thrashing_threshold);
-    //bool rollup(IndexFile *idx_file, int no_entries);
 
     MetricId get_id() const { return m_id; }
     std::string get_metric_dir(const std::string& tsdb_dir);
@@ -205,9 +196,6 @@ public:
     HeaderFile *get_header_file(FileIndex file_idx);
     HeaderFile *get_header_file_no_lock(FileIndex file_idx);
     int get_data_file_cnt();
-
-    //void add_rollup_point(TimeSeriesId tid, uint32_t cnt, double min, double max, double sum);
-    void get_rollup_point(RollupIndex header_idx, int entry_idx, int entries, uint32_t& cnt, double& min, double& max, double& sum);
 
     // for testing only
     int get_page_count(bool ooo);
@@ -344,7 +332,6 @@ public:
 
     inline void set_crashed()
     {
-        //m_mode |= TSDB_MODE_CRASHED;
         m_mode = m_mode.load() | TSDB_MODE_CRASHED;
     }
 
@@ -389,10 +376,6 @@ private:
 
         static void update_page_count(MetricId mid, uint32_t cnt);
         static void clear_page_count();
-        // save content of m_page_counts for restore(), under WAL
-        //static void save_page_counts();
-        // called after restart of TickTockDB to restore the current (latest) Tsdb
-        //static void restore();
 
     private:
         void write_bucket_map();
@@ -433,8 +416,6 @@ private:
     static std::string get_header_file_name(const TimeRange& range, FileIndex id, const char *suffix = nullptr);
     static std::string get_data_file_name(const TimeRange& range, FileIndex id, const char *suffix = nullptr);
 
-    //static std::mutex m_tsdb_lock;
-    //static default_contention_free_shared_mutex m_tsdb_lock;
     static pthread_rwlock_t m_tsdb_lock;
     static std::vector<Tsdb*> m_tsdbs;  // ordered by m_start_tstamp
 
@@ -444,8 +425,6 @@ private:
     std::atomic<int> m_ref_count;   // prevent compaction/rollup while in use
 
     IndexFile m_index_file;
-    //std::vector<HeaderFile*> m_header_files;
-    //std::vector<DataFile*> m_data_files;
     std::mutex m_metrics_lock;
     uint32_t m_mbucket_count;   // max size of m_metrics[]
     std::vector<Metric*> m_metrics; // indexed by MetricId
@@ -455,9 +434,6 @@ private:
     // this is true if, 1. m_map is populated; 2. m_page_mgr is open; 3. m_meta_file is open;
     // this is false if all the above are not true;
     std::atomic<uint32_t> m_mode;
-    //std::atomic<Timestamp> m_load_time; // epoch time in sec
-    //Timestamp m_load_time; // epoch time in sec
-    //default_contention_free_shared_mutex m_load_lock;
 
     //PartitionManager *m_partition_mgr;
     PageSize m_page_size;

@@ -40,8 +40,6 @@ public:
         m_from(from),
         m_to(to)
     {
-        //ASSERT(m_from <= m_to);
-        //ASSERT((is_ms(m_from) && is_ms(m_to)) || (is_sec(m_from) && is_sec(m_to)) || (m_from == 0L));
     }
 
     TimeRange(const TimeRange& range) :
@@ -61,7 +59,6 @@ public:
         m_from = from;
         m_to = to;
 
-        //ASSERT(m_from <= m_to);
         ASSERT((is_ms(m_from) && is_ms(m_to)) || (is_sec(m_from) && is_sec(m_to)) || (m_from == 0L));
     }
 

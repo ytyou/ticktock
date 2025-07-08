@@ -212,7 +212,6 @@ private:
     bool register_with_epoll(int fd);
     bool deregister_with_epoll(int fd);
 
-    //void rebalance0();
     void rebalance1();
     void disconnect();
 
@@ -241,7 +240,6 @@ private:
     std::atomic<TcpListener*> m_least_conn_listener;
     std::atomic<TcpConnection*> m_conn_in_transit;
 
-    //size_t m_max_conns;         // max number of connections allowed
     size_t m_max_events;        // max number of epoll events per epoll_wait()
     size_t m_conn_timeout_secs; // timeout for idle connections
 
@@ -266,16 +264,8 @@ private:
     int m_epoll_fd;             // epoll socket for the event loop
     int m_pipe_fds[2];          // self-pipe trick to wake up epoll_wait()
 
-    // this needs to be a signed integer, because connections can be opened in
-    // one thread and closed in another. Luckily we only care about the total.
-    //int m_stats_active_conn_count;
-
     TaskScheduler m_responders; // threads to handle http requests
     std::thread m_listener;     // the thread that goes into the event loop
-
-    //std::atomic<bool> m_resend; // true if m_resend_queue is not empty
-    //std::mutex m_resend_mutex;  // to guard m_resend_queue
-    //std::queue<Task> m_resend_queue;
 };
 
 
@@ -291,14 +281,11 @@ public:
     void wait(size_t timeout_secs); // BLOCKING CALL!
     void close_conns();
     bool is_stopped() const;
-    //void instruct0(const char *instruction, int size);
 
     TcpListener* next_listener(int id); // listener to receive new connection
-    //void get_level1_listeners(std::vector<TcpListener*>& listeners) const;
 
     size_t get_active_conn_count() const;
     size_t get_pending_task_count(std::vector<std::vector<size_t>> (&counts)[LISTENER0_COUNT]) const;
-    //int get_total_task_count(size_t counts[], int size) const;
 
     virtual inline const char *get_name() const { return "tcp"; }
 
