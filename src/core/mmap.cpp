@@ -1151,12 +1151,12 @@ RollupDataFile::RollupDataFile(MetricId mid, Timestamp begin, RollupLevel level)
     if (level == RL_LEVEL1)
     {
         cfg = RollupManager::get_rollup_config(year, month, true);
-        m_name = get_level1_name_by_mid(mid, year, month);;
+        m_name = get_level1_name_by_mid(mid, year, month, cfg);
     }
     else
     {
         cfg = RollupManager::get_rollup_config(year, true);
-        m_name = get_level2_name_by_mid(mid, year);
+        m_name = get_level2_name_by_mid(mid, year, cfg);
     }
 
     ASSERT(cfg != nullptr);
@@ -2138,10 +2138,13 @@ RollupDataFile::recompress(std::unordered_map<TimeSeriesId,std::vector<struct ro
     return success;
 }
 
+/* @param year 1970-...
+ * @param month 1-12
+ */
 std::string
-RollupDataFile::get_level1_name_by_mid(MetricId mid, int year, int month)
+RollupDataFile::get_level1_name_by_mid(MetricId mid, int year, int month, Config *cfg)
 {
-    return get_level1_name_by_bucket(RollupManager::get_rollup_bucket(mid), year, month);
+    return get_level1_name_by_bucket(RollupManager::get_rollup_bucket(mid, cfg), year, month);
 }
 
 std::string
@@ -2155,10 +2158,12 @@ RollupDataFile::get_level1_name_by_bucket(int bucket, int year, int month)
     return oss.str();
 }
 
+/* @param year 1970-...
+ */
 std::string
-RollupDataFile::get_level2_name_by_mid(MetricId mid, int year)
+RollupDataFile::get_level2_name_by_mid(MetricId mid, int year, Config *cfg)
 {
-    return get_level2_name_by_bucket(RollupManager::get_rollup_bucket(mid), year);
+    return get_level2_name_by_bucket(RollupManager::get_rollup_bucket(mid, cfg), year);
 }
 
 std::string

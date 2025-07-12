@@ -21,6 +21,7 @@
 #include <cstdio>
 #include <mutex>
 #include <unordered_map>
+#include "config.h"
 #include "lock.h"
 #include "range.h"
 #include "type.h"
@@ -318,9 +319,9 @@ public:
     void inc_ref_count_no_lock();
     int get_ref_count() const { return m_ref_count; }
 
-    static std::string get_level1_name_by_mid(MetricId mid, int year, int month);
+    static std::string get_level1_name_by_mid(MetricId mid, int year, int month, Config *cfg);
     static std::string get_level1_name_by_bucket(int bucket, int year, int month);
-    static std::string get_level2_name_by_mid(MetricId mid, int year);
+    static std::string get_level2_name_by_mid(MetricId mid, int year, Config *cfg);
     static std::string get_level2_name_by_bucket(int bucket, int year);
 
 private:

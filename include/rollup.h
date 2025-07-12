@@ -67,7 +67,7 @@ public:
 
     static void add_data_file_size(int64_t size);
     static int64_t get_rollup_data_file_size(RollupLevel level);
-    static int get_rollup_bucket(MetricId mid);
+    static int get_rollup_bucket(MetricId mid, Config *cfg);
     static RollupDataFile *get_level1_data_file_by_bucket(int bucket, Timestamp begin);
     static RollupDataFile *get_or_create_data_file(MetricId mid, Timestamp tstamp);
     static RollupDataFile *get_or_create_level2_data_file_by_bucket(int bucket, Timestamp begin);
@@ -83,8 +83,8 @@ public:
 
 private:
     static Timestamp step_down(Timestamp tstamp);
-    static RollupDataFile *get_data_file(MetricId mid, Timestamp tstamp, std::unordered_map<uint64_t, RollupDataFile*>& map, RollupLevel level);
-    static RollupDataFile *get_or_create_data_file(MetricId mid, Timestamp tstamp, std::unordered_map<uint64_t, RollupDataFile*>& map, RollupLevel level);
+    static RollupDataFile *get_data_file(MetricId mid, Timestamp tstamp, std::unordered_map<uint64_t, RollupDataFile*>& map, RollupLevel level, Config *cfg);
+    static RollupDataFile *get_or_create_data_file(MetricId mid, Timestamp tstamp, std::unordered_map<uint64_t, RollupDataFile*>& map, RollupLevel level, Config *cfg);
 
     uint32_t m_cnt;
     double m_min;

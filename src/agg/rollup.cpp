@@ -426,26 +426,31 @@ RollupManager::step_down(Timestamp tstamp)
 }
 
 int
-RollupManager::get_rollup_bucket(MetricId mid)
+RollupManager::get_rollup_bucket(MetricId mid, Config *cfg)
 {
-    // TODO: CFG_TSDB_ROLLUP_BUCKETS shouldn't be changed
-    return mid % Config::inst()->get_int(CFG_TSDB_ROLLUP_BUCKETS,CFG_TSDB_ROLLUP_BUCKETS_DEF);
+    if (cfg != nullptr)
+        return mid % cfg->get_int(CFG_TSDB_ROLLUP_BUCKETS,CFG_TSDB_ROLLUP_BUCKETS_DEF);
+    else
+        return mid % Config::inst()->get_int(CFG_TSDB_ROLLUP_BUCKETS,CFG_TSDB_ROLLUP_BUCKETS_DEF);
 }
 
 // get monthly data file
 RollupDataFile *
 RollupManager::get_or_create_data_file(MetricId mid, Timestamp tstamp)
 {
+    int month, year;
     Timestamp begin = Calendar::begin_month_of(tstamp);
+    get_year_month(tstamp, year, month);
+    Config *cfg = get_rollup_config(year, month, false);
     std::lock_guard<std::mutex> guard(m_lock);
-    return get_or_create_data_file(mid, begin, m_data_files, RL_LEVEL1);
+    return get_or_create_data_file(mid, begin, m_data_files, RL_LEVEL1, cfg);
 }
 
 RollupDataFile *
-RollupManager::get_or_create_data_file(MetricId mid, Timestamp tstamp, std::unordered_map<uint64_t, RollupDataFile*>& map, RollupLevel level)
+RollupManager::get_or_create_data_file(MetricId mid, Timestamp tstamp, std::unordered_map<uint64_t, RollupDataFile*>& map, RollupLevel level, Config *cfg)
 {
     // calc a unique 'bucket' for each year/month
-    uint64_t bucket = tstamp * MAX_ROLLUP_BUCKET_COUNT + get_rollup_bucket(mid);
+    uint64_t bucket = tstamp * MAX_ROLLUP_BUCKET_COUNT + get_rollup_bucket(mid, cfg);
     auto search = map.find(bucket);
     RollupDataFile *data_file = nullptr;
 
@@ -464,22 +469,30 @@ RollupManager::get_or_create_data_file(MetricId mid, Timestamp tstamp, std::unor
 }
 
 RollupDataFile *
-RollupManager::get_data_file(MetricId mid, Timestamp tstamp, std::unordered_map<uint64_t, RollupDataFile*>& map, RollupLevel level)
+RollupManager::get_data_file(MetricId mid, Timestamp tstamp, std::unordered_map<uint64_t, RollupDataFile*>& map, RollupLevel level, Config *cfg)
 {
     // calc a unique 'bucket' for each year/month
-    uint64_t bucket = tstamp * MAX_ROLLUP_BUCKET_COUNT + get_rollup_bucket(mid);
+    uint64_t bucket = tstamp * MAX_ROLLUP_BUCKET_COUNT + get_rollup_bucket(mid, cfg);
     auto search = map.find(bucket);
     RollupDataFile *data_file = nullptr;
 
     if (search == map.end())
     {
+        std::string name;
         int year, month;
+
         get_year_month(tstamp, year, month);
 
-        std::string name =
-            (level == RL_LEVEL1) ?
-                RollupDataFile::get_level1_name_by_mid(mid, year, month) :
-                RollupDataFile::get_level2_name_by_mid(mid, year);
+        if (level == RL_LEVEL1)
+        {
+            Config *cfg = get_rollup_config(year, month, false);
+            name = RollupDataFile::get_level1_name_by_mid(mid, year, month, cfg);
+        }
+        else    // level == RL_LEVEL2
+        {
+            Config *cfg = get_rollup_config(year, false);
+            name = RollupDataFile::get_level2_name_by_mid(mid, year, cfg);
+        }
 
         if (file_exists(name))
         {
@@ -519,7 +532,8 @@ RollupManager::get_level1_data_files(MetricId mid, const TimeRange& range, std::
         Timestamp ts = begin_month(year, month);
         if (end <= ts) break;
 
-        RollupDataFile *data_file = get_data_file(mid, ts, m_data_files, RL_LEVEL1);
+        Config *cfg = get_rollup_config(year+1900, month+1, false);
+        RollupDataFile *data_file = get_data_file(mid, ts, m_data_files, RL_LEVEL1, cfg);
 
         if (data_file != nullptr)
         {
@@ -558,7 +572,8 @@ RollupManager::get_level2_data_files(MetricId mid, const TimeRange& range, std::
         Timestamp ts = begin_month(year, 0);
         if (end <= ts) break;
 
-        RollupDataFile *data_file = get_data_file(mid, ts, m_data_files2, RL_LEVEL2);
+        Config *cfg = get_rollup_config(year+1900, false);
+        RollupDataFile *data_file = get_data_file(mid, ts, m_data_files2, RL_LEVEL2, cfg);
 
         if (data_file != nullptr)
         {
