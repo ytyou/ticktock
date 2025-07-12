@@ -509,52 +509,6 @@ IndexFile::get_indices2(TimeSeriesId id, FileIndex& file_index, HeaderIndex& hea
     }
 }
 
-#if 0
-void
-IndexFile::set_rollup_index(TimeSeriesId tid, RollupIndex idx)
-{
-    void *pages = get_pages();
-    ASSERT(pages != nullptr);
-    ASSERT(! is_read_only());
-
-    size_t new_len = (tid+1) * TT_INDEX_SIZE;
-    size_t old_len = get_length();
-    ASSERT(0 < old_len);
-
-    if (old_len < new_len)
-    {
-        // file too small, expand it
-        if (! expand(new_len + TT_SIZE_INCREMENT))
-        {
-            Logger::error("IndexFile::set_rollup_index(tid=%u, idx=%u) failed to expand!", tid, idx);
-            return;
-        }
-        pages = get_pages();
-    }
-
-    struct index_entry *entries = (struct index_entry*)pages;
-    entries[tid].rollup_index = idx;
-}
-
-RollupIndex
-IndexFile::get_rollup_index(TimeSeriesId id)
-{
-    RollupIndex rollup_idx = TT_INVALID_ROLLUP_INDEX;
-    void *pages = get_pages();
-
-    size_t idx = (id+1) * TT_INDEX_SIZE;
-    size_t len = get_length();
-
-    if ((len > idx) && (pages != nullptr))
-    {
-        struct index_entry *entries = (struct index_entry*)pages;
-        rollup_idx = entries[id].rollup_index;
-    }
-
-    return rollup_idx;
-}
-#endif
-
 bool
 IndexFile::get_out_of_order(TimeSeriesId id)
 {
@@ -712,10 +666,6 @@ HeaderFile::restore(const std::string& file_name)
 {
     FileIndex id = get_file_suffix(file_name);
     HeaderFile *header_file = new HeaderFile(id, file_name);
-    //header_file->open(true);
-    //struct tsdb_header *header = header_file->get_tsdb_header();
-    //ASSERT(header != nullptr);
-    //header_file->m_page_count = header->m_page_count;
     ASSERT(header_file->m_id != TT_INVALID_FILE_INDEX);
     return header_file;
 }
@@ -815,7 +765,6 @@ HeaderFile::new_header_index(Tsdb *tsdb)
     HeaderIndex header_idx = tsdb_header->m_header_index++;
     struct page_info_on_disk *header = get_page_header(header_idx);
     header->init();
-    //header->m_page_index = tsdb_header->m_page_index++;
 
     return header_idx;
 }
@@ -928,7 +877,6 @@ DataFile::open(bool for_read)
     else
     {
         ASSERT(m_file == nullptr);
-        //m_file = std::fopen(m_name.c_str(), "ab");
         int fd = ::open(m_name.c_str(), O_WRONLY|O_CREAT|O_APPEND|O_NONBLOCK, S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH);
         fd = FileDescriptorManager::dup_fd(fd, FileDescriptorType::FD_FILE);
 
@@ -1302,7 +1250,6 @@ RollupDataFile::open(bool for_read)
 
             m_read_only = for_read;
             m_file = fdopen(fd, "a+b");
-            //m_file = fdopen(fd, for_read?"r+":"a+b");
             ASSERT(m_file != nullptr);
             Logger::debug("opening %s for read/write", m_name.c_str());
         }
@@ -1513,7 +1460,6 @@ RollupDataFile::add_data_points(std::unordered_map<TimeSeriesId,std::vector<stru
     TimeSeriesId last_tid = TT_INVALID_TIME_SERIES_ID;
     std::lock_guard<std::mutex> guard(m_lock);
 
-    //ASSERT(! is_open(false) && ! is_open(true));
     ensure_open(false);
     ASSERT(m_file != nullptr);
 
@@ -1853,6 +1799,7 @@ RollupDataFile::query_level2_v0(const TimeRange& range, std::unordered_map<TimeS
                 if ((last_ts != TT_INVALID_TIMESTAMP) && (ts <= last_ts))
                 {
                     // TODO: handle OOO
+                    ASSERT(last_ts <= ts);
                 }
 
                 task->set_last_tstamp(ts);
@@ -1866,8 +1813,6 @@ RollupDataFile::query_level2_v0(const TimeRange& range, std::unordered_map<TimeS
                 }
                 else if (entry->cnt != 0 && in_range == 0)
                 {
-                    //double val = RollupManager::query((struct rollup_entry*)entry, rollup);
-                    //task->add_data_point(ts, val);
                     task->add_data_point(entry, rollup);
                 }
             }
@@ -1936,8 +1881,6 @@ RollupDataFile::query_level2_v1(const TimeRange& range, std::unordered_map<TimeS
             }
             else if (in_range == 0)
             {
-                //double val = RollupManager::query((struct rollup_entry*)entry, rollup);
-                //task->add_data_point(ts, val);
                 task->add_data_point(&entry, rollup);
             }
         }

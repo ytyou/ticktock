@@ -372,9 +372,6 @@ HttpServer::recv_http_data(TaskData& data)
     // deregister it anyway, just in case.
     if (conn_error)
     {
-        //Logger::info("Closing connection (%d)!!!", fd);
-        //listener->deregister_with_epoll(fd);
-        //close(fd);
         conn->state |= TCS_ERROR;
     }
 
@@ -486,7 +483,6 @@ HttpServer::recv_http_data_cont(HttpConnection *conn)
         if (UNLIKELY(! conn->request.is_complete()))
         {
             free_buff = false;
-            //conn->buff = buff;
             conn->offset = len;
             Logger::http("request.length = %d, len = %d, offset = %d", fd,
                 conn->request.length, len, conn->offset);
@@ -506,7 +502,6 @@ HttpServer::recv_http_data_cont(HttpConnection *conn)
     else
     {
         free_buff = false;
-        //conn->buff = buff;
         Logger::http("did not receive anything this time", fd);
     }
 
@@ -520,12 +515,7 @@ HttpServer::recv_http_data_cont(HttpConnection *conn)
     // since we never dup() or fork(); but let's
     // deregister it anyway, just in case.
     if (conn_error)
-    {
-        //Logger::info("Closing connection (%d)!!!", fd);
-        //deregister_with_epoll(fd);
-        //close(fd);
         conn->state |= TCS_ERROR;
-    }
 
     int n = --conn->pending_tasks;
     ASSERT(n >= 0);
@@ -954,8 +944,6 @@ HttpResponse::init(uint16_t code, HttpContentType type)
     {
         response = buffer = MemoryManager::alloc_network_buffer_small();
         buffer_size = MemoryManager::get_network_buffer_small_size();
-        //response = buffer = MemoryManager::alloc_network_buffer();
-        //buffer_size = MemoryManager::get_network_buffer_size();
     }
 
     if (id == nullptr)

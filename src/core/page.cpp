@@ -277,7 +277,6 @@ PageInMemory::flush(MetricId mid, TimeSeriesId tid, bool compact)
     ciod->m_cursor = position.m_offset;
     ciod->m_start = position.m_start;
 
-    //m_page_header.m_size = m_compressor->size();
     m_page_header.set_full(m_compressor->is_full());
     m_page_header.m_next_file = TT_INVALID_FILE_INDEX;
     m_page_header.m_next_header = TT_INVALID_HEADER_INDEX;

@@ -3757,7 +3757,6 @@ Tsdb::rollup(TaskData& data)
             for (auto tsdb: tsdbs)
             {
                 std::lock_guard<std::mutex> guard(tsdb->m_lock);
-                //tsdb->m_mode |= TSDB_MODE_ROLLED_UP;
                 tsdb->m_mode = tsdb->m_mode.load() | TSDB_MODE_ROLLED_UP;
                 std::string dir = get_tsdb_dir_name(tsdb->m_time_range);
                 tsdb->write_config(dir);    // persist the 'rolled_up' status
@@ -3800,7 +3799,6 @@ Tsdb::set_crashes(Tsdb *oldest_tsdb)
     for (auto it = m_tsdbs.rbegin(); it != m_tsdbs.rend(); it++)
     {
         Tsdb *tsdb = *it;
-        //tsdb->m_mode |= TSDB_MODE_CRASHED;
         tsdb->m_mode = tsdb->m_mode.load() | TSDB_MODE_CRASHED;
         if (tsdb == oldest_tsdb) break;
     }
@@ -4004,7 +4002,6 @@ Tsdb::BucketBalancer::do_balance(Tsdb *prev_tsdb, Tsdb *curr_tsdb)
             {
                 auto& m = buckets[bucket_cnt-1].metrics[i];
 
-                //if ((target_cnt < m.second) && (m.second <= avg_page_count))
                 if ((target_cnt < m.second) && ((buckets[0].page_count + m.second) <= avg_page_count))
                 {
                     target_mid = m.first;
@@ -4019,7 +4016,6 @@ Tsdb::BucketBalancer::do_balance(Tsdb *prev_tsdb, Tsdb *curr_tsdb)
                 buckets[0].metrics.emplace_back(std::make_pair(target_mid, target_cnt));
 
                 buckets[bucket_cnt-1].page_count -= target_cnt;
-                //buckets[bucket_cnt-1].metrics.erase(buckets[bucket_cnt-1].metrics.begin()+target_idx);
                 buckets[bucket_cnt-1].metrics[target_idx].second = 0;   // essentially removed
 
                 Logger::debug("BB: moving metric %u of size %u from bucket %u to %u, avg=%u",

@@ -94,6 +94,10 @@ Query::Query(JsonMap& map, TimeRange& range, StringBuffer& strbuf, bool ms, cons
             Logger::warn("Ignoring unrecognized rollupUsage: %s", rollup);
     }
 
+    /* Note: "If you are storing multiple data points per second, make sure that any
+              query you issue includes a 1s-<func> downsampler to read the right data.
+              Otherwise an indeterminate value will be emitted."
+
     if (! m_ms && (m_downsample == nullptr))
     {
         char buff[64];
@@ -101,6 +105,7 @@ Query::Query(JsonMap& map, TimeRange& range, StringBuffer& strbuf, bool ms, cons
         std::strcat(buff, (m_aggregate==nullptr)?"none":m_aggregate);
         m_downsample = strbuf.strdup(buff);
     }
+    */
 
     search = map.find("rate");
     if (search != map.end())
@@ -319,7 +324,10 @@ Query::Query(JsonMap& map, StringBuffer& strbuf) :
     ASSERT(idx == (tokens.size()-1));
     m_metric = strbuf.strdup(tokens[idx++].c_str());
 
-/*
+/*  Note: "If you are storing multiple data points per second, make sure that any
+              query you issue includes a 1s-<func> downsampler to read the right data.
+              Otherwise an indeterminate value will be emitted."
+
     if (! m_ms && (m_downsample == nullptr))
     {
         char buff[64];
@@ -708,7 +716,6 @@ void
 QueryTask::add_container(DataPointContainer *container)
 {
     ASSERT(container != nullptr);
-    //ASSERT(container->size() > 0);
     m_data.push_back(container);
 }
 
@@ -728,13 +735,7 @@ QueryTask::query_with_ooo(const TimeRange& range)
                 return true;
             else if (! lhs.first->is_out_of_order() && rhs.first->is_out_of_order())
                 return false;
-
-            //if (lhs.first->get_page_index() == 0)
-                //return true;
-            //else if (rhs.first->get_page_index() == 0)
-                //return false;
-            //else
-                return (lhs.first->get_page_index() > rhs.first->get_page_index());
+            return (lhs.first->get_page_index() > rhs.first->get_page_index());
         }
         else
         {
@@ -768,7 +769,6 @@ QueryTask::query_with_ooo(const TimeRange& range)
         if (in_range == 0)
         {
             // remove duplicates
-            //if ((! m_dps.empty()) && (m_dps.back().first == dp.first))
             if (prev_dp.first == dp.first)
             {
                 prev_dp.second = dp.second;
@@ -800,9 +800,6 @@ QueryTask::query_with_ooo(const TimeRange& range)
         else
             m_downsampler->add_data_point(prev_dp, m_dps);
     }
-
-    //if (m_downsampler != nullptr)
-        //m_downsampler->add_last_point(m_dps);
 }
 
 void
@@ -838,9 +835,6 @@ QueryTask::query_without_ooo(const TimeRange& range)
             }
         }
     }
-
-    //if (m_downsampler != nullptr)
-        //m_downsampler->add_last_point(m_dps);
 
 #ifdef TT_STATS
     s_dp_count.fetch_add(dp_count, std::memory_order_relaxed);
@@ -908,8 +902,6 @@ QueryTask::get_cloned_tags(StringBuffer& strbuf)
 {
     ASSERT(m_ts != nullptr);
     Tag *tags = m_ts->get_cloned_tags(strbuf);
-    //Tag *removed = Tag::remove_first(&tags, METRIC_TAG_NAME);
-    //Tag::free_list(removed, false);
     return tags;
 }
 
@@ -1013,7 +1005,6 @@ QuerySuperTask::create_task(QueryTask *parent, TimeSeries *ts, const TimeRange& 
         if (task->m_downsampler == nullptr)
             task->m_time_range = range;
         else
-            //task->m_time_range = task->m_downsampler->get_time_range();
             task->m_time_range = task->m_downsampler->get_expanded_range();
     }
 
@@ -1023,18 +1014,6 @@ QuerySuperTask::create_task(QueryTask *parent, TimeSeries *ts, const TimeRange& 
 void
 QuerySuperTask::add_task(TimeSeries *ts)
 {
-    /*
-    QueryTask *qt =
-        (QueryTask*)MemoryManager::alloc_recyclable(RecyclableType::RT_QUERY_TASK);
-
-    qt->m_ts = ts;
-    qt->m_downsampler = (m_downsample == nullptr) ?
-                        nullptr :
-                        Downsampler::create(m_downsample, m_time_range, m_ms);
-    qt->m_time_range = (qt->m_downsampler == nullptr) ?
-        m_time_range : qt->m_downsampler->get_time_range();
-    */
-
     m_tasks.push_back(create_task(nullptr, ts, m_time_range));
 }
 
@@ -1074,11 +1053,7 @@ QuerySuperTask::use_rollup() const
             {
                 rollup_interval *= 1000;
                 rollup_interval2 *= 1000;
-
-                //if (! m_ms) downsample_interval *= 1000;
             }
-            //else if (m_ms)
-                //downsample_interval /= 1000;
 
             // TODO: config
             if (rollup_interval2 <= downsample_interval)
@@ -1120,8 +1095,6 @@ QuerySuperTask::query_raw(Tsdb *tsdb, const TimeRange& range, std::vector<QueryT
 {
     ASSERT(tsdb != nullptr);
     if (tasks.empty()) return;
-
-    //TimeRange range = (m_downsample == nullptr) ? m_time_range : tasks.front()->get_query_range();
 
     tsdb->query_for_data(m_metric_id, range, tasks, m_compact);
 
@@ -1165,7 +1138,6 @@ QuerySuperTask::query_rollup_hourly(const TimeRange& range, const std::vector<Ts
                     taskset.insert(task);
                     tasks_for_raw.push_back(create_task(task, task->m_ts, tsdb->get_time_range()));
                     task->remove_dps(tsdb->get_time_range());
-                    //task->update_downsampler(tsdb->get_time_range());
                 }
             }
         }

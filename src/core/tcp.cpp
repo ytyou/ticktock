@@ -478,12 +478,7 @@ TcpServer::recv_tcp_data(TaskData& data)
     }
 
     if (again && (conn->pending_tasks <= 1))
-    {
-        //Task task;
-        //task.doit = &TcpServer::recv_tcp_data;
-        //task.data.pointer = conn;
         conn->listener->resubmit_by_responder('t', conn);
-    }
 
     if (len > 0)
     {
@@ -641,20 +636,6 @@ TcpServer::is_stopped() const
     return true;
 }
 
-/*
-void
-TcpServer::get_level1_listeners(std::vector<TcpListener*>& listeners) const
-{
-    for (size_t i = 2; i < m_listener_count; i++)
-    {
-        if ((m_listeners[i] != nullptr) && (! m_listeners[i]->is_stopped()))
-        {
-            listeners.push_back(m_listeners[i]);
-        }
-    }
-}
-*/
-
 TcpListener *
 TcpServer::next_listener(int id)
 {
@@ -785,17 +766,6 @@ TcpServer::set_flags(int fd, int flags)
     return true;
 }
 
-/*
-void
-TcpServer::instruct0(const char *instruction, int size)
-{
-    if (m_listeners[0] != nullptr)
-    {
-        m_listeners[0]->instruct(instruction, size);
-    }
-}
-*/
-
 void
 TcpServer::instruct1(const char *instruction, int size)
 {
@@ -832,8 +802,6 @@ int
 TcpServer::get_responders_per_listener(int which) const
 {
     return Config::inst()->get_tcp_responders_per_listener(which);
-    //int n = Config::get_int(CFG_TCP_RESPONDERS_PER_LISTENER, CFG_TCP_RESPONDERS_PER_LISTENER_DEF);
-    //return (n > 0) ? n : CFG_TCP_RESPONDERS_PER_LISTENER_DEF;
 }
 
 int
@@ -857,7 +825,6 @@ TcpListener::TcpListener(TcpServer *server, int id, int fd) :
     m_free_conns(nullptr),
     m_least_conn_listener(nullptr),
     m_conn_in_transit(nullptr)
-    //m_stats_active_conn_count(0)
 {
     if (! init(fd))
     {
@@ -882,7 +849,6 @@ TcpListener::TcpListener(TcpServer *server, int id) :
     m_responders(std::string(server->get_name())+std::string("_")+std::to_string(id),
                  server->get_responders_per_listener(id%10),
                  Config::inst()->get_int(CFG_TCP_RESPONDERS_QUEUE_SIZE, CFG_TCP_RESPONDERS_QUEUE_SIZE_DEF))
-    //m_stats_active_conn_count(0)
 {
     if (! init(-1))
     {
@@ -902,7 +868,6 @@ TcpListener::TcpListener() :
     m_free_conns(nullptr),
     m_least_conn_listener(nullptr),
     m_conn_in_transit(nullptr)
-    //m_stats_active_conn_count(0)
 {
 }
 
@@ -1017,7 +982,6 @@ TcpListener::register_with_epoll(int fd)
         return false;
     }
 
-    //m_stats_active_conn_count++;
     Logger::debug("%d registered with epoll", fd);
 
     return true;
@@ -1040,9 +1004,7 @@ TcpListener::deregister_with_epoll(int fd)
         }
     }
 
-    //m_stats_active_conn_count--;
     Logger::debug("%d de-registered with epoll", fd);
-
     return true;
 }
 
@@ -1192,7 +1154,6 @@ TcpListener::listener1()
             {
                 // new data on existing connections
                 TcpConnection *conn = get_conn(fd);
-                //ASSERT(conn != nullptr);
                 if (UNLIKELY(conn == nullptr))
                     continue;
                 Logger::tcp("received data on conn %p", conn->fd, conn);
@@ -1232,24 +1193,6 @@ TcpListener::listener1()
                 }
             }
         }
-
-/*
-        if (UNLIKELY(m_resend))
-        {
-            const std::lock_guard<std::mutex> lock(m_resend_mutex);
-            while (! m_resend_queue.empty() && ! g_shutdown_requested)
-            {
-                Task task = m_resend_queue.front();
-                TcpConnection *conn = (TcpConnection*)task.data.pointer;
-                if (1 == ++conn->pending_tasks)
-                    conn->worker_id = m_responders.submit_task(task);
-                else
-                    m_responders.submit_task(task, conn->worker_id);
-                m_resend_queue.pop();
-            }
-            m_resend = false;
-        }
-*/
     }
 
     set_stopped();
@@ -1263,10 +1206,6 @@ TcpListener::resubmit_by_responder(char c, TcpConnection *conn)
     char buff[32];
     std::snprintf(buff, sizeof(buff), "%c %c %d\n", PIPE_CMD_RESUBMIT[0], c, conn->fd);
     write_pipe(m_pipe_fds[1], buff);
-
-    //const std::lock_guard<std::mutex> lock(m_resend_mutex);
-    //m_resend_queue.push(task);
-    //m_resend = true;
 }
 
 void
@@ -1315,8 +1254,6 @@ TcpListener::new_conn0()
                 break;
             }
         }
-
-        //Logger::info("new connection: %d", fd);
 
         // send it to level 1 listener
         TcpListener *listener1;
@@ -1457,12 +1394,10 @@ TcpListener::send_response(TcpConnection *conn)
             ! least->m_conn_in_transit.compare_exchange_strong(null, conn, std::memory_order_relaxed);
             k++)
         {
-            //write(least->m_pipe_fds[1], "b\n", 2);
             write_pipe(least->m_pipe_fds[1], PIPE_CMD_REBALANCE_CONN);
             spin_yield(k);
         }
 
-        //write(least->m_pipe_fds[1], "b\n", 2);
         write_pipe(least->m_pipe_fds[1], PIPE_CMD_REBALANCE_CONN);
         m_least_conn_listener.store(nullptr, std::memory_order_relaxed);
     }
@@ -1488,8 +1423,6 @@ TcpListener::disconnect()
         {
             Logger::trace("closing connection: conn=%p fd=%d", conn, conn->fd);
 
-            //auto search = m_conn_map.find(conn->fd);
-            //ASSERT(search != m_conn_map.end());
             it = m_conn_map.erase(it);
             del_conn_from_all_map(conn->fd);
             deregister_with_epoll(conn->fd);
