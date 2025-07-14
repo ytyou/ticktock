@@ -37,7 +37,7 @@ class TickTockConfig(object):
         self._dict["http.responders.per.listener"] = 1
         self._dict["http.request.format"] = self._options.form
         self._dict["http.server.port"] = self._options.port
-        self._dict["tcp.server.port"] = self._options.dataport
+        self._dict["tcp.server.port"] = str(self._options.dataport) + "," + str(self._options.dataport2)
         self._dict["udp.server.port"] = self._options.dataport
         self._dict["udp.server.enabled"] = "true"
 
@@ -119,6 +119,13 @@ class DataPoint(object):
                 p += " " + k + "=" + v
         return p
 
+    def to_line(self):
+        p = "{}".format(self._metric)
+        if self._tags:
+            for k,v in self._tags.items():
+                p += "," + k + "=" + v
+        return "{} _field={:.12f} {}".format(p, self._value, self._timestamp)
+
     def to_tuple(self):
         return (self._timestamp, self._value)
 
@@ -190,6 +197,12 @@ class DataPoints(object):
             p += "put " + dp.to_plain() + "\n"
         return p + "\n"
 
+    def to_line(self):
+        p = ""
+        for dp in self._dps:
+            p += dp.to_line() + "\n"
+        return p + "\n"
+
 
 class Query(object):
 
@@ -256,7 +269,7 @@ class Query(object):
 
 class Test(object):
 
-    def __init__(self, options, prefix: str, tcp_socket=None):
+    def __init__(self, options, prefix: str, tcp_socket=None, tcp_socket2=None):
         self._options = options
         self._prefix = prefix
         self._passed = 0
@@ -265,6 +278,7 @@ class Test(object):
         self._ticktock_time = 0.0
         self._udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self._tcp_socket = tcp_socket
+        self._tcp_socket2 = tcp_socket2
         self._precision = 0.00000000012
 
     def start_tt(self, conf_file="tt.conf"):
@@ -281,6 +295,9 @@ class Test(object):
         if self._tcp_socket:
             self._tcp_socket.close()
             self._tcp_socket = None
+        if self._tcp_socket2:
+            self._tcp_socket2.close()
+            self._tcp_socket2 = None
         time.sleep(1)
         response = requests.post("http://"+self._options.ip+":"+str(port)+"/api/admin?cmd=stop")
         response.raise_for_status()
@@ -303,6 +320,12 @@ class Test(object):
             address = (str(self._options.ip), int(self._options.dataport))
             print("connecting to {}:{}".format(self._options.ip, self._options.dataport))
             self._tcp_socket.connect(address)
+        if not self._tcp_socket2:
+            # establish tcp connection
+            self._tcp_socket2 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            address = (str(self._options.ip), int(self._options.dataport2))
+            print("connecting to {}:{}".format(self._options.ip, self._options.dataport2))
+            self._tcp_socket2.connect(address)
 
     def get_checkpoint(self, leader=None):
         if leader:
@@ -311,6 +334,15 @@ class Test(object):
             response = requests.post("http://"+self._options.ip+":"+str(self._options.port)+"/api/admin?cmd=cp")
         response.raise_for_status()
         return response.json()
+
+    def verify_checkpoint(self, leader, expected):
+        for i in range(100):
+            cp = self.get_checkpoint(leader)
+            if self.verify_json(cp, expected):
+                self._passed = self._passed + 1
+                return
+            time.sleep(1)
+        self._failed = self._failed + 1
 
     def do_compaction(self):
         response = requests.post("http://"+self._options.ip+":"+str(self._options.port)+"/api/admin?cmd=compact")
@@ -388,6 +420,14 @@ class Test(object):
         self._tcp_socket.sendall(dps.to_plain().encode())
         self._ticktock_time += time.time() - start
 
+    def send_data_to_ticktock_line(self, dps):
+        # send to ticktock
+        start = time.time()
+        if not self._tcp_socket2:
+            self.connect_to_tcp()
+        self._tcp_socket2.sendall(dps.to_line().encode())
+        self._ticktock_time += time.time() - start
+
     def send_data(self, dps, wait=True):
         self.send_data_to_opentsdb(dps)
         self.send_data_to_ticktock(dps)
@@ -436,7 +476,15 @@ class Test(object):
         start = time.time()
         if not self._tcp_socket:
             self.connect_to_tcp()
-        self._tcp_socket.sendall("cp {}:{}:{}\n".format(leader, channel, cp).encode())
+        self._tcp_socket.sendall("_cp {}:{}:{}\n".format(leader, channel, cp).encode())
+        self._ticktock_time += time.time() - start
+
+    def send_checkpoint2(self, leader, channel, cp):
+        # send cp to ticktock
+        start = time.time()
+        if not self._tcp_socket2:
+            self.connect_to_tcp()
+        self._tcp_socket2.sendall("_cp {}:{}:{}\n".format(leader, channel, cp).encode())
         self._ticktock_time += time.time() - start
 
     def query_ticktock(self, query):
@@ -1904,10 +1952,16 @@ class Check_Point_Tests(Test):
 
     def __call__(self):
 
+        self.cleanup()
+        self.test1()
+        self.cleanup()
+        self.test2()
+
+    def test1(self):
+
         # generate config
         config = TickTockConfig(self._options)
         config.add_entry("tsdb.flush.frequency", "1s");
-        config.add_entry("http.request.format", "plain")
         config()
 
         self.start_tt()
@@ -1916,80 +1970,43 @@ class Check_Point_Tests(Test):
         dps = DataPoints(self._prefix, self._options.start, metric_count=16)
         self.send_data_to_ticktock_tcp(dps)
         time.sleep(5)
-        cp = self.get_checkpoint()
         j = []
-        if self.verify_json(cp, j):
-            self._passed = self._passed + 1
-        else:
-            self._failed = self._failed + 1
+        self.verify_checkpoint(leader=None, expected=j)
 
         # send first cp
         self.send_checkpoint("l1", "ch1", "cp1")
-        time.sleep(1)
-        cp = self.get_checkpoint()
         j = [{"leader":"l1","channels":[{"channel":"ch1","checkpoint":"cp1"}]}]
-        if self.verify_json(cp, j):
-            self._passed = self._passed + 1
-        else:
-            self._failed = self._failed + 1
+        self.verify_checkpoint(leader=None, expected=j)
 
         # insert some more dps
         dps = DataPoints(self._prefix, self._options.start, metric_count=16)
         self.send_data_to_ticktock_tcp(dps)
         time.sleep(5)
-        cp = self.get_checkpoint()
-        if self.verify_json(cp, j):
-            self._passed = self._passed + 1
-        else:
-            self._failed = self._failed + 1
+        self.verify_checkpoint(leader=None, expected=j)
 
         # send second cp
         self.send_checkpoint("l1", "ch1", "cp2")
-        time.sleep(1)
-        cp = self.get_checkpoint("l1")
         j = [{"leader":"l1","channels":[{"channel":"ch1","checkpoint":"cp2"}]}]
-        if self.verify_json(cp, j):
-            self._passed = self._passed + 1
-        else:
-            self._failed = self._failed + 1
+        self.verify_checkpoint(leader="l1", expected=j)
 
         # get non-existing cp
-        cp = self.get_checkpoint("l9")
         j = []
-        if self.verify_json(cp, j):
-            self._passed = self._passed + 1
-        else:
-            self._failed = self._failed + 1
+        self.verify_checkpoint(leader="l9", expected=j)
 
         # send third cp
         self.send_checkpoint("l2", "ch1", "cp1")
-        time.sleep(1)
-        cp = self.get_checkpoint("l2")
         j = [{"leader":"l2","channels":[{"channel":"ch1","checkpoint":"cp1"}]}]
-        if self.verify_json(cp, j):
-            self._passed = self._passed + 1
-        else:
-            self._failed = self._failed + 1
+        self.verify_checkpoint(leader="l2", expected=j)
 
         # send fourth cp
         self.send_checkpoint("l1", "ch2", "cp1")
-        time.sleep(1)
-        cp = self.get_checkpoint()
         j = [{"leader":"l1","channels":[{"channel":"ch1","checkpoint":"cp2"},{"channel":"ch2","checkpoint":"cp1"}]},{"leader":"l2","channels":[{"channel":"ch1","checkpoint":"cp1"}]}]
-        if self.verify_json(cp, j):
-            self._passed = self._passed + 1
-        else:
-            self._failed = self._failed + 1
+        self.verify_checkpoint(leader=None, expected=j)
 
         # send fifth cp
         self.send_checkpoint("l1", "ch1", "cp3")
-        time.sleep(1)
-        cp = self.get_checkpoint()
         j = [{"leader":"l1","channels":[{"channel":"ch1","checkpoint":"cp3"},{"channel":"ch2","checkpoint":"cp1"}]},{"leader":"l2","channels":[{"channel":"ch1","checkpoint":"cp1"}]}]
-        if self.verify_json(cp, j):
-            self._passed = self._passed + 1
-        else:
-            self._failed = self._failed + 1
+        self.verify_checkpoint(leader=None, expected=j)
 
         # stop tt
         self.stop_tt()
@@ -1999,12 +2016,75 @@ class Check_Point_Tests(Test):
         # restart
         self.start_tt()
 
-        cp = self.get_checkpoint()
         j = [{"leader":"l1","channels":[{"channel":"ch1","checkpoint":"cp3"},{"channel":"ch2","checkpoint":"cp1"}]},{"leader":"l2","channels":[{"channel":"ch1","checkpoint":"cp1"}]}]
-        if self.verify_json(cp, j):
-            self._passed = self._passed + 1
-        else:
-            self._failed = self._failed + 1
+        self.verify_checkpoint(leader=None, expected=j)
+
+        # stop tt
+        self.stop_tt()
+        # make sure tt stopped
+        self.wait_for_tt(self._options.timeout)
+
+    def test2(self):
+
+        # generate config
+        config = TickTockConfig(self._options)
+        config.add_entry("tsdb.flush.frequency", "1s");
+        config()
+
+        self.start_tt()
+
+        # insert some dps
+        dps = DataPoints(self._prefix, self._options.start, metric_count=16)
+        self.send_data_to_ticktock_line(dps)
+        time.sleep(5)
+        j = []
+        self.verify_checkpoint(leader=None, expected=j)
+
+        # send first cp
+        self.send_checkpoint2("l1", "ch1", "cp1")
+        j = [{"leader":"l1","channels":[{"channel":"ch1","checkpoint":"cp1"}]}]
+        self.verify_checkpoint(leader=None, expected=j)
+
+        # insert some more dps
+        dps = DataPoints(self._prefix, self._options.start, metric_count=16)
+        self.send_data_to_ticktock_line(dps)
+        time.sleep(5)
+        self.verify_checkpoint(leader=None, expected=j)
+
+        # send second cp
+        self.send_checkpoint2("l1", "ch1", "cp2")
+        j = [{"leader":"l1","channels":[{"channel":"ch1","checkpoint":"cp2"}]}]
+        self.verify_checkpoint(leader="l1", expected=j)
+
+        # get non-existing cp
+        j = []
+        self.verify_checkpoint(leader="l9", expected=j)
+
+        # send third cp
+        self.send_checkpoint2("l2", "ch1", "cp1")
+        j = [{"leader":"l2","channels":[{"channel":"ch1","checkpoint":"cp1"}]}]
+        self.verify_checkpoint(leader="l2", expected=j)
+
+        # send fourth cp
+        self.send_checkpoint2("l1", "ch2", "cp1")
+        j = [{"leader":"l1","channels":[{"channel":"ch1","checkpoint":"cp2"},{"channel":"ch2","checkpoint":"cp1"}]},{"leader":"l2","channels":[{"channel":"ch1","checkpoint":"cp1"}]}]
+        self.verify_checkpoint(leader=None, expected=j)
+
+        # send fifth cp
+        self.send_checkpoint2("l1", "ch1", "cp3")
+        j = [{"leader":"l1","channels":[{"channel":"ch1","checkpoint":"cp3"},{"channel":"ch2","checkpoint":"cp1"}]},{"leader":"l2","channels":[{"channel":"ch1","checkpoint":"cp1"}]}]
+        self.verify_checkpoint(leader=None, expected=j)
+
+        # stop tt
+        self.stop_tt()
+        # make sure tt stopped
+        self.wait_for_tt(self._options.timeout)
+
+        # restart
+        self.start_tt()
+
+        j = [{"leader":"l1","channels":[{"channel":"ch1","checkpoint":"cp3"},{"channel":"ch2","checkpoint":"cp1"}]},{"leader":"l2","channels":[{"channel":"ch1","checkpoint":"cp1"}]}]
+        self.verify_checkpoint(leader=None, expected=j)
 
         # stop tt
         self.stop_tt()
@@ -2315,6 +2395,7 @@ def get_options(argv):
 
     # options.opentsdbip = defaults['opentsdbip']
     options.opentsdbport = defaults['opentsdbport']
+    options.dataport2 = defaults['dataport2']
 
     return options, args
 
@@ -2330,6 +2411,7 @@ def get_defaults():
         'metric': 16,
         'port': 7182,
         'dataport': 7181,
+        'dataport2': '7180',
         'opentsdbip': '127.0.0.1',
         'opentsdbport': 4242,
         'root': '/tmp/tt_i',

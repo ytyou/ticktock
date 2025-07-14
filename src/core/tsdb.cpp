@@ -2437,9 +2437,9 @@ Tsdb::http_api_put_handler_plain(HttpRequest& request, HttpResponse& response)
                 curr += 8;
                 HttpServer::http_get_api_version_handler(request, response);
             }
-            else if (std::strncmp(curr, "cp ", 3) == 0)
+            else if (std::strncmp(curr, "_cp ", 4) == 0)
             {
-                curr += 3;
+                curr += 4;
                 char *cp = curr;
                 curr = strchr(curr, '\n');
                 if (curr == nullptr) break;
@@ -2515,14 +2515,32 @@ Tsdb::http_api_write_handler(HttpRequest& request, HttpResponse& response)
     if (*curr == 0)
         success = false;
 
-    const char *measurement;
+    const char *measurement = nullptr;
     char *tags = nullptr;
     Timestamp ts = 0;
 
-    success = success && parse_line_safe(curr, measurement, tags, ts, dps);
+    // handle special case: "_cp ..."
+    if (UNLIKELY((curr[0] == '_') && (std::strncmp(curr, "_cp ", 4) == 0)))
+    {
+        curr += 4;
+        char *cp = curr;
+        curr = strchr(curr, '\n');
+        if (curr != nullptr)
+        {
+            *curr = 0;
+            curr++;
+            CheckPointManager::add(cp);
+        }
+        else
+            success = false;
+    }
+
+    if (*curr != 0 && *curr != '\n')
+        success = success && parse_line_safe(curr, measurement, tags, ts, dps);
 
     if (ts == 0) ts = now;
-    success = success && add_data_points(measurement, tags, ts, dps);
+    if (success && measurement != nullptr)
+        success = add_data_points(measurement, tags, ts, dps);
     dps.clear();
 
     // parse the rest of the lines
@@ -2535,6 +2553,29 @@ Tsdb::http_api_write_handler(HttpRequest& request, HttpResponse& response)
             continue;
         }
 
+        // handle special case: "_cp ..."
+        if (UNLIKELY((curr[0] == '_') && (std::strncmp(curr, "_cp ", 4) == 0)))
+        {
+            curr += 4;
+            char *cp = curr;
+            curr = strchr(curr, '\n');
+            if (curr != nullptr)
+            {
+                *curr = 0;
+                curr++;
+                CheckPointManager::add(cp);
+            }
+            else
+                success = false;
+
+            if (curr == nullptr || *curr == 0)
+                break;
+        }
+        else if (UNLIKELY(curr[0] == 0 || curr[0] == '\n' || curr[0] == '\r'))
+        {
+            break;
+        }
+
         tags = nullptr;
         ts = 0;
 
@@ -2544,7 +2585,6 @@ Tsdb::http_api_write_handler(HttpRequest& request, HttpResponse& response)
         if (ts == 0) ts = now;
         success = add_data_points(measurement, tags, ts, dps) && success;
 
-        //if (! success) break;
         dps.clear();
     }
 
@@ -2672,6 +2712,8 @@ Tsdb::http_get_api_suggest_handler(HttpRequest& request, HttpResponse& response)
     return true;
 }
 
+/* @param line Format: <measurement>[,<tag1>=<val1>,<tag2>=<val2>,...] <field1>=<val1>[,<field2>=<val2>,...] <timestamp>
+ */
 bool
 Tsdb::parse_line(char* &line, const char* &measurement, char* &tags, Timestamp& ts, std::vector<DataPoint>& dps)
 {
@@ -2778,6 +2820,8 @@ Tsdb::parse_line(char* &line, const char* &measurement, char* &tags, Timestamp& 
     return true;
 }
 
+/* @param line Format: <measurement>[,<tag1>=<val1>,<tag2>=<val2>,...] <field1>=<val1>[,<field2>=<val2>,...] <timestamp>
+ */
 bool
 Tsdb::parse_line_safe(char* &line, const char* &measurement, char* &tags, Timestamp& ts, std::vector<DataPoint>& dps)
 {

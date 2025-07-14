@@ -411,7 +411,7 @@ class Test(object):
         start = time.time()
         if not self._tcp_socket:
             self.connect_to_tcp()
-        self._tcp_socket.sendall("cp {}:{}:{}\n".format(leader, channel, cp))
+        self._tcp_socket.sendall("_cp {}:{}:{}\n".format(leader, channel, cp))
         self._ticktock_time += time.time() - start
 
     def query_ticktock(self, query):
