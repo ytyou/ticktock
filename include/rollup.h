@@ -81,6 +81,11 @@ public:
     static Config *get_rollup_config(int year, bool create);
     static Config *get_rollup_config(int year, int month, bool create);
 
+#ifdef TT_STATS
+    static int get_data_files_count();   // return m_data_files.size()
+    static int get_data_files2_count();  // return m_data_files2.size()
+#endif
+
 private:
     static Timestamp step_down(Timestamp tstamp);
     static RollupDataFile *get_data_file(MetricId mid, Timestamp tstamp, std::unordered_map<uint64_t, RollupDataFile*>& map, RollupLevel level, Config *cfg);

@@ -3717,7 +3717,7 @@ Tsdb::rollup(TaskData& data)
         Timestamp tstamp = tsdb->get_time_range().get_from_sec();
         std::time_t begin = begin_month(tstamp);
         std::time_t end = end_month(tstamp);
-        Timestamp threshold =
+        Timestamp threshold = interactive ? 0 :
             Config::inst()->get_time(CFG_TSDB_ROLLUP_THRESHOLD, TimeUnit::SEC, CFG_TSDB_ROLLUP_THRESHOLD_DEF);
 
         // is it the current month?

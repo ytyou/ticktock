@@ -1497,6 +1497,7 @@ RollupDataFile::add_data_points(std::unordered_map<TimeSeriesId,std::vector<stru
                 bool same_tid = (last_tid == last_entry.tid);
                 last_entry.tstamp = (last_entry.tstamp - m_begin) / g_rollup_interval_1d;
                 size = RollupCompressor_v1::compress3(buff, last_entry, m_compressor_precision, same_tid);
+                ASSERT(size < sizeof(buff));
                 write_no_lock(buff, size);
 
                 last_tid = last_entry.tid;
@@ -1513,6 +1514,7 @@ RollupDataFile::add_data_points(std::unordered_map<TimeSeriesId,std::vector<stru
             bool same_tid = (last_tid == last_entry.tid);
             last_entry.tstamp = (last_entry.tstamp - m_begin) / g_rollup_interval_1d;
             size = RollupCompressor_v1::compress3(buff, last_entry, m_compressor_precision, same_tid);
+            ASSERT(size < sizeof(buff));
             write_no_lock(buff, size);
         }
     }
@@ -1979,10 +1981,11 @@ RollupDataFile::query_for_level2_rollup(std::unordered_map<TimeSeriesId,std::vec
         if (search == data.end())
         {
             // first data point
-            std::vector<struct rollup_entry_ext> entries;
-            data.emplace(std::make_pair((TimeSeriesId)entry->tid, entries));
-            search = data.find(entry->tid);
+            TimeSeriesId tid = entry->tid;
+            data.emplace(tid, std::vector<struct rollup_entry_ext>{});
+            search = data.find(tid);
             ASSERT(search != data.end());
+            search->second.reserve(24*31);
             ext.tstamp = m_begin;
         }
         else
@@ -2012,11 +2015,12 @@ RollupDataFile::recompress(std::unordered_map<TimeSeriesId,std::vector<struct ro
     bool success = true;
     BitSet bitset;
     FILE *fp = open_4_recompress();
-    size_t buff_size = MemoryManager::get_network_buffer_size();
-    uint8_t *buff = (uint8_t*)MemoryManager::alloc_network_buffer();
 
     if (fp == nullptr)
         return false;
+
+    size_t buff_size = MemoryManager::get_network_buffer_size();
+    uint8_t *buff = (uint8_t*)MemoryManager::alloc_network_buffer();
 
     try
     {

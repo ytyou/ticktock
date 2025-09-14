@@ -384,6 +384,12 @@ MemoryManager::log_stats()
             ts, TcpListener::get_active_conn_count(), HOST_TAG_NAME, g_host_name.c_str());
 
 #ifdef TT_STATS
+        fprintf(file, "ticktock.rollup.data_file.count %" PRIu64 " %d level=1 %s=%s\n",
+            ts, RollupManager::get_data_files_count(), HOST_TAG_NAME, g_host_name.c_str());
+
+        fprintf(file, "ticktock.rollup.data_file.count %" PRIu64 " %d level=2 %s=%s\n",
+            ts, RollupManager::get_data_files2_count(), HOST_TAG_NAME, g_host_name.c_str());
+
         if (g_query_count.load() > 0)
         {
             fprintf(file, "ticktock.query.latency.avg %" PRIu64 " %f %s=%s\n",

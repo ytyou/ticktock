@@ -923,5 +923,21 @@ RollupManager::get_rollup_config(int year, int month, bool create)
     return cfg;
 }
 
+#ifdef TT_STATS
+
+int
+RollupManager::get_data_files_count()
+{
+    return m_data_files.size();
+}
+
+int
+RollupManager::get_data_files2_count()
+{
+    return m_data_files2.size();
+}
+
+#endif
+
 
 }
