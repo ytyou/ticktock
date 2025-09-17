@@ -140,18 +140,18 @@ Config::load(bool override)
             std::string value = std::get<1>(kv);
             set_value_no_lock(key, value);
         }
-
-        if (override)
-        {
-            // let command-line options override config file
-            for (auto const& override: m_overrides)
-                set_value_no_lock(override.first, override.second->as_str());
-        }
     }
     catch (std::exception& ex)
     {
         if (! g_quiet)
             fprintf(stderr, "Failed to load config file %s: %s\n", m_file_name.c_str(), ex.what());
+    }
+
+    if (override)
+    {
+        // let command-line options override config file
+        for (auto const& override: m_overrides)
+            set_value_no_lock(override.first, override.second->as_str());
     }
 }
 
