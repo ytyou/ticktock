@@ -203,6 +203,10 @@ class DataPoints(object):
             p += dp.to_line() + "\n"
         return p + "\n"
 
+    def print_dps(self):
+        for dp in self._dps:
+            print("put " + dp.to_plain())
+
 
 class Query(object):
 
@@ -1603,6 +1607,9 @@ class Duplicate_Tests(Test):
         self.stop_tt()
         # make sure tt stopped
         self.wait_for_tt(self._options.timeout)
+
+        if self._failed > 0:
+            dps.print_dps()
 
 
 class Replication_Test(Test):
