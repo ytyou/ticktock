@@ -1,7 +1,6 @@
 #!/bin/bash
 
 MAKE="/usr/bin/make -f Makefile.docker"
-STAGE="beta"
 TARGET_BRANCH="main"
 TAGL="latest"
 DOCKERFILE="../Dockerfile"
@@ -89,7 +88,7 @@ MINOR=${LINE##* }
 LINE=$(grep PATCH include/global.h)
 PATCH=${LINE##* }
 TT_VERSION="${MAJOR}.${MINOR}.${PATCH}"
-TAGV=${TT_VERSION}-${STAGE}
+TAGV=${TT_VERSION}
 
 # create build directory
 rm -rf docker/$TT_VERSION/*
@@ -127,7 +126,7 @@ pushd docker/$TT_VERSION
 docker build -f $DOCKERFILE --tag ytyou/ticktock:${TAGV} --tag ytyou/ticktock:${TAGL} \
     --build-arg BUILD_DATE=$(date -u +'%Y-%m-%dT%H:%M:%SZ') \
     --build-arg GIT_COMMIT=$(git log -1 --pretty=format:%h) \
-    --build-arg VERSION=${TT_VERSION}-${STAGE} --add-host=ticktock:127.0.0.1 \
+    --build-arg VERSION=${TT_VERSION} --add-host=ticktock:127.0.0.1 \
     --build-arg UID=${_UID} \
     --build-arg GID=${_GID} \
     --rm $BUILD_OPT .

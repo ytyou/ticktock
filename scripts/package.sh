@@ -4,7 +4,6 @@
 
 echo "packaging..."
 
-STAGE="beta"
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 # look for current version numbers
@@ -15,7 +14,7 @@ MINOR=${LINE##* }
 LINE=$(grep PATCH $DIR/../include/global.h)
 PATCH=${LINE##* }
 TT_VERSION="${MAJOR}.${MINOR}.${PATCH}"
-TAGV=${TT_VERSION}-${STAGE}
+TAGV=${TT_VERSION}
 GLIBC=`ldd --version | grep ldd | grep -o '[^ ]*$'`
 ARCH=`uname -m`
 ROOTD="ticktockdb-${TAGV}"
