@@ -1934,7 +1934,8 @@ RollupDataFile::query_from_wal(const TimeRange& range, std::unordered_map<TimeSe
 
     while ((n = std::fread(&buff[0], 1, sizeof(buff), m_file)) > 0)
     {
-        ASSERT((n % sizeof(struct rollup_entry_ext)) == 0);
+        if (UNLIKELY((n % sizeof(struct rollup_entry_ext)) != 0))
+            n = (n / sizeof(struct rollup_entry_ext)) * sizeof(struct rollup_entry_ext);
 
         for (std::size_t i = 0; i < n; i += sizeof(struct rollup_entry_ext))
         {

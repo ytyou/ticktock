@@ -211,9 +211,7 @@ RollupManager::add_data_point(Tsdb *tsdb, MetricId mid, TimeSeriesId tid, DataPo
     ASSERT(interval > 0);
     Timestamp tstamp1 = tstamp - (tstamp % interval);
 
-    ASSERT(m_data_file != nullptr);
-
-    if (UNLIKELY(3 <= m_data_file->get_compressor_version()))
+    if (UNLIKELY((m_data_file != nullptr) && (3 <= m_data_file->get_compressor_version())))
     {
         // this file has already been re-compressed
         tsdb->set_out_of_order2(tid, true);     // this will cause query to skip this rollup file
