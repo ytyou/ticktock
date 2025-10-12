@@ -20,7 +20,7 @@ LABEL name="tt-dev" version="$VERSION"
 LABEL build-date="$BUILD_DATE" git-commit="$GIT_COMMIT"
 LABEL maintainer="yongtao.you@gmail.com"
 LABEL url="https://github.com/ytyou/ticktock"
-LABEL description="The development environment for the TickTock TSDB."
+LABEL description="The development environment for the TickTockDB."
 LABEL docker.cmd="docker run -td --name tt-dev -h tt-dev -p 6180-6183:6180-6183 -p 3000:3000 -p 6181:6181/udp ytyou/tt-dev:latest"
 
 RUN apt-get update && apt-get install -y \

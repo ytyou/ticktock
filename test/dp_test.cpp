@@ -16,27 +16,46 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-#pragma once
+#include <cmath>
+#include "dp.h"
+#include "dp_test.h"
 
-#include "bitset.h"
-#include "test.h"
 
+using namespace tt;
 
 namespace tt_test
 {
 
 
-class BitSetTests : public TestCase
+void
+DataPointTests::run()
 {
-public:
-    BitSetTests() { m_name = "bitset_tests"; }
-    void run();
+    parse_nan();
+}
 
-private:
-    void test1();
-    void test2();
-    void test3();
-};
+void
+DataPointTests::parse_nan()
+{
+    log("Running %s...", m_name);
+
+    char buff[1024];
+    char *p = buff;
+    DataPoint dp;
+
+    snprintf(buff, sizeof(buff), "dp.test.metric 1606091337 NaN host=dev\ndp.test.metric 1606091337 2.3 host=suse\n");
+
+    CONFIRM(dp.from_plain(p));
+    CONFIRM(dp.get_timestamp() == 1606091337);
+    CONFIRM(std::isnan(NAN));
+    log("value = %f", dp.get_value());
+
+    CONFIRM(dp.from_plain(p));
+    CONFIRM(dp.get_timestamp() == 1606091337);
+    CONFIRM(dp.get_value() == 2.3);
+    log("value = %f", dp.get_value());
+
+    m_stats.add_passed(1);
+}
 
 
 }

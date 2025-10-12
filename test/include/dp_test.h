@@ -18,40 +18,21 @@
 
 #pragma once
 
+#include "test.h"
 
-namespace tt
+
+namespace tt_test
 {
 
 
-extern const char *METRIC_TICKTOCK_PAGE_RESTORE_TOTAL_MS;
-extern const char *METRIC_TICKTOCK_QUERY_LATENCY_MS;
-extern const char *METRIC_TICKTOCK_QUERY_AGGREGATE_LATENCY_MS;
-extern const char *METRIC_TICKTOCK_QUERY_TS_LATENCY_MS;
-extern const char *METRIC_TICKTOCK_TSDB_COMPACT_MS;
-extern const char *METRIC_TICKTOCK_TSDB_LOAD_TOTAL_MS;
-extern const char *METRIC_TICKTOCK_TSDB_ROLLUP_MS;
-extern const char *METRIC_TICKTOCK_TSDB_ROTATE_MS;
-
-
-enum MeterType : unsigned char
-{
-    COUNT = 0,
-    GAUGE = 1
-};
-
-
-/* Used to collect TickTockDB's own metrics.
- */
-class Meter
+class DataPointTests : public TestCase
 {
 public:
-    Meter(const char *metric, const MeterType type = MeterType::GAUGE);
-    virtual ~Meter();
+    DataPointTests() { m_name = "datapoint_tests"; }
+    void run();
 
 private:
-    MeterType m_type;
-    const char *m_metric;   // We don't own this memory so don't free it
-    std::chrono::system_clock::time_point m_start;
+    void parse_nan();
 };
 
 

@@ -37,7 +37,7 @@ ARG DEBIAN_FRONTEND=noninteractive
 ARG UID=6182
 ARG GID=6182
 
-LABEL name="TickTock" version="$VERSION"
+LABEL name="TickTockDB" version="$VERSION"
 LABEL build-date="$BUILD_DATE" git-commit="$GIT_COMMIT"
 LABEL maintainer="yongtao.you@gmail.com"
 LABEL url="https://github.com/ytyou/ticktock"

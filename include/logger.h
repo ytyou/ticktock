@@ -1,5 +1,5 @@
 /*
-    TickTock is an open-source Time Series Database, maintained by
+    TickTockDB is an open-source Time Series Database, maintained by
     Yongtao You (yongtao.you@gmail.com) and Yi Lin (ylin30@gmail.com).
 
     This program is free software: you can redistribute it and/or modify

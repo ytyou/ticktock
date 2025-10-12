@@ -261,10 +261,10 @@ def get_options(argv):
                       help='Configuration file')
     parser.add_option('-d', '--dryrun', dest='dryrun', action='store_true',
                       default=defaults['dryrun'],
-                      help='Print metrics to stdout instead of sending them to TickTock')
+                      help='Print metrics to stdout instead of sending them to TickTockDB')
     parser.add_option('-t', '--ticktock', dest='ticktock',
                       default=defaults['ticktock'],
-                      help='TickTock server address, including port')
+                      help='TickTockDB server address, including port')
 
     (options, args) = parser.parse_args(args=argv[1:])
     return options, args

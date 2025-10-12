@@ -33,7 +33,7 @@ ARG GIT_COMMIT
 ARG VERSION
 ARG DEBIAN_FRONTEND=noninteractive
 
-LABEL name="TickTock" version="$VERSION"
+LABEL name="TickTockDB" version="$VERSION"
 LABEL build-date="$BUILD_DATE" git-commit="$GIT_COMMIT"
 LABEL maintainer="yongtao.you@gmail.com"
 LABEL url="https://github.com/ytyou/ticktock"
