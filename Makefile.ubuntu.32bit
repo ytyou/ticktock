@@ -24,7 +24,7 @@ PROD_FLAGS = -O3 -march=native -ffast-math
 
 CFLAGS = -I include -std=c++11 -D_TIME_BITS=64 -D_FILE_OFFSET_BITS=64 -DCOMPILE_TIME=$(CTIME) -DTT_BRANCH='"$(BRANCH)"' -DTT_COMMIT='"$(COMMIT)"' -Wno-unused-result -Wno-format-truncation -Wno-psabi -Wno-deprecated-declarations $(LINKOPT) $(DEBUG_FLAGS) $(PROF_FLAGS) $(PROD_FLAGS)
 LFLAGS = -pthread $(LINKOPT) $(DEBUG_FLAGS) $(PROF_FLAGS)
-LIBS = $(DEBUG_LIBS) -lz
+LIBS = $(DEBUG_LIBS) -lz -lmosquitto
 
 INCS = $(wildcard include/*.h)
 TINCS = $(wildcard test/include/*.h)

@@ -11,7 +11,7 @@ COMMIT := $(shell git rev-parse --short HEAD)
 #DEBUG_FLAGS = -g3 -rdynamic -ggdb -D_DEBUG -D_TEST -D_GLIBCXX_DEBUG -O0
 PROD_FLAGS = -O1 -march=native -ffast-math
 #PROF_FLAGS = -pg -D_GLIBCXX_DEBUG
-LIBS = /usr/lib/libz.so.1
+LIBS = /usr/lib/libz.so.1 -lmosquitto.so.1
 
 CFLAGS = -I include -std=c++11 -D_TIME_BITS=64 -D_FILE_OFFSET_BITS=64 -DCOMPILE_TIME=$(CTIME) -DTT_BRANCH='"$(BRANCH)"' -DTT_COMMIT='"$(COMMIT)"' -DTT_32BIT=1 -Wno-unused-result -Wno-format-truncation -Wno-psabi -Wno-deprecated-declarations $(DEBUG_FLAGS) $(PROF_FLAGS) $(PROD_FLAGS)
 LFLAGS = -lpthread $(PROF_FLAGS) $(DEBUG_FLAGS)

@@ -117,5 +117,13 @@ enum RollupType : unsigned char
     RU_LEVEL2 = 0x80    // level2 mask
 };
 
+enum InputFormat : unsigned char
+{
+    IF_JSON,
+    IF_LINE,
+    IF_PLAIN,
+    IF_UNKNOWN
+};
+
 
 }

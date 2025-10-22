@@ -38,6 +38,7 @@
 #include "append.h"
 #include "fd.h"
 #include "memmgr.h"
+#include "mqtt.h"
 #include "http.h"
 #include "udp.h"
 #include "query.h"
@@ -298,6 +299,7 @@ initialize()
     Stats::init();
     Admin::init();
     Timer::inst()->start();
+    MQTTClient::start();
 
     unsigned int n = std::thread::hardware_concurrency();
     Logger::info("std::thread::hardware_concurrency() = %d", n);
@@ -322,6 +324,7 @@ shutdown()
 
     try
     {
+        MQTTClient::stop();
         Timer::inst()->stop();
         Tsdb::shutdown();
         RollupManager::shutdown();

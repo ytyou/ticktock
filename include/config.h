@@ -54,6 +54,7 @@
 #define CFG_LOG_RETENTION_COUNT_DEF             10
 #define CFG_LOG_ROTATION_SIZE                   "log.rotation.size"
 #define CFG_LOG_ROTATION_SIZE_DEF               "10mb"
+#define CFG_MQTT_SETTINGS                       "mqtt.settings"
 #define CFG_STATS_FREQUENCY                     "stats.frequency"
 #define CFG_STATS_FREQUENCY_DEF                 "30s"
 #define CFG_TCP_CONNECTION_IDLE_TIMEOUT         "tcp.connection.idle.timeout"

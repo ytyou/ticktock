@@ -23,6 +23,7 @@
 #include "kv.h"
 #include "limit.h"
 #include "logger.h"
+#include "mqtt.h"
 #include "stats.h"
 #include "tsdb.h"
 #include "timer.h"
@@ -169,6 +170,21 @@ Admin::cmd_cfg(KeyValuePair *params, HttpResponse& response)
 {
     for (KeyValuePair *kv = params; kv != nullptr; kv = kv->next())
     {
+        ASSERT(kv->m_key != nullptr);
+
+        if (kv->m_value == nullptr)
+        {
+            if (std::strcmp(kv->m_key, "reload") == 0)
+            {
+                // reload config
+                Config::inst()->load(true);
+            }
+            else
+                Logger::error("cfg cmd: unknown action '%s' ignored!", kv->m_key);
+
+            continue;
+        }
+
         Config::inst()->set_value(kv->m_key, kv->m_value);
 
         // update globals...
@@ -179,7 +195,17 @@ Admin::cmd_cfg(KeyValuePair *params, HttpResponse& response)
         }
     }
 
-    response.init(200);
+    // in case MQTT config was changed...
+    bool changed = MQTTClient::restart();
+    int len;
+    char buff[32];
+
+    if (changed)
+        len = snprintf(buff, sizeof(buff), "MQTTClients were updated");
+    else
+        len = snprintf(buff, sizeof(buff), "MQTTClients were unchanged");
+
+    response.init(200, HttpContentType::PLAIN, len, buff);
     return true;
 }
 

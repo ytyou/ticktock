@@ -127,7 +127,7 @@ KeyValuePair::prepend(KeyValuePair **list, KeyValuePair *kv)
 void
 KeyValuePair::prepend(KeyValuePair **list, const char *key, const char *value)
 {
-    if ((list == nullptr) || (key == nullptr) || (value == nullptr))
+    if ((list == nullptr) || (key == nullptr))
     {
         Logger::warn("nullptr passed into KeyValuePair::prepend()");
         return;

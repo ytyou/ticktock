@@ -710,6 +710,7 @@ tokenize(char* str, char* &key, char* &value, char delim)
     if (separator == nullptr)
     {
         key = trim_cstr(str);
+        value = nullptr;
         return false;
     }
     *separator = 0;
@@ -1086,6 +1087,21 @@ set_hostname_working_dir()
 
     getcwd(buff, sizeof(buff)); // get current working dir
     g_working_dir.assign(buff);
+}
+
+InputFormat
+to_input_format(const char *format)
+{
+    if (format == nullptr)
+        return IF_UNKNOWN;
+    else if (*format == 'j' || *format == 'J')
+        return IF_JSON;
+    else if (*format == 'l' || *format == 'L')
+        return IF_LINE;
+    else if (*format == 'p' || *format == 'P')
+        return IF_PLAIN;
+    else
+        return IF_UNKNOWN;
 }
 
 // find for all files matching 'pattern'

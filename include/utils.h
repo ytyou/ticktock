@@ -131,6 +131,7 @@ extern std::string get_dir_of(std::string& file_name);
 extern FileIndex get_file_suffix(const std::string& file_name);
 extern bool is_dir_empty(const std::string& path);
 extern void set_hostname_working_dir();
+extern InputFormat to_input_format(const char *format);
 
 extern bool url_unescape(const char *url, char *buff, size_t len);
 
