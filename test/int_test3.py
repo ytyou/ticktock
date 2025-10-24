@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/home/yongtao/.env-mqtt/bin/python3
 
 import copy
 import datetime
@@ -15,6 +15,7 @@ import threading
 import time
 
 from collections import deque
+import paho.mqtt.client as mqtt
 
 
 
@@ -124,7 +125,7 @@ class DataPoint(object):
         if self._tags:
             for k,v in self._tags.items():
                 p += "," + k + "=" + v
-        return "{} _field={:.12f} {}".format(p, self._value, self._timestamp)
+        return "{} _={:.12f} {}".format(p, self._value, self._timestamp)
 
     def to_tuple(self):
         return (self._timestamp, self._value)
@@ -432,12 +433,41 @@ class Test(object):
         self._tcp_socket2.sendall(dps.to_line().encode())
         self._ticktock_time += time.time() - start
 
+    def mqtt_on_connect(self, client, userdata, flags, reason_code, properties):
+        print("connected to mqtt: rc=" + str(reason_code))
+
+    def mqtt_on_message(self, client, userdata, msg):
+        pass
+
+    def send_data_to_ticktock_mqtt(self, dps):
+        mqttc = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
+        mqttc.on_connect = self.mqtt_on_connect
+        mqttc.on_message = self.mqtt_on_message
+        mqttc.connect(str(self._options.opentsdbip), 1883, 60)
+        mqttc.loop_start()
+
+        # send data...
+        is_line = True  # alternate between line and plain format
+        for dp in dps.get_dps():
+            if is_line:
+                mqttc.publish("test/line", dp.to_line() + "\n")
+            else:
+                mqttc.publish("test/plain", "put " + dp.to_plain() + "\n")
+            is_line = not is_line
+
+        time.sleep(5)
+        mqttc.loop_stop()
+
     def send_data(self, dps, wait=True):
         self.send_data_to_opentsdb(dps)
         self.send_data_to_ticktock(dps)
         # opentsdb needs time to get ready before query
         if wait:
             time.sleep(2)
+
+    def send_data_mqtt(self, dps):
+        self.send_data_to_ticktock_mqtt(dps)
+        self.send_data_to_opentsdb(dps)
 
     def send_data_plain(self, dps):
         self.send_data_to_opentsdb(dps)
@@ -1612,6 +1642,41 @@ class Duplicate_Tests(Test):
             dps.print_dps()
 
 
+class MQTT_Tests(Test):
+
+    def __init__(self, options, prefix: str = "mqtt"):
+        super(MQTT_Tests, self).__init__(options, prefix)
+
+    def __call__(self):
+
+        # line format
+        config = TickTockConfig(self._options)
+        config.add_entry("mqtt.settings", "[{\"broker\":\"dock\",\"port\":1883,\"topics\":[{\"topic\":\"test/line\",\"format\":\"line\"},{\"topic\":\"test/plain\",\"format\":\"plain\"}]}]")
+        config()
+
+        self.start_tt()
+        time.sleep(1)
+
+        metric_cardinality = 4
+
+        dps = DataPoints(self._prefix, self._options.start, interval_ms=50000, metric_count=256, metric_cardinality=metric_cardinality, tag_cardinality=3)
+        self.send_data_mqtt(dps)
+
+        time.sleep(60)
+
+        for m in range(metric_cardinality):
+            query = Query(metric=self.metric_name(m), start=self._options.start, end=dps._end)
+            self.query_and_verify(query)
+
+        # stop tt
+        self.stop_tt()
+        # make sure tt stopped
+        self.wait_for_tt(self._options.timeout)
+
+        if self._failed > 0:
+            dps.print_dps()
+
+
 class Replication_Test(Test):
 
     def __init__(self, options, idx, prefix: str = "rep"):
@@ -2314,6 +2379,7 @@ def main(argv):
         tests.append(Rate_Tests(options))
         tests.append(Duplicate_Tests(options))
         tests.append(Check_Point_Tests(options))
+        tests.append(MQTT_Tests(options))
         tests.append(Query_Tests(options, metric_count=int(options.metric), metric_cardinality=4, tag_cardinality=4))
         tests.append(Query_With_Rollup(options))
         tests.append(Long_Running_Tests(options))

@@ -259,24 +259,11 @@ MQTTClient::on_connect(struct mosquitto *mosq, void *obj, int rc)
         return;
     }
 
-    if (client->m_topics.size() == 1)
+    for (int i = 0; i < client->m_topics.size(); i++)
     {
-        MQTTTopic& topic = client->m_topics[0];
+        MQTTTopic& topic = client->m_topics[i];
         mosquitto_subscribe(mosq, nullptr, topic.m_name.c_str(), my_qos);
         Logger::info("[mqtt] subscribing %s", topic.m_name.c_str());
-    }
-    else if (client->m_topics.size() > 1)
-    {
-        // subscribe to multiple topics...
-        const char *topics[client->m_topics.size()];
-
-        for (int i = 0; i < client->m_topics.size(); i++)
-        {
-            topics[i] = client->m_topics[i].m_name.c_str();
-            Logger::info("[mqtt] subscribing %s", topics[i]);
-        }
-
-        mosquitto_subscribe_multiple(mosq, nullptr, client->m_topics.size(), (char *const *const)topics, 1, 0, nullptr);
     }
 }
 
