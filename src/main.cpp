@@ -38,7 +38,9 @@
 #include "append.h"
 #include "fd.h"
 #include "memmgr.h"
+#ifdef ENABLE_MQTT
 #include "mqtt.h"
+#endif
 #include "http.h"
 #include "udp.h"
 #include "query.h"
@@ -299,7 +301,11 @@ initialize()
     Stats::init();
     Admin::init();
     Timer::inst()->start();
+#ifdef ENABLE_MQTT
     MQTTClient::start();
+#else
+    Logger::info("[mqtt] MQTT disabled.");
+#endif
 
     unsigned int n = std::thread::hardware_concurrency();
     Logger::info("std::thread::hardware_concurrency() = %d", n);
@@ -324,7 +330,9 @@ shutdown()
 
     try
     {
+#ifdef ENABLE_MQTT
         MQTTClient::stop();
+#endif
         Timer::inst()->stop();
         Tsdb::shutdown();
         RollupManager::shutdown();

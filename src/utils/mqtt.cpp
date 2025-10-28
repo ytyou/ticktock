@@ -30,6 +30,8 @@ namespace tt
 {
 
 
+#ifdef ENABLE_MQTT
+
 // key used in mqtt.settings
 static const char *KEY_BROKER = "broker";
 static const char *KEY_FORMAT = "format";
@@ -369,6 +371,8 @@ MQTTClient::stop()
     for (const auto& pair: m_clients)
         delete pair.second;
 }
+
+#endif
 
 
 }

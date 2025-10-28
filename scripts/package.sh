@@ -6,6 +6,14 @@ echo "packaging..."
 
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
+MQTT=""
+
+for arg in "$@"; do
+    if [[ "$arg" -eq "-DENABLE_MQTT" ]]; then
+        MQTT="mqtt-"
+    fi
+done
+
 # look for current version numbers
 LINE=$(grep MAJOR $DIR/../include/global.h)
 MAJOR=${LINE##* }
@@ -14,7 +22,7 @@ MINOR=${LINE##* }
 LINE=$(grep PATCH $DIR/../include/global.h)
 PATCH=${LINE##* }
 TT_VERSION="${MAJOR}.${MINOR}.${PATCH}"
-TAGV=${TT_VERSION}
+TAGV="${MQTT}${TT_VERSION}"
 GLIBC=`ldd --version | grep ldd | grep -o '[^ ]*$'`
 ARCH=`uname -m`
 ROOTD="ticktockdb-${TAGV}"

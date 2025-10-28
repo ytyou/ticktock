@@ -23,7 +23,9 @@
 #include "kv.h"
 #include "limit.h"
 #include "logger.h"
+#ifdef ENABLE_MQTT
 #include "mqtt.h"
+#endif
 #include "stats.h"
 #include "tsdb.h"
 #include "timer.h"
@@ -195,15 +197,20 @@ Admin::cmd_cfg(KeyValuePair *params, HttpResponse& response)
         }
     }
 
-    // in case MQTT config was changed...
-    bool changed = MQTTClient::restart();
     int len;
     char buff[32];
+
+#ifdef ENABLE_MQTT
+    // in case MQTT config was changed...
+    bool changed = MQTTClient::restart();
 
     if (changed)
         len = snprintf(buff, sizeof(buff), "MQTTClients were updated");
     else
         len = snprintf(buff, sizeof(buff), "MQTTClients were unchanged");
+#else
+    len = snprintf(buff, sizeof(buff), "configuration updated");
+#endif
 
     response.init(200, HttpContentType::PLAIN, len, buff);
     return true;
