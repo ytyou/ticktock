@@ -1655,7 +1655,7 @@ class MQTT_Tests(Test):
         config()
 
         self.start_tt()
-        time.sleep(1)
+        time.sleep(10)
 
         metric_cardinality = 4
 
