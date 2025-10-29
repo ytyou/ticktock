@@ -23,7 +23,9 @@
 #include "logger.h"
 #include "strbuf.h"
 #include "tsdb.h"
+#ifdef ENABLE_MQTT
 #include "mqtt.h"
+#endif
 
 
 namespace tt
