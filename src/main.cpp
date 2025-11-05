@@ -275,8 +275,8 @@ initialize()
 
     Logger::init();
     auto pid = getpid();
-    Logger::info("TickTockDB version: %d.%d.%d, on %s, pid: %d",
-        TT_MAJOR_VERSION, TT_MINOR_VERSION, TT_PATCH_VERSION, g_host_name.c_str(), pid);
+    Logger::info("TickTockDB version: %d.%d.%d, branch: %s, commit: %s, timestamp: %" PRIu64 ", on %s, pid: %d",
+        TT_MAJOR_VERSION, TT_MINOR_VERSION, TT_PATCH_VERSION, TT_BRANCH, TT_COMMIT, (Timestamp)(COMPILE_TIME), g_host_name.c_str(), pid);
     try
     {
         // write to pid file
