@@ -3,6 +3,7 @@
 import copy
 import datetime
 import json
+import logging
 import optparse
 import os
 import random
@@ -63,7 +64,7 @@ class TickTockConfig(object):
 
     def __call__(self, conf_file="tt.conf"):
         filename = os.path.join(self._options.root,conf_file)
-        sys.stdout.write("generating ticktock config: %s\n" % filename)
+        #sys.stdout.write("generating ticktock config: %s\n" % filename)
         with open(filename, "w") as f:
             for k,v in self._dict.items():
                 f.write("%s = %s\n" % (k, v))
@@ -204,9 +205,9 @@ class DataPoints(object):
             p += dp.to_line() + "\n"
         return p + "\n"
 
-    def print_dps(self):
+    def print_dps(self, logger):
         for dp in self._dps:
-            print("put " + dp.to_plain())
+            logger.info("put " + dp.to_plain())
 
 
 class Query(object):
@@ -285,6 +286,7 @@ class Test(object):
         self._tcp_socket = tcp_socket
         self._tcp_socket2 = tcp_socket2
         self._precision = 0.00000000012
+        self._logger = logging.getLogger(__name__)
 
     def start_tt(self, conf_file="tt.conf"):
         while True:
@@ -292,7 +294,7 @@ class Test(object):
             time.sleep(4)
             if not self.tt_stopped():
                 break
-        print("tt started")
+        self._logger.info("tt started")
 
     def stop_tt(self, port=0):
         if port == 0:
@@ -306,7 +308,7 @@ class Test(object):
         time.sleep(1)
         response = requests.post("http://"+self._options.ip+":"+str(port)+"/api/admin?cmd=stop")
         response.raise_for_status()
-        print("tt stopped")
+        self._logger.info("tt stopped")
 
     def tt_stopped(self):
         self._tt.poll()
@@ -323,13 +325,13 @@ class Test(object):
             # establish tcp connection
             self._tcp_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             address = (str(self._options.ip), int(self._options.dataport))
-            print("connecting to {}:{}".format(self._options.ip, self._options.dataport))
+            self._logger.info("connecting to {}:{}".format(self._options.ip, self._options.dataport))
             self._tcp_socket.connect(address)
         if not self._tcp_socket2:
             # establish tcp connection
             self._tcp_socket2 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             address = (str(self._options.ip), int(self._options.dataport2))
-            print("connecting to {}:{}".format(self._options.ip, self._options.dataport2))
+            self._logger.info("connecting to {}:{}".format(self._options.ip, self._options.dataport2))
             self._tcp_socket2.connect(address)
 
     def get_checkpoint(self, leader=None):
@@ -371,12 +373,12 @@ class Test(object):
     def send_data_to_opentsdb(self, dps):
         payload = dps.to_json()
         if self._options.verbose:
-            print("send_data_to_opentsdb():\n" + json.dumps(payload))
+            self._logger.info("send_data_to_opentsdb():\n" + json.dumps(payload["metrics"]))
         # send to opentsdb
         start = time.time()
         response = requests.post("http://"+self._options.opentsdbip+":"+str(self._options.opentsdbport)+"/api/put?details", json=payload["metrics"], timeout=self._options.timeout)
         if self._options.verbose:
-            print("opentsdb response: " + str(response))
+            self._logger.info("opentsdb response: " + str(response))
         self._opentsdb_time += time.time() - start
         response.raise_for_status()
 
@@ -384,18 +386,18 @@ class Test(object):
         if self._options.form == "json":
             payload = dps.to_json()
             if self._options.verbose:
-                print("send_data_to_ticktock(json):\n" + json.dumps(payload))
+                self._logger.info("send_data_to_ticktock(json):\n" + json.dumps(payload))
             # send to ticktock
             start = time.time()
             response = requests.post("http://"+self._options.ip+":"+str(self._options.port)+"/api/put?details", json=payload, timeout=self._options.timeout)
             if self._options.verbose:
-                print("ticktockdb response: " + str(response))
+                self._logger.info("ticktockdb response: " + str(response))
             self._ticktock_time += time.time() - start
             response.raise_for_status()
         else:
             payload = dps.to_plain()
             if self._options.verbose:
-                print("send_data_to_ticktock(plain):\n" + str(payload))
+                self._logger.info("send_data_to_ticktock(plain):\n" + str(payload))
 
             # send a copy to another TT for debugging
             if self._options.debug:
@@ -405,7 +407,7 @@ class Test(object):
             start = time.time()
             response = requests.post("http://"+self._options.ip+":"+str(self._options.port)+"/api/put?details", data=payload, timeout=self._options.timeout)
             if self._options.verbose:
-                print("ticktockdb response: " + str(response))
+                self._logger.info("ticktockdb response: " + str(response))
             self._ticktock_time += time.time() - start
             response.raise_for_status()
 
@@ -434,7 +436,7 @@ class Test(object):
         self._ticktock_time += time.time() - start
 
     def mqtt_on_connect(self, client, userdata, flags, reason_code, properties):
-        print("connected to mqtt: rc=" + str(reason_code))
+        self._logger.info("connected to mqtt: rc=" + str(reason_code))
 
     def mqtt_on_message(self, client, userdata, msg):
         pass
@@ -489,7 +491,7 @@ class Test(object):
     def send_data_udp(self, dps):
         if self._options.verbose:
             payload = dps.to_json()
-            print("send_data_udp():\n" + json.dumps(payload))
+            self._logger.info("send_data_udp():\n" + json.dumps(payload))
         self.send_data_to_opentsdb(dps)
         self.send_data_to_ticktock_udp(dps)
 
@@ -498,7 +500,7 @@ class Test(object):
 
     def send_data_tcp(self, dps):
         if self._options.verbose:
-            print("send_data_tcp():\n" + dps.to_plain())
+            self._logger.info("send_data_tcp():\n" + dps.to_plain())
         self.send_data_to_opentsdb(dps)
         self.send_data_to_ticktock_tcp(dps)
 
@@ -537,7 +539,7 @@ class Test(object):
         elif self._options.method == "get":
             params = query.to_params()
             if self._options.verbose:
-                print("params = " + str(params))
+                self._logger.info("params = " + str(params))
 
             # send a copy to debugging TT
             if self._options.debug:
@@ -552,7 +554,7 @@ class Test(object):
         if not response:
             raise Exception("failed to query tt")
         if self._options.verbose:
-            print("ticktock-response: " + response.text)
+            self._logger.info("ticktock-response: " + response.text)
         response.raise_for_status()
         return response.json()
 
@@ -562,14 +564,14 @@ class Test(object):
         response = requests.post("http://"+self._options.opentsdbip+":"+str(self._options.opentsdbport)+"/api/query", json=payload, timeout=self._options.timeout)
         self._opentsdb_time += time.time() - start
         #if self._options.verbose:
-        #    print "opentsdb-response: " + response.text #str(response.status_code)
+        #    self._logger.info("opentsdb-response: " + response.text #str(response.status_code))
         try:
             response.raise_for_status()
             if self._options.verbose:
-                print("opentsdb-response: " + response.text)
+                self._logger.info("opentsdb-response: " + response.text)
         except requests.exceptions.HTTPError:
             if self._options.verbose:
-                print("opentsdb-response: []")
+                self._logger.info("opentsdb-response: []")
             return []
         return response.json()
 
@@ -590,7 +592,7 @@ class Test(object):
 
     def query_and_verify(self, query):
         if self._options.verbose:
-            print("query: " + str(query.to_json()))
+            self._logger.info("query: " + str(query.to_json()))
         expected = self.query_opentsdb(query)
         actual = self.query_ticktock(query)
         expected2 = self.remove_empty_dps(expected)
@@ -598,15 +600,15 @@ class Test(object):
             self._passed = self._passed + 1
         else:
             self._failed = self._failed + 1
-            print("[FAIL] query: " + str(query.to_json()))
-            print("[FAIL] expected: " + str(expected2))
-            print("[FAIL] actual: " + str(actual))
+            self._logger.info("[FAIL] query: " + str(query.to_json()))
+            self._logger.info("[FAIL] expected: " + str(expected2))
+            self._logger.info("[FAIL] actual: " + str(actual))
 
     def verify_json(self, expected, actual):
         if isinstance(expected, list):
             if not isinstance(actual, list):
                 if self._options.verbose:
-                    print("actual not list: " + str(actual))
+                    self._logger.info("actual not list: " + str(actual))
                 return False
             # When query returns no data points, newer version of OpenTSDB
             # now returns [{"metric":"metric1","tags":{"tag1":"val1"},"aggregateTags":[],"dps":{}}]
@@ -629,7 +631,7 @@ class Test(object):
                 return True
             if len(expected) != len(actual):
                 if self._options.verbose:
-                    print("list len not same: %s vs %s" % (str(expected), str(actual)))
+                    self._logger.info("list len not same: %s vs %s" % (str(expected), str(actual)))
                 return False
             if expected and actual:
                 for i in range(len(expected)):
@@ -639,10 +641,10 @@ class Test(object):
                             match = True
                             break
                         elif self._options.verbose:
-                            print("expected != actual: %s vs %s" % (str(expected[i]), str(actual[j])))
+                            self._logger.info("expected != actual: %s vs %s" % (str(expected[i]), str(actual[j])))
                     if not match:
                         if self._options.verbose:
-                            print("actual does not have: %s" % str(expected[i]))
+                            self._logger.info("actual does not have: %s" % str(expected[i]))
                         return False
                 for i in range(len(expected)):
                     match = False
@@ -652,71 +654,71 @@ class Test(object):
                             break
                     if not match:
                         if self._options.verbose:
-                            print("expected does not have: %s" % str(actual[i]))
+                            self._logger.info("expected does not have: %s" % str(actual[i]))
                         return False
             return True
         elif isinstance(expected, dict):
             if not isinstance(actual, dict):
                 if self._options.verbose:
-                    print("actual not dict: " + str(actual))
+                    self._logger.info("actual not dict: " + str(actual))
                 return False
             if len(expected) != len(actual):
                 if self._options.verbose:
-                    print("dict len not same: %s vs %s" % (str(expected), str(actual)))
+                    self._logger.info("dict len not same: %s vs %s" % (str(expected), str(actual)))
                 return False
             if expected and actual:
                 for k,v in expected.items():
                     if str(k) not in actual:
                         if self._options.verbose:
-                            print("actual does not have: %s" % str(k))
+                            self._logger.info("actual does not have: %s" % str(k))
                         return False
                     if not self.verify_json(v, actual[str(k)]):
                         if self._options.verbose:
-                            print("key %s has diff values: %s vs %s" % (str(k), str(v), str(actual[str(k)])))
+                            self._logger.info("key %s has diff values: %s vs %s" % (str(k), str(v), str(actual[str(k)])))
                         return False
                 for k,v in actual.items():
                     if str(k) not in expected:
                         if self._options.verbose:
-                            print("expected does not have: %s" % str(k))
+                            self._logger.info("expected does not have: %s" % str(k))
                         return False
                     if not self.verify_json(v, expected[str(k)]):
                         return False
             return True
         elif isinstance(expected, float):
             if not isinstance(actual, float):
-                print("actual not float: " + str(actual))
+                self._logger.info("actual not float: " + str(actual))
                 return False
             diff = abs(expected - actual)
             if diff > self._precision:
                 if diff < 0.001:
-                    print("expected not same as actual (float): {:.16f} vs {:.16f}; diff = {:.16f}".format(expected, actual, diff))
+                    self._logger.info("expected not same as actual (float): {:.16f} vs {:.16f}; diff = {:.16f}".format(expected, actual, diff))
                 return False
         elif isinstance(expected, int):
             if not isinstance(actual, int):
                 if self._options.verbose:
-                    print("actual not int: " + str(actual))
+                    self._logger.info("actual not int: " + str(actual))
                 return False
             if expected != actual:
                 if self._options.verbose:
-                    print("expected not same as actual (int): %s vs %s" % (str(expected), str(actual)))
+                    self._logger.info("expected not same as actual (int): %s vs %s" % (str(expected), str(actual)))
                 return False
         elif isinstance(expected, str) or isinstance(expected, unicode):
             if not (isinstance(actual, str) or isinstance(actual, unicode)):
                 if self._options.verbose:
-                    print("actual not same str: %s" % str(actual))
+                    self._logger.info("actual not same str: %s" % str(actual))
                 return False
             if expected != actual:
                 if self._options.verbose:
-                    print("expected not same as actual (str): %s vs %s" % (str(expected), str(actual)))
+                    self._logger.info("expected not same as actual (str): %s vs %s" % (str(expected), str(actual)))
                 return False
         else:
-            print("[FAIL] expected: %s, actual: %s" % (str(expected), str(actual)))
+            self._logger.info("[FAIL] expected: %s, actual: %s" % (str(expected), str(actual)))
             return False
 
         return True
 
     def cleanup(self):
-        sys.stdout.write("cleanup...\n")
+        self._logger.info("cleanup...")
         #os.system("pkill -f %s" % self._options.tt)
         if os.path.exists(self._options.root):
             shutil.rmtree(self._options.root)
@@ -765,7 +767,7 @@ class Compaction_Tests(Test):
             self.query_and_verify(query)
 
         # do compaction
-        print("perform compaction...")
+        self._logger.info("perform compaction...")
         self.do_compaction()
 
         # shutdown and restart
@@ -877,10 +879,12 @@ class Out_Of_Order_Write_Tests(Test):
 
         dps1 = DataPoints(self._prefix, self._options.start, metric_count=128, metric_cardinality=4, tag_cardinality=4)
         self.send_data(dps1)
+        time.sleep(2)
 
         start = self._options.start - 60000
         dps2 = DataPoints(self._prefix, start, metric_count=128, metric_cardinality=4, tag_cardinality=4, out_of_order=True)
         self.send_data(dps2)
+        time.sleep(2)
 
         start = start - 1;
 
@@ -923,7 +927,7 @@ class Stop_Restart_Tests(Test):
         iterations = 5
 
         for i in range(1, iterations+1):
-            print("iteration {}".format(i))
+            self._logger.info("iteration {}".format(i))
 
             # add more dps
             dps2 = DataPoints(self._prefix, self._options.start+10*i, metric_count=100)
@@ -1050,18 +1054,18 @@ class Basic_Query_Tests(Test):
             self.send_data(dps)
 
         # this metric does not exist
-        print("Try non-existing metric...")
+        self._logger.info("Try non-existing metric...")
         query = Query(metric=self.metric_name(0), start=self._options.start, end=dps._end)
         self.query_and_verify(query)
 
         # retrieve raw dps (no tags, no downsampling)
-        print("Retrieving raw dps, no tags...")
+        self._logger.info("Retrieving raw dps, no tags...")
         for m in range(1, metric_cardinality+1):
             query = Query(metric=self.metric_name(m), start=self._options.start, end=dps._end)
             self.query_and_verify(query)
 
         # retrieve raw dps with 1 tag (no aggregation, no downsampling)
-        print("Retrieving raw dps, with tags...")
+        self._logger.info("Retrieving raw dps, with tags...")
         for m in range(1, metric_cardinality+1):
             for tk in range(tag_cardinality):
                 for tv in range(tag_cardinality):
@@ -1070,7 +1074,7 @@ class Basic_Query_Tests(Test):
                     self.query_and_verify(query)
 
         # retrieve raw dps with 1 tag (no aggregation, no downsampling)
-        print("Retrieving raw dps, with tags...")
+        self._logger.info("Retrieving raw dps, with tags...")
         for m in range(1, metric_cardinality+1):
             for tk in range(tag_cardinality):
                 tags = {"tag"+str(tk): "*"}
@@ -1079,7 +1083,7 @@ class Basic_Query_Tests(Test):
 
         # retrieve raw dps with 1 tag (no aggregation, no downsampling)
         if tag_cardinality > 2:
-            print("Retrieving raw dps, with tags...")
+            self._logger.info("Retrieving raw dps, with tags...")
             for m in range(1, metric_cardinality+1):
                 for tk in range(2, tag_cardinality):
                     tags = {"tag1":"val1", "tag"+str(tk): "val*"}
@@ -1122,26 +1126,26 @@ class Advanced_Query_No_Fill_Tests(Test):
         else:
             self.send_data(dps)
 
-        print("Downsamples without fill...")
+        self._logger.info("Downsamples without fill...")
         for m in range(metric_cardinality):
             for down in ["avg", "count", "dev", "first", "last", "max", "min", "p50", "p75", "p90", "p95", "p99", "p999", "sum"]:
                 query = Query(metric=self.metric_name(m), start=self._options.start, end=dps._end, downsampler="10000ms-"+down)
                 self.query_and_verify(query)
 
-        print("Downsamples with zero fill...")
+        self._logger.info("Downsamples with zero fill...")
         for m in range(metric_cardinality):
             for down in ["avg", "count", "dev", "first", "last", "max", "min", "p50", "p75", "p90", "p95", "p99", "p999", "sum"]:
                 query = Query(metric=self.metric_name(m), start=self._options.start-99999, end=dps._end+99999, downsampler="10000ms-"+down+"-zero")
                 self.query_and_verify(query)
 
-        print("Aggregates without downsample...")
+        self._logger.info("Aggregates without downsample...")
         for m in range(metric_cardinality):
             tags = {"tag"+str(m): "*"}
             for agg in ["none", "avg", "count", "dev", "max", "min", "p50", "p75", "p90", "p95", "p99", "p999", "sum"]:
                 query = Query(metric=self.metric_name(m), start=self._options.start, end=dps._end, aggregator=agg, tags=tags)
                 self.query_and_verify(query)
 
-        print("Aggregates, downsamples without fill...")
+        self._logger.info("Aggregates, downsamples without fill...")
         for m in range(metric_cardinality):
             for down in ["avg", "count", "dev", "first", "last", "max", "min", "p50", "p75", "p90", "p95", "p99", "p999", "sum"]:
                 for agg in ["none", "avg", "count", "dev", "max", "min", "p50", "p75", "p90", "p95", "p99", "p999", "sum"]:
@@ -1149,7 +1153,7 @@ class Advanced_Query_No_Fill_Tests(Test):
                     query = Query(metric=self.metric_name(m), start=self._options.start, end=dps._end, aggregator=agg, downsampler="10s-"+down, tags=tags)
                     self.query_and_verify(query)
 
-        print("Aggregates, downsamples with zero fill...")
+        self._logger.info("Aggregates, downsamples with zero fill...")
         for m in range(metric_cardinality):
             for down in ["avg", "count", "dev", "first", "last", "max", "min", "p50", "p75", "p90", "p95", "p99", "p999", "sum"]:
                 for agg in ["none", "avg", "count", "dev", "max", "min", "p50", "p75", "p90", "p95", "p99", "p999", "sum"]:
@@ -1191,13 +1195,13 @@ class Advanced_Query_With_Fill_Tests(Test):
         else:
             self.send_data(dps)
 
-        print("Downsamples with zero fill...")
+        self._logger.info("Downsamples with zero fill...")
         for m in range(metric_cardinality):
             for down in ["avg", "count", "dev", "first", "last", "max", "min", "p50", "p75", "p90", "p95", "p99", "p999", "sum"]:
                 query = Query(metric=self.metric_name(m), start=self._options.start-99999, end=dps._end+99999, downsampler="10000ms-"+down+"-zero")
                 self.query_and_verify(query)
 
-        print("Aggregates, downsamples with zero fill...")
+        self._logger.info("Aggregates, downsamples with zero fill...")
         for m in range(metric_cardinality):
             for down in ["avg", "count", "dev", "first", "last", "max", "min", "p50", "p75", "p90", "p95", "p99", "p999", "sum"]:
                 for agg in ["none", "avg", "count", "dev", "max", "min", "p50", "p75", "p90", "p95", "p99", "p999", "sum"]:
@@ -1311,7 +1315,7 @@ class Advanced_Query_With_Rollup_Tests(Test):
             else:
                 self.send_data(dps)
 
-        print("Downsamples without fill...")
+        self._logger.info("Downsamples without fill...")
         for m in range(metric_cardinality):
             for down in ["avg", "count", "dev", "first", "last", "max", "min", "p50", "p75", "p90", "p95", "p99", "p999", "sum"]:
                 query = Query(metric=self.metric_name(m), start=self._options.start, end=dps._end, downsampler="2h-"+down)
@@ -1319,7 +1323,7 @@ class Advanced_Query_With_Rollup_Tests(Test):
                 query = Query(metric=self.metric_name(m), start=self._options.start, end=dps._end, downsampler="1d-"+down)
                 self.query_and_verify(query)
 
-        print("Downsamples with zero fill...")
+        self._logger.info("Downsamples with zero fill...")
         for m in range(metric_cardinality):
             for down in ["avg", "count", "dev", "first", "last", "max", "min", "p50", "p75", "p90", "p95", "p99", "p999", "sum"]:
                 query = Query(metric=self.metric_name(m), start=self._options.start-99999, end=dps._end+99999, downsampler="1h-"+down+"-zero")
@@ -1369,19 +1373,19 @@ class Query_Tests(Test):
         self.start_tt()
         self.connect_to_tcp()
 
-        print("Running Advanced_Query_With_Aggregation()...")
+        self._logger.info("Running Advanced_Query_With_Aggregation()...")
         test = Advanced_Query_With_Aggregation(self._options, prefix=prefix)
         test(run_tt=False)
         if test._failed > 0:
-            print("[FAIL] Advanced_Query_With_Aggregation() failed")
+            self._logger.info("[FAIL] Advanced_Query_With_Aggregation() failed")
         self._passed = self._passed + test._passed
         self._failed = self._failed + test._failed
 
-        print("Running Advanced_Query_With_Rollup_Tests()...")
+        self._logger.info("Running Advanced_Query_With_Rollup_Tests()...")
         test = Advanced_Query_With_Rollup_Tests(self._options, prefix=prefix)
         test(run_tt=False)
         if test._failed > 0:
-            print("[FAIL] Advanced_Query_With_Rollup_Tests() failed")
+            self._logger.info("[FAIL] Advanced_Query_With_Rollup_Tests() failed")
         self._passed = self._passed + test._passed
         self._failed = self._failed + test._failed
 
@@ -1391,41 +1395,41 @@ class Query_Tests(Test):
 
                     prefix1 = prefix + "_bq_%d_%d_%d" % (metric_cnt, metric_card, tag_card)
                     prefix1_str = str(prefix1)
-                    print("Running Basic_Query_Tests(%s)..." % prefix1_str)
+                    self._logger.info("Running Basic_Query_Tests(%s)..." % prefix1_str)
                     test = Basic_Query_Tests(self._options, prefix=prefix1_str)
                     test(metric_count=metric_cnt, metric_cardinality=metric_card, tag_cardinality=tag_card, run_tt=False, via_udp=False)
                     if test._failed > 0:
-                        print("Basic_Query_Tests(metric_count=%d, metric_cardinality=%d, tag_cardinality=%d) failed" % (metric_cnt, metric_card, tag_card))
+                        self._logger.info("Basic_Query_Tests(metric_count=%d, metric_cardinality=%d, tag_cardinality=%d) failed" % (metric_cnt, metric_card, tag_card))
                     self._passed = self._passed + test._passed
                     self._failed = self._failed + test._failed
 
                     prefix2 = prefix + "_bqu_%d_%d_%d" % (metric_cnt, metric_card, tag_card)
                     prefix2_str = str(prefix2)
-                    print("Running Basic_Query_Tests(%s) with UDP..." % prefix2_str)
+                    self._logger.info("Running Basic_Query_Tests(%s) with UDP..." % prefix2_str)
                     test = Basic_Query_Tests(self._options, prefix=prefix2_str, tcp_socket=self._tcp_socket)
                     test(metric_count=metric_cnt, metric_cardinality=metric_card, tag_cardinality=tag_card, run_tt=False, via_udp=True)
                     if test._failed > 0:
-                        print("Basic_Query_Tests(metric_count=%d, metric_cardinality=%d, tag_cardinality=%d) failed" % (metric_cnt, metric_card, tag_card))
+                        self._logger.info("Basic_Query_Tests(metric_count=%d, metric_cardinality=%d, tag_cardinality=%d) failed" % (metric_cnt, metric_card, tag_card))
                     self._passed = self._passed + test._passed
                     self._failed = self._failed + test._failed
 
                     prefix3 = prefix + "_aqnf_%d_%d_%d" % (metric_cnt, metric_card, tag_card)
                     prefix3_str = str(prefix3)
-                    print("Running Advanced_Query_No_Fill_Tests(%s)..." % prefix3_str)
+                    self._logger.info("Running Advanced_Query_No_Fill_Tests(%s)..." % prefix3_str)
                     test = Advanced_Query_No_Fill_Tests(self._options, prefix=prefix3_str, tcp_socket=self._tcp_socket)
                     test(metric_count=metric_cnt, metric_cardinality=metric_card, tag_cardinality=tag_card, run_tt=False)
                     if test._failed > 0:
-                        print("Advanced_Query_No_Fill_Tests(metric_count=%d, metric_cardinality=%d, tag_cardinality=%d) failed" % (metric_cnt, metric_card, tag_card))
+                        self._logger.info("Advanced_Query_No_Fill_Tests(metric_count=%d, metric_cardinality=%d, tag_cardinality=%d) failed" % (metric_cnt, metric_card, tag_card))
                     self._passed = self._passed + test._passed
                     self._failed = self._failed + test._failed
 
                     prefix4 = prefix + "_aqwf_%d_%d_%d" % (metric_cnt, metric_card, tag_card)
                     prefix4_str = str(prefix4)
-                    print("Running Advanced_Query_With_Fill_Tests(%s)..." % prefix4_str)
+                    self._logger.info("Running Advanced_Query_With_Fill_Tests(%s)..." % prefix4_str)
                     test = Advanced_Query_With_Fill_Tests(self._options, prefix=prefix4_str, tcp_socket=self._tcp_socket)
                     test(metric_count=metric_cnt, metric_cardinality=metric_card, tag_cardinality=tag_card, run_tt=False)
                     if test._failed > 0:
-                        print("Advanced_Query_With_Fill_Tests(metric_count=%d, metric_cardinality=%d, tag_cardinality=%d) failed" % (metric_cnt, metric_card, tag_card))
+                        self._logger.info("Advanced_Query_With_Fill_Tests(metric_count=%d, metric_cardinality=%d, tag_cardinality=%d) failed" % (metric_cnt, metric_card, tag_card))
                     self._passed = self._passed + test._passed
                     self._failed = self._failed + test._failed
 
@@ -1456,7 +1460,7 @@ class Query_With_Rollup(Test):
         self.start_tt()
 
         # insert some dps
-        print("insert data...")
+        self._logger.info("insert data...")
         ts = self._options.start
         for i in range(10*24*60):
             dps = DataPoints(self._prefix, ts, interval_ms=60000, metric_count=1, metric_cardinality=metric_cardinality, tag_cardinality=2)
@@ -1465,11 +1469,11 @@ class Query_With_Rollup(Test):
         time.sleep(5)
 
         # do rollup
-        print("perform rollup...")
+        self._logger.info("perform rollup...")
         self.do_rollup()
         self.do_rollup()
 
-        print("Downsamples with hourly rollup...")
+        self._logger.info("Downsamples with hourly rollup...")
         for m in range(metric_cardinality):
             for down in ["avg", "count", "max", "min", "sum"]:
                 query = Query(metric=self.metric_name(m), start=self._options.start-99999, end=self._options.start+99999, downsampler="2h-"+down)
@@ -1483,7 +1487,7 @@ class Query_With_Rollup(Test):
                     query = Query(metric=self.metric_name(m), start=self._options.start+99999, end=dps._end+99999, aggregator=agg, downsampler="2h-"+down+"-zero")
                     self.query_and_verify(query)
 
-        print("Downsamples with daily rollup...")
+        self._logger.info("Downsamples with daily rollup...")
         for m in range(metric_cardinality):
             for down in ["avg", "count", "max", "min", "sum"]:
                 query = Query(metric=self.metric_name(m), start=self._options.start-99999, end=self._options.start+99999, downsampler="1d-"+down+"-zero")
@@ -1498,7 +1502,7 @@ class Query_With_Rollup(Test):
                     self.query_and_verify(query)
 
         # stop tt
-        print("restarting TickTockDB...")
+        self._logger.info("restarting TickTockDB...")
         self.stop_tt()
         # make sure tt stopped
         self.wait_for_tt(self._options.timeout)
@@ -1506,7 +1510,7 @@ class Query_With_Rollup(Test):
         # restart tt
         self.start_tt()
 
-        print("Downsamples with hourly rollup, after restart...")
+        self._logger.info("Downsamples with hourly rollup, after restart...")
         for m in range(metric_cardinality):
             for down in ["avg", "count", "max", "min", "sum"]:
                 query = Query(metric=self.metric_name(m), start=self._options.start-99999, end=dps._end+99999, downsampler="2h-"+down)
@@ -1518,7 +1522,7 @@ class Query_With_Rollup(Test):
                     query = Query(metric=self.metric_name(m), start=self._options.start+99999, end=dps._end+99999, aggregator=agg, downsampler="2h-"+down+"-zero")
                     self.query_and_verify(query)
 
-        print("Downsamples with daily rollup, after restart...")
+        self._logger.info("Downsamples with daily rollup, after restart...")
         for m in range(metric_cardinality):
             for down in ["avg", "count", "max", "min", "sum"]:
                 query = Query(metric=self.metric_name(m), start=self._options.start-99999, end=dps._end+99999, downsampler="1d-"+down+"-zero")
@@ -1606,7 +1610,7 @@ class Duplicate_Tests(Test):
         config()
 
         self.start_tt()
-        print("Running Duplicate_Tests...")
+        self._logger.info("Running Duplicate_Tests...")
 
         metric_cardinality = 4
 
@@ -1639,7 +1643,7 @@ class Duplicate_Tests(Test):
         self.wait_for_tt(self._options.timeout)
 
         if self._failed > 0:
-            dps.print_dps()
+            dps.print_dps(self._logger)
 
 
 class MQTT_Tests(Test):
@@ -1674,7 +1678,7 @@ class MQTT_Tests(Test):
         self.wait_for_tt(self._options.timeout)
 
         if self._failed > 0:
-            dps.print_dps()
+            dps.print_dps(self._logger)
 
 
 class Replication_Test(Test):
@@ -1699,7 +1703,7 @@ class Replication_Test(Test):
         config(self._conf_file)
 
         self.start_tt(self._conf_file)
-        print("Running Replication_Test{} with config {}...".format(self._idx, self._conf_file))
+        self._logger.info("Running Replication_Test{} with config {}...".format(self._idx, self._conf_file))
 
     def write_data(self, dps):
         dataport = self._options.dataport   # save
@@ -1719,18 +1723,18 @@ class Replication_Test(Test):
             self._options.port = str(int(self._options.port) + 1000)
 
         # this metric does not exist
-        print("Try non-existing metric...")
+        self._logger.info("Try non-existing metric...")
         query = Query(metric=self.metric_name(0), start=self._options.start, end=dps._end)
         self.query_and_verify(query)
 
         # retrieve raw dps (no tags, no downsampling)
-        print("Retrieving raw dps, no tags...")
+        self._logger.info("Retrieving raw dps, no tags...")
         for m in range(1, metric_cardinality+1):
             query = Query(metric=self.metric_name(m), start=self._options.start, end=dps._end)
             self.query_and_verify(query)
 
         # retrieve raw dps with 1 tag (no aggregation, no downsampling)
-        print("Retrieving raw dps, with tags...")
+        self._logger.info("Retrieving raw dps, with tags...")
         for m in range(1, metric_cardinality+1):
             for tk in range(tag_cardinality):
                 for tv in range(tag_cardinality):
@@ -1739,7 +1743,7 @@ class Replication_Test(Test):
                     self.query_and_verify(query)
 
         # retrieve raw dps with 1 tag (no aggregation, no downsampling)
-        print("Retrieving raw dps, with tags...")
+        self._logger.info("Retrieving raw dps, with tags...")
         for m in range(1, metric_cardinality+1):
             for tk in range(tag_cardinality):
                 tags = {"tag"+str(tk): "*"}
@@ -1748,7 +1752,7 @@ class Replication_Test(Test):
 
         # retrieve raw dps with 1 tag (no aggregation, no downsampling)
         if tag_cardinality > 2:
-            print("Retrieving raw dps, with tags...")
+            self._logger.info("Retrieving raw dps, with tags...")
             for m in range(1, metric_cardinality+1):
                 for tk in range(2, tag_cardinality):
                     tags = {"tag1":"val1", "tag"+str(tk): "val*"}
@@ -1801,7 +1805,7 @@ class Replication_Tests(Test):
         rep1.stop()
 
         if (rep0._failed) > 0 or (rep1._failed > 0):
-            print("[FAIL] Replication.test1 failed")
+            self._logger.info("[FAIL] Replication.test1 failed")
 
         self._passed = self._passed + rep0._passed
         self._failed = self._failed + rep0._failed
@@ -1830,7 +1834,7 @@ class Replication_Tests(Test):
         rep1.stop()
 
         if (rep0._failed) > 0 or (rep1._failed > 0):
-            print("[FAIL] Replication.test2 failed")
+            self._logger.info("[FAIL] Replication.test2 failed")
 
         self._passed = self._passed + rep0._passed
         self._failed = self._failed + rep0._failed
@@ -1860,7 +1864,7 @@ class Partition_Test(Test):
         config(self._conf_file)
 
         self.start_tt(self._conf_file)
-        print("Running Partition_Test{} with config {}...".format(self._idx, self._conf_file))
+        self._logger.info("Running Partition_Test{} with config {}...".format(self._idx, self._conf_file))
 
     def write_data(self, dps):
         dataport = self._options.dataport   # save
@@ -1880,7 +1884,7 @@ class Partition_Test(Test):
             self._options.port = str(int(self._options.port) + 1000)
 
         # retrieve raw dps (no tags, no downsampling)
-        print("Retrieving raw dps, no tags...")
+        self._logger.info("Retrieving raw dps, no tags...")
         for m in range(1, metric_cardinality+1):
             query = Query(metric=self.metric_name(m), start=self._options.start, end=dps._end)
             # self.query_and_verify(query)
@@ -1978,7 +1982,7 @@ class Partition_Tests(Test):
         rep1.stop()
 
         if (rep0._failed) > 0 or (rep1._failed > 0):
-            print("[FAIL] Partition.test1 failed")
+            self._logger.info("[FAIL] Partition.test1 failed")
 
         self._passed = self._passed + rep0._passed
         self._failed = self._failed + rep0._failed
@@ -2009,7 +2013,7 @@ class Partition_Tests(Test):
         rep1.stop()
 
         if (rep0._failed) > 0 or (rep1._failed > 0):
-            print("[FAIL] Partition.test2 failed")
+            self._logger.info("[FAIL] Partition.test2 failed")
 
         self._passed = self._passed + rep0._passed
         self._failed = self._failed + rep0._failed
@@ -2203,7 +2207,7 @@ class Memory_Leak_Tests(Test):
                     for agg in ["none", "avg", "count", "dev", "max", "min", "p50", "p75", "p90", "p95", "p99", "p999", "sum"]:
                         query = Query(metric=self.metric_name(m), start=self._options.start+99999, end=dps._end+99999, aggregator=agg, downsampler="10s-"+down+"-zero")
                         self.query_ticktock(query)
-            sys.stderr.write("Round " + str(i) + " done\n")
+            self._logger.info("Round " + str(i) + " done")
 
         # stop tt
         #self.stop_tt()
@@ -2239,15 +2243,15 @@ class Long_Running_Tests(Test):
                     self._passed = self._passed + 1
                 else:
                     self._failed = self._failed + 1
-                    print("data=" + str(dps.to_response()))
-                    print("response=" + str(response))
+                    self._logger.info("data=" + str(dps.to_response()))
+                    self._logger.info("response=" + str(response))
 
                 start = start + 3
 
             if self._failed == 0:
-                print("Iteration " + str(i+1) + "/" + str(iteration) + ": ALL SUCCESS")
+                self._logger.info("Iteration " + str(i+1) + "/" + str(iteration) + ": ALL SUCCESS")
             else:
-                print("Iteration " + str(i+1) + "/" + str(iteration) + ": " + str(self._failed) + " FAILED")
+                self._logger.info("Iteration " + str(i+1) + "/" + str(iteration) + ": " + str(self._failed) + " FAILED")
 
         # stop tt
         self.stop_tt()
@@ -2304,7 +2308,7 @@ class Bucket_Tests(Test):
             start = start + 2
 
             if ((i % 10000) == 0) and (i != 0):
-                print(str(i) + " dps inserted")
+                self._logger.info(str(i) + " dps inserted")
 
         # stop tt
         self.stop_tt()
@@ -2323,13 +2327,15 @@ class TestRunner(object):
         passed = 0
         failed = 0
 
+        logger = logging.getLogger(__name__)
+
         # hard-coded the seed for repeatability
         random.seed(1234567890)
 
         failures = []
 
         for test in tests:
-            sys.stdout.write("==== %s ====\n" % test.__class__.__name__)
+            logger.info("==== %s ====" % test.__class__.__name__)
 
             test.cleanup()
 
@@ -2337,10 +2343,10 @@ class TestRunner(object):
                 test()
             except Exception as e:
                 test._failed = test._failed + 1
-                print(e)
+                logger.info(str(e))
             except:
                 test._failed = test._failed + 1
-                sys.stderr.write("Unexpected error: %s\n" % sys.exc_info()[0])
+                logger.info("Unexpected error: %s" % sys.exc_info()[0])
 
             passed = passed + test._passed
             failed = failed + test._failed
@@ -2350,11 +2356,10 @@ class TestRunner(object):
 
             time.sleep(4)
 
-        sys.stdout.write("PASSED: %d;  FAILED: %d;  TOTAL: %d\n" % (passed, failed, failed+passed))
+        logger.info("PASSED: %d;  FAILED: %d;  TOTAL: %d" % (passed, failed, failed+passed))
 
         if failures:
-            print("FAILED TESTS:")
-            print(failures)
+            logger.info("FAILED TESTS: " + str(failures))
 
 
 def main(argv):
@@ -2364,6 +2369,12 @@ def main(argv):
     except:
         sys.stderr.write("Unexpected error: %s\n" % sys.exc_info()[0])
         return 1
+
+    logging.basicConfig(
+        level = logging.INFO,
+        format = "%(asctime)s - %(levelname)s - %(message)s",
+        handlers = [logging.StreamHandler(sys.stdout), logging.FileHandler("/tmp/it.log")]
+    )
 
     tests = deque()
 
