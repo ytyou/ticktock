@@ -1,8 +1,8 @@
                   README
 
-This java package shows how to write a Java client to talk with TickTock.
+This java package shows how to write a Java client to talk to TickTockDB.
 
-The java program, HttpClientExample, writes two data points to TickTock with HTTP. It then queries the result to verify that the data points have been written into TickTock.
+The java program, HttpClientExample, writes two data points to TickTockDB using HTTP. It then queries the result to verify that the data points have been written into TickTockDB.
 
 Compile:
 ylin30@yi-IdeaPad:~/ticktock/api-examples/java$ mvn package assembly:single
