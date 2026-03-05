@@ -208,7 +208,6 @@ Config::verify()
     ints.emplace(CFG_TSDB_OFF_HOUR_BEGIN);
     ints.emplace(CFG_TSDB_OFF_HOUR_END);
     ints.emplace(CFG_TSDB_PAGE_COUNT);
-    ints.emplace(CFG_TSDB_RETENTION_THRESHOLD);
     ints.emplace(CFG_TSDB_ROLLUP_BUCKETS);
     ints.emplace(CFG_TSDB_ROLLUP_COMPRESSOR_PRECISION);
     ints.emplace(CFG_TSDB_ROLLUP_LEVEL1_COMPRESSOR_VERSION);
@@ -230,6 +229,7 @@ Config::verify()
     times.emplace(CFG_TSDB_FLUSH_FREQUENCY);
     times.emplace(CFG_TSDB_GC_FREQUENCY);
     times.emplace(CFG_TSDB_READ_ONLY_THRESHOLD);
+    times.emplace(CFG_TSDB_RETENTION_THRESHOLD);
     times.emplace(CFG_TSDB_ROLLUP_FREQUENCY);
     times.emplace(CFG_TSDB_ROLLUP_PAUSE);
     times.emplace(CFG_TSDB_ROLLUP_THRESHOLD);

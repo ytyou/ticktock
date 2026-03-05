@@ -120,6 +120,7 @@ extern void copy_file(const std::string& src_file, const std::string& dst_file);
 extern int rm_file(const std::string& full_path);
 extern int rm_all_files(const std::string& pattern);
 extern void rm_dir(const std::string& full_path);   // rm all files one-level down as well
+extern void rm_dir2(const std::string& full_path);  // rm all files two-level down as well
 extern int rotate_files(const std::string& pattern, int retain_count);
 extern std::string last_file(const std::string& pattern);
 extern uint64_t get_disk_block_size(const std::string& full_path);

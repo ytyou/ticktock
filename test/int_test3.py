@@ -2,6 +2,7 @@
 
 import copy
 import datetime
+import glob
 import json
 import logging
 import optparse
@@ -716,6 +717,11 @@ class Test(object):
             return False
 
         return True
+
+    def count_subdirs(self, path):
+        pattern = os.path.join(path, '1*')
+        dirs = glob.glob(pattern)
+        return len(dirs)
 
     def cleanup(self):
         self._logger.info("cleanup...")
@@ -1681,6 +1687,53 @@ class MQTT_Tests(Test):
             dps.print_dps(self._logger)
 
 
+class Purge_Tests(Test):
+
+    def __init__(self, options, prefix: str = "purge"):
+        super(Purge_Tests, self).__init__(options, prefix)
+
+    def __call__(self):
+
+        config = TickTockConfig(self._options)
+        config.add_entry("tsdb.flush.frequency", "10s")  # 10 seconds
+        config.add_entry("tsdb.retention.threshold", "8d")  # retain 8 days of data
+        config.add_entry("tsdb.thrashing.threshold", "8s")  # to make sure tsdbs will be archived soon enough
+        config()
+
+        self.start_tt()
+        time.sleep(1)
+
+        metric_cardinality = 2
+
+        dps = DataPoints(self._prefix, self._options.start, interval_ms=3600000, metric_count=512, metric_cardinality=metric_cardinality, tag_cardinality=2)
+        self.send_data_to_ticktock(dps)
+
+        self._logger.info("Waiting for tsdb getting purged...")
+
+        # figure out data directory
+        root = self._options.root
+        start = self._options.start / 1000
+        ts = datetime.datetime.fromtimestamp(start)
+        data_dir = f"{root}/data/{ts.year}/{ts.month}"
+        self._logger.info("path: %s" % data_dir)
+
+        if self.count_subdirs(data_dir) != 11:
+            self._failed = self._failed + 1
+
+        time.sleep(60)  # wait for tsdb getting purged...
+
+        # stop tt
+        self.stop_tt()
+        # make sure tt stopped
+        self.wait_for_tt(self._options.timeout)
+
+        if self.count_subdirs(data_dir) != 8:
+            self._failed = self._failed + 1
+            self._logger.info("[ERROR] Number of tsdbs left: %d" % self.count_subdirs(data_dir))
+        else:
+            self._passed = self._passed + 1
+
+
 class Replication_Test(Test):
 
     def __init__(self, options, idx, prefix: str = "rep"):
@@ -2393,6 +2446,7 @@ def main(argv):
         tests.append(MQTT_Tests(options))
         tests.append(Query_Tests(options, metric_count=int(options.metric), metric_cardinality=4, tag_cardinality=4))
         tests.append(Query_With_Rollup(options))
+        tests.append(Purge_Tests(options))
         tests.append(Long_Running_Tests(options))
 
         #tests.append(Bucket_Tests(options))

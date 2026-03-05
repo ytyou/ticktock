@@ -229,7 +229,7 @@ public:
     static void insts(const TimeRange& range, std::vector<Tsdb*>& tsdbs);
     static void shutdown();
     static Tsdb* search(Timestamp tstamp);
-    static void purge_oldest(int threshold);
+    static void purge_oldest(Timestamp threshold_in_days);
     static bool compact(TaskData& data);
     static void compact2(); // last compaction step
     static bool rollup(TaskData& data);

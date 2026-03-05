@@ -3033,6 +3033,13 @@ Tsdb::init()
         Logger::info("Will try to archive ts every %d secs.", freq_sec);
     }
 
+    if (Config::inst()->exists(CFG_TSDB_RETENTION_THRESHOLD))
+    {
+        Timestamp days = Config::inst()->get_time(CFG_TSDB_RETENTION_THRESHOLD, TimeUnit::DAY);
+        if (days < 1) days = 1;
+        Logger::info("Will retain last %d days of data.", days);
+    }
+
 /*
     task.doit = &Tsdb::compact;
     task.data.integer = 0;  // indicates this is from scheduled task (vs. interactive cmd)
@@ -3335,7 +3342,7 @@ Tsdb::rotate(TaskData& data)
     MetaFile::instance()->flush();
 
     if (Config::inst()->exists(CFG_TSDB_RETENTION_THRESHOLD))
-        purge_oldest(Config::inst()->get_int(CFG_TSDB_RETENTION_THRESHOLD));
+        purge_oldest(Config::inst()->get_time(CFG_TSDB_RETENTION_THRESHOLD, TimeUnit::DAY));
 
     RollupManager::rotate();
 
@@ -3379,34 +3386,29 @@ Tsdb::validate(Tsdb *tsdb)
 }
 
 void
-Tsdb::purge_oldest(int threshold)
+Tsdb::purge_oldest(Timestamp threshold_in_days)
 {
     Tsdb *tsdb = nullptr;
 
     {
         PThread_WriteLock guard(&m_tsdb_lock);
 
-        if (m_tsdbs.size() <= threshold) return;
+        if (m_tsdbs.size() <= threshold_in_days) return;
 
         if (! m_tsdbs.empty())
         {
             tsdb = m_tsdbs.front();
-            Timestamp now = ts_now_sec();
 
-/*
-            if ((now - tsdb->m_load_time) > 7200)   // TODO: config?
-            {
+            if (tsdb->is_archived())
                 m_tsdbs.erase(m_tsdbs.begin());
-            }
             else
             {
+                Logger::info("[rotate] Tsdb %T not archived yet. Purging postponed.", tsdb);
                 tsdb = nullptr;
             }
-*/
         }
     }
 
-/*
     if (tsdb != nullptr)
     {
         Logger::info("[rotate] Purging %T permenantly", tsdb);
@@ -3415,22 +3417,14 @@ Tsdb::purge_oldest(int threshold)
         //WriteLock guard(tsdb->m_lock);
 
         tsdb->flush(true);
-        tsdb->unload();
+        tsdb->unload_no_lock();
 
         // purge files on disk
-        std::string file_name = Tsdb::get_file_name(tsdb->m_time_range, "meta");
-        rm_file(file_name);
-
-        for (int i = 0; ; i++)
-        {
-            file_name = Tsdb::get_file_name(tsdb->m_time_range, std::to_string(i));
-            if (! file_exists(file_name)) break;
-            rm_file(file_name);
-        }
+        std::string tsdb_dir = Tsdb::get_tsdb_dir_name(tsdb->m_time_range);
+        rm_dir2(tsdb_dir);
 
         delete tsdb;
     }
-*/
 }
 
 bool

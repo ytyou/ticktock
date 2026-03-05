@@ -905,12 +905,27 @@ rm_all_files(const std::string& pattern)
     return (int)cnt;
 }
 
+/* Remove all files one-level down as well.
+ */
 void
 rm_dir(const std::string& full_path)
 {
     if (file_exists(full_path))
     {
         rm_all_files(full_path + "/*");
+        rm_file(full_path); // will do empty dir as well
+    }
+}
+
+/* Remove all files two-level down as well.
+ */
+void
+rm_dir2(const std::string& full_path)
+{
+    if (file_exists(full_path))
+    {
+        rm_all_files(full_path + "/*/*");   // remove 2nd level files
+        rm_all_files(full_path + "/*");     // remove 1st level files
         rm_file(full_path); // will do empty dir as well
     }
 }
