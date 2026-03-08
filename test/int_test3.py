@@ -17,6 +17,7 @@ import threading
 import time
 
 from collections import deque
+from datetime import timezone
 import paho.mqtt.client as mqtt
 
 
@@ -1713,7 +1714,7 @@ class Purge_Tests(Test):
         # figure out data directory
         root = self._options.root
         start = self._options.start / 1000
-        ts = datetime.datetime.fromtimestamp(start)
+        ts = datetime.datetime.fromtimestamp(start, tz=timezone.utc)
         data_dir = f"{root}/data/{ts.year}/{ts.month}"
         self._logger.info("path: %s" % data_dir)
 
