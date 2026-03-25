@@ -40,7 +40,7 @@ objs/
 Makefile
 .aider*
 .idea
-/data/ts
+/data
 /log/ticktock.log
 /data/metrics
 /data/config
