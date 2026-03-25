@@ -229,165 +229,215 @@ HttpServer::collect_self_stats(HttpConnection *conn)
 #endif
 
 // we are in edge-triggered mode, must read all data
-bool
-HttpServer::recv_http_data(TaskData& data)
-{
-    size_t buff_size = MemoryManager::get_network_buffer_size() - 8;
-    HttpConnection *conn = static_cast<HttpConnection*>(data.pointer);
+// ---------------------------------------------------------------------
+  //  HttpServer::recv_http_data(TaskData& data)
+  // ---------------------------------------------------------------------
+  bool
+  HttpServer::recv_http_data(TaskData& data)
+  {
+      size_t buff_size = MemoryManager::get_network_buffer_size() - 8;
+      HttpConnection *conn = static_cast<HttpConnection*>(data.pointer);
 
-    Logger::http("recv_http_data: conn=%p", conn->fd, conn);
+      Logger::http("recv_http_data: conn=%p", conn->fd, conn);
 
-#ifdef TT_STATS
-    if (conn->processed == 0)
-        conn->processed = ts_now_ms();
-#endif
+  #ifdef TT_STATS
+      if (conn->processed == 0)
+          conn->processed = ts_now_ms();
+  #endif
 
-    char* buff;
+      char* buff;
 
-    if (conn->buff != nullptr)
-    {
-        // In this case, we did not receive the complete HTTP request last time;
-        // So we are trying to finish it up this time...
-        if (conn->state & TCS_NEW)
-        {
-            buff = conn->buff;
-            conn->buff = nullptr;
-            conn->state &= ~TCS_NEW;
-        }
-        else
-            return HttpServer::recv_http_data_cont(conn);
-    }
-    else
-    {
-        conn->state &= ~TCS_NEW;
-        buff = MemoryManager::alloc_network_buffer();
-    }
+      if (conn->buff != nullptr)
+      {
+          // In this case, we did not receive the complete HTTP request last time;
+          // So we are trying to finish it up this time...
+          if (conn->state & TCS_NEW)
+          {
+              buff = conn->buff;
+              conn->buff = nullptr;
+              conn->state &= ~TCS_NEW;
+          }
+          else
+              return HttpServer::recv_http_data_cont(conn);
+      }
+      else
+      {
+          conn->state &= ~TCS_NEW;
+          buff = MemoryManager::alloc_network_buffer();
+      }
 
-    int fd = conn->fd;
-    int len = 0;
-    bool conn_error = false;    // try to keep-alive
-    bool free_buff = true;
+      int fd = conn->fd;
+      int len = 0;
+      bool conn_error = false;    // try to keep‑alive
+      bool free_buff = true;
 
-    while (len < buff_size)
-    {
-        // the MSG_DONTWAIT is not really needed, since
-        // the socket itself is non-blocking
-        int cnt = recv(fd, &buff[len], buff_size-len, MSG_DONTWAIT);
+      /* --- read all available data ----------------------------------- */
+      while (len < buff_size)
+      {
+          int cnt = recv(fd, &buff[len], buff_size - len, MSG_DONTWAIT);
 
-        if (cnt > 0)
-        {
-            len += cnt;
-        }
-        else if (cnt == 0)
-        {
-            break;
-        }
-        else //if (cnt == -1)
-        {
-            // TODO: what about EINTR???
-            //       maybe we should delete conn???
-            if ((errno == EAGAIN) || (errno == EWOULDBLOCK)) break;
-            Logger::warn("recv(%d) failed, errno = %d", fd, errno);
-            conn_error = true;
-            break;
-        }
-    }
+          if (cnt > 0)
+              len += cnt;
+          else if (cnt == 0)
+              break;
+          else
+          {
+              if ((errno == EAGAIN) || (errno == EWOULDBLOCK)) break;
+              Logger::warn("recv(%d) failed, errno = %d", fd, errno);
+              conn_error = true;
+              break;
+          }
+      }
 
-    if (len >= buff_size)
-    {
-        HttpServer::send_response(conn, 413);
-        conn_error = true;
-        Logger::debug("received request of size %d, returning 413", len);
-    }
-    else if (len > 0)
-    {
-        buff[len] = 0;
-        buff[len+1] = ' ';
-        buff[len+2] = 0;
-        buff[len+3] = '\r';
-        buff[len+4] = 0;
-        buff[len+5] = ';';
-        buff[len+6] = 0;
+      /* --- handle buffer overflow ------------------------------------ */
+      if (len >= buff_size)
+      {
+          HttpServer::send_response(conn, 413);
+          conn_error = true;
+          Logger::debug("received request of size %d, returning 413", len);
+      }
+      /* ----------------------------------------------------------------*/
 
-        Logger::http("Recved request on %p: len=%d\n%s", fd, conn, len, buff);
+      /* ----------------------------------------------------------------*/
+      /*  The original code started here (the old body).  The new body is
+         a replacement that parses **all** complete requests in the buffer
+         and sends them in order.  ------------------------------------------------ */
 
-        conn->request.init();
-        parse_header(buff, len, conn->request);
+      else if (len > 0)
+      {
+          /*  Mark buffer as NUL‑terminated so parse_header() can use it
+              The trailing bytes are just a safety padding that the legacy
+              code used.  */
+          buff[len]   = 0;
+          buff[len+1] = ' ';
+          buff[len+2] = 0;
+          buff[len+3] = '\r';
+          buff[len+4] = 0;
+          buff[len+5] = ';';
+          buff[len+6] = 0;
 
-        if (conn->request.header_ok)
-        {
-            if (UNLIKELY(conn->request.length < 0))
-            {
-                HttpServer::send_response(conn, 411);
-                conn_error = true;
-                Logger::http("request length negative, will close connection", fd);
-            }
-            else if (conn->request.close)
-            {
-                conn_error = true;
-                Logger::http("will close connection", fd);
-            }
-        }
+          Logger::http("Recved request on %p: len=%d\n%s", fd, conn, len, buff);
 
-        conn->response.id = conn->request.id;
+          /* ----------  Parse and process all complete requests  ---------- */
+          conn_error = false;                         // reset error flag for this pass
+          size_t processed = 0;                       // bytes consumed so far
+          size_t remaining = len;                     // bytes still in buff
 
-        // Check if we have recv'ed the complete request.
-        // If not, we need to stop right here, and inform
-        // the listener to forward the rest of the request
-        // our way.
-        if (conn->request.is_complete())
-        {
-            if (! process_request(conn->request, conn->response))
-                conn_error = true;
+          /* Helper that finds the end of a header (\r\n\r\n) when there is no body.
+             Must NOT use strstr: parse_header NUL-terminates fields in-place,
+             so strstr stops at the first \0 and never reaches \r\n\r\n. */
+          auto find_header_end = [&](size_t offset) -> size_t {
+              for (size_t i = 0; i + 3 < remaining; i++) {
+                  if (buff[offset+i]   == '\r' && buff[offset+i+1] == '\n' &&
+                      buff[offset+i+2] == '\r' && buff[offset+i+3] == '\n')
+                      return i + 4;
+              }
+              return (size_t)0;
+          };
 
-            free_buff = HttpServer::send_response(conn);
+          while (true)
+          {
+              /* ----- parse one request --------------------------------- */
+              parse_header(buff + processed, remaining, conn->request);
 
-            // This needs to be done AFTER send_response(),
-            // or you are risking 2 threads both sending responses on the same fd.
-            //conn->buff = nullptr;
-        }
-        else
-        {
-            free_buff = false;
-            conn_error = false;
-            conn->buff = buff;
-            conn->offset = len;
-            Logger::http("received partial request size %d of total %d", fd, len, conn->request.length);
-        }
-    }
-    else
-    {
-        Logger::http("received request of size %d", fd, len);
-    }
+              if (!conn->request.header_ok)
+                  break;                     // incomplete header
 
-    if (free_buff)
-    {
-        conn->buff = nullptr;
-        MemoryManager::free_network_buffer(buff);
-        conn->response.recycle();
-    }
+              if (!conn->request.is_complete())   // body missing
+              {
+                  processed = remaining;
+                  break;
+              }
 
-    // closing the fd will deregister it from epoll
-    // since we never dup() or fork(); but let's
-    // deregister it anyway, just in case.
-    if (conn_error)
-    {
-        conn->state |= TCS_ERROR;
-    }
+              /* ----- compute request size ----------------------------- */
+              size_t req_len = conn->request.length;
+              size_t header_offset = conn->request.content
+                                         ? (size_t)(conn->request.content - (buff + processed))
+                                         : 0;
+              size_t delta = header_offset + req_len;
 
-    int n = --conn->pending_tasks;
-    ASSERT(n >= 0);
+              /* header‑only request – find the end of the header explicitly */
+              if (!conn->request.content && req_len == 0)
+                  delta = find_header_end(processed);
 
-    if ((n <= 0) && (conn->state & TCS_CLOSED))
-        conn->close();
+              /* if we cannot determine a valid request size or it exceeds
+                 the remaining data, abort parsing to avoid an out‑of‑bounds memmove. */
+              if (delta == 0 || delta > remaining)
+              {
+                  Logger::warn("request size %zu exceeds remaining %zu", delta, remaining);
+                  processed = remaining;
+                  remaining = 0;
+                  break;
+              }
+              /* ---------------------------------------------------------- */
 
-#ifdef TT_STATS
-    if (g_self_meter_enabled && free_buff)
-        collect_self_stats(conn);
-#endif
+              /* ----- process request ------------------------------------- */
+              process_request(conn->request, conn->response);
+              conn->pending_responses.push_back(std::move(conn->response));
 
-    return false;
-}
+              /* ----- try to send queued responses immediately ------------- */
+              if (!HttpServer::send_response(conn))   // partial send
+              {
+                  processed += delta;
+                  remaining -= delta;
+                  break;
+              }
+
+              /* ----- move to next request in the buffer ------------------- */
+              processed += delta;
+              remaining -= delta;
+              conn->request.init();                 // prepare for the next one
+          }
+
+          /* ----------  Update buffer state ---------------------------- */
+          if (remaining > 0)
+          {
+              if (processed > 0)
+                  memmove(buff, buff + processed, remaining);
+              conn->buff   = buff;
+              conn->offset = remaining;
+              free_buff = false;
+          }
+          else
+          {
+              free_buff = true;
+          }
+
+          /* ----------------------------------------------------------------*/
+      }
+      else
+      {
+          Logger::http("received request of size %d", fd, len);
+      }
+
+      /* ----------  free buffer if nothing is left ------------------------ */
+      if (free_buff && conn->pending_responses.empty())
+      {
+          conn->buff = nullptr;
+          MemoryManager::free_network_buffer(buff);
+          conn->response.recycle();
+      }
+
+      /* ----------  connection error handling ----------------------------- */
+      if (conn_error)
+          conn->state |= TCS_ERROR;
+
+      /* ----------  task bookkeeping ------------------------------------ */
+      int n = --conn->pending_tasks;
+      ASSERT(n >= 0);
+
+      if ((n <= 0) && (conn->state & TCS_CLOSED))
+          conn->close();
+
+  #ifdef TT_STATS
+      if (g_self_meter_enabled && free_buff)
+          collect_self_stats(conn);
+  #endif
+
+      return false;
+  }
+
+
 
 // This function tries to finish receive/process the HTTP request that
 // was not received/processed completely last time (by recv_http_data()).
@@ -450,8 +500,8 @@ HttpServer::recv_http_data_cont(HttpConnection *conn)
         int offset = conn->offset;
         if ((buff[offset] == 'P') || (buff[offset] == 'G'))
         {
-            if ((std::strncmp(&buff[offset], "GET ", 4) == 0) &&
-                (std::strncmp(&buff[offset], "PUT ", 4) == 0) &&
+            if ((std::strncmp(&buff[offset], "GET ", 4) == 0) ||
+                (std::strncmp(&buff[offset], "PUT ", 4) == 0) ||
                 (std::strncmp(&buff[offset], "POST ", 5) == 0))
             {
                 // this appears to be the beginning of a new request
@@ -494,8 +544,8 @@ HttpServer::recv_http_data_cont(HttpConnection *conn)
         else
         {
             Logger::debug("request is finally complete");
-            if (! process_request(conn->request, conn->response))
-                conn_error = true;
+            process_request(conn->request, conn->response);
+            conn->pending_responses.push_back(std::move(conn->response));
             free_buff = HttpServer::send_response(conn);
         }
     }
@@ -505,7 +555,7 @@ HttpServer::recv_http_data_cont(HttpConnection *conn)
         Logger::http("did not receive anything this time", fd);
     }
 
-    if (free_buff)
+    if (free_buff && conn->pending_responses.empty())
     {
         conn->buff = nullptr;
         MemoryManager::free_network_buffer(buff);
@@ -530,6 +580,27 @@ HttpServer::recv_http_data_cont(HttpConnection *conn)
 
     return false;
 }
+
+
+bool
+HttpServer::resend_response(TaskData& data)
+{
+    if (g_shutdown_requested) return false;
+    HttpConnection *conn = (HttpConnection*)data.pointer;
+    bool success = send_response(conn);
+    if (success)
+    {
+        if (conn->buff != nullptr)
+        {
+            MemoryManager::free_network_buffer(conn->buff);
+            conn->buff = nullptr;
+        }
+    }
+    --conn->pending_tasks;
+    return success;
+}
+
+
 
 void
 HttpServer::add_get_handler(const char *path, HttpRequestHandler handler)
@@ -587,23 +658,62 @@ HttpServer::get_post_handler(const char *path)
 }
 
 
-bool
-HttpServer::resend_response(TaskData& data)
-{
-    if (g_shutdown_requested) return false;
-    HttpConnection *conn = (HttpConnection*)data.pointer;
-    bool success = send_response(conn);
-    if (success)
-    {
-        if (conn->buff != nullptr)
-        {
-            MemoryManager::free_network_buffer(conn->buff);
-            conn->buff = nullptr;
-        }
-    }
-    --conn->pending_tasks;
-    return success;
-}
+
+bool HttpServer::send_response(HttpConnection *conn)
+  {
+      ssize_t sent = conn->sent;
+      int fd = conn->fd;
+
+      while (true) {
+          // Re-fetch the front response each iteration to avoid dangling refs after pop_front().
+          HttpResponse *curr_resp = !conn->pending_responses.empty()
+                                       ? &conn->pending_responses.front()
+                                       : &conn->response;
+
+          if (curr_resp->response_size == 0)
+              break;
+
+          size_t target = curr_resp->response_size - sent;
+          ssize_t n = send(fd, curr_resp->response + sent, target, MSG_DONTWAIT);
+
+          if (n < 0) {
+              if (errno != EAGAIN) {
+                  conn->state |= TCS_ERROR;
+                  Logger::warn("send(%d) failed with errno=%d; conn will be closed", fd, errno);
+                  break;
+              }
+              if (g_shutdown_requested)
+                  break;
+          } else if (n == 0) {
+              break;
+          } else {
+              sent += n;
+          }
+
+          if (sent >= curr_resp->response_size) {
+              Logger::http("Sent %d(%d) bytes:\n%s", fd, curr_resp->response_size, sent, curr_resp->response);
+              if (!conn->pending_responses.empty())
+                  conn->pending_responses.pop_front();
+              sent = 0;
+              continue;
+          }
+          break;
+      }
+
+      conn->sent = sent;
+
+      if (conn->pending_responses.empty())
+          return true;
+
+      if ((conn->state & TCS_ERROR) == 0)
+          conn->listener->resubmit_by_responder('h', conn);
+
+      return false;
+  }
+
+
+
+
 
 bool
 HttpServer::send_response(HttpConnection *conn, uint16_t status)
@@ -613,62 +723,16 @@ HttpServer::send_response(HttpConnection *conn, uint16_t status)
     return send_response(conn);
 }
 
-bool
-HttpServer::send_response(HttpConnection *conn)
-{
-    size_t target;
-    ssize_t sent = conn->sent;
-    int fd = conn->fd;
-    HttpResponse& response = conn->response;
 
-    while (sent < response.response_size)
-    {
-        char *buff = response.response + sent;
-        target = response.response_size - sent;
-
-        ssize_t n = send(fd, buff, target, MSG_DONTWAIT);
-
-        if (n < 0)
-        {
-            if (errno != EAGAIN)
-            {
-                conn->state |= TCS_ERROR;
-                Logger::warn("send(%d) failed with errno=%d; conn will be closed", fd, errno);
-                break;
-            }
-
-            if (g_shutdown_requested)
-                break;
-        }
-        else if (n == 0)
-        {
-            break;
-        }
-        else
-        {
-            sent += n;
-        }
-    }
-
-    if (sent >= response.response_size)
-    {
-        Logger::http("Sent %d(%d) bytes:\n%s", fd,
-            response.response_size, sent, response.response);
-        return true;
-    }
-    else if ((conn->state & TCS_ERROR) == 0)
-    {
-        // re-queue it to try later
-        conn->listener->resubmit_by_responder('h', conn);
-    }
-
-    return false;
-}
 
 // parse raw request sitting in the buff into an HttpRequest
 bool
 HttpServer::parse_header(char *buff, int len, HttpRequest& request)
 {
+    // Defensive check: if buff is null or len is non‑positive, bail out.
+    if (buff == nullptr || len <= 0) {
+        return false;
+    }
     size_t buff_size = MemoryManager::get_network_buffer_size();
     char *curr1 = buff, *curr2, *curr3;
 
@@ -1103,6 +1167,41 @@ HttpResponse::get_body() const
     char *body = std::strstr(response, "\r\n\r\n");
     if (body != nullptr) body += 4;
     return body;
+}
+
+HttpResponse::HttpResponse(HttpResponse&& other) noexcept
+    : response_size(other.response_size),
+      response(other.response),
+      id(other.id),
+      status_code(other.status_code),
+      content_type(other.content_type),
+      content_length(other.content_length),
+      buffer(other.buffer),
+      buffer_size(other.buffer_size)
+{
+    other.buffer = nullptr;
+    other.response = nullptr;
+    other.response_size = 0;
+}
+
+HttpResponse& HttpResponse::operator=(HttpResponse&& other) noexcept
+{
+    if (this != &other)
+    {
+        recycle();
+        response_size  = other.response_size;
+        response       = other.response;
+        id             = other.id;
+        status_code    = other.status_code;
+        content_type   = other.content_type;
+        content_length = other.content_length;
+        buffer         = other.buffer;
+        buffer_size    = other.buffer_size;
+        other.buffer        = nullptr;
+        other.response      = nullptr;
+        other.response_size = 0;
+    }
+    return *this;
 }
 
 HttpResponse::~HttpResponse()

@@ -1,3 +1,4 @@
+#include <deque>
 /*
     TickTockDB is an open-source Time Series Database, maintained by
     Yongtao You (yongtao.you@gmail.com) and Yi Lin (ylin30@gmail.com).
@@ -92,6 +93,8 @@ public:
     const char *c_str(char *buff) const override;
 
     void recycle();
+    HttpResponse(HttpResponse&& other) noexcept;
+    HttpResponse& operator=(HttpResponse&& other) noexcept;
     virtual ~HttpResponse();
 
 private:
@@ -140,6 +143,9 @@ class HttpConnection : public TcpConnection
 public:
     HttpRequest request;
     HttpResponse response;
+    // Queue of responses for pipelining. Only the front response is
+    // sent; once finished it is popped.
+    std::deque<HttpResponse> pending_responses;
     ssize_t sent;   // number of bytes of response already sent
 
     void init() override

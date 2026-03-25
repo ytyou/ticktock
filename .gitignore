@@ -38,3 +38,11 @@ objs/
 
 # This is a symlink
 Makefile
+.aider*
+.idea
+/data/ts
+/log/ticktock.log
+/data/metrics
+/data/config
+/interview.md
+/pipeline_test

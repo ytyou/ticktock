@@ -33,6 +33,7 @@ class UdpListener : public Stoppable
 {
 public:
     UdpListener(int id, int port);
+    void wait(size_t timeout_secs) override;
 
 private:
     void receiver();            // thread loop
@@ -52,6 +53,7 @@ class UdpServer : public Stoppable
 public:
     bool start(int port);
     void shutdown(ShutdownRequest request = ShutdownRequest::ASAP);
+    void wait(size_t timeout_secs) override;
 
 private:
     UdpRequestHandler m_request_handler;    // current active handler

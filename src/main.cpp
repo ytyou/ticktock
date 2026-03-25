@@ -431,6 +431,7 @@ main(int argc, char *argv[])
     tcp_server.wait(0);
 
     udp_server.shutdown();
+    udp_server.wait(0);
 
     shutdown();
     delete Config::inst();

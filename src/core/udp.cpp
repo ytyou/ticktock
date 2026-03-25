@@ -107,12 +107,16 @@ UdpListener::receiver()
 
     //Tsdb *tsdb = nullptr;
 
+    // 1-second timeout so the shutdown flag is checked periodically
+    struct timespec recvtmo = {1, 0};
+
     while (! is_shutdown_requested())
     {
-        retval = recvmmsg(m_fd, msgs, batch_size, MSG_WAITFORONE, nullptr);
+        retval = recvmmsg(m_fd, msgs, batch_size, MSG_WAITFORONE, &recvtmo);
 
         if (retval == -1)
         {
+            if (errno == EAGAIN || errno == ETIMEDOUT || errno == EINTR) continue;
             Logger::debug("recvmmsg() failed, errno: %d", errno);
             continue;
         }
@@ -166,6 +170,10 @@ UdpListener::receiver2()
     if (retval == -1)
         Logger::error("Failed to bind(%d), errno: %d", m_port, errno);
 
+    // 1-second receive timeout so the shutdown flag is checked periodically
+    struct timeval recvtmo = {1, 0};
+    setsockopt(m_fd, SOL_SOCKET, SO_RCVTIMEO, &recvtmo, sizeof(recvtmo));
+
     // ready to receive
     int max_line = Config::inst()->get_int(CFG_TSDB_MAX_DP_LINE, CFG_TSDB_MAX_DP_LINE_DEF);
     char buff[max_line+1];
@@ -174,13 +182,11 @@ UdpListener::receiver2()
     while (! is_shutdown_requested())
     {
         retval = recvfrom(m_fd, buff, max_line, MSG_NOSIGNAL, nullptr, nullptr);
+        if (retval <= 0) continue;
 
-        if (retval > 0)
-        {
-            ASSERT(retval < max_line);
-            buff[retval] = 0;
-            process_one_line(buff);
-        }
+        ASSERT(retval < max_line);
+        buff[retval] = 0;
+        process_one_line(buff);
     }
 
     if (m_fd != -1) close(m_fd);
@@ -234,6 +240,19 @@ UdpServer::shutdown(ShutdownRequest request)
     {
         listener->shutdown(request);
     }
+}
+
+void
+UdpListener::wait(size_t timeout_secs)
+{
+    if (m_listener.joinable()) m_listener.join();
+}
+
+void
+UdpServer::wait(size_t timeout_secs)
+{
+    for (UdpListener *listener: m_listeners)
+        listener->wait(timeout_secs);
 }
 
 

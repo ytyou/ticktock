@@ -218,9 +218,13 @@ TcpServer::listen(int port, int listener_count)
     if (retval < 0)
     {
         close(fd);
+        printf("Failed to bind on port %d (errno=%d)\n", port, errno);
         Logger::error("Failed to bind to any network interfaces on port %d, errno=%d", port, errno);
         if ((EADDRINUSE == errno) && ! g_opt_reuse_port)
+        {
+            printf("Port %d already in use. Consider running with -r (reuse port).\n", port);
             Logger::error("Please consider running TickTockDB with -r command-line option.");
+        }
         return -1;
     }
 
@@ -326,10 +330,15 @@ TcpServer::listen(int port, int listener_count)
     if (retval == -1)
     {
         close(fd);
+        printf("Failed to listen on port %d (errno=%d)\n", port, errno);
         Logger::error("Failed to listen on socket, errno: %d", errno);
         return -1;
     }
 
+    // Emit a lightweight console message so the user can see it immediately
+    // (logger may be configured to write only to file).
+    printf("Listening on port %d\n", port);
+    Logger::info("Listening on port %d", port);
     return fd;
 }
 
@@ -349,8 +358,10 @@ TcpServer::start(const std::string& ports)
     if (! tokenize(ports, pair, ','))
         std::get<0>(pair) = ports;
 
-    if (! std::get<0>(pair).empty())
+    if (! std::get<0>(pair).empty()) {
+        Logger::info("%s listening on port %s", get_name(), std::get<0>(pair).c_str());
         m_socket_fd[0] = this->listen(std::stoi(std::get<0>(pair)), m_listener_count[0]);
+    }
     else
     {
         m_socket_fd[0] = -1;
